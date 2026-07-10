@@ -1,0 +1,6 @@
+model = "gpt-5.6-terra"
+model_reasoning_effort = "low"
+sandbox_mode = "read-only"
+
+[features]
+multi_agent = false

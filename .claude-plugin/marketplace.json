@@ -1,0 +1,20 @@
+{
+  "$schema": "https://anthropic.com/claude-code/marketplace.schema.json",
+  "name": "delegation-kit",
+  "owner": { "name": "Matteo Scurati", "url": "https://github.com/matteoscurati" },
+  "metadata": {
+    "description": "Cross-tool delegation kit: model-routing subagent profiles + policy for Claude Code and Codex.",
+    "version": "0.1.0"
+  },
+  "plugins": [
+    {
+      "name": "delegation-kit",
+      "description": "Model-routing subagent profiles (clerk / scout / builder / reviewer / senior-reviewer) plus a routing-policy skill, for delegating coding work across lanes.",
+      "version": "0.1.0",
+      "author": { "name": "Matteo Scurati" },
+      "homepage": "https://github.com/matteoscurati/delegation-kit",
+      "license": "MIT",
+      "source": "./"
+    }
+  ]
+}

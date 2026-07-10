@@ -1,0 +1,23 @@
+# delegation-kit — Codex config snippet (merge into ~/.codex/config.toml by hand)
+#
+# The installer does NOT edit these keys automatically: `model` and `sandbox_mode`
+# are load-bearing personal choices, and a bad merge is disruptive. Review and add
+# what you want.
+
+# Lead model + effort for a normal Codex session. The author uses gpt-5.6-sol at
+# medium (a capable-but-not-top lead), raising effort only in plan mode. Swap for
+# your own default (see ADAPTING.md).
+model = "gpt-5.6-sol"
+model_reasoning_effort = "medium"
+plan_mode_reasoning_effort = "high"
+
+# Fan-out governance: cap concurrent direct workers and forbid recursive
+# delegation (workers cannot themselves delegate). Pairs with the ephemeral
+# profiles' `[features] multi_agent = false`.
+[agents]
+max_threads = 3
+max_depth = 1
+
+# Top-level multi-agent must be on for the lead to delegate at all.
+[features]
+multi_agent = true

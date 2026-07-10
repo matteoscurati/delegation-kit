@@ -1,0 +1,49 @@
+# Usage-aware collaboration (installed by delegation-kit)
+
+> **Adapt to your setup.** The profile names below (`luna-clerk` / `terra-scout` /
+> `terra-builder` / `sol-reviewer`) and their models are the author's reference
+> mapping — swap them for your own tiers (see `ADAPTING.md`). The *structure* is
+> the transferable part.
+
+- Default to solving simple, well-scoped work directly. Do not create subagents for a routine single-file change.
+- The lead owns requirements, decisions, integration, verification, and the final response.
+- For genuinely separable work, use at most two direct workers by default. Give each a bounded task, explicit file ownership, and a concise return format. Never allow recursive delegation.
+- Prefer `luna-clerk` for deterministic inventory, extraction, transformation, and test-log summaries; `terra-scout` for read-only repository mapping; `terra-builder` for a bounded implementation with clear acceptance checks; and `sol-reviewer` only for a material final correctness or security review.
+- When the native subagent tool cannot select a model, use the matching ephemeral CLI profile: `codex exec --ephemeral -p luna-clerk`, `terra-scout`, `terra-builder`, or `sol-reviewer`. Do not claim a native worker is cheaper unless its model is actually pinned.
+- Avoid double fan-out: in Ultra mode, let Ultra orchestrate and do not add a second manual delegation layer. Ultra is exceptional, not the default.
+- Escalate Luna to Terra, or Terra to Sol, when the task becomes ambiguous or high risk. Do not repeatedly retry an unsuitable cheap worker.
+- Workers should return distilled evidence, changed paths, checks run, and unresolved risks—not raw logs or broad essays.
+
+## Reaching Claude from Codex (cross-provider bridge)
+
+The lanes above route among OpenAI models. Reach across to Claude when it earns it:
+
+- **Taste** — user-facing UI, copy, or API-shape work, where a high-taste model
+  (Claude Opus) produces better results than the local lanes.
+- **Independent second opinion** — a review from a *different model family* catches
+  correctness/security bugs the local lanes correlate on and miss. Worth it on
+  material or security-sensitive diffs.
+- **Bucket-aware offload** — if Codex usage is tight and the Claude subscription has
+  spare capacity, push suitable volume across.
+
+**How — headless Claude Code CLI** (verified flags):
+
+```sh
+# read-only review / analysis (no edits):
+claude -p "<self-contained prompt>" --model opus --permission-mode plan
+
+# let it edit:
+claude -p "<self-contained prompt>" --model sonnet --permission-mode acceptEdits
+
+# give it a role (reviewer / taste), or a structured output:
+claude -p "<prompt>" --model opus --permission-mode plan \
+  --append-system-prompt "You are a senior security reviewer. Report findings only."
+# ...or define a named agent inline: --agents '<json>'
+# ...or machine-readable: --output-format stream-json
+```
+
+Rules: keep the prompt self-contained (the Claude process starts fresh — it does
+not see this Codex session). Don't claim the bridge is cheaper unless the target
+Claude model actually fits the task. Treat its output as **unverified until
+checked**, same as any delegation. Reserve `opus` for taste/security/material
+review; `sonnet` for high-volume execution.

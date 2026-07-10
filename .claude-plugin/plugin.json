@@ -1,0 +1,9 @@
+{
+  "name": "delegation-kit",
+  "version": "0.1.0",
+  "description": "Teach Claude Code how and when to delegate coding work across lanes — cheap execution, senior review, expensive judgement — with a symmetric bridge to Codex.",
+  "author": { "name": "Matteo Scurati", "url": "https://github.com/matteoscurati" },
+  "homepage": "https://github.com/matteoscurati/delegation-kit",
+  "license": "MIT",
+  "keywords": ["delegation", "subagents", "model-routing", "orchestration", "codex"]
+}
