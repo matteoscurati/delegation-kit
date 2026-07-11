@@ -65,13 +65,36 @@ the scored table.
 
 ## Reaching Codex from Claude (cross-provider bridge)
 
-If a GPT/Codex model earns a lane, drive it from Claude via the Codex CLI. Bounded:
-`codex exec -s read-only "<self-contained prompt>" </dev/null` (`-s workspace-write`
-to let it edit; always redirect stdin from `/dev/null`). Cheap pinned worker:
-`codex exec --ephemeral -p <profile> "<prompt>" </dev/null`. Inside Workflow
-scripts, wrap it in a thin `{model:'sonnet', effort:'low'}` agent that shells out
-and returns the raw output. Use it for a cheap high-volume lane or an independent
-second opinion from a different model family.
+If a GPT/Codex model earns a lane, drive it from Claude. Two paths — pick by whether
+you need it interactive/context-preserving or programmatic:
+
+**Preferred for interactive work — the `codex@openai-codex` plugin** (install:
+`/plugin marketplace add openai/codex-plugin-cc` then `/plugin install codex@openai-codex`):
+- the `codex:codex-rescue` **agent** — agent-invokable; a bounded fire-and-forward to Codex.
+- `/codex:review` · `/codex:adversarial-review` — read-only Codex review of the diff.
+  **User-run slash commands** (you can't invoke them) — surface them to the user.
+- **`/codex:transfer`** — hands the current Claude session off as a *resumable Codex
+  thread*, the one path that actually **preserves conversation context** across the
+  boundary. Also **user-run — suggest it, don't invoke it**; recommend it when the
+  handoff needs the discussion so far, not just files.
+
+**Programmatic / parallel / Workflow — raw `codex exec`.** Always pin **model +
+effort**, don't inherit the Codex default:
+- Ephemeral profile (pins both): `codex exec --ephemeral -p <profile> "<prompt>" </dev/null`.
+- Inline override: `codex exec -m gpt-5.6-luna -c model_reasoning_effort=low -s read-only "<prompt>" </dev/null`
+  (`-s workspace-write` to let it edit; always redirect stdin from `/dev/null`).
+- Machine-readable return: add `--json` (JSONL events) or `-o <file>` (final message
+  only) — **raw stdout is polluted with hook chatter**, so don't parse it directly.
+- Inside Workflow scripts, wrap it in a thin `{model:'sonnet', effort:'low'}` agent
+  that shells out and returns the cleaned output.
+
+**Context (each `codex exec` starts fresh):** it shares your working tree but not
+your conversation. Run it from the repo root (it auto-loads that repo's `AGENTS.md`)
+and reference files **by path** rather than pasting; put the rest into a
+self-contained prompt. If you need the discussion carried over, suggest the user run
+`/codex:transfer` (it's user-run — you can't invoke it). Use the bridge for a cheap
+high-volume lane or an independent second opinion from a different model family; treat
+its output as **unverified until checked**.
 
 ---
 

@@ -26,24 +26,34 @@ The lanes above route among OpenAI models. Reach across to Claude when it earns 
 - **Bucket-aware offload** — if Codex usage is tight and the Claude subscription has
   spare capacity, push suitable volume across.
 
-**How — headless Claude Code CLI** (verified flags):
+**How — headless Claude Code CLI** (verified flags). Always name **both** the model
+family/tier (`--model`) **and** the reasoning effort (`--effort`) — don't inherit
+defaults blindly:
 
 ```sh
 # read-only review / analysis (no edits):
-claude -p "<self-contained prompt>" --model opus --permission-mode plan
+claude -p "<self-contained prompt>" --model opus --effort high --permission-mode plan
 
 # let it edit:
-claude -p "<self-contained prompt>" --model sonnet --permission-mode acceptEdits
+claude -p "<self-contained prompt>" --model sonnet --effort medium --permission-mode acceptEdits
 
 # give it a role (reviewer / taste), or a structured output:
-claude -p "<prompt>" --model opus --permission-mode plan \
+claude -p "<prompt>" --model opus --effort high --permission-mode plan \
   --append-system-prompt "You are a senior security reviewer. Report findings only."
 # ...or define a named agent inline: --agents '<json>'
 # ...or machine-readable: --output-format stream-json
 ```
 
-Rules: keep the prompt self-contained (the Claude process starts fresh — it does
-not see this Codex session). Don't claim the bridge is cheaper unless the target
-Claude model actually fits the task. Treat its output as **unverified until
-checked**, same as any delegation. Reserve `opus` for taste/security/material
-review; `sonnet` for high-volume execution.
+- **Model + effort:** `--model opus|sonnet|<full-id>` picks the family/tier;
+  `--effort low|medium|high|xhigh|max` sets the depth (available levels depend on
+  the model). Reserve `opus` for taste/security/material review, `sonnet` for
+  high-volume execution; scale effort to blast radius, not prestige.
+- **Context (it starts fresh):** the Claude process does **not** see this Codex
+  session. It *does* share the filesystem — run it from the repo root so it reads
+  the same working tree (it auto-loads that repo's `CLAUDE.md`); widen its view
+  with `--add-dir <path>`; reference files **by path** instead of pasting them.
+  There is **no Codex→Claude history handoff** (the `codex@openai-codex` plugin is
+  Claude→Codex only), so put everything else the task needs into the prompt.
+- **Discipline:** don't claim the bridge is cheaper unless the target Claude model
+  actually fits the task. Treat its output as **unverified until checked**, same as
+  any delegation.

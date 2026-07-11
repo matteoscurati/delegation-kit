@@ -41,6 +41,12 @@ Idempotent, backs up before editing, and prints the Codex config snippet (it nev
 auto-edits `config.toml`). Keep the checkout where it is — Claude's `@import` points
 at it, so `git pull` updates the policy live. Remove with `./uninstall.sh`.
 
+Then verify the bridge is actually **wired** (not just written) with `./doctor.sh` —
+it checks both CLIs, auth, the installed profiles *and* the always-loaded policy
+blocks, and the Codex sandbox/network posture. `./doctor.sh --ping` also does a live
+round-trip in both directions. The failure it catches is silent: profiles present
+but a policy block missing means the bridge never fires.
+
 **Claude-only, one command (plugin):**
 ```
 /plugin marketplace add matteoscurati/delegation-kit
@@ -62,11 +68,20 @@ policy prose or the Codex side — run `./install.sh` for those.
 
 ## Cross-provider bridge
 
-- **Claude → Codex**: drive a GPT lane with `codex exec` / `--ephemeral -p <profile>`
-  (in [`claude/CLAUDE.delegation.md`](./claude/CLAUDE.delegation.md)).
-- **Codex → Claude**: call `claude -p "<prompt>" --model opus|sonnet` for taste, an
-  independent-family second-opinion review, or bucket-aware offload (in
-  [`codex/AGENTS.md`](./codex/AGENTS.md)).
+- **Claude → Codex**: for interactive/context-preserving work prefer the
+  [`codex@openai-codex` plugin](https://github.com/openai/codex-plugin-cc) — the
+  `codex:codex-rescue` agent (agent-invokable), plus the user-run slash commands
+  `/codex:review` and `/codex:transfer` (suggest them; the assistant can't invoke
+  them); for programmatic/parallel work drive a GPT lane with
+  `codex exec --ephemeral -p <profile>` (or `-m <model> -c model_reasoning_effort=<level>`).
+  Both in [`claude/CLAUDE.delegation.md`](./claude/CLAUDE.delegation.md).
+- **Codex → Claude**: call `claude -p "<prompt>" --model opus|sonnet --effort <level>`
+  for taste, an independent-family second-opinion review, or bucket-aware offload
+  (in [`codex/AGENTS.md`](./codex/AGENTS.md)). CLI-only — no reverse plugin exists.
+
+Both directions pass context through the **shared working tree**, not the
+conversation: run the child in the repo root and reference files by path. The only
+history-preserving handoff is `/codex:transfer` (Claude → Codex, a user-run command).
 
 ## Adapt & license
 
