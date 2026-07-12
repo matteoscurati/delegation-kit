@@ -52,17 +52,20 @@ if [ -f "$CODEX_HOME/auth.json" ]; then ok "codex authenticated ($CODEX_HOME/aut
 elif [ -n "${OPENAI_API_KEY:-}" ]; then ok "codex authenticated (OPENAI_API_KEY in env)"
 else warn "no $CODEX_HOME/auth.json and no \$OPENAI_API_KEY — run: codex login (if the bridge 401s)"; fi
 if [ -f "$CLAUDE_HOME/.credentials.json" ]; then ok "claude credentials present (file)"
+elif [ -n "${ANTHROPIC_API_KEY:-}" ]; then ok "claude authenticated (ANTHROPIC_API_KEY in env)"
 elif [ "$(uname)" = Darwin ] && security find-generic-password -s "Claude Code-credentials" >/dev/null 2>&1; then
   ok "claude credentials present (macOS Keychain)"
-else warn "no $CLAUDE_HOME/.credentials.json and no Keychain item — run 'claude' to log in if the bridge fails"; fi
+else warn "no $CLAUDE_HOME/.credentials.json, no \$ANTHROPIC_API_KEY, and no Keychain item — run 'claude' to log in if the bridge fails"; fi
 
 # ---- Claude side install (direct dir OR plugin cache) ----
 hdr "Claude Code install ($CLAUDE_HOME)"
 total=0; miss=0; via_plugin=0
+# one walk of the plugin cache up front, instead of a fresh find per missing agent
+plugin_md=""; [ -d "$CLAUDE_HOME/plugins" ] && plugin_md="$(find "$CLAUDE_HOME/plugins" -type f -name '*.md' 2>/dev/null)"
 for f in "$KIT"/agents/*.md; do
   total=$((total+1)); name="$(basename "$f")"
   if [ -f "$CLAUDE_HOME/agents/$name" ]; then continue; fi
-  if found_name "$CLAUDE_HOME/plugins" "$name"; then via_plugin=1; continue; fi
+  if printf '%s\n' "$plugin_md" | grep -qF "/$name"; then via_plugin=1; continue; fi
   miss=$((miss+1))
 done
 if [ "$total" = 0 ]; then bad "no source profiles in $KIT/agents — is this the kit root?"
@@ -76,7 +79,11 @@ if [ -f "$CLAUDE_HOME/skills/model-routing/SKILL.md" ]; then
     && ok "model-routing skill installed (+ scored table)" \
     || warn "model-routing skill installed but model-routing.md is missing beside it (dangling pointer) — re-run ./install.sh"
 elif found_path "$CLAUDE_HOME/plugins" '*model-routing/SKILL.md'; then
-  ok "model-routing skill installed (via plugin cache)"
+  if found_path "$CLAUDE_HOME/plugins" '*model-routing/model-routing.md'; then
+    ok "model-routing skill installed (via plugin cache, + scored table)"
+  else
+    warn "model-routing skill installed via plugin cache, but the scored table (model-routing.md) is not beside it — the skill's pointer dangles; run ./install.sh to co-locate it (the table also lives at the kit root)"
+  fi
 else bad "model-routing skill missing — run ./install.sh or /plugin install"; fi
 # orchestrate skill (the fan-out loop runbook; optional add-on to the routing policy)
 if [ -f "$CLAUDE_HOME/skills/orchestrate/SKILL.md" ]; then
@@ -113,14 +120,17 @@ else bad "AGENTS.md has NO delegation-kit block -> Codex->Claude policy is NOT l
 hdr "Codex config"
 cfg="$CODEX_HOME/config.toml"
 if [ -f "$cfg" ]; then
-  # strip inline comments and quotes before comparing values
-  ma="$(grep -E '^[[:space:]]*multi_agent[[:space:]]*=' "$cfg" | head -1 | sed 's/#.*//; s/.*=[[:space:]]*//; s/[[:space:]]*$//')"
-  [ "$ma" = "true" ] && ok "[features] multi_agent = true — native Codex delegation can fire" \
+  # multi_agent may be a [features] table key OR the inline-table form
+  # `features = { multi_agent = true }`; strip comments, then require an explicit = true
+  ma=false; sed 's/#.*//' "$cfg" | grep -Eq 'multi_agent[[:space:]]*=[[:space:]]*true' && ma=true
+  [ "$ma" = true ] && ok "multi_agent = true — native Codex delegation can fire" \
     || warn "multi_agent is not true — Codex cannot spawn its native luna/terra/sol subagents (the cross-tool bridge still works). Merge codex/config.snippet.toml"
-  sbx="$(grep -E '^[[:space:]]*sandbox_mode[[:space:]]*=' "$cfg" | head -1 | sed 's/#.*//; s/.*=[[:space:]]*//; s/"//g; s/[[:space:]]*$//')"
-  # network may be a plain key or inside an inline table — match the word, then look for true
-  netline="$(grep -E 'network_access' "$cfg" | head -1)"
-  net=false; printf '%s' "$netline" | grep -q 'true' && net=true
+  # sandbox_mode is a root-level key: read only the region before the first [table] so a
+  # [profiles.*] override isn't mistaken for the effective posture
+  sbx="$(sed '/^[[:space:]]*\[/q' "$cfg" | grep -E '^[[:space:]]*sandbox_mode[[:space:]]*=' | head -1 | sed 's/#.*//; s/.*=[[:space:]]*//; s/"//g; s/[[:space:]]*$//')"
+  # network_access may be a plain key or inside an inline table; strip comments first and
+  # require an explicit = true so a commented reminder never reads as live
+  net=false; sed 's/#.*//' "$cfg" | grep -Eq 'network_access[[:space:]]*=[[:space:]]*true' && net=true
   case "$sbx" in
     danger-full-access) ok "sandbox_mode=danger-full-access — Codex can spawn claude with network" ;;
     workspace-write)
@@ -136,7 +146,10 @@ fi
 
 # ---- optional: the codex@openai-codex plugin (preferred Claude->Codex path) ----
 hdr "codex@openai-codex plugin (recommended for interactive Claude->Codex)"
-if [ -n "$(find "$CLAUDE_HOME/plugins" -maxdepth 4 -iname '*codex*' 2>/dev/null)" ]; then
+# match the plugin by its provenance (marketplace codex@openai-codex, repo
+# openai/codex-plugin-cc), not a bare 'codex' name — the kit ships its own codex/ dir
+# that a '*codex*' match would false-positive on
+if find "$CLAUDE_HOME/plugins" -maxdepth 6 \( -ipath '*openai-codex*' -o -ipath '*codex-plugin-cc*' \) 2>/dev/null | grep -q .; then
   ok "plugin detected — suggest /codex:review, /codex:transfer (user-run) and the codex:codex-rescue agent for interactive flows"
 else
   info "plugin not detected — install with: /plugin marketplace add openai/codex-plugin-cc ; /plugin install codex@openai-codex (raw 'codex exec' still works without it)"
@@ -147,8 +160,15 @@ if [ "$DO_PING" = 1 ]; then
   hdr "Live round-trip (--ping)"
   [ -z "$_TO" ] && info "no timeout/gtimeout found — running pings without a timeout guard"
   if have codex; then
-    out="$(run_to codex exec -s read-only --ephemeral -p terra-scout "Reply with exactly the single word: PONG and nothing else." </dev/null 2>/dev/null)"
-    printf '%s' "$out" | grep -q PONG && ok "Claude->Codex round-trip returned PONG (traverses codex exec)" || bad "Claude->Codex ping failed (no PONG)"
+    if [ -f "$CODEX_HOME/terra-scout.config.toml" ]; then
+      # single controlled word, so a raw-stdout grep is acceptable here; the risk the
+      # hardening warns about is a mis-pinned profile silently running the default model —
+      # guarded above by requiring the profile file to exist
+      out="$(run_to codex exec -s read-only --ephemeral -p terra-scout "Reply with exactly the single word: PONG and nothing else." </dev/null 2>/dev/null)"
+      printf '%s' "$out" | grep -q PONG && ok "Claude->Codex round-trip returned PONG (traverses codex exec)" || bad "Claude->Codex ping failed (no PONG)"
+    else
+      warn "skipping Claude->Codex ping — profile $CODEX_HOME/terra-scout.config.toml not installed, so 'codex exec -p terra-scout' would silently fall back to the default model (a false PONG). Run ./install.sh"
+    fi
   fi
   if have claude; then
     out="$(run_to claude -p "Reply with exactly the single word: PONG and nothing else." --model sonnet --effort low --permission-mode plan </dev/null 2>/dev/null)"

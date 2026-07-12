@@ -88,9 +88,13 @@ you need it interactive/context-preserving or programmatic:
 
 **Programmatic / parallel / Workflow — raw `codex exec`.** Always pin **model +
 effort**, don't inherit the Codex default:
-- Ephemeral profile (pins both): `codex exec --ephemeral -p <profile> "<prompt>" </dev/null`.
-- Inline override: `codex exec -m gpt-5.6-luna -c model_reasoning_effort=low -s read-only "<prompt>" </dev/null`
-  (`-s workspace-write` to let it edit; always redirect stdin from `/dev/null`).
+- Ephemeral profile (pins both **when the profile is installed** — else it silently
+  runs the base default model; see the mis-pin caveat below): `codex exec --ephemeral
+  -p <profile> "<prompt>" </dev/null`. The *profile* sets the sandbox — `terra-builder`
+  pins `workspace-write`, so don't reach for it on a read-only task.
+- Inline override: `codex exec -m gpt-5.6-luna -c model_reasoning_effort=low -s read-only "<prompt>" </dev/null`.
+  **Default to `-s read-only`** for review/analysis; add `-s workspace-write` only to let
+  it edit; always redirect stdin from `/dev/null`.
 - Machine-readable return: add `--json` (JSONL events) or `-o <file>` (final message
   only) — **raw stdout is polluted with hook chatter**, so don't parse it directly.
 - Inside Workflow scripts, wrap it in a thin `{model:'sonnet', effort:'low'}` agent
@@ -106,6 +110,11 @@ effort**, don't inherit the Codex default:
 - **Make failure detectable, not silent.** A dispatch that exits non-zero *or* leaves
   an empty `-o` file failed — retry once down the ladder or ESCALATE, never accept a
   blank as a pass. In a shell fan-out use `set -o pipefail` and check `$?` per call.
+- **A mis-pin is not a failure signal.** A mistyped or not-yet-installed `-p <profile>`
+  does not error — Codex layers a non-existent config and runs the *base default model*
+  (exit 0, real output), silently routing bulk work onto the expensive lane. Neither
+  signal above catches it: confirm the profile is installed
+  (`ls "$CODEX_HOME/<profile>.config.toml"`) or read the run's model banner.
 - **One output file per parallel worker, read in dispatch order.** N calls sharing one
   stdout hand you interleaved output; give each its own `-o <file>`. (A Workflow's
   per-agent return already does this — the note is for raw parallel `codex exec`.)
