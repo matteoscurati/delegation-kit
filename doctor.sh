@@ -65,7 +65,9 @@ plugin_md=""; [ -d "$CLAUDE_HOME/plugins" ] && plugin_md="$(find "$CLAUDE_HOME/p
 for f in "$KIT"/agents/*.md; do
   total=$((total+1)); name="$(basename "$f")"
   if [ -f "$CLAUDE_HOME/agents/$name" ]; then continue; fi
-  if printf '%s\n' "$plugin_md" | grep -qF "/$name"; then via_plugin=1; continue; fi
+  # pure-bash substring test — a `printf | grep -q` pipe would SIGPIPE find/printf on
+  # early match under `set -o pipefail`, a flaky false-miss on a large plugin tree
+  case "$plugin_md" in *"/$name"*) via_plugin=1; continue ;; esac
   miss=$((miss+1))
 done
 if [ "$total" = 0 ]; then bad "no source profiles in $KIT/agents — is this the kit root?"
@@ -149,7 +151,7 @@ hdr "codex@openai-codex plugin (recommended for interactive Claude->Codex)"
 # match the plugin by its provenance (marketplace codex@openai-codex, repo
 # openai/codex-plugin-cc), not a bare 'codex' name — the kit ships its own codex/ dir
 # that a '*codex*' match would false-positive on
-if find "$CLAUDE_HOME/plugins" -maxdepth 6 \( -ipath '*openai-codex*' -o -ipath '*codex-plugin-cc*' \) 2>/dev/null | grep -q .; then
+if [ -n "$(find "$CLAUDE_HOME/plugins" -maxdepth 6 \( -ipath '*openai-codex*' -o -ipath '*codex-plugin-cc*' \) 2>/dev/null)" ]; then
   ok "plugin detected — suggest /codex:review, /codex:transfer (user-run) and the codex:codex-rescue agent for interactive flows"
 else
   info "plugin not detected — install with: /plugin marketplace add openai/codex-plugin-cc ; /plugin install codex@openai-codex (raw 'codex exec' still works without it)"
