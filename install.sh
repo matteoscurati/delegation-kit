@@ -28,9 +28,10 @@ append_guarded() { # $1=file  $2=content
     return 0
   fi
   mkdir -p "$(dirname "$file")"
-  [ -f "$file" ] && cp "$file" "$file.delegation-kit.bak"
+  local backed=""
+  [ -f "$file" ] && { cp "$file" "$file.delegation-kit.bak"; backed=" (backup: $file.delegation-kit.bak)"; }
   { [ -s "$file" ] && printf '\n'; printf '%s\n%s\n%s\n' "$BEGIN" "$content" "$END"; } >> "$file"
-  echo "  + registered in $file${file:+ (backup: $file.delegation-kit.bak)}"
+  echo "  + registered in $file$backed"
 }
 
 if [ "$do_claude" = 1 ]; then
@@ -38,9 +39,14 @@ if [ "$do_claude" = 1 ]; then
   mkdir -p "$CLAUDE_HOME/agents" "$CLAUDE_HOME/skills"
   cp "$KIT"/agents/*.md "$CLAUDE_HOME/agents/"
   echo "  + 5 subagent profiles -> $CLAUDE_HOME/agents/"
-  cp -R "$KIT/skills/model-routing" "$CLAUDE_HOME/skills/"
-  echo "  + model-routing skill -> $CLAUDE_HOME/skills/model-routing/"
+  # register the always-loaded policy first — it is the linchpin, so a missing optional
+  # skill source below cannot abort install (set -e) before the bridge is wired
   append_guarded "$CLAUDE_HOME/CLAUDE.md" "@$KIT/claude/CLAUDE.delegation.md"
+  cp -R "$KIT/skills/model-routing" "$CLAUDE_HOME/skills/"
+  cp "$KIT/model-routing.md" "$CLAUDE_HOME/skills/model-routing/"   # co-locate the scored table so the skill's pointer resolves
+  echo "  + model-routing skill (+ scored table) -> $CLAUDE_HOME/skills/model-routing/"
+  cp -R "$KIT/skills/orchestrate" "$CLAUDE_HOME/skills/"
+  echo "  + orchestrate skill -> $CLAUDE_HOME/skills/orchestrate/"
 fi
 
 if [ "$do_codex" = 1 ]; then
@@ -60,4 +66,5 @@ fi
 
 echo
 echo "Done. Restart Claude Code / open a new Codex session to pick up the changes."
+echo "Verify the bridge is wired:  $KIT/doctor.sh   (add --ping for a live round-trip)"
 echo "Adapt the models to your own tiers: see $KIT/ADAPTING.md"
