@@ -42,6 +42,8 @@ if [ "$do_claude" = 1 ]; then
   cp -R "$KIT/skills/model-routing" "$CLAUDE_HOME/skills/"
   cp "$KIT/model-routing.md" "$CLAUDE_HOME/skills/model-routing/"   # co-locate the scored table so the skill's pointer resolves
   echo "  + model-routing skill (+ scored table) -> $CLAUDE_HOME/skills/model-routing/"
+  cp -R "$KIT/skills/orchestrate" "$CLAUDE_HOME/skills/"
+  echo "  + orchestrate skill -> $CLAUDE_HOME/skills/orchestrate/"
   append_guarded "$CLAUDE_HOME/CLAUDE.md" "@$KIT/claude/CLAUDE.delegation.md"
 fi
 

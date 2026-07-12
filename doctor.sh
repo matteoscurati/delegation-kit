@@ -78,6 +78,12 @@ if [ -f "$CLAUDE_HOME/skills/model-routing/SKILL.md" ]; then
 elif found_path "$CLAUDE_HOME/plugins" '*model-routing/SKILL.md'; then
   ok "model-routing skill installed (via plugin cache)"
 else bad "model-routing skill missing — run ./install.sh or /plugin install"; fi
+# orchestrate skill (the fan-out loop runbook; optional add-on to the routing policy)
+if [ -f "$CLAUDE_HOME/skills/orchestrate/SKILL.md" ]; then
+  ok "orchestrate skill installed"
+elif found_path "$CLAUDE_HOME/plugins" '*orchestrate/SKILL.md'; then
+  ok "orchestrate skill installed (via plugin cache)"
+else warn "orchestrate skill missing — run ./install.sh or /plugin install to get the fan-out loop"; fi
 # always-loaded policy (the plugin path does NOT install this — install.sh does)
 if [ -f "$CLAUDE_HOME/CLAUDE.md" ] && grep -qF "$BEGIN" "$CLAUDE_HOME/CLAUDE.md"; then
   ok "delegation policy registered in CLAUDE.md (@import present)"

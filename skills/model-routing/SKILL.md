@@ -43,7 +43,10 @@ the decision procedure.
   on an unsuitable cheap worker twice — escalate. Security never delegates
   downward: it starts on the senior lane.
 - **Delegated output is unverified until you check it.** Never ship or build on a
-  delegated diff or finding without reading it or reproducing the claim.
+  delegated diff or finding without reading it or reproducing the claim — and make
+  the check **exercise the deliverable** (run the command, read the output);
+  grepping a README, testing something adjacent, or printing True while exiting zero
+  proves nothing.
 
 ## Tie-breakers
 - When axes conflict for anything that ships: **intelligence > taste > cost**.

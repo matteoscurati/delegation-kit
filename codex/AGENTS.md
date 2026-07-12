@@ -54,6 +54,13 @@ claude -p "<prompt>" --model opus --effort high --permission-mode plan \
   with `--add-dir <path>`; reference files **by path** instead of pasting them.
   There is **no Codex→Claude history handoff** (the `codex@openai-codex` plugin is
   Claude→Codex only), so put everything else the task needs into the prompt.
+- **Harden each dispatch:** a prompt carries quotes, backticks, and newlines — write
+  it to a temp file and pass `"$(cat "$f")"`, never splice it raw into the command
+  (shell injection, arg-mangling). A run that exits non-zero *or* returns empty
+  failed — retry or escalate, don't accept a blank as a pass (`set -o pipefail`,
+  check `$?`). For parallel calls give each its own output file and read them in
+  dispatch order. The shared tree is context you want — run from the repo root, don't
+  scrub it away.
 - **Discipline:** don't claim the bridge is cheaper unless the target Claude model
   actually fits the task. Treat its output as **unverified until checked**, same as
   any delegation.
