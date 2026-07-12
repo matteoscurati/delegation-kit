@@ -10,6 +10,11 @@
 # Env overrides (for testing): CLAUDE_HOME (default ~/.claude), CODEX_HOME (~/.codex)
 set -uo pipefail
 shopt -s nullglob   # unmatched globs vanish instead of staying literal
+# CONVENTION — never test a search as `find … | grep -q` under `pipefail`: grep -q exits
+# on the first match and closes the pipe, find takes SIGPIPE and exits non-zero, and
+# pipefail reads that as failure — a false negative that appears only once the output
+# fills the pipe buffer (a real, large tree; not in tests). Capture and test instead:
+# `[ -n "$(find …)" ]`, or a pure-bash `case`, like found_name/found_path below.
 
 KIT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 CLAUDE_HOME="${CLAUDE_HOME:-$HOME/.claude}"
