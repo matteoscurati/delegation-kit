@@ -9,7 +9,7 @@
   "plugins": [
     {
       "name": "delegation-kit",
-      "description": "Model-routing subagent profiles (clerk / scout / builder / reviewer / senior-reviewer) plus a routing-policy skill, for delegating coding work across lanes.",
+      "description": "Model-routing subagent profiles (clerk / scout / builder / reviewer / senior-reviewer / judgement) plus routing-policy and orchestrate skills, for delegating coding work across lanes.",
       "version": "0.1.0",
       "author": { "name": "Matteo Scurati" },
       "homepage": "https://github.com/matteoscurati/delegation-kit",

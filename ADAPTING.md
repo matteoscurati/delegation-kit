@@ -20,21 +20,20 @@ tier you have.
 
 ## Where to change the model / effort
 
-Three places — keep them in sync:
+Four places — keep them in sync:
 
 1. **Claude subagent profiles** — `agents/*.md` frontmatter:
    ```yaml
    model: sonnet      # -> your executor tier: sonnet | opus | fable
-   effort: low        # low | medium | high
+   effort: low        # low | medium | high | xhigh | max (per model; see model-routing.md)
    ```
 2. **Codex profiles** — both files per profile must match:
    - `codex/agents/<name>.toml`: `model = "..."`, `model_reasoning_effort = "..."`
    - `codex/profiles/<name>.config.toml`: same `model` + `model_reasoning_effort`
 3. **The prose** — `claude/CLAUDE.delegation.md`, `codex/AGENTS.md`,
    `model-routing.md`: update the "reference mapping" lines and the scored table.
-4. **Other sync surfaces** — keep these in step too: the duplicate
-   `model-routing-eval/model-routing.md`, `codex/config.snippet.toml`,
-   `README.md`, and `skills/orchestrate/*`.
+4. **Other sync surfaces** — keep these in step too: `codex/config.snippet.toml`,
+   `README.md`, `.claude-plugin/marketplace.json`, and `skills/orchestrate/*`.
 
 Then re-run `./install.sh` (it refreshes copied files; run `./uninstall.sh` first
 if you changed the prose blocks, since those are append-once).

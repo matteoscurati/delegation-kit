@@ -32,7 +32,7 @@ cheapest that passes verification.
   across the Codex bridge): one self-contained subtask each, in parallel,
   stateless. Dispatch with the format in `references/worker-brief.md`.
 - **Advisor**, split by content (this is the kit's improvement over a single
-  advisor — route by the policy): **Judgement** (author: Fable, two-touch) for plan
+  advisor — route by the policy): **Judgement** (author: Fable via `fable-judge`, two-touch) for plan
   critique and ship/synthesis; **Senior** (author: Opus via `opus-reviewer`) for
   taste and security review. Consult format in `references/advisor-consult.md`.
 

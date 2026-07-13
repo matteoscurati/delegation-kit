@@ -41,7 +41,7 @@ the scored table.
 | `sonnet-builder` | sonnet / medium | bounded implementation with acceptance checks |
 | `sonnet-reviewer` | sonnet / medium | routine correctness/bug review (the default) |
 | `opus-reviewer` | opus / high | security / taste / material review + escalation |
-| `fable-judge` | claude-fable-5 / xhigh | judgement: plan up front + final verdict/synthesis (two-touch) |
+| `fable-judge` | fable / xhigh | judgement: plan up front + final verdict/synthesis (two-touch) |
 
 ## Rules
 

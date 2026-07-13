@@ -17,7 +17,7 @@ lanes by content (see the routing policy):
   skip the tax and start on Senior.
 
 Reach either as a one-shot Agent/Workflow call with the model pinned
-(`{model:'fable', effort:'high'}` or `opus-reviewer`) and this prompt; force a
+(the `fable-judge` profile, or `{model:'fable', effort:'xhigh'}`; or `opus-reviewer`) and this prompt; force a
 structured return so nothing gets lost.
 
 ```
