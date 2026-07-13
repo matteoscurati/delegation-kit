@@ -65,6 +65,20 @@ call is real money on top of being the priciest per task — which is exactly wh
 reserved for high-value, low-volume judgement work below.
 ([Anthropic redeploy note](https://www.anthropic.com/news/redeploying-fable-5).)
 
+## Reasoning effort per model
+
+Effort levels each model exposes (Claude `effort:` / Codex `model_reasoning_effort`). Author's mapping — verify for your models; the deeper tiers live only on the frontier reasoners.
+
+| model | supported effort |
+|---|---|
+| fable-5 | low · medium · high · xhigh · max |
+| opus-4.8 | low · medium · high · xhigh |
+| gpt-5.6-sol | low · medium · high |
+| gpt-5.6-terra | low · medium · high |
+| gpt-5.6-luna | low · medium · high |
+| sonnet-5 | low · medium · high |
+| gpt-5.5 | low · medium · high |
+
 ## How to apply
 
 - **These are defaults, not limits.** Judge the output, not the price tag: if a

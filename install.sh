@@ -38,7 +38,7 @@ if [ "$do_claude" = 1 ]; then
   echo "Claude Code -> $CLAUDE_HOME"
   mkdir -p "$CLAUDE_HOME/agents" "$CLAUDE_HOME/skills"
   cp "$KIT"/agents/*.md "$CLAUDE_HOME/agents/"
-  echo "  + 5 subagent profiles -> $CLAUDE_HOME/agents/"
+  echo "  + 6 subagent profiles -> $CLAUDE_HOME/agents/"
   # register the always-loaded policy first — it is the linchpin, so a missing optional
   # skill source below cannot abort install (set -e) before the bridge is wired
   append_guarded "$CLAUDE_HOME/CLAUDE.md" "@$KIT/claude/CLAUDE.delegation.md"

@@ -24,7 +24,7 @@ the scored table.
   changing structurally mid-run) buys a third, and spending it is never silent.
   Terse structured output. Never typing, never babysitting workers, never resident;
   reserve for architecture-moving decisions and the high-value calls where its
-  gradient pays.
+  gradient pays. Installable as the `fable-judge` profile.
 - **Executor + routine reviewer = the cheap-and-capable model** (author:
   **Sonnet 5**, via the `sonnet-*` profiles). Bulk implementation, migrations,
   tests, extraction, repo mapping, and the **default** diff/bug-review lane.
@@ -41,6 +41,7 @@ the scored table.
 | `sonnet-builder` | sonnet / medium | bounded implementation with acceptance checks |
 | `sonnet-reviewer` | sonnet / medium | routine correctness/bug review (the default) |
 | `opus-reviewer` | opus / high | security / taste / material review + escalation |
+| `fable-judge` | claude-fable-5 / xhigh | judgement: plan up front + final verdict/synthesis (two-touch) |
 
 ## Rules
 

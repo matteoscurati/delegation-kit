@@ -9,7 +9,7 @@ Here's what to change and how.
 | role | what it does | author's pick |
 |---|---|---|
 | **lead** | owns the work, integrates, verifies; enters judgement only in bursts | Opus 4.8 @ xhigh |
-| **judgement** | plan + final verdict/synthesis; expensive; two touches/feature | Fable 5 |
+| **judgement** | plan + final verdict/synthesis; expensive; two touches/feature | Fable 5 (via the `fable-judge` profile) |
 | **executor** | bulk implementation, migrations, tests, extraction, repo mapping, **default review** | Sonnet 5 |
 | **senior** | security (direct), user-facing taste, escalation target, material review | Opus 4.8 |
 | **clerk / scout / builder** | cheap sub-lanes of the executor (extract / map / build) | Sonnet (Claude) · Luna+Terra (Codex) |
@@ -32,6 +32,9 @@ Three places — keep them in sync:
    - `codex/profiles/<name>.config.toml`: same `model` + `model_reasoning_effort`
 3. **The prose** — `claude/CLAUDE.delegation.md`, `codex/AGENTS.md`,
    `model-routing.md`: update the "reference mapping" lines and the scored table.
+4. **Other sync surfaces** — keep these in step too: the duplicate
+   `model-routing-eval/model-routing.md`, `codex/config.snippet.toml`,
+   `README.md`, and `skills/orchestrate/*`.
 
 Then re-run `./install.sh` (it refreshes copied files; run `./uninstall.sh` first
 if you changed the prose blocks, since those are append-once).

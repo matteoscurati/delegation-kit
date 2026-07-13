@@ -22,11 +22,11 @@ strip_guarded() { # $1=file
 }
 
 echo "Claude Code -> $CLAUDE_HOME"
-for a in sonnet-clerk sonnet-scout sonnet-builder sonnet-reviewer opus-reviewer; do
+for a in sonnet-clerk sonnet-scout sonnet-builder sonnet-reviewer opus-reviewer fable-judge; do
   rm -f "$CLAUDE_HOME/agents/$a.md"
 done
 rm -rf "$CLAUDE_HOME/skills/model-routing" "$CLAUDE_HOME/skills/orchestrate"
-echo "  - removed 5 subagent profiles + model-routing & orchestrate skills"
+echo "  - removed 6 subagent profiles + model-routing & orchestrate skills"
 strip_guarded "$CLAUDE_HOME/CLAUDE.md"
 
 echo "Codex -> $CODEX_HOME"

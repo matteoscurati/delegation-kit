@@ -14,7 +14,7 @@ numbers, wired up and ready to run. Swap the models for your own tiers with
 **Claude Code** (`~/.claude/`)
 | piece | where | what |
 |---|---|---|
-| 5 subagent profiles | `agents/*.md` | `sonnet-clerk` · `sonnet-scout` · `sonnet-builder` · `sonnet-reviewer` · `opus-reviewer` (model+effort pinned) |
+| 6 subagent profiles | `agents/*.md` | `sonnet-clerk` · `sonnet-scout` · `sonnet-builder` · `sonnet-reviewer` · `opus-reviewer` · `fable-judge` (judgement lane) (model+effort pinned) |
 | routing skill | `skills/model-routing/` | surfaces the decision procedure when you delegate |
 | orchestrate skill | `skills/orchestrate/` | the fan-out loop — plan → delegate to workers → verify → advisor judges plan + ship |
 | lane discipline | `@import` in `CLAUDE.md` | always-loaded policy ([`claude/CLAUDE.delegation.md`](./claude/CLAUDE.delegation.md)) |
@@ -53,7 +53,7 @@ but a policy block missing means the bridge never fires.
 /plugin marketplace add matteoscurati/delegation-kit
 /plugin install delegation-kit
 ```
-This installs the 5 agents + the `model-routing` and `orchestrate` skills. It does
+This installs the 6 agents + the `model-routing` and `orchestrate` skills. It does
 **not** register the `CLAUDE.md` policy prose or the Codex side — run `./install.sh`
 for those.
 
