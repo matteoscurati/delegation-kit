@@ -4,9 +4,10 @@
 # while the always-loaded policy blocks are missing, so neither model ever learns
 # it may reach the other. Nothing errors — the bridge just never fires.
 #
-# Usage: ./doctor.sh [--ping]
+# Usage: ./doctor.sh [--ping] [--ping-glm]
 #   --ping   also does a live round-trip (real API calls, costs a few tokens per
 #            side). Off by default; static checks are free.
+#   --ping-glm does a separate paid GLM-5.2 ping, but only for a qualified lane.
 # Env overrides (for testing): CLAUDE_HOME (default ~/.claude), CODEX_HOME (~/.codex)
 set -uo pipefail
 shopt -s nullglob   # unmatched globs vanish instead of staying literal
@@ -21,13 +22,17 @@ CLAUDE_HOME="${CLAUDE_HOME:-$HOME/.claude}"
 CODEX_HOME="${CODEX_HOME:-$HOME/.codex}"
 BEGIN="<!-- >>> delegation-kit >>> -->"
 DO_PING=0
-case "${1:-}" in
-  --ping) DO_PING=1 ;;
-  # print only the leading header comment block (skip the shebang, stop at first non-comment)
-  -h|--help) awk 'NR==1{next} /^#/{sub(/^# ?/,""); print; next} {exit}' "$0"; exit 0 ;;
-  "") ;;
-  *) echo "unknown arg: $1" >&2; exit 2 ;;
-esac
+DO_GLM_PING=0
+while [ "$#" -gt 0 ]; do
+  case "$1" in
+    --ping) DO_PING=1 ;;
+    --ping-glm) DO_GLM_PING=1 ;;
+    # print only the leading header comment block (skip the shebang, stop at first non-comment)
+    -h|--help) awk 'NR==1{next} /^#/{sub(/^# ?/,""); print; next} {exit}' "$0"; exit 0 ;;
+    *) echo "unknown arg: $1" >&2; exit 2 ;;
+  esac
+  shift
+done
 
 pass=0; warn=0; fail=0
 ok()   { printf '  [ OK ] %s\n' "$1"; pass=$((pass+1)); }
@@ -98,6 +103,11 @@ if [ -f "$CLAUDE_HOME/skills/orchestrate/SKILL.md" ]; then
 elif found_path "$CLAUDE_HOME/plugins" '*orchestrate/SKILL.md'; then
   ok "orchestrate skill installed (via plugin cache)"
 else warn "orchestrate skill missing — run ./install.sh or /plugin install to get the fan-out loop"; fi
+if [ -f "$CLAUDE_HOME/skills/glm-executor/SKILL.md" ]; then
+  ok "optional GLM executor skill installed"
+elif found_path "$CLAUDE_HOME/plugins" '*glm-executor/SKILL.md'; then
+  ok "optional GLM executor skill installed (via plugin cache; universal install still required for runner)"
+else warn "optional GLM executor skill missing — GLM cannot be selected even after evaluation"; fi
 # always-loaded policy (the plugin path does NOT install this — install.sh does)
 if [ -f "$CLAUDE_HOME/CLAUDE.md" ] && grep -qF "$BEGIN" "$CLAUDE_HOME/CLAUDE.md"; then
   ok "delegation policy registered in CLAUDE.md (@import present)"
@@ -122,6 +132,32 @@ else bad "$miss/$total ephemeral profile(s) missing from $CODEX_HOME/ — run ./
 if [ -f "$CODEX_HOME/AGENTS.md" ] && grep -qF "$BEGIN" "$CODEX_HOME/AGENTS.md"; then
   ok "collaboration policy registered in AGENTS.md"
 else bad "AGENTS.md has NO delegation-kit block -> Codex->Claude policy is NOT loaded. Run ./install.sh"; fi
+if [ -f "$CODEX_HOME/skills/glm-executor/SKILL.md" ]; then
+  ok "optional GLM executor skill installed for Codex"
+else warn "optional GLM executor skill missing for Codex"; fi
+
+# ---- optional GLM-5.2 external executor ----
+hdr "GLM-5.2 optional executor"
+if ! have jq; then
+  warn "jq not on PATH — delegation-glm cannot run"
+elif have delegation-glm; then
+  glm_check="$(delegation-glm check --json 2>/dev/null || true)"
+  if [ -n "$glm_check" ] && printf '%s' "$glm_check" | jq -e '.model == "glm-5.2"' >/dev/null 2>&1; then
+    ok "delegation-glm installed and pinned to glm-5.2"
+    glm_selected="$(printf '%s' "$glm_check" | jq -r '.selected_backend')"
+    glm_lanes="$(printf '%s' "$glm_check" | jq -r '.qualified_lanes | join(",")')"
+    [ "$glm_selected" = none ] \
+      && info "GLM runtime unavailable — optional lane will not be selected" \
+      || ok "GLM backend available ($glm_selected)"
+    [ -n "$glm_lanes" ] \
+      && ok "GLM evaluation-qualified lanes: $glm_lanes" \
+      || info "GLM has no evaluation-qualified lanes; routing remains disabled"
+  else
+    bad "delegation-glm check failed or is not pinned to glm-5.2"
+  fi
+else
+  warn "delegation-glm not installed — re-run ./install.sh after evaluating GLM"
+fi
 
 # ---- Codex config: multi_agent + sandbox/network posture ----
 hdr "Codex config"
@@ -149,6 +185,30 @@ if [ -f "$cfg" ]; then
   esac
 else
   warn "no $cfg — Codex defaults apply; merge codex/config.snippet.toml"
+fi
+
+if [ "$DO_GLM_PING" = 1 ]; then
+  hdr "GLM-5.2 live ping (--ping-glm)"
+  if ! have delegation-glm; then
+    bad "GLM ping unavailable — delegation-glm is not installed"
+  else
+    glm_check="$(delegation-glm check --json 2>/dev/null || true)"
+    glm_lane="$(printf '%s' "$glm_check" | jq -r '.qualified_lanes[0] // empty' 2>/dev/null)"
+    if [ -z "$glm_lane" ]; then
+      info "skipped — no GLM lane has passed the evaluation gate"
+    else
+      ping_dir="$(mktemp -d "${TMPDIR:-/tmp}/delegation-glm-ping.XXXXXX")"
+      printf 'Reply with exactly PONG and do not edit files.\n' >"$ping_dir/prompt.txt"
+      if delegation-glm run --lane "$glm_lane" --effort auto --backend auto \
+          --prompt-file "$ping_dir/prompt.txt" --output "$ping_dir/out.txt" --workdir "$ping_dir" \
+          >/dev/null 2>&1 && grep -Fxq PONG "$ping_dir/out.txt"; then
+        ok "GLM-5.2 qualified-lane ping returned PONG"
+      else
+        bad "GLM-5.2 ping failed"
+      fi
+      rm -rf "$ping_dir"
+    fi
+  fi
 fi
 
 # ---- optional: the codex@openai-codex plugin (preferred Claude->Codex path) ----

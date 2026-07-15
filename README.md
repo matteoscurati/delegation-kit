@@ -17,6 +17,7 @@ numbers, wired up and ready to run. Swap the models for your own tiers with
 | 6 subagent profiles | `agents/*.md` | `sonnet-clerk` · `sonnet-scout` · `sonnet-builder` · `sonnet-reviewer` · `opus-reviewer` · `fable-judge` (judgement lane) (model+effort pinned) |
 | routing skill | `skills/model-routing/` | surfaces the decision procedure when you delegate |
 | orchestrate skill | `skills/orchestrate/` | the fan-out loop — plan → delegate to workers → verify → advisor judges plan + ship |
+| optional GLM skill | `skills/glm-executor/` | dispatches only evaluation-qualified GLM-5.2 lanes through the guarded runner |
 | lane discipline | `@import` in `CLAUDE.md` | always-loaded policy ([`claude/CLAUDE.delegation.md`](./claude/CLAUDE.delegation.md)) |
 
 **Codex** (`~/.codex/`)
@@ -25,10 +26,25 @@ numbers, wired up and ready to run. Swap the models for your own tiers with
 | 4 native profiles | `agents/*.toml` | `luna-clerk` · `terra-scout` · `terra-builder` · `sol-reviewer` |
 | 4 ephemeral profiles | `*.config.toml` | for `codex exec --ephemeral -p <name>` |
 | collaboration policy | appended to `AGENTS.md` | usage-aware routing **+ a Codex→Claude bridge** |
+| optional GLM skill | `skills/glm-executor/` | same fail-closed GLM-5.2 executor path |
 | config snippet | printed for manual merge | `[agents]` fan-out caps + lead defaults |
+
+The universal installer also adds `delegation-glm` under `~/.local/bin` and its
+versioned routing gate under `~/.local/share/delegation-kit/`. The shipped
+2026-07 evaluation qualifies only `clerk` at `high` and `scout` at `max`, through
+either Kilo Coding Plan or the isolated Claude→Z.AI backend. `builder` and
+`reviewer` remain disabled. The runner refuses every unqualified lane and also
+refuses execution unless at least one of Claude Code or Codex is installed; it
+is an agent option, not a standalone GLM client.
 
 The shared scored table (cost / intelligence / taste per model) lives in
 [`model-routing.md`](./model-routing.md).
+
+GLM-5.2's scored row and routing limits come from a pre-publication high/max
+evaluation against the incumbent profiles, with promotion decided separately
+for each lane. The repository ships only the resulting versioned gate; the GLM
+evaluation harness, test fixtures, raw outputs, and reports are kept outside the
+public package.
 
 ## Install
 
@@ -38,8 +54,9 @@ git clone https://github.com/matteoscurati/delegation-kit
 cd delegation-kit
 ./install.sh            # or --claude-only / --codex-only
 ```
-Idempotent, backs up before editing, and prints the Codex config snippet (it never
-auto-edits `config.toml`). Keep the checkout where it is — Claude's `@import` points
+Idempotent, refreshes its guarded policy blocks, backs up before editing, and
+prints the Codex config snippet (it never auto-edits `config.toml`). Keep the
+checkout where it is — Claude's `@import` points
 at it, so `git pull` updates the policy live. Remove with `./uninstall.sh`.
 
 Then verify the bridge is actually **wired** (not just written) with `./doctor.sh` —
@@ -53,9 +70,9 @@ but a policy block missing means the bridge never fires.
 /plugin marketplace add matteoscurati/delegation-kit
 /plugin install delegation-kit
 ```
-This installs the 6 agents + the `model-routing` and `orchestrate` skills. It does
-**not** register the `CLAUDE.md` policy prose or the Codex side — run `./install.sh`
-for those.
+This installs the 6 agents plus the `model-routing`, `orchestrate`, and guarded
+`glm-executor` skills. It does not install the GLM runner/gate, register the
+`CLAUDE.md` policy prose, or install the Codex side — run `./install.sh` for those.
 
 ## How it works
 

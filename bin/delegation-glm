@@ -1,0 +1,290 @@
+#!/usr/bin/env bash
+# Run GLM-5.2 as an external coding lane through Kilo Coding Plan or an
+# isolated Claude Code process configured for Z.AI. Fails closed: no fallback
+# to another model, effort, or provider is ever allowed.
+set -euo pipefail
+
+SOURCE="${BASH_SOURCE[0]}"
+while [ -L "$SOURCE" ]; do
+  SOURCE_DIR="$(cd "$(dirname "$SOURCE")" && pwd)"
+  SOURCE="$(readlink "$SOURCE")"
+  [[ "$SOURCE" = /* ]] || SOURCE="$SOURCE_DIR/$SOURCE"
+done
+ROOT="$(cd "$(dirname "$SOURCE")/.." && pwd)"
+ROUTING_FILE="${DELEGATION_GLM_ROUTING_FILE:-$ROOT/config/glm-5.2-routing.json}"
+MODEL="glm-5.2"
+EFFORTS='["high","max"]'
+RUN_TMP=""
+
+usage() {
+  cat <<'EOF'
+Usage:
+  delegation-glm check [--json]
+  delegation-glm run --lane <clerk|scout|builder|reviewer> \
+    [--effort <auto|high|max>] [--backend <auto|kilo|claude-zai>] \
+    --prompt-file <path> --output <path> --workdir <path> \
+    [--metrics <path>] [--max-cost-usd <amount>] [--evaluation]
+
+Exit codes: 64 invalid input, 69 unavailable, 70 dispatch failure,
+75 temporary/rate-limit failure, 78 lane not qualified.
+EOF
+}
+
+die() { local code="$1"; shift; printf 'delegation-glm: %s\n' "$*" >&2; exit "$code"; }
+have() { command -v "$1" >/dev/null 2>&1; }
+
+host_status() {
+  HOST_REASON=""
+  if have claude || have codex; then HOST_REASON="ready"; return 0; fi
+  HOST_REASON="neither Claude Code nor Codex is installed"
+  return 1
+}
+
+kilo_status() {
+  KILO_REASON=""
+  have kilo || { KILO_REASON="kilo not on PATH"; return 1; }
+  local models auth
+  models="$(kilo models zai-coding-plan 2>/dev/null || true)"
+  grep -Fxq 'zai-coding-plan/glm-5.2' <<<"$models" \
+    || { KILO_REASON="glm-5.2 missing from Kilo Coding Plan"; return 1; }
+  auth="$(kilo auth list 2>/dev/null || true)"
+  case "$auth" in
+    *"Z.AI Coding Plan"*) ;;
+    *) KILO_REASON="Z.AI Coding Plan credential missing"; return 1 ;;
+  esac
+  KILO_REASON="ready"
+  return 0
+}
+
+claude_zai_status() {
+  CLAUDE_ZAI_REASON=""
+  have claude || { CLAUDE_ZAI_REASON="claude not on PATH"; return 1; }
+  local help
+  help="$(claude --help 2>&1 || true)"
+  grep -q -- '--effort' <<<"$help" \
+    || { CLAUDE_ZAI_REASON="claude lacks --effort"; return 1; }
+  [ -n "${ZAI_API_KEY:-}" ] \
+    || { CLAUDE_ZAI_REASON="ZAI_API_KEY is unset"; return 1; }
+  CLAUDE_ZAI_REASON="ready"
+  return 0
+}
+
+qualified_lanes() {
+  if [ -f "$ROUTING_FILE" ] && have jq; then
+    jq -c '.qualified_lanes // []' "$ROUTING_FILE" 2>/dev/null || printf '[]'
+  else
+    printf '[]'
+  fi
+}
+
+default_effort() {
+  local lane="$1" backend="$2"
+  jq -r --arg lane "$lane" --arg backend "$backend" \
+    '.lanes[$lane].backends[$backend].effort // .lanes[$lane].default_effort // "high"' \
+    "$ROUTING_FILE" 2>/dev/null || printf 'high\n'
+}
+
+is_qualified() {
+  local lane="$1" backend="$2"
+  [ -f "$ROUTING_FILE" ] && have jq || return 1
+  jq -e --arg lane "$lane" --arg backend "$backend" \
+    '.lanes[$lane].backends[$backend].qualified == true' "$ROUTING_FILE" >/dev/null 2>&1
+}
+
+print_check() {
+  local as_json="${1:-0}" host_ok=false kilo_ok=false claude_ok=false
+  host_status && host_ok=true || true
+  kilo_status && kilo_ok=true || true
+  claude_zai_status && claude_ok=true || true
+  local lanes selected="none"
+  lanes="$(qualified_lanes)"
+  if [ "$host_ok" = true ] && [ "$kilo_ok" = true ]; then selected="kilo"
+  elif [ "$host_ok" = true ] && [ "$claude_ok" = true ]; then selected="claude-zai"
+  fi
+  if [ "$as_json" = 1 ]; then
+    jq -n \
+      --arg model "$MODEL" --arg selected "$selected" \
+      --argjson efforts "$EFFORTS" --argjson lanes "$lanes" \
+      --argjson host "$host_ok" --arg host_reason "$HOST_REASON" \
+      --argjson host_claude "$(have claude && printf true || printf false)" \
+      --argjson host_codex "$(have codex && printf true || printf false)" \
+      --argjson kilo "$kilo_ok" --arg kilo_reason "$KILO_REASON" \
+      --argjson claude "$claude_ok" --arg claude_reason "$CLAUDE_ZAI_REASON" \
+      '{model:$model, efforts:$efforts, selected_backend:$selected,
+        host:{available:$host,reason:$host_reason,claude:$host_claude,codex:$host_codex},
+        qualified_lanes:$lanes, backends:{
+          kilo:{available:$kilo,reason:$kilo_reason},
+          "claude-zai":{available:$claude,reason:$claude_reason}}}'
+  else
+    printf 'GLM-5.2: selected=%s efforts=high,max qualified=%s\n' "$selected" "$lanes"
+    printf '  host: %s (%s)\n' "$host_ok" "$HOST_REASON"
+    printf '  kilo: %s (%s)\n' "$kilo_ok" "$KILO_REASON"
+    printf '  claude-zai: %s (%s)\n' "$claude_ok" "$CLAUDE_ZAI_REASON"
+  fi
+}
+
+extract_kilo() {
+  local events="$1" output="$2" metrics="$3" started="$4" backend="$5" effort="$6" lane="$7"
+  jq -r 'select(.type == "text") | .part.text' "$events" >"$output"
+  [ -s "$output" ] || return 1
+  jq -s --arg model "$MODEL" --arg backend "$backend" --arg effort "$effort" \
+    --arg lane "$lane" --argjson started "$started" '
+    [.[].part | select(.type == "step-finish")] as $steps |
+    {model:$model,backend:$backend,effort:$effort,lane:$lane,
+     started_at_epoch:$started,finished_at_epoch:now,
+     tokens:{input:([$steps[].tokens.input] | add // 0),
+             output:([$steps[].tokens.output] | add // 0),
+             reasoning:([$steps[].tokens.reasoning] | add // 0),
+             cache_read:([$steps[].tokens.cache.read] | add // 0),
+             cache_write:([$steps[].tokens.cache.write] | add // 0)},
+     provider_cost_usd:([$steps[].cost] | add // 0)}' "$events" >"$metrics"
+}
+
+kilo_completed_cleanly() {
+  local events="$1" stderr="$2"
+  [ ! -s "$stderr" ] || return 1
+  jq -s -e '
+    any(.[]; .type == "step_finish" and .part.reason == "stop") and
+    any(.[]; .type == "text" and ((.part.text // "") | length) > 0)
+  ' "$events" >/dev/null 2>&1
+}
+
+extract_claude() {
+  local events="$1" output="$2" metrics="$3" started="$4" backend="$5" effort="$6" lane="$7"
+  jq -e --arg model "$MODEL" 'select(.type == "system" and .subtype == "init") | .model == $model' \
+    "$events" >/dev/null || return 1
+  jq -rs '[.[] | select(.type == "result") | .result] | map(select(type == "string")) | last // empty' "$events" >"$output"
+  [ -s "$output" ] || return 1
+  jq -s --arg model "$MODEL" --arg backend "$backend" --arg effort "$effort" \
+    --arg lane "$lane" --argjson started "$started" '
+    ([.[] | select(.type == "result")] | last // {}) as $r |
+    ($r.usage // {}) as $u |
+    {model:$model,backend:$backend,effort:$effort,lane:$lane,
+     started_at_epoch:$started,finished_at_epoch:now,
+     tokens:{input:($u.input_tokens // 0),output:($u.output_tokens // 0),
+             reasoning:($u.reasoning_tokens // 0),
+             cache_read:($u.cache_read_input_tokens // 0),
+             cache_write:($u.cache_creation_input_tokens // 0)},
+     provider_cost_usd:($r.total_cost_usd // 0)}' "$events" >"$metrics"
+}
+
+run_command() {
+  local lane="" effort="auto" backend="auto" prompt_file="" output="" workdir="" metrics=""
+  local max_cost="2.00" evaluation=0
+  while [ "$#" -gt 0 ]; do
+    case "$1" in
+      --lane) lane="${2:-}"; shift 2 ;;
+      --effort) effort="${2:-}"; shift 2 ;;
+      --backend) backend="${2:-}"; shift 2 ;;
+      --prompt-file) prompt_file="${2:-}"; shift 2 ;;
+      --output) output="${2:-}"; shift 2 ;;
+      --workdir) workdir="${2:-}"; shift 2 ;;
+      --metrics) metrics="${2:-}"; shift 2 ;;
+      --max-cost-usd) max_cost="${2:-}"; shift 2 ;;
+      --evaluation) evaluation=1; shift ;;
+      -h|--help) usage; exit 0 ;;
+      *) die 64 "unknown run argument: $1" ;;
+    esac
+  done
+  case "$lane" in clerk|scout|builder|reviewer) ;; *) die 64 "invalid lane: $lane" ;; esac
+  case "$effort" in auto|high|max) ;; *) die 64 "invalid effort: $effort" ;; esac
+  case "$backend" in auto|kilo|claude-zai) ;; *) die 64 "invalid backend: $backend" ;; esac
+  [ -f "$prompt_file" ] || die 64 "prompt file missing: $prompt_file"
+  [ -d "$workdir" ] || die 64 "workdir missing: $workdir"
+  [ -n "$output" ] || die 64 "--output is required"
+  have jq || die 69 "jq is required"
+  host_status || die 69 "$HOST_REASON"
+  metrics="${metrics:-$output.metrics.json}"
+  mkdir -p "$(dirname "$output")" "$(dirname "$metrics")"
+
+  if [ "$backend" = auto ]; then
+    if [ "$evaluation" = 0 ]; then
+      if kilo_status && is_qualified "$lane" kilo; then
+        backend="kilo"
+      elif claude_zai_status && is_qualified "$lane" claude-zai; then
+        backend="claude-zai"
+      elif kilo_status || claude_zai_status; then
+        die 78 "lane '$lane' has no qualified available backend"
+      else
+        die 69 "no GLM-5.2 backend is available"
+      fi
+    elif kilo_status; then backend="kilo"
+    elif claude_zai_status; then backend="claude-zai"
+    else die 69 "no GLM-5.2 backend is available"; fi
+  elif [ "$backend" = kilo ]; then
+    kilo_status || die 69 "$KILO_REASON"
+  else
+    claude_zai_status || die 69 "$CLAUDE_ZAI_REASON"
+  fi
+
+  [ "$evaluation" = 1 ] || is_qualified "$lane" "$backend" \
+    || die 78 "lane '$lane' is not qualified for backend '$backend'"
+  [ "$effort" != auto ] || effort="$(default_effort "$lane" "$backend")"
+
+  local tmp events rc=0 started agent
+  tmp="$(mktemp -d "${TMPDIR:-/tmp}/delegation-glm.XXXXXX")"
+  RUN_TMP="$tmp"
+  trap 'rm -rf -- "$RUN_TMP"' EXIT
+  events="$tmp/events.jsonl"
+  started="$(date +%s)"
+  agent="plan"; [ "$lane" = builder ] && agent="code"
+
+  if [ "$backend" = kilo ]; then
+    kilo run "$(<"$prompt_file")" --model zai-coding-plan/glm-5.2 \
+      --variant "$effort" --agent "$agent" --format json --dir "$workdir" --auto \
+      >"$events" 2>"$tmp/stderr" || rc=$?
+    # Kilo 7.4.7 can exit 1 after a complete streamed response. Accept only the
+    # narrow, machine-verifiable success shape; every other non-zero stays a
+    # dispatch failure.
+    if [ "$rc" -eq 1 ] && kilo_completed_cleanly "$events" "$tmp/stderr"; then
+      rc=0
+    fi
+    if [ "$rc" -eq 0 ]; then
+      extract_kilo "$events" "$output" "$metrics" "$started" "$backend" "$effort" "$lane" || rc=70
+    fi
+  else
+    local permission="plan"
+    [ "$lane" = builder ] && permission="acceptEdits"
+    mkdir -p "$tmp/claude-config"
+    # Claude has no --cwd flag. Enter the delegated worktree explicitly so it
+    # cannot inspect or edit the delegation-kit source checkout by accident.
+    (
+      cd "$workdir"
+      env -u ANTHROPIC_API_KEY -u CLAUDE_CODE_OAUTH_TOKEN -u ZAI_API_KEY \
+        -u ANTHROPIC_MODEL -u ANTHROPIC_CUSTOM_HEADERS \
+        -u CLAUDE_CODE_USE_BEDROCK -u CLAUDE_CODE_USE_VERTEX \
+        -u CLAUDE_CODE_USE_FOUNDRY \
+        ANTHROPIC_AUTH_TOKEN="$ZAI_API_KEY" \
+        ANTHROPIC_BASE_URL="https://api.z.ai/api/anthropic" \
+        ANTHROPIC_DEFAULT_OPUS_MODEL="glm-5.2" \
+        CLAUDE_CONFIG_DIR="$tmp/claude-config" \
+        CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1 API_TIMEOUT_MS=3000000 \
+        claude -p "$(<"$prompt_file")" --model opus --effort "$effort" \
+        --permission-mode "$permission" --setting-sources '' --strict-mcp-config \
+        --output-format stream-json --verbose --no-session-persistence \
+        --max-budget-usd "$max_cost"
+    ) >"$events" 2>"$tmp/stderr" || rc=$?
+    if [ "$rc" -eq 0 ]; then
+      extract_claude "$events" "$output" "$metrics" "$started" "$backend" "$effort" "$lane" || rc=70
+    fi
+  fi
+
+  if [ "$rc" -ne 0 ]; then
+    cp "$tmp/stderr" "$output.stderr" 2>/dev/null || true
+    grep -Eqi 'rate.?limit|too many requests|1312|1305' "$tmp/stderr" "$events" 2>/dev/null && exit 75
+    exit 70
+  fi
+  return 0
+}
+
+case "${1:-}" in
+  check)
+    shift
+    if [ "${1:-}" = "--json" ]; then print_check 1; else print_check 0; fi
+    ;;
+  run)
+    shift; run_command "$@"
+    ;;
+  -h|--help|"") usage ;;
+  *) die 64 "unknown command: $1" ;;
+esac

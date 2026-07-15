@@ -1,0 +1,80 @@
+{
+  "model": "glm-5.2",
+  "status": "qualified",
+  "evaluated_at": "2026-07-15T00:08:13.667Z",
+  "source_run": "2026-07-14-glm-5.2",
+  "qualified_lanes": [
+    "clerk",
+    "scout"
+  ],
+  "lanes": {
+    "clerk": {
+      "default_effort": "high",
+      "backends": {
+        "kilo": {
+          "qualified": true,
+          "effort": "high",
+          "score": 100,
+          "cost_per_task_usd": 0.026406
+        },
+        "claude-zai": {
+          "qualified": true,
+          "effort": "high",
+          "score": 100,
+          "cost_per_task_usd": 0.052285
+        }
+      }
+    },
+    "scout": {
+      "default_effort": "max",
+      "backends": {
+        "kilo": {
+          "qualified": true,
+          "effort": "max",
+          "score": 100,
+          "cost_per_task_usd": 0.0356
+        },
+        "claude-zai": {
+          "qualified": true,
+          "effort": "max",
+          "score": 100,
+          "cost_per_task_usd": 0.073542
+        }
+      }
+    },
+    "builder": {
+      "default_effort": "high",
+      "backends": {
+        "kilo": {
+          "qualified": false,
+          "effort": null,
+          "score": null,
+          "cost_per_task_usd": null
+        },
+        "claude-zai": {
+          "qualified": false,
+          "effort": null,
+          "score": null,
+          "cost_per_task_usd": null
+        }
+      }
+    },
+    "reviewer": {
+      "default_effort": "high",
+      "backends": {
+        "kilo": {
+          "qualified": false,
+          "effort": null,
+          "score": null,
+          "cost_per_task_usd": null
+        },
+        "claude-zai": {
+          "qualified": false,
+          "effort": null,
+          "score": null,
+          "cost_per_task_usd": null
+        }
+      }
+    }
+  }
+}

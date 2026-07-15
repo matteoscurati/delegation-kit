@@ -43,6 +43,16 @@ the scored table.
 | `opus-reviewer` | opus / high | security / taste / material review + escalation |
 | `fable-judge` | fable / xhigh | judgement: plan up front + final verdict/synthesis (two-touch) |
 
+### Optional evaluated GLM executor
+
+GLM-5.2 may replace an executor profile only through the installed
+`glm-executor` skill. Require `delegation-glm check --json` to report the exact
+lane in `qualified_lanes`; otherwise it is unavailable, even if Kilo or Claude
+can list the model. The bridge pins GLM-5.2 and its supported `high`/`max` effort,
+prefers Kilo Coding Plan, and permits the isolated Claude→Z.AI path only with an
+explicit `ZAI_API_KEY`. Never silently substitute another model or promote an
+unevaluated lane.
+
 ## Rules
 
 - **Effort:** executor low for well-specified mechanical work, medium when

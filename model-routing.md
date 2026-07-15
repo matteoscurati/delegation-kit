@@ -30,9 +30,17 @@ code quality, API design, copy.
 | gpt-5.6-sol   | 4    | 9            | 8     |
 | gpt-5.6-terra | 8    | 7            | 7     |
 | gpt-5.6-luna  | 10   | 8            | 7     |
+| glm-5.2†      | 10   | 6            | 6     |
 | sonnet-5      | 7    | 5            | 7     |
 | opus-4.8      | 5    | 7            | 8     |
 | fable-5       | 1    | 9            | 9     |
+
+† `glm-5.2` is not a general replacement despite its strong cost score. The
+versioned 2026-07 worker evaluation qualifies only `clerk/high` and `scout/max`;
+builder failed the blind taste floor and reviewer failed repeatability. Its
+efficiency score reflects $0.026–$0.074 API-equivalent cost per qualified task,
+not a promise about Coding Plan subscription economics. The public repository
+ships the resulting gate, not the GLM evaluation harness or raw test artifacts.
 
 `cost` above is **cost per completed task**, measured on my own review / impl / UI
 runs (2026-07) and cross-checked against published cost-per-task figures
@@ -78,6 +86,7 @@ Effort levels each model exposes (Claude `effort:` / Codex `model_reasoning_effo
 | gpt-5.6-luna | low · medium · high |
 | sonnet-5 | low · medium · high |
 | gpt-5.5 | low · medium · high |
+| glm-5.2 | high · max |
 
 ## How to apply
 
@@ -156,3 +165,6 @@ output, so the result can't be rationalized after the fact:
    lane the cheap incumbent already dominates on cost×intelligence.
 
 Miss any one → no row. Measure it; don't inherit it.
+
+The GLM-5.2 evaluation applied this rule per lane: it earned a constrained row
+through clerk/scout, while builder and reviewer stayed explicitly unroutable.
