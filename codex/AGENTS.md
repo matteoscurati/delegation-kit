@@ -14,6 +14,15 @@
 - Escalate Luna to Terra, or Terra to Sol, when the task becomes ambiguous or high risk. Do not repeatedly retry an unsuitable cheap worker.
 - Workers should return distilled evidence, changed paths, checks run, and unresolved risks—not raw logs or broad essays.
 
+## Optional evaluated GLM executor
+
+GLM-5.2 is available only through the installed `glm-executor` skill and only
+for a lane that `delegation-glm check --json` lists in `qualified_lanes`. The
+bridge pins the exact model and an evaluated `high`/`max` effort, prefers Kilo
+Coding Plan, and uses the isolated Claude→Z.AI fallback only when an explicit
+`ZAI_API_KEY` is present. If the runtime or lane gate is absent, keep using the
+incumbent profile; never silently substitute another model.
+
 ## Reaching Claude from Codex (cross-provider bridge)
 
 The lanes above route among OpenAI models. Reach across to Claude when it earns it:

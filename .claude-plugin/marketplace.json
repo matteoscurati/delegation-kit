@@ -3,14 +3,14 @@
   "name": "delegation-kit",
   "owner": { "name": "Matteo Scurati", "url": "https://github.com/matteoscurati" },
   "metadata": {
-    "description": "Cross-tool delegation kit: model-routing subagent profiles + policy for Claude Code and Codex.",
-    "version": "0.1.0"
+    "description": "Cross-tool delegation kit: model-routing profiles and guarded bridges for Claude Code, Codex, and evaluated GLM-5.2 lanes.",
+    "version": "0.2.0"
   },
   "plugins": [
     {
       "name": "delegation-kit",
-      "description": "Model-routing subagent profiles (clerk / scout / builder / reviewer / senior-reviewer / judgement) plus routing-policy and orchestrate skills, for delegating coding work across lanes.",
-      "version": "0.1.0",
+      "description": "Model-routing profiles plus routing, orchestration, and evaluation-gated GLM-5.2 executor skills for delegating coding work across lanes.",
+      "version": "0.2.0",
       "author": { "name": "Matteo Scurati" },
       "homepage": "https://github.com/matteoscurati/delegation-kit",
       "license": "MIT",

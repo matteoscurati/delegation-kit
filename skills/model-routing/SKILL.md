@@ -30,6 +30,14 @@ the decision procedure.
   synthesis, and the final ship go/no-go — thinking, not typing. Enter it in short
   bursts; never keep it resident coordinating workers.
 
+An optional external candidate such as GLM-5.2 earns one of these lanes only
+after its versioned evaluation gate passes for that exact role. If
+`delegation-glm check --json` lists the lane, use the `glm-executor` skill; an
+installed CLI or visible model name alone is not qualification.
+The shipped 2026-07 GLM-5.2 gate qualifies only clerk/high and scout/max; it
+explicitly rejects builder and reviewer. Always defer to the installed gate if a
+later evaluation supersedes this snapshot.
+
 ## Sizing and escalation
 - **Size the reviewer to the work, not to the top of the table.** A diff the cheap
   lane wrote against a plan the strong model authored is reviewed by the *mid*
