@@ -53,6 +53,17 @@ prefers Kilo Coding Plan, and permits the isolated Claude→Z.AI path only with 
 explicit `ZAI_API_KEY`. Never silently substitute another model or promote an
 unevaluated lane.
 
+### Optional gated Kimi model
+
+Kimi K3 is provisionally qualified for `clerk`, `scout`, `builder`, and `senior`
+only through the installed `kimi-executor` skill. `reviewer` and `judgement`
+remain disabled.
+Require `delegation-kimi check --json` to list the requested lane, then let the
+runner enforce the exact backend/effort gate: native Kimi Code and Kilo are
+evaluated independently. Kimi K3 is not scored or qualified merely because a CLI
+can reach it. If the gate or runtime is absent, keep the incumbent; never silently
+substitute a model, backend, effort, or neighboring lane.
+
 ## Rules
 
 - **Effort:** executor low for well-specified mechanical work, medium when

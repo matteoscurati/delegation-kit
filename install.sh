@@ -43,14 +43,19 @@ append_guarded() { # $1=file  $2=content
   echo "  + registered/refreshed in $file$backed"
 }
 
-# Shared optional GLM bridge. Installing the command does not make GLM routable:
-# the runtime check and the versioned evaluation manifest both have to pass.
+# Shared optional external-model bridges. Installing a command does not make its
+# model routable: the runtime check and versioned evaluation manifest must pass.
 mkdir -p "$BIN_HOME" "$DATA_HOME/bin" "$DATA_HOME/config"
 cp "$KIT/bin/delegation-glm" "$DATA_HOME/bin/delegation-glm"
 cp "$KIT/config/glm-5.2-routing.json" "$DATA_HOME/config/glm-5.2-routing.json"
 chmod 755 "$DATA_HOME/bin/delegation-glm"
 ln -sfn "$DATA_HOME/bin/delegation-glm" "$BIN_HOME/delegation-glm"
 echo "GLM bridge -> $BIN_HOME/delegation-glm (routing gate: $DATA_HOME/config/glm-5.2-routing.json)"
+cp "$KIT/bin/delegation-kimi" "$DATA_HOME/bin/delegation-kimi"
+cp "$KIT/config/kimi-k3-routing.json" "$DATA_HOME/config/kimi-k3-routing.json"
+chmod 755 "$DATA_HOME/bin/delegation-kimi"
+ln -sfn "$DATA_HOME/bin/delegation-kimi" "$BIN_HOME/delegation-kimi"
+echo "Kimi bridge -> $BIN_HOME/delegation-kimi (routing gate: $DATA_HOME/config/kimi-k3-routing.json)"
 
 if [ "$do_claude" = 1 ]; then
   echo "Claude Code -> $CLAUDE_HOME"
@@ -67,6 +72,8 @@ if [ "$do_claude" = 1 ]; then
   echo "  + orchestrate skill -> $CLAUDE_HOME/skills/orchestrate/"
   cp -R "$KIT/skills/glm-executor" "$CLAUDE_HOME/skills/"
   echo "  + optional GLM executor skill -> $CLAUDE_HOME/skills/glm-executor/"
+  cp -R "$KIT/skills/kimi-executor" "$CLAUDE_HOME/skills/"
+  echo "  + optional Kimi executor skill -> $CLAUDE_HOME/skills/kimi-executor/"
 fi
 
 if [ "$do_codex" = 1 ]; then
@@ -78,6 +85,8 @@ if [ "$do_codex" = 1 ]; then
   echo "  + 4 ephemeral -p profiles -> $CODEX_HOME/"
   cp -R "$KIT/skills/glm-executor" "$CODEX_HOME/skills/"
   echo "  + optional GLM executor skill -> $CODEX_HOME/skills/glm-executor/"
+  cp -R "$KIT/skills/kimi-executor" "$CODEX_HOME/skills/"
+  echo "  + optional Kimi executor skill -> $CODEX_HOME/skills/kimi-executor/"
   append_guarded "$CODEX_HOME/AGENTS.md" "$(cat "$KIT/codex/AGENTS.md")"
   echo
   echo "  Codex config is NOT auto-edited. Review and merge into $CODEX_HOME/config.toml:"

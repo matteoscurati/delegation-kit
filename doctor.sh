@@ -4,10 +4,11 @@
 # while the always-loaded policy blocks are missing, so neither model ever learns
 # it may reach the other. Nothing errors — the bridge just never fires.
 #
-# Usage: ./doctor.sh [--ping] [--ping-glm]
+# Usage: ./doctor.sh [--ping] [--ping-glm] [--ping-kimi]
 #   --ping   also does a live round-trip (real API calls, costs a few tokens per
 #            side). Off by default; static checks are free.
 #   --ping-glm does a separate paid GLM-5.2 ping, but only for a qualified lane.
+#   --ping-kimi does a separate Kimi K3 ping, but only for a qualified lane.
 # Env overrides (for testing): CLAUDE_HOME (default ~/.claude), CODEX_HOME (~/.codex)
 set -uo pipefail
 shopt -s nullglob   # unmatched globs vanish instead of staying literal
@@ -23,10 +24,12 @@ CODEX_HOME="${CODEX_HOME:-$HOME/.codex}"
 BEGIN="<!-- >>> delegation-kit >>> -->"
 DO_PING=0
 DO_GLM_PING=0
+DO_KIMI_PING=0
 while [ "$#" -gt 0 ]; do
   case "$1" in
     --ping) DO_PING=1 ;;
     --ping-glm) DO_GLM_PING=1 ;;
+    --ping-kimi) DO_KIMI_PING=1 ;;
     # print only the leading header comment block (skip the shebang, stop at first non-comment)
     -h|--help) awk 'NR==1{next} /^#/{sub(/^# ?/,""); print; next} {exit}' "$0"; exit 0 ;;
     *) echo "unknown arg: $1" >&2; exit 2 ;;
@@ -108,6 +111,11 @@ if [ -f "$CLAUDE_HOME/skills/glm-executor/SKILL.md" ]; then
 elif found_path "$CLAUDE_HOME/plugins" '*glm-executor/SKILL.md'; then
   ok "optional GLM executor skill installed (via plugin cache; universal install still required for runner)"
 else warn "optional GLM executor skill missing — GLM cannot be selected even after evaluation"; fi
+if [ -f "$CLAUDE_HOME/skills/kimi-executor/SKILL.md" ]; then
+  ok "optional Kimi executor skill installed"
+elif found_path "$CLAUDE_HOME/plugins" '*kimi-executor/SKILL.md'; then
+  ok "optional Kimi executor skill installed (via plugin cache; universal install still required for runner)"
+else warn "optional Kimi executor skill missing — Kimi cannot be selected even after evaluation"; fi
 # always-loaded policy (the plugin path does NOT install this — install.sh does)
 if [ -f "$CLAUDE_HOME/CLAUDE.md" ] && grep -qF "$BEGIN" "$CLAUDE_HOME/CLAUDE.md"; then
   ok "delegation policy registered in CLAUDE.md (@import present)"
@@ -135,6 +143,9 @@ else bad "AGENTS.md has NO delegation-kit block -> Codex->Claude policy is NOT l
 if [ -f "$CODEX_HOME/skills/glm-executor/SKILL.md" ]; then
   ok "optional GLM executor skill installed for Codex"
 else warn "optional GLM executor skill missing for Codex"; fi
+if [ -f "$CODEX_HOME/skills/kimi-executor/SKILL.md" ]; then
+  ok "optional Kimi executor skill installed for Codex"
+else warn "optional Kimi executor skill missing for Codex"; fi
 
 # ---- optional GLM-5.2 external executor ----
 hdr "GLM-5.2 optional executor"
@@ -157,6 +168,29 @@ elif have delegation-glm; then
   fi
 else
   warn "delegation-glm not installed — re-run ./install.sh after evaluating GLM"
+fi
+
+# ---- optional Kimi K3 external executor ----
+hdr "Kimi K3 optional executor"
+if ! have jq; then
+  warn "jq not on PATH — delegation-kimi cannot run"
+elif have delegation-kimi; then
+  kimi_check="$(delegation-kimi check --json 2>/dev/null || true)"
+  if [ -n "$kimi_check" ] && printf '%s' "$kimi_check" | jq -e '.model == "kimi-k3"' >/dev/null 2>&1; then
+    ok "delegation-kimi installed and pinned to kimi-k3"
+    kimi_selected="$(printf '%s' "$kimi_check" | jq -r '.selected_backend')"
+    kimi_lanes="$(printf '%s' "$kimi_check" | jq -r '.qualified_lanes | join(",")')"
+    [ "$kimi_selected" = none ] \
+      && info "Kimi runtime unavailable — optional lanes will not be selected" \
+      || ok "Kimi backend available ($kimi_selected)"
+    [ -n "$kimi_lanes" ] \
+      && ok "Kimi evaluation-qualified lanes: $kimi_lanes" \
+      || info "Kimi has no evaluation-qualified lanes; routing remains disabled"
+  else
+    bad "delegation-kimi check failed or is not pinned to kimi-k3"
+  fi
+else
+  warn "delegation-kimi not installed — re-run ./install.sh to install the gated candidate"
 fi
 
 # ---- Codex config: multi_agent + sandbox/network posture ----
@@ -205,6 +239,33 @@ if [ "$DO_GLM_PING" = 1 ]; then
         ok "GLM-5.2 qualified-lane ping returned PONG"
       else
         bad "GLM-5.2 ping failed"
+      fi
+      rm -rf "$ping_dir"
+    fi
+  fi
+fi
+
+if [ "$DO_KIMI_PING" = 1 ]; then
+  hdr "Kimi K3 live ping (--ping-kimi)"
+  if ! have delegation-kimi; then
+    bad "Kimi ping unavailable — delegation-kimi is not installed"
+  else
+    kimi_check="$(delegation-kimi check --json 2>/dev/null || true)"
+    kimi_lane="$(printf '%s' "$kimi_check" | jq -r '
+      ([.qualified_lanes[] | select(. != "builder")][0] // .qualified_lanes[0] // empty)
+    ' 2>/dev/null)"
+    if [ -z "$kimi_lane" ]; then
+      info "skipped — no Kimi lane has passed the evaluation gate"
+    else
+      ping_dir="$(mktemp -d "${TMPDIR:-/tmp}/delegation-kimi-ping.XXXXXX")"
+      mkdir -p "$ping_dir/work"
+      printf 'Reply with exactly PONG and do not edit files.\n' >"$ping_dir/prompt.txt"
+      if delegation-kimi run --lane "$kimi_lane" --effort auto --backend auto \
+          --prompt-file "$ping_dir/prompt.txt" --output "$ping_dir/out.txt" --workdir "$ping_dir/work" \
+          >/dev/null 2>&1 && grep -Fxq PONG "$ping_dir/out.txt"; then
+        ok "Kimi K3 qualified-lane ping returned PONG"
+      else
+        bad "Kimi K3 ping failed"
       fi
       rm -rf "$ping_dir"
     fi

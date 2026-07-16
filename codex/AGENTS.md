@@ -23,6 +23,18 @@ Coding Plan, and uses the isolated Claude→Z.AI fallback only when an explicit
 `ZAI_API_KEY` is present. If the runtime or lane gate is absent, keep using the
 incumbent profile; never silently substitute another model.
 
+## Optional gated Kimi model
+
+Kimi K3 is provisionally usable for `clerk`, `scout`, `builder`, and `senior`
+through the installed `kimi-executor` skill, and only when
+`delegation-kimi check --json` lists the lane in `qualified_lanes`. `reviewer` and
+`judgement` remain disabled. The runner enforces the separately evaluated native
+Kimi Code and Kilo backend/effort gates
+across operational (`clerk`, `scout`, `builder`, `reviewer`), `senior`, and
+`judgement` lanes. Installed runtimes and visible model names are not
+qualification. If the exact gate is absent, keep the incumbent profile; never
+silently substitute another model, backend, effort, or lane.
+
 ## Reaching Claude from Codex (cross-provider bridge)
 
 The lanes above route among OpenAI models. Reach across to Claude when it earns it:

@@ -53,14 +53,20 @@ background subshells:
   `claude -p` dispatch per the bridge section of `CLAUDE.delegation.md` (brief on a
   temp file, non-zero exit or empty output = failed dispatch, one output file per
   worker).
+- **Gated external candidates** — use GLM or Kimi only through their executor
+  skill and only when that runner's `check --json` qualifies the requested lane.
+  For Kimi, native and Kilo backend/effort combinations are independent; one pass
+  never promotes a neighboring combination. This rule applies equally to
+  operational workers, Senior, and Judgement.
 
 ## The loop
 
 1. **Frame.** State the deliverable and 3–5 checkable success criteria; if the task
    is too vague for that, ask one question and stop. Set a **budget** now (below).
    Check the lanes are reachable — executor profiles, the judgement model, the
-   Codex bridge if you'll use it (`doctor.sh`). A lane with no path → **degraded
-   mode** (below), announced up front.
+   Codex bridge or gated external candidate if you'll use it (`doctor.sh`; use
+   `--ping-glm` or `--ping-kimi` only for a live qualified-lane check). A lane
+   with no path → **degraded mode** (below), announced up front.
 2. **Plan.** Decompose into self-contained subtasks with inputs (in-tree by path,
    everything else inline), acceptance criteria, and wave assignments that maximize
    parallelism.
