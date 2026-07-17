@@ -31,6 +31,7 @@ code quality, API design, copy.
 | gpt-5.6-terra | 8    | 7            | 7     |
 | gpt-5.6-luna  | 10   | 8            | 7     |
 | glm-5.2†      | 10   | 6            | 6     |
+| kimi-k3‡      | 8    | 8            | 8     |
 | sonnet-5      | 7    | 5            | 7     |
 | opus-4.8      | 5    | 7            | 8     |
 | fable-5       | 1    | 9            | 9     |
@@ -41,6 +42,13 @@ builder failed the blind taste floor and reviewer failed repeatability. Its
 efficiency score reflects $0.026–$0.074 API-equivalent cost per qualified task,
 not a promise about Coding Plan subscription economics. The public repository
 ships the resulting gate, not the GLM evaluation harness or raw test artifacts.
+
+‡ `kimi-k3` is provisional. Published coding data places it in the top two on
+five of six supplied coding benchmarks; the valid subset of the local extended
+run scored 97.1–99.4 mean with 91–95% full-pass rates. The versioned gate enables
+`clerk`, `scout`, `builder`, and `senior`, preferring Kilo `high` and retaining
+native `max` as an alternative. `reviewer` and `judgement` remain disabled. Quota
+exhaustion is a temporary runtime failure (exit 75), not a quality downgrade.
 
 `cost` above is **cost per completed task**, measured on my own review / impl / UI
 runs (2026-07) and cross-checked against published cost-per-task figures
@@ -87,6 +95,13 @@ Effort levels each model exposes (Claude `effort:` / Codex `model_reasoning_effo
 | sonnet-5 | low · medium · high |
 | gpt-5.5 | low · medium · high |
 | glm-5.2 | high · max |
+| kimi-k3 | high · max (Kilo) · max (native) |
+
+Kimi K3 is provisional: the 2026-07-16 run was truncated by provider quota, but
+its valid subset and the supplied coding benchmarks support controlled use in
+`clerk`, `scout`, `builder`, and `senior`. The installed
+`delegation-kimi check --json` gate remains authoritative for the exact
+backend/effort/lane combination.
 
 ## How to apply
 
@@ -168,3 +183,7 @@ Miss any one → no row. Measure it; don't inherit it.
 
 The GLM-5.2 evaluation applied this rule per lane: it earned a constrained row
 through clerk/scout, while builder and reviewer stayed explicitly unroutable.
+
+Kimi K3 follows the same fail-closed method across operational and advisor lanes.
+The provisional gate enables `clerk`, `scout`, `builder`, and `senior`; routing
+stays with the incumbent for `reviewer` and `judgement`.

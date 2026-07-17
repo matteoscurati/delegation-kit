@@ -3,14 +3,14 @@
   "name": "delegation-kit",
   "owner": { "name": "Matteo Scurati", "url": "https://github.com/matteoscurati" },
   "metadata": {
-    "description": "Cross-tool delegation kit: model-routing profiles and guarded bridges for Claude Code, Codex, and evaluated GLM-5.2 lanes.",
-    "version": "0.2.0"
+    "description": "Cross-tool delegation kit: model-routing profiles and guarded bridges for Claude Code, Codex, evaluated GLM-5.2 lanes, and provisional Kimi K3 lanes.",
+    "version": "0.3.0"
   },
   "plugins": [
     {
       "name": "delegation-kit",
-      "description": "Model-routing profiles plus routing, orchestration, and evaluation-gated GLM-5.2 executor skills for delegating coding work across lanes.",
-      "version": "0.2.0",
+      "description": "Model-routing profiles plus routing, orchestration, and guarded GLM-5.2 and Kimi K3 executor skills for delegating coding work across lanes.",
+      "version": "0.3.0",
       "author": { "name": "Matteo Scurati" },
       "homepage": "https://github.com/matteoscurati/delegation-kit",
       "license": "MIT",

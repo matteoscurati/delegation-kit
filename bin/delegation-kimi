@@ -1,0 +1,365 @@
+#!/usr/bin/env bash
+# Run Kimi K3 through the native Kimi Code CLI or Kilo's Kimi For Coding
+# provider. Fails closed: model, effort, backend, and qualification gates are
+# always explicit and no backend fallback occurs after dispatch starts.
+set -euo pipefail
+umask 077
+
+SOURCE="${BASH_SOURCE[0]}"
+while [ -L "$SOURCE" ]; do
+  SOURCE_DIR="$(cd "$(dirname "$SOURCE")" && pwd)"
+  SOURCE="$(readlink "$SOURCE")"
+  [[ "$SOURCE" = /* ]] || SOURCE="$SOURCE_DIR/$SOURCE"
+done
+ROOT="$(cd "$(dirname "$SOURCE")/.." && pwd)"
+ROUTING_FILE="$ROOT/config/kimi-k3-routing.json"
+NATIVE_MODEL="kimi-code/k3"
+KILO_MODEL="kimi-for-coding/k3"
+EFFORTS='["high","max"]'
+RUN_TMP=""
+
+usage() {
+  cat <<'EOF'
+Usage:
+  delegation-kimi check [--json]
+  delegation-kimi run --lane <clerk|scout|builder|reviewer|senior|judgement> \
+    [--effort <auto|high|max>] [--backend <auto|native|kilo>] \
+    (--prompt-file <path> | --prompt <text>) --output <path> --workdir <path> \
+    [--metrics <path>]
+
+Exit codes: 64 invalid input, 69 unavailable, 70 dispatch failure,
+75 temporary/rate-limit failure, 78 lane not qualified.
+EOF
+}
+
+die() { local code="$1"; shift; printf 'delegation-kimi: %s\n' "$*" >&2; exit "$code"; }
+have() { command -v "$1" >/dev/null 2>&1; }
+
+native_status() {
+  NATIVE_REASON=""
+  have kimi || { NATIVE_REASON="kimi not on PATH"; return 1; }
+  local help providers providers_text
+  help="$(kimi --help 2>&1 || true)"
+  grep -q -- '--output-format' <<<"$help" \
+    || { NATIVE_REASON="kimi lacks stream-json output"; return 1; }
+  providers="$(kimi provider list --json 2>/dev/null || true)"
+  jq -e --arg model "$NATIVE_MODEL" '.models[$model] != null' <<<"$providers" >/dev/null 2>&1 \
+    || { NATIVE_REASON="$NATIVE_MODEL is not configured"; return 1; }
+  jq -e --arg model "$NATIVE_MODEL" '
+    .models[$model].model == "k3" and
+    ((.models[$model].support_efforts // ["max"]) | index("max") != null)
+  ' <<<"$providers" >/dev/null 2>&1 \
+    || { NATIVE_REASON="$NATIVE_MODEL does not attest K3 max effort"; return 1; }
+  providers_text="$(kimi provider list 2>/dev/null || true)"
+  grep -Eq 'managed:kimi-code.*source=oauth' <<<"$providers_text" \
+    || { NATIVE_REASON="Kimi Code OAuth credential missing"; return 1; }
+  NATIVE_REASON="ready"
+  return 0
+}
+
+kilo_status() {
+  KILO_REASON=""
+  have kilo || { KILO_REASON="kilo not on PATH"; return 1; }
+  local models auth
+  models="$(kilo models kimi-for-coding 2>/dev/null || true)"
+  grep -Fxq "$KILO_MODEL" <<<"$models" \
+    || { KILO_REASON="$KILO_MODEL missing from Kilo"; return 1; }
+  auth="$(kilo auth list 2>/dev/null || true)"
+  case "$auth" in
+    *"Kimi For Coding"*) ;;
+    *) KILO_REASON="Kimi For Coding credential missing"; return 1 ;;
+  esac
+  KILO_REASON="ready"
+  return 0
+}
+
+qualified_lanes() {
+  if [ -f "$ROUTING_FILE" ] && have jq; then
+    jq -c '.qualified_lanes // []' "$ROUTING_FILE" 2>/dev/null || printf '[]'
+  else
+    printf '[]'
+  fi
+}
+
+is_qualified() {
+  local lane="$1" backend="$2"
+  [ -f "$ROUTING_FILE" ] && have jq || return 1
+  jq -e --arg lane "$lane" --arg backend "$backend" \
+    '.lanes[$lane].backends[$backend].qualified == true' "$ROUTING_FILE" >/dev/null 2>&1
+}
+
+preferred_backends() {
+  local lane="$1"
+  jq -r --arg lane "$lane" '
+    (.lanes[$lane].preferred_backends // .preferred_backends // ["kilo","native"])[]
+  ' "$ROUTING_FILE" 2>/dev/null || printf 'kilo\nnative\n'
+}
+
+default_effort() {
+  local lane="$1" backend="$2"
+  if [ "$backend" = native ]; then printf 'max\n'; return; fi
+  jq -r --arg lane "$lane" --arg backend "$backend" '
+    .lanes[$lane].backends[$backend].effort //
+    .lanes[$lane].default_effort // "high"
+  ' "$ROUTING_FILE" 2>/dev/null || printf 'high\n'
+}
+
+qualified_effort() {
+  local lane="$1" backend="$2"
+  jq -er --arg lane "$lane" --arg backend "$backend" \
+    '.lanes[$lane].backends[$backend].effort | select(type == "string")' \
+    "$ROUTING_FILE" 2>/dev/null
+}
+
+temporary_failure() {
+  local events="$1" stderr="$2"
+  grep -Eqi 'rate.?limit|too many requests|usage limit|quota.*refresh|billing cycle|temporar.*unavailable|error[^0-9]*(1305|1312)|(^|[^0-9])429([^0-9]|$)' \
+    "$stderr" 2>/dev/null && return 0
+  jq -e '
+    select(.type == "error") |
+    ((.error.data.statusCode // 0) == 429) or
+    ((.error.data.message // .error.message // "") |
+      test("rate.?limit|too many requests|usage limit|quota.*refresh|billing cycle|temporar.*unavailable"; "i"))
+  ' "$events" >/dev/null 2>&1
+}
+
+prepare_native_home() {
+  local scratch="$1" item source target
+  source="$HOME/.kimi-code"
+  target="$scratch/home/.kimi-code"
+  mkdir -p "$target" "$scratch/home-tmp"
+  for item in config.toml credentials oauth device_id; do
+    [ ! -e "$source/$item" ] || cp -R "$source/$item" "$target/"
+  done
+}
+
+print_check() {
+  local as_json="${1:-0}" native_ok=false kilo_ok=false selected="none" lanes
+  have jq || die 69 "jq is required"
+  native_status && native_ok=true || true
+  kilo_status && kilo_ok=true || true
+  lanes="$(qualified_lanes)"
+  while IFS= read -r candidate; do
+    case "$candidate" in
+      native) [ "$native_ok" = true ] && { selected=native; break; } ;;
+      kilo) [ "$kilo_ok" = true ] && { selected=kilo; break; } ;;
+    esac
+  done < <(jq -r '(.preferred_backends // ["kilo","native"])[]' "$ROUTING_FILE" 2>/dev/null || printf 'kilo\nnative\n')
+  if [ "$as_json" = 1 ]; then
+    jq -n \
+      --arg model "kimi-k3" --arg native_model "$NATIVE_MODEL" --arg kilo_model "$KILO_MODEL" \
+      --arg selected "$selected" --argjson efforts "$EFFORTS" --argjson lanes "$lanes" \
+      --argjson native "$native_ok" --arg native_reason "$NATIVE_REASON" \
+      --argjson kilo "$kilo_ok" --arg kilo_reason "$KILO_REASON" \
+      '{model:$model,models:{native:$native_model,kilo:$kilo_model},efforts:$efforts,
+        selected_backend:$selected,qualified_lanes:$lanes,backends:{
+          native:{available:$native,reason:$native_reason,efforts:["max"]},
+          kilo:{available:$kilo,reason:$kilo_reason,efforts:["high","max"]}}}'
+  else
+    printf 'Kimi K3: selected=%s qualified=%s\n' "$selected" "$lanes"
+    printf '  native: %s (%s; model=%s; effort=max)\n' "$native_ok" "$NATIVE_REASON" "$NATIVE_MODEL"
+    printf '  kilo: %s (%s; model=%s; efforts=high,max)\n' "$kilo_ok" "$KILO_REASON" "$KILO_MODEL"
+  fi
+}
+
+extract_native() {
+  local events="$1" output="$2" metrics="$3" started="$4" effort="$5" lane="$6"
+  jq -ers '
+    [.[] | select(.role == "assistant") | .content |
+      if type == "string" then .
+      elif type == "array" then
+        map(if type == "string" then . else (.text // .content // empty) end) | join("")
+      else empty end |
+      select(length > 0)] | last // empty
+  ' "$events" >"$output" || return 1
+  [ -s "$output" ] || return 1
+  jq -n --arg model "$NATIVE_MODEL" --arg effort "$effort" --arg lane "$lane" \
+    --argjson started "$started" '
+    {model:$model,backend:"native",effort:$effort,lane:$lane,
+     started_at_epoch:$started,finished_at_epoch:now,usage_reported:false,
+     tokens:{input:0,output:0,reasoning:0,cache_read:0,cache_write:0},
+     provider_cost_usd:null}
+  ' >"$metrics"
+}
+
+extract_kilo() {
+  local events="$1" output="$2" metrics="$3" started="$4" effort="$5" lane="$6"
+  jq -ers '
+    reduce .[] as $event ([]; if length > 0 and .[-1] == $event then . else . + [$event] end) |
+    [.[] |
+      if .type == "text" then (.part.text // .text // empty)
+      elif (.type == "message.part.updated" or .type == "message.part.update") and
+           ((.part.type // "") == "text") then (.part.text // empty)
+      else empty end |
+      select(type == "string" and length > 0)] | join("") | select(length > 0)
+  ' "$events" >"$output" || return 1
+  [ -s "$output" ] && [ -n "$(tr -d '[:space:]' <"$output")" ] || return 1
+  jq -s --arg model "$KILO_MODEL" --arg effort "$effort" --arg lane "$lane" \
+    --argjson started "$started" '
+    reduce .[] as $event ([]; if length > 0 and .[-1] == $event then . else . + [$event] end) |
+    [.[].part | select((.type == "step-finish") or (.type == "step_finish"))] as $steps |
+    {model:$model,backend:"kilo",effort:$effort,lane:$lane,
+     started_at_epoch:$started,finished_at_epoch:now,usage_reported:($steps | length > 0),
+     tokens:{input:([$steps[].tokens.input] | add // 0),
+             output:([$steps[].tokens.output] | add // 0),
+             reasoning:([$steps[].tokens.reasoning] | add // 0),
+             cache_read:([$steps[].tokens.cache.read] | add // 0),
+             cache_write:([$steps[].tokens.cache.write] | add // 0)},
+     provider_cost_usd:([$steps[].cost] | add // null)}
+  ' "$events" >"$metrics"
+}
+
+backend_available() {
+  case "$1" in
+    native) native_status ;;
+    kilo) kilo_status ;;
+    *) return 1 ;;
+  esac
+}
+
+run_command() {
+  local lane="" effort="auto" backend="auto" prompt_file="" prompt="" output="" workdir="" metrics=""
+  local prompt_source="" backend_checked=0 expected_effort=""
+  while [ "$#" -gt 0 ]; do
+    case "$1" in
+      --lane) lane="${2:-}"; shift 2 ;;
+      --effort) effort="${2:-}"; shift 2 ;;
+      --backend) backend="${2:-}"; shift 2 ;;
+      --prompt-file) prompt_file="${2:-}"; shift 2 ;;
+      --prompt) prompt="${2:-}"; prompt_source="literal"; shift 2 ;;
+      --output) output="${2:-}"; shift 2 ;;
+      --workdir) workdir="${2:-}"; shift 2 ;;
+      --metrics) metrics="${2:-}"; shift 2 ;;
+      -h|--help) usage; exit 0 ;;
+      *) die 64 "unknown run argument: $1" ;;
+    esac
+  done
+  case "$lane" in clerk|scout|builder|reviewer|senior|judgement) ;; *) die 64 "invalid lane: $lane" ;; esac
+  case "$effort" in auto|high|max) ;; *) die 64 "invalid effort: $effort" ;; esac
+  case "$backend" in auto|native|kilo) ;; *) die 64 "invalid backend: $backend" ;; esac
+  [ -z "$prompt_file" ] || [ -z "$prompt_source" ] || die 64 "use only one of --prompt-file or --prompt"
+  if [ -n "$prompt_file" ]; then
+    [ -f "$prompt_file" ] || die 64 "prompt file missing: $prompt_file"
+    prompt="$(<"$prompt_file")"
+    prompt_source="file"
+  fi
+  [ -n "$prompt_source" ] || die 64 "--prompt-file or --prompt is required"
+  [ -n "$prompt" ] || die 64 "prompt must not be empty"
+  [ -d "$workdir" ] || die 64 "workdir missing: $workdir"
+  workdir="$(cd "$workdir" && pwd -P)"
+  [ -n "$output" ] || die 64 "--output is required"
+  have jq || die 69 "jq is required"
+  [ -f "$ROUTING_FILE" ] || die 69 "routing file missing: $ROUTING_FILE"
+  jq -e . "$ROUTING_FILE" >/dev/null 2>&1 || die 69 "routing file is invalid JSON"
+
+  if [ "$backend" = auto ]; then
+    local candidate
+    backend=""
+    while IFS= read -r candidate; do
+      case "$candidate" in native|kilo) ;; *) continue ;; esac
+      if is_qualified "$lane" "$candidate" && backend_available "$candidate"; then
+        backend="$candidate"; backend_checked=1; break
+      fi
+    done < <(preferred_backends "$lane")
+    if [ -z "$backend" ]; then
+      die 78 "lane '$lane' has no qualified available backend"
+    fi
+  else
+    is_qualified "$lane" "$backend" || die 78 "lane '$lane' is not qualified for backend '$backend'"
+  fi
+
+  [ "$effort" != auto ] || effort="$(default_effort "$lane" "$backend")"
+  expected_effort="$(qualified_effort "$lane" "$backend")" \
+    || die 69 "qualified lane '$lane' has no pinned effort for backend '$backend'"
+  [ "$effort" = "$expected_effort" ] \
+    || die 78 "lane '$lane' backend '$backend' is qualified only at effort '$expected_effort'"
+  if [ "$backend" = native ] && [ "$effort" != max ]; then
+    die 64 "native backend supports only max effort"
+  fi
+  if [ "$backend_checked" -eq 0 ]; then
+    backend_available "$backend" || {
+      case "$backend" in native) die 69 "$NATIVE_REASON" ;; kilo) die 69 "$KILO_REASON" ;; esac
+    }
+  fi
+
+  metrics="${metrics:-$output.metrics.json}"
+  local output_parent metrics_parent output_name metrics_name
+  output_parent="$(dirname "$output")"; output_name="$(basename "$output")"
+  metrics_parent="$(dirname "$metrics")"; metrics_name="$(basename "$metrics")"
+  case "$output_name" in .|..) die 64 "invalid output filename" ;; esac
+  case "$metrics_name" in .|..) die 64 "invalid metrics filename" ;; esac
+  [ -d "$output_parent" ] || die 64 "output parent directory must already exist: $output_parent"
+  [ -d "$metrics_parent" ] || die 64 "metrics parent directory must already exist: $metrics_parent"
+  output="$(cd "$output_parent" && pwd -P)/$output_name"
+  metrics="$(cd "$metrics_parent" && pwd -P)/$metrics_name"
+  [ "$output" != "$metrics" ] || die 64 "output and metrics paths resolve to the same file"
+  [ ! -L "$output" ] || die 64 "output must not be a symlink"
+  [ ! -L "$metrics" ] || die 64 "metrics must not be a symlink"
+  if [ "$lane" != builder ]; then
+    case "$output" in "$workdir"/*) die 64 "read-only lane output must be outside workdir" ;; esac
+    case "$metrics" in "$workdir"/*) die 64 "read-only lane metrics must be outside workdir" ;; esac
+  fi
+
+  local tmp events rc=0 started agent result_tmp metrics_tmp error_tmp
+  tmp="$(mktemp -d "${TMPDIR:-/tmp}/delegation-kimi.XXXXXX")"
+  tmp="$(cd "$tmp" && pwd -P)"
+  RUN_TMP="$tmp"
+  trap 'rm -rf -- "$RUN_TMP"' EXIT
+  events="$tmp/events.jsonl"
+  result_tmp="$tmp/result.txt"
+  metrics_tmp="$tmp/metrics.json"
+  error_tmp="$tmp/error.txt"
+  started="$(date +%s)"
+
+  if [ "$backend" = native ]; then
+    if [ "$lane" = builder ]; then
+      (cd "$workdir" && kimi --prompt "$prompt" --model "$NATIVE_MODEL" \
+        --output-format stream-json </dev/null) >"$events" 2>"$tmp/stderr" || rc=$?
+    else
+      # Kimi Code 0.26 needs a writable HOME for session bookkeeping. Give it
+      # an isolated copy of only the provider config/auth material, then deny
+      # every write outside this runner-owned scratch directory. This protects
+      # the worktree, routing gate, real HOME, sibling repos, and output paths.
+      if [ "$(uname)" != Darwin ] || ! have sandbox-exec; then
+        die 69 "native read-only lanes require macOS sandbox-exec"
+      fi
+      local sandbox_profile
+      prepare_native_home "$tmp" || die 69 "could not prepare isolated Kimi home"
+      sandbox_profile='(version 1) (allow default) (deny file-write* (require-not (subpath (param "SCRATCH"))))'
+      (cd "$workdir" && HOME="$tmp/home" TMPDIR="$tmp/home-tmp" \
+        sandbox-exec -D "SCRATCH=$tmp" -p "$sandbox_profile" \
+        kimi --prompt "$prompt" --model "$NATIVE_MODEL" \
+        --output-format stream-json </dev/null) >"$events" 2>"$tmp/stderr" || rc=$?
+    fi
+    if [ "$rc" -eq 0 ]; then
+      extract_native "$events" "$result_tmp" "$metrics_tmp" "$started" "$effort" "$lane" || rc=70
+    fi
+  else
+    agent=plan; [ "$lane" = builder ] && agent=code
+    kilo run "$prompt" --model "$KILO_MODEL" --variant "$effort" --agent "$agent" \
+      --format json --dir "$workdir" --auto >"$events" 2>"$tmp/stderr" || rc=$?
+    if [ "$rc" -eq 0 ]; then
+      extract_kilo "$events" "$result_tmp" "$metrics_tmp" "$started" "$effort" "$lane" || rc=70
+    fi
+  fi
+
+  if [ "$rc" -ne 0 ]; then
+    cp "$tmp/stderr" "$error_tmp" 2>/dev/null || : >"$error_tmp"
+    jq -c 'select(.type == "error") | .error' "$events" >>"$error_tmp" 2>/dev/null || true
+    mv -f "$error_tmp" "$output.stderr" 2>/dev/null || true
+    temporary_failure "$events" "$tmp/stderr" && exit 75
+    exit 70
+  fi
+  mv -f "$result_tmp" "$output" || die 70 "could not finalize output"
+  mv -f "$metrics_tmp" "$metrics" || die 70 "could not finalize metrics"
+}
+
+case "${1:-}" in
+  check)
+    shift
+    case "${1:-}" in "") print_check 0 ;; --json) shift; [ "$#" -eq 0 ] || die 64 "unknown check argument: $1"; print_check 1 ;; *) die 64 "unknown check argument: $1" ;; esac
+    ;;
+  run) shift; run_command "$@" ;;
+  -h|--help|"") usage ;;
+  *) die 64 "unknown command: $1" ;;
+esac

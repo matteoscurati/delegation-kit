@@ -18,6 +18,7 @@ numbers, wired up and ready to run. Swap the models for your own tiers with
 | routing skill | `skills/model-routing/` | surfaces the decision procedure when you delegate |
 | orchestrate skill | `skills/orchestrate/` | the fan-out loop — plan → delegate to workers → verify → advisor judges plan + ship |
 | optional GLM skill | `skills/glm-executor/` | dispatches only evaluation-qualified GLM-5.2 lanes through the guarded runner |
+| optional Kimi skill | `skills/kimi-executor/` | exposes Kimi K3 only where its versioned gate qualifies the exact lane/backend/effort |
 | lane discipline | `@import` in `CLAUDE.md` | always-loaded policy ([`claude/CLAUDE.delegation.md`](./claude/CLAUDE.delegation.md)) |
 
 **Codex** (`~/.codex/`)
@@ -27,15 +28,24 @@ numbers, wired up and ready to run. Swap the models for your own tiers with
 | 4 ephemeral profiles | `*.config.toml` | for `codex exec --ephemeral -p <name>` |
 | collaboration policy | appended to `AGENTS.md` | usage-aware routing **+ a Codex→Claude bridge** |
 | optional GLM skill | `skills/glm-executor/` | same fail-closed GLM-5.2 executor path |
+| optional Kimi skill | `skills/kimi-executor/` | same fail-closed provisional Kimi K3 path |
 | config snippet | printed for manual merge | `[agents]` fan-out caps + lead defaults |
 
-The universal installer also adds `delegation-glm` under `~/.local/bin` and its
-versioned routing gate under `~/.local/share/delegation-kit/`. The shipped
+The universal installer also adds the `delegation-glm` and `delegation-kimi`
+commands under `~/.local/bin`, with versioned routing gates under
+`~/.local/share/delegation-kit/`. The shipped
 2026-07 evaluation qualifies only `clerk` at `high` and `scout` at `max`, through
 either Kilo Coding Plan or the isolated Claude→Z.AI backend. `builder` and
 `reviewer` remain disabled. The runner refuses every unqualified lane and also
 refuses execution unless at least one of Claude Code or Codex is installed; it
 is an agent option, not a standalone GLM client.
+
+Kimi K3 is installed as a **provisional coding model**. The gate enables `clerk`,
+`scout`, `builder`, and `senior`, preferring Kilo `high` and retaining native
+`max` as an alternative. `reviewer` and `judgement` remain disabled. Provider
+quota exhaustion returns exit 75 without silently falling back or changing the
+quality qualification. `delegation-kimi check --json` is the source of truth;
+CLI availability or a provider model listing is not enough.
 
 The shared scored table (cost / intelligence / taste per model) lives in
 [`model-routing.md`](./model-routing.md).
@@ -62,8 +72,10 @@ at it, so `git pull` updates the policy live. Remove with `./uninstall.sh`.
 Then verify the bridge is actually **wired** (not just written) with `./doctor.sh` —
 it checks both CLIs, auth, the installed profiles *and* the always-loaded policy
 blocks, and the Codex sandbox/network posture. `./doctor.sh --ping` also does a live
-round-trip in both directions. The failure it catches is silent: profiles present
-but a policy block missing means the bridge never fires.
+round-trip in both directions; `--ping-glm` and `--ping-kimi` separately ping the
+first evaluation-qualified lane and skip when no lane is qualified. The failure it
+catches is silent: profiles present but a policy block missing means the bridge
+never fires.
 
 **Claude-only, one command (plugin):**
 ```
@@ -71,7 +83,8 @@ but a policy block missing means the bridge never fires.
 /plugin install delegation-kit
 ```
 This installs the 6 agents plus the `model-routing`, `orchestrate`, and guarded
-`glm-executor` skills. It does not install the GLM runner/gate, register the
+`glm-executor` and `kimi-executor` skills. It does not install either external
+model runner/gate, register the
 `CLAUDE.md` policy prose, or install the Codex side — run `./install.sh` for those.
 
 ## How it works

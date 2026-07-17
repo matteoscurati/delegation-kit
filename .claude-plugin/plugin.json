@@ -1,9 +1,9 @@
 {
   "name": "delegation-kit",
-  "version": "0.2.0",
-  "description": "Teach Claude Code how and when to delegate coding work across lanes — cheap execution, senior review, expensive judgement — with bridges to Codex and evaluation-gated GLM-5.2.",
+  "version": "0.3.0",
+  "description": "Teach Claude Code how and when to delegate coding work across lanes — cheap execution, senior review, expensive judgement — with bridges to Codex, GLM-5.2, and provisional Kimi K3.",
   "author": { "name": "Matteo Scurati", "url": "https://github.com/matteoscurati" },
   "homepage": "https://github.com/matteoscurati/delegation-kit",
   "license": "MIT",
-  "keywords": ["delegation", "subagents", "model-routing", "orchestration", "codex", "glm"]
+  "keywords": ["delegation", "subagents", "model-routing", "orchestration", "codex", "glm", "kimi"]
 }

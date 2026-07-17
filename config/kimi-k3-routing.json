@@ -1,0 +1,60 @@
+{
+  "model": "kimi-k3",
+  "status": "qualified-provisional",
+  "evaluated_at": "2026-07-16T18:03:24.342Z",
+  "promoted_at": "2026-07-16T18:19:08Z",
+  "source_run": "2026-07-16-kimi-k3",
+  "qualification_basis": "user-approved provisional promotion from valid-run subset plus supplied coding benchmarks",
+  "preferred_backends": ["kilo", "native"],
+  "qualified_lanes": ["builder", "clerk", "scout", "senior"],
+  "lanes": {
+    "clerk": {
+      "default_effort": "high",
+      "preferred_backends": ["kilo", "native"],
+      "backends": {
+        "native": {"qualified": true, "effort": "max", "score": 100, "resource_per_task": 37728.25, "resource_basis": "wall_clock_ms"},
+        "kilo": {"qualified": true, "effort": "high", "score": 100, "resource_per_task": 35110.5, "resource_basis": "wall_clock_ms"}
+      }
+    },
+    "scout": {
+      "default_effort": "high",
+      "preferred_backends": ["kilo", "native"],
+      "backends": {
+        "native": {"qualified": true, "effort": "max", "score": 100, "resource_per_task": 43604.25, "resource_basis": "wall_clock_ms"},
+        "kilo": {"qualified": true, "effort": "high", "score": 100, "resource_per_task": 79028, "resource_basis": "wall_clock_ms"}
+      }
+    },
+    "builder": {
+      "default_effort": "high",
+      "preferred_backends": ["kilo", "native"],
+      "backends": {
+        "native": {"qualified": true, "effort": "max", "score": 100, "resource_per_task": 76543.125, "resource_basis": "wall_clock_ms"},
+        "kilo": {"qualified": true, "effort": "high", "score": 100, "resource_per_task": 73483.2, "resource_basis": "wall_clock_ms"}
+      }
+    },
+    "reviewer": {
+      "default_effort": "high",
+      "preferred_backends": ["kilo", "native"],
+      "backends": {
+        "native": {"qualified": false, "effort": null, "score": null, "resource_per_task": null, "resource_basis": null},
+        "kilo": {"qualified": false, "effort": null, "score": null, "resource_per_task": null, "resource_basis": null}
+      }
+    },
+    "judgement": {
+      "default_effort": "high",
+      "preferred_backends": ["kilo", "native"],
+      "backends": {
+        "native": {"qualified": false, "effort": null, "score": null, "resource_per_task": null, "resource_basis": null},
+        "kilo": {"qualified": false, "effort": null, "score": null, "resource_per_task": null, "resource_basis": null}
+      }
+    },
+    "senior": {
+      "default_effort": "high",
+      "preferred_backends": ["kilo", "native"],
+      "backends": {
+        "native": {"qualified": true, "effort": "max", "score": 100, "resource_per_task": 90922.333333, "resource_basis": "wall_clock_ms"},
+        "kilo": {"qualified": true, "effort": "high", "score": 100, "resource_per_task": 78067.5, "resource_basis": "wall_clock_ms"}
+      }
+    }
+  }
+}
