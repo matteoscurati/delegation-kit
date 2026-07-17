@@ -28,18 +28,17 @@ delegation-kimi run \
   --output "$result" --metrics "$metrics" --workdir "$repo"
 ```
 
-For every read-only lane, keep `--output` and `--metrics` outside the worktree;
-the runner rejects in-worktree paths and symlinks before dispatch.
-
-Use `--evaluation` only inside the controlled evaluation harness; it bypasses
-qualification, not availability, authentication, exact-model, effort, or
-read-only checks. `auto` follows the preferred backend order in the gate.
-Selecting `native` or `kilo` explicitly never falls back.
+Create the output and metrics parent directories before dispatch. For every
+read-only lane, keep them outside the worktree; the runner rejects in-worktree
+paths, symlinks, canonical path collisions, and unqualified effort overrides.
+There is no public evaluation bypass. `auto` follows the preferred backend order
+in the gate. Selecting `native` or `kilo` explicitly never falls back.
 
 All lanes except `builder` are read-only. Kimi Code 0.26 cannot combine
 headless prompt mode with `--plan` and bare prompt mode auto-approves writes, so
-the native backend enforces read-only access below the model with macOS
-`sandbox-exec`; it fails closed on platforms without that guard. Kilo uses its
+the native backend runs with an isolated HOME/TMP and uses macOS `sandbox-exec`
+to deny every write outside runner-owned scratch space; it fails closed on
+platforms without that guard. Kilo uses its
 `plan` agent. The builder uses native prompt mode (which Kimi Code 0.26 runs
 with action approvals in headless mode) or Kilo's `code` agent with automatic
 approvals.
