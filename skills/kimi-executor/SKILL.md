@@ -9,15 +9,14 @@ description: >-
 # Kimi K3 executor bridge
 
 Kimi K3 is an optional external executor available through native Kimi Code
-(`kimi-code/k3`, effort `max`) or Kilo's Kimi For Coding provider
-(`kimi-for-coding/k3`, effort `high` or `max`).
+(`kimi-code/k3`, effort `max`).
 
-Before every dispatch, run `delegation-kimi check --json`. Require the intended
+Before every dispatch, run `delegation-kimi check --json`. Require the native
 backend to be available and the requested lane to appear in `qualified_lanes`.
 The versioned routing JSON is authoritative. The shipped provisional gate enables
-`clerk`, `scout`, `builder`, and `senior`, preferring Kilo `high` with native
-`max` as an alternative. `reviewer` and `judgement` remain disabled. Provider
-quota exhaustion is exit 75 and never triggers a silent backend substitution.
+`clerk`, `scout`, `builder`, and `senior` at effort `max`. `reviewer` and
+`judgement` remain disabled. Provider quota exhaustion is exit 75 and never
+triggers a silent substitution.
 
 Write a self-contained worker brief to a file, then run:
 
@@ -31,17 +30,15 @@ delegation-kimi run \
 Create the output and metrics parent directories before dispatch. For every
 read-only lane, keep them outside the worktree; the runner rejects in-worktree
 paths, symlinks, canonical path collisions, and unqualified effort overrides.
-There is no public evaluation bypass. `auto` follows the preferred backend order
-in the gate. Selecting `native` or `kilo` explicitly never falls back.
+There is no public evaluation bypass. `auto` and `native` both resolve to the
+native Kimi Code backend; there is no fallback to select.
 
 All lanes except `builder` are read-only. Kimi Code 0.26 cannot combine
 headless prompt mode with `--plan` and bare prompt mode auto-approves writes, so
 the native backend runs with an isolated HOME/TMP and uses macOS `sandbox-exec`
 to deny every write outside runner-owned scratch space; it fails closed on
-platforms without that guard. Kilo uses its
-`plan` agent. The builder uses native prompt mode (which Kimi Code 0.26 runs
-with action approvals in headless mode) or Kilo's `code` agent with automatic
-approvals.
+platforms without that guard. The builder uses native prompt mode, which Kimi
+Code 0.26 runs with action approvals in headless mode.
 
 Exit 69 means the requested runtime/model/authentication is unavailable, exit
 70 means dispatch or output validation failed, exit 75 is temporary/rate-limit

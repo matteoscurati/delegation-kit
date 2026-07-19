@@ -34,18 +34,20 @@ numbers, wired up and ready to run. Swap the models for your own tiers with
 The universal installer also adds the `delegation-glm` and `delegation-kimi`
 commands under `~/.local/bin`, with versioned routing gates under
 `~/.local/share/delegation-kit/`. The shipped
-2026-07 evaluation qualifies only `clerk` at `high` and `scout` at `max`, through
-either Kilo Coding Plan or the isolated Claude→Z.AI backend. `builder` and
-`reviewer` remain disabled. The runner refuses every unqualified lane and also
-refuses execution unless at least one of Claude Code or Codex is installed; it
-is an agent option, not a standalone GLM client.
+2026-07 evaluation qualifies only `clerk` and `scout`, both routed at `high`,
+through the isolated Claude→Z.AI backend. `builder` and `reviewer` remain
+disabled. The runner refuses every unqualified lane and every effort the gate did
+not pin, and also refuses execution unless at least one of Claude Code or Codex is
+installed; it is an agent option, not a standalone GLM client. The installer asks
+for the Z.AI API key and stores it in `~/.local/share/delegation-kit/config/zai.env`
+(mode 600); an explicit `ZAI_API_KEY` in the environment overrides it.
 
 Kimi K3 is installed as a **provisional coding model**. The gate enables `clerk`,
-`scout`, `builder`, and `senior`, preferring Kilo `high` and retaining native
-`max` as an alternative. `reviewer` and `judgement` remain disabled. Provider
-quota exhaustion returns exit 75 without silently falling back or changing the
-quality qualification. `delegation-kimi check --json` is the source of truth;
-CLI availability or a provider model listing is not enough.
+`scout`, `builder`, and `senior` through the native Kimi Code CLI at effort
+`max`. `reviewer` and `judgement` remain disabled. Provider quota exhaustion
+returns exit 75 without silently falling back or changing the quality
+qualification. `delegation-kimi check --json` is the source of truth; CLI
+availability or a provider model listing is not enough.
 
 The shared scored table (cost / intelligence / taste per model) lives in
 [`model-routing.md`](./model-routing.md).

@@ -11,12 +11,6 @@
     "clerk": {
       "default_effort": "high",
       "backends": {
-        "kilo": {
-          "qualified": true,
-          "effort": "high",
-          "score": 100,
-          "cost_per_task_usd": 0.026406
-        },
         "claude-zai": {
           "qualified": true,
           "effort": "high",
@@ -26,31 +20,21 @@
       }
     },
     "scout": {
-      "default_effort": "max",
+      "default_effort": "high",
       "backends": {
-        "kilo": {
-          "qualified": true,
-          "effort": "max",
-          "score": 100,
-          "cost_per_task_usd": 0.0356
-        },
         "claude-zai": {
           "qualified": true,
-          "effort": "max",
+          "effort": "high",
           "score": 100,
-          "cost_per_task_usd": 0.073542
+          "cost_per_task_usd": 0.073542,
+          "score_measured_at_effort": "max",
+          "effort_override_note": "Routed at high by owner decision on 2026-07-17: a same-prompt probe showed max produced no more reasoning than high (14.2k vs 19.5k thinking chars). score/cost above were measured at max and are not re-measured at high."
         }
       }
     },
     "builder": {
       "default_effort": "high",
       "backends": {
-        "kilo": {
-          "qualified": false,
-          "effort": null,
-          "score": null,
-          "cost_per_task_usd": null
-        },
         "claude-zai": {
           "qualified": false,
           "effort": null,
@@ -62,12 +46,6 @@
     "reviewer": {
       "default_effort": "high",
       "backends": {
-        "kilo": {
-          "qualified": false,
-          "effort": null,
-          "score": null,
-          "cost_per_task_usd": null
-        },
         "claude-zai": {
           "qualified": false,
           "effort": null,

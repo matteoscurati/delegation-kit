@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-# Run GLM-5.2 as an external coding lane through Kilo Coding Plan or an
-# isolated Claude Code process configured for Z.AI. Fails closed: no fallback
-# to another model, effort, or provider is ever allowed.
+# Run GLM-5.2 as an external coding lane through an isolated Claude Code process
+# configured for the Z.AI API. Fails closed: no fallback to another model,
+# effort, or provider is ever allowed.
 set -euo pipefail
 
 SOURCE="${BASH_SOURCE[0]}"
@@ -12,8 +12,13 @@ while [ -L "$SOURCE" ]; do
 done
 ROOT="$(cd "$(dirname "$SOURCE")/.." && pwd)"
 ROUTING_FILE="${DELEGATION_GLM_ROUTING_FILE:-$ROOT/config/glm-5.2-routing.json}"
+# Derived from $ROOT exactly like ROUTING_FILE, so the key and the gate can never
+# disagree about where the install lives — a DELEGATION_DATA_HOME install used to
+# store the key where the runner never looked. This reads, never writes, so no key
+# is created inside a source checkout; running from one, point at the real key
+# with DELEGATION_GLM_KEY_FILE.
+KEY_FILE="${DELEGATION_GLM_KEY_FILE:-$ROOT/config/zai.env}"
 MODEL="glm-5.2"
-EFFORTS='["high","max"]'
 RUN_TMP=""
 
 usage() {
@@ -21,7 +26,7 @@ usage() {
 Usage:
   delegation-glm check [--json]
   delegation-glm run --lane <clerk|scout|builder|reviewer> \
-    [--effort <auto|high|max>] [--backend <auto|kilo|claude-zai>] \
+    [--effort <auto|high|max>] [--backend <auto|claude-zai>] \
     --prompt-file <path> --output <path> --workdir <path> \
     [--metrics <path>] [--max-cost-usd <amount>] [--evaluation]
 
@@ -40,20 +45,44 @@ host_status() {
   return 1
 }
 
-kilo_status() {
-  KILO_REASON=""
-  have kilo || { KILO_REASON="kilo not on PATH"; return 1; }
-  local models auth
-  models="$(kilo models zai-coding-plan 2>/dev/null || true)"
-  grep -Fxq 'zai-coding-plan/glm-5.2' <<<"$models" \
-    || { KILO_REASON="glm-5.2 missing from Kilo Coding Plan"; return 1; }
-  auth="$(kilo auth list 2>/dev/null || true)"
-  case "$auth" in
-    *"Z.AI Coding Plan"*) ;;
-    *) KILO_REASON="Z.AI Coding Plan credential missing"; return 1 ;;
+# Each branch assigns on its own: `$(a || b)` would concatenate the stdout of
+# every branch it ran, and GNU's `-f` means --file-system, printing a block and
+# still failing. An undeterminable mode is not treated as a refusal — that would
+# brick the lane on a platform whose stat we cannot read.
+key_file_mode() {
+  local mode
+  if mode="$(stat -c '%a' "$KEY_FILE" 2>/dev/null)"; then printf '%s' "$mode"; return 0; fi
+  if mode="$(stat -f '%Lp' "$KEY_FILE" 2>/dev/null)"; then printf '%s' "$mode"; return 0; fi
+  printf ''
+}
+
+# An explicit ZAI_API_KEY in the environment always wins. Otherwise fall back to
+# the key install.sh stored. Parsed, never sourced: the file holds a credential,
+# not code to execute. A refusal sets ZAI_KEY_PROBLEM so the caller can report
+# the real cause instead of "holds no key".
+load_zai_key() {
+  ZAI_KEY_PROBLEM=""
+  [ -z "${ZAI_API_KEY:-}" ] || return 0
+  [ -f "$KEY_FILE" ] || return 0
+  local perms raw
+  perms="$(key_file_mode)"
+  case "$perms" in
+    ""|?00) ;;
+    *) ZAI_KEY_PROBLEM="key file $KEY_FILE is mode $perms; run: chmod 600 $KEY_FILE"; return 0 ;;
   esac
-  KILO_REASON="ready"
-  return 0
+  # Tolerate the .env shapes the filename invites: an `export` prefix, quotes,
+  # surrounding blanks, CRLF. A quoted value loaded raw would authenticate as
+  # `"key"` and 401 at dispatch.
+  raw="$(sed -n 's/^[[:space:]]*\(export[[:space:]][[:space:]]*\)\{0,1\}ZAI_API_KEY=//p' \
+    "$KEY_FILE" 2>/dev/null | head -1)"
+  raw="${raw%$'\r'}"
+  raw="${raw#"${raw%%[![:space:]]*}"}"
+  raw="${raw%"${raw##*[![:space:]]}"}"
+  case "$raw" in
+    \"*\") raw="${raw#\"}"; raw="${raw%\"}" ;;
+    \'*\') raw="${raw#\'}"; raw="${raw%\'}" ;;
+  esac
+  if [ -n "$raw" ]; then ZAI_API_KEY="$raw"; else ZAI_KEY_PROBLEM="key file $KEY_FILE holds no ZAI_API_KEY line"; fi
 }
 
 claude_zai_status() {
@@ -63,8 +92,11 @@ claude_zai_status() {
   help="$(claude --help 2>&1 || true)"
   grep -q -- '--effort' <<<"$help" \
     || { CLAUDE_ZAI_REASON="claude lacks --effort"; return 1; }
-  [ -n "${ZAI_API_KEY:-}" ] \
-    || { CLAUDE_ZAI_REASON="ZAI_API_KEY is unset"; return 1; }
+  load_zai_key
+  if [ -z "${ZAI_API_KEY:-}" ]; then
+    CLAUDE_ZAI_REASON="${ZAI_KEY_PROBLEM:-ZAI_API_KEY is unset and $KEY_FILE holds no key}"
+    return 1
+  fi
   CLAUDE_ZAI_REASON="ready"
   return 0
 }
@@ -72,6 +104,18 @@ claude_zai_status() {
 qualified_lanes() {
   if [ -f "$ROUTING_FILE" ] && have jq; then
     jq -c '.qualified_lanes // []' "$ROUTING_FILE" 2>/dev/null || printf '[]'
+  else
+    printf '[]'
+  fi
+}
+
+# Read from the gate, never a constant: check must advertise the efforts the
+# runner will actually accept, or a caller follows the advertised set straight
+# into a 78 and reads it as "this lane failed evaluation".
+gate_efforts() {
+  if [ -f "$ROUTING_FILE" ] && have jq; then
+    jq -c '[.lanes[].backends["claude-zai"] | select(.qualified == true) | .effort
+           | select(type == "string")] | unique' "$ROUTING_FILE" 2>/dev/null || printf '[]'
   else
     printf '[]'
   fi
@@ -91,62 +135,38 @@ is_qualified() {
     '.lanes[$lane].backends[$backend].qualified == true' "$ROUTING_FILE" >/dev/null 2>&1
 }
 
+qualified_effort() {
+  local lane="$1" backend="$2"
+  jq -er --arg lane "$lane" --arg backend "$backend" \
+    '.lanes[$lane].backends[$backend].effort | select(type == "string")' \
+    "$ROUTING_FILE" 2>/dev/null
+}
+
 print_check() {
-  local as_json="${1:-0}" host_ok=false kilo_ok=false claude_ok=false
+  local as_json="${1:-0}" host_ok=false claude_ok=false
   host_status && host_ok=true || true
-  kilo_status && kilo_ok=true || true
   claude_zai_status && claude_ok=true || true
-  local lanes selected="none"
+  local lanes efforts selected="none"
   lanes="$(qualified_lanes)"
-  if [ "$host_ok" = true ] && [ "$kilo_ok" = true ]; then selected="kilo"
-  elif [ "$host_ok" = true ] && [ "$claude_ok" = true ]; then selected="claude-zai"
-  fi
+  efforts="$(gate_efforts)"
+  if [ "$host_ok" = true ] && [ "$claude_ok" = true ]; then selected="claude-zai"; fi
   if [ "$as_json" = 1 ]; then
     jq -n \
       --arg model "$MODEL" --arg selected "$selected" \
-      --argjson efforts "$EFFORTS" --argjson lanes "$lanes" \
+      --argjson efforts "$efforts" --argjson lanes "$lanes" \
       --argjson host "$host_ok" --arg host_reason "$HOST_REASON" \
       --argjson host_claude "$(have claude && printf true || printf false)" \
       --argjson host_codex "$(have codex && printf true || printf false)" \
-      --argjson kilo "$kilo_ok" --arg kilo_reason "$KILO_REASON" \
       --argjson claude "$claude_ok" --arg claude_reason "$CLAUDE_ZAI_REASON" \
       '{model:$model, efforts:$efforts, selected_backend:$selected,
         host:{available:$host,reason:$host_reason,claude:$host_claude,codex:$host_codex},
         qualified_lanes:$lanes, backends:{
-          kilo:{available:$kilo,reason:$kilo_reason},
           "claude-zai":{available:$claude,reason:$claude_reason}}}'
   else
-    printf 'GLM-5.2: selected=%s efforts=high,max qualified=%s\n' "$selected" "$lanes"
+    printf 'GLM-5.2: selected=%s efforts=%s qualified=%s\n' "$selected" "$efforts" "$lanes"
     printf '  host: %s (%s)\n' "$host_ok" "$HOST_REASON"
-    printf '  kilo: %s (%s)\n' "$kilo_ok" "$KILO_REASON"
     printf '  claude-zai: %s (%s)\n' "$claude_ok" "$CLAUDE_ZAI_REASON"
   fi
-}
-
-extract_kilo() {
-  local events="$1" output="$2" metrics="$3" started="$4" backend="$5" effort="$6" lane="$7"
-  jq -r 'select(.type == "text") | .part.text' "$events" >"$output"
-  [ -s "$output" ] || return 1
-  jq -s --arg model "$MODEL" --arg backend "$backend" --arg effort "$effort" \
-    --arg lane "$lane" --argjson started "$started" '
-    [.[].part | select(.type == "step-finish")] as $steps |
-    {model:$model,backend:$backend,effort:$effort,lane:$lane,
-     started_at_epoch:$started,finished_at_epoch:now,
-     tokens:{input:([$steps[].tokens.input] | add // 0),
-             output:([$steps[].tokens.output] | add // 0),
-             reasoning:([$steps[].tokens.reasoning] | add // 0),
-             cache_read:([$steps[].tokens.cache.read] | add // 0),
-             cache_write:([$steps[].tokens.cache.write] | add // 0)},
-     provider_cost_usd:([$steps[].cost] | add // 0)}' "$events" >"$metrics"
-}
-
-kilo_completed_cleanly() {
-  local events="$1" stderr="$2"
-  [ ! -s "$stderr" ] || return 1
-  jq -s -e '
-    any(.[]; .type == "step_finish" and .part.reason == "stop") and
-    any(.[]; .type == "text" and ((.part.text // "") | length) > 0)
-  ' "$events" >/dev/null 2>&1
 }
 
 extract_claude() {
@@ -188,7 +208,7 @@ run_command() {
   done
   case "$lane" in clerk|scout|builder|reviewer) ;; *) die 64 "invalid lane: $lane" ;; esac
   case "$effort" in auto|high|max) ;; *) die 64 "invalid effort: $effort" ;; esac
-  case "$backend" in auto|kilo|claude-zai) ;; *) die 64 "invalid backend: $backend" ;; esac
+  case "$backend" in auto|claude-zai) ;; *) die 64 "invalid backend: $backend" ;; esac
   [ -f "$prompt_file" ] || die 64 "prompt file missing: $prompt_file"
   [ -d "$workdir" ] || die 64 "workdir missing: $workdir"
   [ -n "$output" ] || die 64 "--output is required"
@@ -197,81 +217,78 @@ run_command() {
   metrics="${metrics:-$output.metrics.json}"
   mkdir -p "$(dirname "$output")" "$(dirname "$metrics")"
 
-  if [ "$backend" = auto ]; then
-    if [ "$evaluation" = 0 ]; then
-      if kilo_status && is_qualified "$lane" kilo; then
-        backend="kilo"
-      elif claude_zai_status && is_qualified "$lane" claude-zai; then
-        backend="claude-zai"
-      elif kilo_status || claude_zai_status; then
-        die 78 "lane '$lane' has no qualified available backend"
-      else
-        die 69 "no GLM-5.2 backend is available"
-      fi
-    elif kilo_status; then backend="kilo"
-    elif claude_zai_status; then backend="claude-zai"
-    else die 69 "no GLM-5.2 backend is available"; fi
-  elif [ "$backend" = kilo ]; then
-    kilo_status || die 69 "$KILO_REASON"
-  else
-    claude_zai_status || die 69 "$CLAUDE_ZAI_REASON"
-  fi
-
+  backend="claude-zai"
+  # Qualification before availability: "never approved" (78) is a permanent fact
+  # and must not hide behind "runtime is down" (69), which the caller reads as
+  # retry-later. Checking availability first made the answer to a permanent
+  # question depend on whether a key happened to be present.
   [ "$evaluation" = 1 ] || is_qualified "$lane" "$backend" \
     || die 78 "lane '$lane' is not qualified for backend '$backend'"
+  claude_zai_status || die 69 "$CLAUDE_ZAI_REASON"
   [ "$effort" != auto ] || effort="$(default_effort "$lane" "$backend")"
+  # An explicit --effort must not reach past what the gate qualified; only an
+  # --evaluation run, whose whole job is measuring a new combination, may.
+  if [ "$evaluation" = 0 ]; then
+    local expected_effort
+    expected_effort="$(qualified_effort "$lane" "$backend")" \
+      || die 69 "qualified lane '$lane' has no pinned effort for backend '$backend'"
+    [ "$effort" = "$expected_effort" ] \
+      || die 78 "lane '$lane' backend '$backend' is qualified only at effort '$expected_effort'"
+  fi
 
-  local tmp events rc=0 started agent
+  local tmp events rc=0 started
   tmp="$(mktemp -d "${TMPDIR:-/tmp}/delegation-glm.XXXXXX")"
   RUN_TMP="$tmp"
   trap 'rm -rf -- "$RUN_TMP"' EXIT
   events="$tmp/events.jsonl"
   started="$(date +%s)"
-  agent="plan"; [ "$lane" = builder ] && agent="code"
 
-  if [ "$backend" = kilo ]; then
-    kilo run "$(<"$prompt_file")" --model zai-coding-plan/glm-5.2 \
-      --variant "$effort" --agent "$agent" --format json --dir "$workdir" --auto \
-      >"$events" 2>"$tmp/stderr" || rc=$?
-    # Kilo 7.4.7 can exit 1 after a complete streamed response. Accept only the
-    # narrow, machine-verifiable success shape; every other non-zero stays a
-    # dispatch failure.
-    if [ "$rc" -eq 1 ] && kilo_completed_cleanly "$events" "$tmp/stderr"; then
-      rc=0
-    fi
-    if [ "$rc" -eq 0 ]; then
-      extract_kilo "$events" "$output" "$metrics" "$started" "$backend" "$effort" "$lane" || rc=70
-    fi
-  else
-    local permission="plan"
-    [ "$lane" = builder ] && permission="acceptEdits"
-    mkdir -p "$tmp/claude-config"
-    # Claude has no --cwd flag. Enter the delegated worktree explicitly so it
-    # cannot inspect or edit the delegation-kit source checkout by accident.
-    (
-      cd "$workdir"
-      env -u ANTHROPIC_API_KEY -u CLAUDE_CODE_OAUTH_TOKEN -u ZAI_API_KEY \
-        -u ANTHROPIC_MODEL -u ANTHROPIC_CUSTOM_HEADERS \
-        -u CLAUDE_CODE_USE_BEDROCK -u CLAUDE_CODE_USE_VERTEX \
-        -u CLAUDE_CODE_USE_FOUNDRY \
-        ANTHROPIC_AUTH_TOKEN="$ZAI_API_KEY" \
-        ANTHROPIC_BASE_URL="https://api.z.ai/api/anthropic" \
-        ANTHROPIC_DEFAULT_OPUS_MODEL="glm-5.2" \
-        CLAUDE_CONFIG_DIR="$tmp/claude-config" \
-        CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1 API_TIMEOUT_MS=3000000 \
-        claude -p "$(<"$prompt_file")" --model opus --effort "$effort" \
-        --permission-mode "$permission" --setting-sources '' --strict-mcp-config \
-        --output-format stream-json --verbose --no-session-persistence \
-        --max-budget-usd "$max_cost"
-    ) >"$events" 2>"$tmp/stderr" || rc=$?
-    if [ "$rc" -eq 0 ]; then
-      extract_claude "$events" "$output" "$metrics" "$started" "$backend" "$effort" "$lane" || rc=70
-    fi
+  local permission="plan"
+  [ "$lane" != builder ] || permission="acceptEdits"
+  mkdir -p "$tmp/claude-config"
+  # Claude has no --cwd flag. Enter the delegated worktree explicitly so it
+  # cannot inspect or edit the delegation-kit source checkout by accident.
+  (
+    cd "$workdir"
+    env -u ANTHROPIC_API_KEY -u CLAUDE_CODE_OAUTH_TOKEN -u ZAI_API_KEY \
+      -u ANTHROPIC_MODEL -u ANTHROPIC_CUSTOM_HEADERS \
+      -u CLAUDE_CODE_USE_BEDROCK -u CLAUDE_CODE_USE_VERTEX \
+      -u CLAUDE_CODE_USE_FOUNDRY \
+      ANTHROPIC_AUTH_TOKEN="$ZAI_API_KEY" \
+      ANTHROPIC_BASE_URL="https://api.z.ai/api/anthropic" \
+      ANTHROPIC_DEFAULT_OPUS_MODEL="glm-5.2" \
+      CLAUDE_CONFIG_DIR="$tmp/claude-config" \
+      CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1 API_TIMEOUT_MS=3000000 \
+      claude -p "$(<"$prompt_file")" --model opus --effort "$effort" \
+      --permission-mode "$permission" --setting-sources '' --strict-mcp-config \
+      --output-format stream-json --verbose --no-session-persistence \
+      --max-budget-usd "$max_cost"
+  ) >"$events" 2>"$tmp/stderr" || rc=$?
+  if [ "$rc" -eq 0 ]; then
+    extract_claude "$events" "$output" "$metrics" "$started" "$backend" "$effort" "$lane" || rc=70
   fi
 
   if [ "$rc" -ne 0 ]; then
     cp "$tmp/stderr" "$output.stderr" 2>/dev/null || true
-    grep -Eqi 'rate.?limit|too many requests|1312|1305' "$tmp/stderr" "$events" 2>/dev/null && exit 75
+    # A dead or malformed key is the runtime being unavailable (69), not the
+    # worker breaking (70). The API key is now GLM's only credential and
+    # claude_zai_status can only see that the string is non-empty — never that it
+    # authenticates — so this is the first place a bad key can surface.
+    #
+    # Read the structured retry events, not the text: a rejected key produces
+    # `result.subtype = "error_during_execution"` with an EMPTY result string and
+    # nothing auth-shaped in stderr, so there is no keyword to grep for. Grepping
+    # the raw stream would also misfire — an ordinary `EACCES: permission denied`
+    # from a tool call would masquerade as an auth failure.
+    if jq -se 'any(.[]; .type == "system" and .subtype == "api_retry"
+                       and (.error_status // 0) == 401)' "$events" >/dev/null 2>&1; then
+      exit 69
+    fi
+    if jq -se 'any(.[]; .type == "system" and .subtype == "api_retry"
+                       and (.error_status // 0) == 429)' "$events" >/dev/null 2>&1; then
+      exit 75
+    fi
+    grep -Eqi 'rate.?limit|too many requests|1312|1305' "$tmp/stderr" 2>/dev/null && exit 75
     exit 70
   fi
   return 0

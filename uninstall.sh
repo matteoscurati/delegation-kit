@@ -41,8 +41,20 @@ rm -rf "$CODEX_HOME/skills/glm-executor" "$CODEX_HOME/skills/kimi-executor"
 echo "  - removed 4 native + 4 ephemeral profiles"
 strip_guarded "$CODEX_HOME/AGENTS.md"
 rm -f "$BIN_HOME/delegation-glm" "$BIN_HOME/delegation-kimi"
+# Everything else under $DATA_HOME is a byte-for-byte copy of a repo file that
+# re-running install.sh restores; the key is the only unrecoverable thing here,
+# and install.sh promises never to replace it without consent. Back it up rather
+# than destroy it, matching the *.delegation-kit.bak convention below.
+zai_key_backup=""
+if [ -f "$DATA_HOME/config/zai.env" ]; then
+  zai_key_backup="$DATA_HOME.zai.env.bak"
+  ( umask 077; cp "$DATA_HOME/config/zai.env" "$zai_key_backup" )
+  chmod 600 "$zai_key_backup"
+fi
 rm -rf "$DATA_HOME"
 echo "  - removed optional GLM/Kimi bridges + routing gates"
+[ -z "$zai_key_backup" ] \
+  || echo "  - Z.AI API key preserved at $zai_key_backup (mode 600) — delete it yourself when done"
 echo
 echo "Done. config.toml was never auto-edited, so nothing to revert there."
 echo "Backups (*.delegation-kit.bak) left in place; delete when satisfied."
