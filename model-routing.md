@@ -37,7 +37,9 @@ code quality, API design, copy.
 | fable-5       | 1    | 9            | 9     |
 
 † `glm-5.2` is not a general replacement despite its strong cost score. The
-versioned 2026-07 worker evaluation qualifies only `clerk/high` and `scout/max`;
+versioned 2026-07 worker evaluation qualifies only `clerk/high` and `scout/high`
+(scout was measured at `max`, then pinned to `high` by owner decision after a
+probe showed `max` bought no extra reasoning);
 builder failed the blind taste floor and reviewer failed repeatability. Its
 efficiency score reflects $0.026–$0.074 API-equivalent cost per qualified task,
 not a promise about Coding Plan subscription economics. The public repository
@@ -46,9 +48,9 @@ ships the resulting gate, not the GLM evaluation harness or raw test artifacts.
 ‡ `kimi-k3` is provisional. Published coding data places it in the top two on
 five of six supplied coding benchmarks; the valid subset of the local extended
 run scored 97.1–99.4 mean with 91–95% full-pass rates. The versioned gate enables
-`clerk`, `scout`, `builder`, and `senior`, preferring Kilo `high` and retaining
-native `max` as an alternative. `reviewer` and `judgement` remain disabled. Quota
-exhaustion is a temporary runtime failure (exit 75), not a quality downgrade.
+`clerk`, `scout`, `builder`, and `senior` through the native Kimi Code CLI at
+effort `max`. `reviewer` and `judgement` remain disabled. Quota exhaustion is a
+temporary runtime failure (exit 75), not a quality downgrade.
 
 `cost` above is **cost per completed task**, measured on my own review / impl / UI
 runs (2026-07) and cross-checked against published cost-per-task figures
@@ -95,7 +97,7 @@ Effort levels each model exposes (Claude `effort:` / Codex `model_reasoning_effo
 | sonnet-5 | low · medium · high |
 | gpt-5.5 | low · medium · high |
 | glm-5.2 | high · max |
-| kimi-k3 | high · max (Kilo) · max (native) |
+| kimi-k3 | max |
 
 Kimi K3 is provisional: the 2026-07-16 run was truncated by provider quota, but
 its valid subset and the supplied coding benchmarks support controlled use in

@@ -51,6 +51,58 @@ cp "$KIT/config/glm-5.2-routing.json" "$DATA_HOME/config/glm-5.2-routing.json"
 chmod 755 "$DATA_HOME/bin/delegation-glm"
 ln -sfn "$DATA_HOME/bin/delegation-glm" "$BIN_HOME/delegation-glm"
 echo "GLM bridge -> $BIN_HOME/delegation-glm (routing gate: $DATA_HOME/config/glm-5.2-routing.json)"
+
+# GLM's only transport is the Z.AI API, so without a key the lane is dead. Ask
+# once, interactively, and never overwrite an existing key without consent.
+# Every `read` is guarded: unguarded, an EOF (Ctrl-D, or a piped installer) would
+# trip errexit and silently abandon the rest of the install — Kimi bridge,
+# profiles and all.
+ZAI_KEY_FILE="$DATA_HOME/config/zai.env"
+zai_store_key() { # $1=key
+  ( umask 077; printf 'ZAI_API_KEY=%s\n' "$1" >"$ZAI_KEY_FILE" )
+  chmod 600 "$ZAI_KEY_FILE"
+  echo "  + Z.AI key stored in $ZAI_KEY_FILE (mode 600)"
+}
+zai_ask=1
+if [ -f "$ZAI_KEY_FILE" ]; then
+  if [ ! -t 0 ]; then
+    echo "  + Z.AI key already stored in $ZAI_KEY_FILE"
+    zai_ask=0
+  else
+    printf '  Z.AI key already stored in %s. Replace it? [y/N] ' "$ZAI_KEY_FILE"
+    read -r zai_replace || zai_replace=""
+    case "$zai_replace" in [yY]*) ;; *) zai_ask=0 ;; esac
+  fi
+fi
+if [ "$zai_ask" = 1 ]; then
+  # An exported ZAI_API_KEY only serves the shell that has it — not a subagent,
+  # cron job or another terminal — so offer to persist it rather than treat it as
+  # a substitute for the key file.
+  if [ -n "${ZAI_API_KEY:-}" ]; then
+    if [ ! -t 0 ]; then
+      zai_store_key "$ZAI_API_KEY"
+    else
+      printf '  Store the ZAI_API_KEY from your environment in %s? [Y/n] ' "$ZAI_KEY_FILE"
+      read -r zai_use_env || zai_use_env=""
+      case "$zai_use_env" in
+        [nN]*) echo "  ! not stored — GLM only works where ZAI_API_KEY is exported" ;;
+        *) zai_store_key "$ZAI_API_KEY" ;;
+      esac
+    fi
+  elif [ ! -t 0 ]; then
+    echo "  ! no Z.AI key configured — GLM stays unavailable (re-run interactively, or set ZAI_API_KEY)"
+  else
+    printf '  Z.AI API key for GLM-5.2 (input hidden, Enter to skip): '
+    read -rs zai_key || zai_key=""
+    printf '\n'
+    if [ -n "$zai_key" ]; then
+      zai_store_key "$zai_key"
+    else
+      echo "  ! skipped — GLM stays unavailable until ZAI_API_KEY is set or the key is stored"
+    fi
+    unset zai_key
+  fi
+fi
 cp "$KIT/bin/delegation-kimi" "$DATA_HOME/bin/delegation-kimi"
 cp "$KIT/config/kimi-k3-routing.json" "$DATA_HOME/config/kimi-k3-routing.json"
 chmod 755 "$DATA_HOME/bin/delegation-kimi"

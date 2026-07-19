@@ -55,9 +55,8 @@ background subshells:
   worker).
 - **Gated external candidates** — use GLM or Kimi only through their executor
   skill and only when that runner's `check --json` qualifies the requested lane.
-  For Kimi, native and Kilo backend/effort combinations are independent; one pass
-  never promotes a neighboring combination. This rule applies equally to
-  operational workers, Senior, and Judgement.
+  Qualification on one lane never promotes a neighboring one. This rule applies
+  equally to operational workers, Senior, and Judgement.
 
 ## The loop
 

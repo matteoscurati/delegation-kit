@@ -18,22 +18,21 @@
 
 GLM-5.2 is available only through the installed `glm-executor` skill and only
 for a lane that `delegation-glm check --json` lists in `qualified_lanes`. The
-bridge pins the exact model and an evaluated `high`/`max` effort, prefers Kilo
-Coding Plan, and uses the isolated Claude→Z.AI fallback only when an explicit
-`ZAI_API_KEY` is present. If the runtime or lane gate is absent, keep using the
-incumbent profile; never silently substitute another model.
+bridge pins the exact model and the effort the gate pinned — both qualified lanes
+(`clerk`, `scout`) route at `high`, and any other effort is refused — and runs
+only through the isolated Claude→Z.AI backend, keyed by `ZAI_API_KEY` or the
+600-mode key the installer stored. If the runtime or lane gate is absent, keep
+using the incumbent profile; never silently substitute another model.
 
 ## Optional gated Kimi model
 
 Kimi K3 is provisionally usable for `clerk`, `scout`, `builder`, and `senior`
-through the installed `kimi-executor` skill, and only when
-`delegation-kimi check --json` lists the lane in `qualified_lanes`. `reviewer` and
-`judgement` remain disabled. The runner enforces the separately evaluated native
-Kimi Code and Kilo backend/effort gates
-across operational (`clerk`, `scout`, `builder`, `reviewer`), `senior`, and
-`judgement` lanes. Installed runtimes and visible model names are not
-qualification. If the exact gate is absent, keep the incumbent profile; never
-silently substitute another model, backend, effort, or lane.
+through the installed `kimi-executor` skill, using the native Kimi Code CLI at
+effort `max`, and only when `delegation-kimi check --json` lists the lane in
+`qualified_lanes`. `reviewer` and `judgement` remain disabled. Installed
+runtimes and visible model names are not qualification. If the exact gate is
+absent, keep the incumbent profile; never silently substitute another model,
+effort, or lane.
 
 ## Reaching Claude from Codex (cross-provider bridge)
 

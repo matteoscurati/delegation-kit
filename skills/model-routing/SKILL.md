@@ -34,19 +34,18 @@ An optional external candidate such as GLM-5.2 earns one of these lanes only
 after its versioned evaluation gate passes for that exact role. If
 `delegation-glm check --json` lists the lane, use the `glm-executor` skill; an
 installed CLI or visible model name alone is not qualification.
-The shipped 2026-07 GLM-5.2 gate qualifies only clerk/high and scout/max; it
-explicitly rejects builder and reviewer. Always defer to the installed gate if a
-later evaluation supersedes this snapshot.
+The shipped 2026-07 GLM-5.2 gate qualifies only clerk/high and scout/high; it
+explicitly rejects builder and reviewer, and refuses any effort it did not pin.
+Always defer to the installed gate if a later evaluation supersedes this
+snapshot.
 
 Kimi K3 is provisional for `clerk`, `scout`, `builder`, and `senior`; the shipped
-gate prefers Kilo `high` and retains native `max` as an alternative. `reviewer`
+gate qualifies these through the native Kimi Code CLI at effort `max`. `reviewer`
 and `judgement` remain disabled. Provider quota failures are temporary runtime
 failures, not evidence that changes the quality qualification.
 Use the `kimi-executor` skill only when `delegation-kimi check --json` lists the
-requested lane and the runner accepts the selected backend/effort combination.
-The native and Kilo backends are gated independently. A working CLI, visible model
-name, or qualification on one backend/effort/lane never promotes another; if the
-gate rejects it, keep the incumbent.
+requested lane. A working CLI, visible model name, or qualification on one
+lane never promotes another; if the gate rejects it, keep the incumbent.
 
 ## Sizing and escalation
 - **Size the reviewer to the work, not to the top of the table.** A diff the cheap
