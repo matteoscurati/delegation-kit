@@ -109,6 +109,20 @@ chmod 755 "$DATA_HOME/bin/delegation-kimi"
 ln -sfn "$DATA_HOME/bin/delegation-kimi" "$BIN_HOME/delegation-kimi"
 echo "Kimi bridge -> $BIN_HOME/delegation-kimi (routing gate: $DATA_HOME/config/kimi-k3-routing.json)"
 
+# Shared, read-only evidence inspector. This snapshot informs routing decisions
+# but deliberately has no code path that mutates either executor gate.
+cp "$KIT/bin/delegation-evidence" "$DATA_HOME/bin/delegation-evidence"
+cp "$KIT/config/model-evidence.json" "$DATA_HOME/config/model-evidence.json"
+chmod 755 "$DATA_HOME/bin/delegation-evidence"
+ln -sfn "$DATA_HOME/bin/delegation-evidence" "$BIN_HOME/delegation-evidence"
+echo "Model evidence -> $BIN_HOME/delegation-evidence (snapshot: $DATA_HOME/config/model-evidence.json)"
+
+cp "$KIT/bin/delegation-route" "$DATA_HOME/bin/delegation-route"
+cp "$KIT/config/routing-gates.json" "$DATA_HOME/config/routing-gates.json"
+chmod 755 "$DATA_HOME/bin/delegation-route"
+ln -sfn "$DATA_HOME/bin/delegation-route" "$BIN_HOME/delegation-route"
+echo "Routing gates -> $BIN_HOME/delegation-route (decisions: $DATA_HOME/config/routing-gates.json)"
+
 if [ "$do_claude" = 1 ]; then
   echo "Claude Code -> $CLAUDE_HOME"
   mkdir -p "$CLAUDE_HOME/agents" "$CLAUDE_HOME/skills"
@@ -118,8 +132,8 @@ if [ "$do_claude" = 1 ]; then
   # skill source below cannot abort install (set -e) before the bridge is wired
   append_guarded "$CLAUDE_HOME/CLAUDE.md" "@$KIT/claude/CLAUDE.delegation.md"
   cp -R "$KIT/skills/model-routing" "$CLAUDE_HOME/skills/"
-  cp "$KIT/model-routing.md" "$CLAUDE_HOME/skills/model-routing/"   # co-locate the scored table so the skill's pointer resolves
-  echo "  + model-routing skill (+ scored table) -> $CLAUDE_HOME/skills/model-routing/"
+  cp "$KIT/model-routing.md" "$CLAUDE_HOME/skills/model-routing/"   # co-locate the evidence-backed policy so the skill's pointer resolves
+  echo "  + model-routing skill (+ evidence-backed policy) -> $CLAUDE_HOME/skills/model-routing/"
   cp -R "$KIT/skills/orchestrate" "$CLAUDE_HOME/skills/"
   echo "  + orchestrate skill -> $CLAUDE_HOME/skills/orchestrate/"
   cp -R "$KIT/skills/glm-executor" "$CLAUDE_HOME/skills/"
@@ -132,9 +146,9 @@ if [ "$do_codex" = 1 ]; then
   echo "Codex -> $CODEX_HOME"
   mkdir -p "$CODEX_HOME/agents" "$CODEX_HOME/skills"
   cp "$KIT"/codex/agents/*.toml "$CODEX_HOME/agents/"
-  echo "  + 4 native subagent profiles -> $CODEX_HOME/agents/"
+  echo "  + 5 native subagent profiles -> $CODEX_HOME/agents/"
   cp "$KIT"/codex/profiles/*.config.toml "$CODEX_HOME/"
-  echo "  + 4 ephemeral -p profiles -> $CODEX_HOME/"
+  echo "  + 5 ephemeral -p profiles -> $CODEX_HOME/"
   cp -R "$KIT/skills/glm-executor" "$CODEX_HOME/skills/"
   echo "  + optional GLM executor skill -> $CODEX_HOME/skills/glm-executor/"
   cp -R "$KIT/skills/kimi-executor" "$CODEX_HOME/skills/"

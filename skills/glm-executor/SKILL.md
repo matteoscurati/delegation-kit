@@ -1,27 +1,28 @@
 ---
 name: glm-executor
 description: >-
-  Dispatch a qualified executor lane to GLM-5.2 through delegation-glm. Use
-  only when model-routing selects GLM for clerk, scout, builder, or routine
-  reviewer work and the local availability check reports that exact lane as
-  qualified. Never use it before the evaluation gate or as a silent fallback.
+  Dispatch a gate-approved GLM-5.2 lane through delegation-glm. Provisional
+  lanes require an explicit --allow-provisional decision. Never use it before
+  the evaluation gate or as a silent fallback.
 ---
 
 # GLM-5.2 executor bridge
 
 GLM-5.2 is an optional external executor, not a native Claude or Codex model.
-Before dispatch, run `delegation-glm check --json` and require both an available
-Claude/Codex host, an available backend, and the requested lane in
-`qualified_lanes`.
+Before dispatch, run `delegation-glm check --json`. The current gate exposes
+`clerk` and `scout` only in `provisional_lanes`; use them only after an explicit
+decision and pass `--allow-provisional`. Builder is a blocked candidate.
 
-The shipped 2026-07 gate enables `clerk` and `scout`, both at `high`. It does
-not enable `builder` or `reviewer`. The installed routing JSON remains
+The small local run is compatibility evidence, not enough for full qualification.
+Builder and reviewer are not dispatchable. The installed routing JSON remains
 authoritative if a later versioned evaluation changes that set.
+`delegation-evidence lane builder` shows the dated external rows: they provide
+context, not a local harness score and not permission to widen the gate.
 
 Write the self-contained worker brief to a file, then run:
 
 ```sh
-delegation-glm run --lane <clerk|scout|builder|reviewer> --effort auto \
+delegation-glm run --lane <clerk|scout> --effort auto --allow-provisional \
   --backend auto --prompt-file "$brief" --output "$result" --workdir "$repo"
 ```
 

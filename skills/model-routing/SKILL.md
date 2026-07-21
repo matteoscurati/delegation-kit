@@ -1,15 +1,20 @@
 ---
 name: model-routing
-description: How and when to delegate coding work across models — pick the right lane (cheap execution vs senior review vs expensive judgement), size the reviewer to the work, and know what only the most expensive model should do. Use when deciding whether to spawn a subagent, which model/effort to hand a task, how to route a code review, or when to escalate. Also covers reaching Codex from Claude.
+description: How and when to delegate coding work across models — pick the right lane (cheap execution, senior review, explicit judgement, or dual super-judgement), size the reviewer to the work, and know when a manual gate is required. Use when deciding whether to spawn a subagent, which model/effort to hand a task, how to route a code review, or when to escalate. Also covers reaching Codex from Claude.
 ---
 
 # Model-routing: which model does which job
 
 You are orchestrating coding work across several models. A strong model plans and
-judges; cheaper ones execute. Route by these rules. The full scored table
-(cost / intelligence / taste per model) lives in `model-routing.md` (installed
-alongside this skill, or at the kit root) — read it for the numbers; this skill is
-the decision procedure.
+judges; cheaper ones execute. Route by these rules. The dated evidence snapshot
+and lane mapping live in `model-routing.md` plus `config/model-evidence.json` at
+the kit root. Use `delegation-evidence lane <lane>` when installed; evidence is
+advisory and the versioned routing gate remains authoritative.
+Use `delegation-route resolve --lane <lane>` for the operational decision. It is
+read-only and never dispatches a model.
+For native Claude/Codex agents, the lead must resolve first; invoking an
+explicit-only profile is the manual selection event. GLM/Kimi runners enforce the
+same graph directly and refuse drift.
 
 ## When to delegate at all
 - Default to solving simple, well-scoped work **directly**. Do not spawn a
@@ -26,29 +31,25 @@ the decision procedure.
 - **Senior review / taste / security:** security-adjacent code (route here
   directly), user-facing surfaces (UI, copy, API design), material correctness
   review, and the escalation target for the cheap lane.
-- **Judgement (most expensive):** planning, task breakdown, cross-attempt
-  synthesis, and the final ship go/no-go — thinking, not typing. Enter it in short
-  bursts; never keep it resident coordinating workers.
+- **Judgement:** Fable `xhigh` for architecture/trade-offs/synthesis or Sol `high`
+  for technical feasibility/repository fit/failure modes. Both are
+  `manual-qualified`, explicit-only, thinking-not-typing profiles.
+- **Super-judgement:** only for exceptional, difficult-to-reverse decisions.
+  Fable and Sol reason independently, cross-review after both verdicts exist, and
+  the lead decides. Never trigger it automatically.
 
 An optional external candidate such as GLM-5.2 earns one of these lanes only
-after its versioned evaluation gate passes for that exact role. If
-`delegation-glm check --json` lists the lane, use the `glm-executor` skill; an
-installed CLI or visible model name alone is not qualification.
-The shipped 2026-07 GLM-5.2 gate qualifies only clerk/high and scout/high; it
-explicitly rejects builder and reviewer, and refuses any effort it did not pin.
-Always defer to the installed gate if a later evaluation supersedes this
-snapshot.
+after its versioned evaluation gate allows that exact role. GLM clerk/scout are
+provisional and require `--allow-provisional`; builder is a blocked candidate and
+reviewer is disabled. An installed CLI or visible model name is not qualification.
 
-Kimi K3 is provisional for `clerk`, `scout`, `builder`, and `senior`; the shipped
-gate qualifies these through the native Kimi Code CLI at effort `max`. `reviewer`
-and `judgement` remain disabled. Provider quota failures are temporary runtime
-failures, not evidence that changes the quality qualification.
-Use the `kimi-executor` skill only when `delegation-kimi check --json` lists the
-requested lane. A working CLI, visible model name, or qualification on one
-lane never promotes another; if the gate rejects it, keep the incumbent.
+Kimi K3 is provisional for `clerk`, `scout`, `builder`, and `frontend-builder` at
+`max`; senior is a blocked candidate, while reviewer and judgement are disabled.
+Provisional dispatch requires `--allow-provisional`. Provider quota failures are
+temporary runtime failures, not quality evidence.
 
 ## Sizing and escalation
-- **Size the reviewer to the work, not to the top of the table.** A diff the cheap
+- **Size the reviewer to the work, not to a general leaderboard.** A diff the cheap
   lane wrote against a plan the strong model authored is reviewed by the *mid*
   model that already has the context. Reserve the top model as reviewer only when
   its gradient is required: high-level design/taste, synthesis across attempts, or
@@ -66,7 +67,7 @@ lane never promotes another; if the gate rejects it, keep the incumbent.
   proves nothing.
 
 ## Tie-breakers
-- When axes conflict for anything that ships: **intelligence > taste > cost**.
+- When evidence conflicts: **required lane evidence > deliverable quality > cost**.
 - **`cost` is per task, not per token.** A model that burns more tokens at a lower
   price can still finish the job cheapest.
 

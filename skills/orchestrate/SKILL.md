@@ -32,9 +32,14 @@ cheapest that passes verification.
   across the Codex bridge): one self-contained subtask each, in parallel,
   stateless. Dispatch with the format in `references/worker-brief.md`.
 - **Advisor**, split by content (this is the kit's improvement over a single
-  advisor — route by the policy): **Judgement** (author: Fable via `fable-judge`, two-touch) for plan
+  advisor — route by the policy): **Judgement** (author: Fable via `fable-judge`
+  or Sol via `sol-judge`, two-touch) for plan
   critique and ship/synthesis; **Senior** (author: Opus via `opus-reviewer`) for
   taste and security review. Consult format in `references/advisor-consult.md`.
+- **Super-judgement** is an explicit, exceptional pair: Fable and Sol reason
+  independently, cross-review only after both verdicts exist, and the lead makes
+  the final decision. Follow `references/dual-judgement.md`; never trigger it
+  automatically.
 
 The economics are the point: cheap parallel generation where volume wins,
 expensive judgement only where it changes a decision.
@@ -54,7 +59,8 @@ background subshells:
   temp file, non-zero exit or empty output = failed dispatch, one output file per
   worker).
 - **Gated external candidates** — use GLM or Kimi only through their executor
-  skill and only when that runner's `check --json` qualifies the requested lane.
+  skill and only when that runner's gate allows the requested lane. A provisional
+  lane additionally requires the runner's explicit `--allow-provisional` flag.
   Qualification on one lane never promotes a neighboring one. This rule applies
   equally to operational workers, Senior, and Judgement.
 
