@@ -7,8 +7,8 @@ keep them rare and material-rich.
 **Who answers.** This kit splits the source pattern's single advisor across two
 lanes by content (see the routing policy):
 
-- **Plan critique and ship/synthesis go to Judgement** (the metered model, author:
-  Fable 5) — decomposition, architecture-moving risk, cross-attempt synthesis, the
+- **Plan critique and ship/synthesis go to Judgement** (author: Fable for
+  architecture/trade-offs/synthesis, or Sol for feasibility/repository fit) — decomposition, architecture-moving risk, cross-attempt synthesis, the
   final go/no-go. This is the two-touch lane: consult #1 (plan) and #2 (ship) are
   mandatory; anything beyond needs a crossed commitment boundary.
 - **Taste and security review go to Senior** (the high-taste model, author: Opus)
@@ -17,8 +17,12 @@ lanes by content (see the routing policy):
   skip the tax and start on Senior.
 
 Reach either as a one-shot Agent/Workflow call with the model pinned
-(the `fable-judge` profile, or `{model:'fable', effort:'xhigh'}`; or `opus-reviewer`) and this prompt; force a
+(`fable-judge`, Codex `sol-judge`, or `opus-reviewer`) and this prompt; force a
 structured return so nothing gets lost.
+
+For an explicitly approved `super-judgement`, do not use this single-consult
+shape. Follow `dual-judgement.md`: independent verdicts, then cross-review, then
+lead synthesis.
 
 ```
 You are the board advisor to a lead running a multi-model loop. You are a critic,

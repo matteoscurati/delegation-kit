@@ -12,6 +12,8 @@ while [ -L "$SOURCE" ]; do
 done
 ROOT="$(cd "$(dirname "$SOURCE")/.." && pwd)"
 ROUTING_FILE="${DELEGATION_GLM_ROUTING_FILE:-$ROOT/config/glm-5.2-routing.json}"
+CENTRAL_GATES="${DELEGATION_ROUTING_GATES_FILE:-$ROOT/config/routing-gates.json}"
+ROUTER="$ROOT/bin/delegation-route"
 # Derived from $ROOT exactly like ROUTING_FILE, so the key and the gate can never
 # disagree about where the install lives — a DELEGATION_DATA_HOME install used to
 # store the key where the runner never looked. This reads, never writes, so no key
@@ -28,7 +30,7 @@ Usage:
   delegation-glm run --lane <clerk|scout|builder|reviewer> \
     [--effort <auto|high|max>] [--backend <auto|claude-zai>] \
     --prompt-file <path> --output <path> --workdir <path> \
-    [--metrics <path>] [--max-cost-usd <amount>] [--evaluation]
+    [--metrics <path>] [--max-cost-usd <amount>] [--allow-provisional] [--evaluation]
 
 Exit codes: 64 invalid input, 69 unavailable, 70 dispatch failure,
 75 temporary/rate-limit failure, 78 lane not qualified.
@@ -102,8 +104,18 @@ claude_zai_status() {
 }
 
 qualified_lanes() {
-  if [ -f "$ROUTING_FILE" ] && have jq; then
-    jq -c '.qualified_lanes // []' "$ROUTING_FILE" 2>/dev/null || printf '[]'
+  if [ -f "$CENTRAL_GATES" ] && have jq; then
+    jq -c '[.profiles | to_entries[] | select(.value.model == "glm-5.2" and .value.harness == "claude-zai") |
+      .value.lanes | to_entries[] | select(.value.status == "qualified") | .key] | unique | sort' "$CENTRAL_GATES" 2>/dev/null || printf '[]'
+  else
+    printf '[]'
+  fi
+}
+
+provisional_lanes() {
+  if [ -f "$CENTRAL_GATES" ] && have jq; then
+    jq -c '[.profiles | to_entries[] | select(.value.model == "glm-5.2" and .value.harness == "claude-zai") |
+      .value.lanes | to_entries[] | select(.value.status == "provisional") | .key] | unique | sort' "$CENTRAL_GATES" 2>/dev/null || printf '[]'
   else
     printf '[]'
   fi
@@ -113,9 +125,9 @@ qualified_lanes() {
 # runner will actually accept, or a caller follows the advertised set straight
 # into a 78 and reads it as "this lane failed evaluation".
 gate_efforts() {
-  if [ -f "$ROUTING_FILE" ] && have jq; then
-    jq -c '[.lanes[].backends["claude-zai"] | select(.qualified == true) | .effort
-           | select(type == "string")] | unique' "$ROUTING_FILE" 2>/dev/null || printf '[]'
+  if [ -f "$CENTRAL_GATES" ] && have jq; then
+    jq -c '[.profiles[] | select(.model == "glm-5.2" and .harness == "claude-zai") as $p |
+      $p.lanes[] | select(.status == "qualified" or .status == "provisional") | $p.effort] | unique' "$CENTRAL_GATES" 2>/dev/null || printf '[]'
   else
     printf '[]'
   fi
@@ -123,47 +135,60 @@ gate_efforts() {
 
 default_effort() {
   local lane="$1" backend="$2"
-  jq -r --arg lane "$lane" --arg backend "$backend" \
-    '.lanes[$lane].backends[$backend].effort // .lanes[$lane].default_effort // "high"' \
-    "$ROUTING_FILE" 2>/dev/null || printf 'high\n'
+  [ "$backend" = claude-zai ] || return 1
+  jq -r --arg profile "glm-$lane" '.profiles[$profile].effort // empty' "$CENTRAL_GATES" 2>/dev/null
 }
 
-is_qualified() {
+gate_status() {
   local lane="$1" backend="$2"
-  [ -f "$ROUTING_FILE" ] && have jq || return 1
-  jq -e --arg lane "$lane" --arg backend "$backend" \
-    '.lanes[$lane].backends[$backend].qualified == true' "$ROUTING_FILE" >/dev/null 2>&1
+  [ "$backend" = claude-zai ] || { printf 'disabled\n'; return; }
+  jq -r --arg profile "glm-$lane" '.profiles[$profile].lanes[]?.status // "disabled"' \
+    "$CENTRAL_GATES" 2>/dev/null || printf 'disabled\n'
+}
+
+is_allowed() {
+  local lane="$1" backend="$2" allow_provisional="$3" status
+  status="$(gate_status "$lane" "$backend")"
+  [ "$status" = qualified ] || { [ "$status" = provisional ] && [ "$allow_provisional" = 1 ]; }
 }
 
 qualified_effort() {
   local lane="$1" backend="$2"
-  jq -er --arg lane "$lane" --arg backend "$backend" \
-    '.lanes[$lane].backends[$backend].effort | select(type == "string")' \
-    "$ROUTING_FILE" 2>/dev/null
+  default_effort "$lane" "$backend"
+}
+
+validate_gate_graph() {
+  [ -x "$ROUTER" ] || return 1
+  DELEGATION_ROUTING_GATES_FILE="$CENTRAL_GATES" \
+    DELEGATION_GLM_ROUTING_FILE="$ROUTING_FILE" \
+    "$ROUTER" check --json >/dev/null 2>&1
 }
 
 print_check() {
   local as_json="${1:-0}" host_ok=false claude_ok=false
+  have jq || die 69 "jq is required"
+  validate_gate_graph || die 78 "central and executable routing gates are missing, invalid, or inconsistent"
   host_status && host_ok=true || true
   claude_zai_status && claude_ok=true || true
-  local lanes efforts selected="none"
+  local lanes provisional efforts selected="none"
   lanes="$(qualified_lanes)"
+  provisional="$(provisional_lanes)"
   efforts="$(gate_efforts)"
   if [ "$host_ok" = true ] && [ "$claude_ok" = true ]; then selected="claude-zai"; fi
   if [ "$as_json" = 1 ]; then
     jq -n \
       --arg model "$MODEL" --arg selected "$selected" \
-      --argjson efforts "$efforts" --argjson lanes "$lanes" \
+      --argjson efforts "$efforts" --argjson lanes "$lanes" --argjson provisional "$provisional" \
       --argjson host "$host_ok" --arg host_reason "$HOST_REASON" \
       --argjson host_claude "$(have claude && printf true || printf false)" \
       --argjson host_codex "$(have codex && printf true || printf false)" \
       --argjson claude "$claude_ok" --arg claude_reason "$CLAUDE_ZAI_REASON" \
       '{model:$model, efforts:$efforts, selected_backend:$selected,
         host:{available:$host,reason:$host_reason,claude:$host_claude,codex:$host_codex},
-        qualified_lanes:$lanes, backends:{
+        qualified_lanes:$lanes,provisional_lanes:$provisional,backends:{
           "claude-zai":{available:$claude,reason:$claude_reason}}}'
   else
-    printf 'GLM-5.2: selected=%s efforts=%s qualified=%s\n' "$selected" "$efforts" "$lanes"
+    printf 'GLM-5.2: selected=%s efforts=%s qualified=%s provisional=%s\n' "$selected" "$efforts" "$lanes" "$provisional"
     printf '  host: %s (%s)\n' "$host_ok" "$HOST_REASON"
     printf '  claude-zai: %s (%s)\n' "$claude_ok" "$CLAUDE_ZAI_REASON"
   fi
@@ -190,7 +215,7 @@ extract_claude() {
 
 run_command() {
   local lane="" effort="auto" backend="auto" prompt_file="" output="" workdir="" metrics=""
-  local max_cost="2.00" evaluation=0
+  local max_cost="2.00" evaluation=0 allow_provisional=0
   while [ "$#" -gt 0 ]; do
     case "$1" in
       --lane) lane="${2:-}"; shift 2 ;;
@@ -201,6 +226,7 @@ run_command() {
       --workdir) workdir="${2:-}"; shift 2 ;;
       --metrics) metrics="${2:-}"; shift 2 ;;
       --max-cost-usd) max_cost="${2:-}"; shift 2 ;;
+      --allow-provisional) allow_provisional=1; shift ;;
       --evaluation) evaluation=1; shift ;;
       -h|--help) usage; exit 0 ;;
       *) die 64 "unknown run argument: $1" ;;
@@ -213,7 +239,7 @@ run_command() {
   [ -d "$workdir" ] || die 64 "workdir missing: $workdir"
   [ -n "$output" ] || die 64 "--output is required"
   have jq || die 69 "jq is required"
-  host_status || die 69 "$HOST_REASON"
+  validate_gate_graph || die 78 "central and executable routing gates are missing, invalid, or inconsistent"
   metrics="${metrics:-$output.metrics.json}"
   mkdir -p "$(dirname "$output")" "$(dirname "$metrics")"
 
@@ -222,8 +248,15 @@ run_command() {
   # and must not hide behind "runtime is down" (69), which the caller reads as
   # retry-later. Checking availability first made the answer to a permanent
   # question depend on whether a key happened to be present.
-  [ "$evaluation" = 1 ] || is_qualified "$lane" "$backend" \
-    || die 78 "lane '$lane' is not qualified for backend '$backend'"
+  if [ "$evaluation" = 0 ] && ! is_allowed "$lane" "$backend" "$allow_provisional"; then
+    status="$(gate_status "$lane" "$backend")"
+    if [ "$status" != provisional ]; then
+      die 78 "lane '$lane' backend '$backend' has non-dispatchable status '$status'"
+    else
+      die 78 "lane '$lane' backend '$backend' is provisional; pass --allow-provisional after an explicit routing decision"
+    fi
+  fi
+  host_status || die 69 "$HOST_REASON"
   claude_zai_status || die 69 "$CLAUDE_ZAI_REASON"
   [ "$effort" != auto ] || effort="$(default_effort "$lane" "$backend")"
   # An explicit --effort must not reach past what the gate qualified; only an

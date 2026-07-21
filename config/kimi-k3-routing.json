@@ -1,54 +1,43 @@
 {
   "model": "kimi-k3",
-  "status": "qualified-provisional",
+  "status": "provisional",
   "evaluated_at": "2026-07-16T18:03:24.342Z",
   "promoted_at": "2026-07-16T18:19:08Z",
   "source_run": "2026-07-16-kimi-k3",
-  "qualification_basis": "user-approved provisional promotion from valid-run subset plus supplied coding benchmarks",
+  "external_evidence_file": "model-evidence.json",
+  "external_evidence_ids": ["aa-kimi-code-kimi-k3", "arena-agent-kimi-k3", "webdev-kimi-k3"],
+  "qualification_basis": "The valid local subset plus exact public evidence supports controlled provisional use; quota truncation prevents full qualification.",
   "preferred_backends": ["native"],
-  "qualified_lanes": ["builder", "clerk", "scout", "senior"],
+  "qualified_lanes": [],
+  "provisional_lanes": ["builder", "clerk", "scout", "frontend-builder"],
   "lanes": {
     "clerk": {
-      "default_effort": "max",
-      "preferred_backends": ["native"],
-      "backends": {
-        "native": {"qualified": true, "effort": "max", "score": 100, "resource_per_task": 37728.25, "resource_basis": "wall_clock_ms"}
-      }
+      "default_effort": "max", "preferred_backends": ["native"],
+      "backends": {"native": {"qualified": false, "status": "provisional", "selection": "explicit-only", "effort": "max", "legacy_local_result": {"run_id": "2026-07-16-kimi-k3", "outcome": "passed-valid-subset", "task_count": null, "repeats": null, "confidence": "low", "wall_clock_ms_per_task": 37728.25, "limitations": "Provider quota truncated the run; valid-subset size is not recorded."}}}
     },
     "scout": {
-      "default_effort": "max",
-      "preferred_backends": ["native"],
-      "backends": {
-        "native": {"qualified": true, "effort": "max", "score": 100, "resource_per_task": 43604.25, "resource_basis": "wall_clock_ms"}
-      }
+      "default_effort": "max", "preferred_backends": ["native"],
+      "backends": {"native": {"qualified": false, "status": "provisional", "selection": "explicit-only", "effort": "max", "legacy_local_result": {"run_id": "2026-07-16-kimi-k3", "outcome": "passed-valid-subset", "task_count": null, "repeats": null, "confidence": "low", "wall_clock_ms_per_task": 43604.25, "limitations": "Provider quota truncated the run; valid-subset size is not recorded."}}}
     },
     "builder": {
-      "default_effort": "max",
-      "preferred_backends": ["native"],
-      "backends": {
-        "native": {"qualified": true, "effort": "max", "score": 100, "resource_per_task": 76543.125, "resource_basis": "wall_clock_ms"}
-      }
+      "default_effort": "max", "preferred_backends": ["native"],
+      "backends": {"native": {"qualified": false, "status": "provisional", "selection": "explicit-only", "effort": "max", "legacy_local_result": {"run_id": "2026-07-16-kimi-k3", "outcome": "passed-valid-subset", "task_count": null, "repeats": null, "confidence": "low", "wall_clock_ms_per_task": 76543.125, "limitations": "Provider quota truncated the run; valid-subset size is not recorded."}}}
+    },
+    "frontend-builder": {
+      "default_effort": "max", "preferred_backends": ["native"],
+      "backends": {"native": {"qualified": false, "status": "provisional", "selection": "preferred-explicit", "effort": "max", "legacy_local_result": null, "qualification_basis": "Contextual WebDev evidence supports a frontend-only challenger; no frontend-specific local pack exists."}}
     },
     "reviewer": {
-      "default_effort": "max",
-      "preferred_backends": ["native"],
-      "backends": {
-        "native": {"qualified": false, "effort": null, "score": null, "resource_per_task": null, "resource_basis": null}
-      }
+      "default_effort": "max", "preferred_backends": ["native"],
+      "backends": {"native": {"qualified": false, "status": "disabled", "selection": "blocked", "effort": "max", "legacy_local_result": null}}
     },
     "judgement": {
-      "default_effort": "max",
-      "preferred_backends": ["native"],
-      "backends": {
-        "native": {"qualified": false, "effort": null, "score": null, "resource_per_task": null, "resource_basis": null}
-      }
+      "default_effort": "max", "preferred_backends": ["native"],
+      "backends": {"native": {"qualified": false, "status": "disabled", "selection": "blocked", "effort": "max", "legacy_local_result": null}}
     },
     "senior": {
-      "default_effort": "max",
-      "preferred_backends": ["native"],
-      "backends": {
-        "native": {"qualified": true, "effort": "max", "score": 100, "resource_per_task": 90922.333333, "resource_basis": "wall_clock_ms"}
-      }
+      "default_effort": "max", "preferred_backends": ["native"],
+      "backends": {"native": {"qualified": false, "status": "candidate", "selection": "blocked", "effort": "max", "legacy_local_result": {"run_id": "2026-07-16-kimi-k3", "outcome": "passed-valid-subset", "task_count": null, "repeats": null, "confidence": "low", "wall_clock_ms_per_task": 90922.333333, "limitations": "Provider quota truncated the run; no robust senior-lane sample is recorded."}, "qualification_basis": "Public steerability evidence is insufficient for promotion under the new lane-specific gate."}}
     }
   }
 }

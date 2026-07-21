@@ -4,84 +4,76 @@ Delegation policy for driving coding work across several models — a strong one
 plans and judges, cheaper ones execute. It answers one question: **which model
 does which job.**
 
-> ⚠️ **These are my numbers, not benchmarks.** The scores below are subjective
-> and *point-in-time*: they reflect the cost **per finished task** on **my** work
-> — measured on my own runs, cross-checked against published figures — and how
-> each performs on it. Treat the *method* as transferable; re-derive the
-> *numbers* for your own setup.
+> **Evidence, not inherited scores.** Routing is based on a dated snapshot of
+> recent public benchmarks plus a small local compatibility check. Keep model,
+> harness, effort, and lane distinct: a strong WebDev result is not a reviewer
+> qualification, and an available runtime is not evidence of quality.
 >
-> **Using this in the [delegation kit](./README.md)?** The table below is a
-> *worked reference* — the author's models and scores. See
-> [`ADAPTING.md`](./ADAPTING.md) to remap the lanes to your own models, plans,
-> and re-derived numbers.
+> **Using this in the [delegation kit](./README.md)?** The snapshot below is a
+> worked reference. See [`ADAPTING.md`](./ADAPTING.md) to map its evidence to
+> your own available variants, plans, and lane thresholds.
 
-## The table
+## Current evidence snapshot
 
-Higher = better in every column. `cost` = **efficiency**: what one *finished
-task* costs — the tokens a model burns to complete it × its price-per-token, not
-the sticker $/token. A cheap-per-token model that rambles or retries can lose to
-a pricier one that nails it in a single pass; pricing per task captures that.
-`intelligence` = how hard a task I can hand it unsupervised. `taste` = UI/UX,
-code quality, API design, copy.
+The machine-readable source is
+[`config/model-evidence.json`](./config/model-evidence.json); the method and source
+links are in [`evaluation/README.md`](./evaluation/README.md). Inspect it with:
 
-| model         | cost | intelligence | taste |
-|---------------|------|--------------|-------|
-| gpt-5.5       | 4    | 8            | 5     |
-| gpt-5.6-sol   | 4    | 9            | 8     |
-| gpt-5.6-terra | 8    | 7            | 7     |
-| gpt-5.6-luna  | 10   | 8            | 7     |
-| glm-5.2†      | 10   | 6            | 6     |
-| kimi-k3‡      | 8    | 8            | 8     |
-| sonnet-5      | 7    | 5            | 7     |
-| opus-4.8      | 5    | 7            | 8     |
-| fable-5       | 1    | 9            | 9     |
+```sh
+bin/delegation-evidence check
+bin/delegation-evidence lane builder
+bin/delegation-evidence lane reviewer --json
+bin/delegation-route check
+bin/delegation-route resolve --lane judgement --json
+bin/delegation-route resolve --lane super-judgement --json
+```
 
-† `glm-5.2` is not a general replacement despite its strong cost score. The
-versioned 2026-07 worker evaluation qualifies only `clerk/high` and `scout/high`
-(scout was measured at `max`, then pinned to `high` by owner decision after a
-probe showed `max` bought no extra reasoning);
-builder failed the blind taste floor and reviewer failed repeatability. Its
-efficiency score reflects $0.026–$0.074 API-equivalent cost per qualified task,
-not a promise about Coding Plan subscription economics. The public repository
-ships the resulting gate, not the GLM evaluation harness or raw test artifacts.
+The 2026-07-21 snapshot uses Artificial Analysis Coding Agent Index v1.2 for
+end-to-end coding, Agent Arena for real-world reliability, Code Arena WebDev for
+frontend preference, and SWE-PRBench/Martian for review. It stores raw metrics
+rather than compressing unrelated capabilities into subjective 1–10 scores.
 
-‡ `kimi-k3` is provisional. Published coding data places it in the top two on
-five of six supplied coding benchmarks; the valid subset of the local extended
-run scored 97.1–99.4 mean with 91–95% full-pass rates. The versioned gate enables
-`clerk`, `scout`, `builder`, and `senior` through the native Kimi Code CLI at
-effort `max`. `reviewer` and `judgement` remain disabled. Quota exhaustion is a
-temporary runtime failure (exit 75), not a quality downgrade.
+| exact model + harness + effort | coding index | DeepSWE | Terminal-Bench | repo Q&A | API cost/task |
+|---|---:|---:|---:|---:|---:|
+| GPT-5.6 Sol + Codex, max | 61 | 69% | 88% | 27% | $7.08 |
+| Fable 5 + Claude Code, max | 59 | 66% | 83% | 29% | $11.72 |
+| Kimi K3 + Kimi Code CLI, max | 57 | 64% | 84% | 23% | $3.18 |
+| GPT-5.6 Terra + Codex, max | 57 | 67% | 84% | 21% | $2.76 |
+| Opus 4.8 + Claude Code, max | 55 | 56% | 79% | 30% | $7.70 |
+| GPT-5.6 Luna + Codex, max | 54 | 63% | 80% | 18% | $1.57 |
+| GLM-5.2 + Claude Code, reported default | 40 | 29% | 72% | 19% | $6.51 |
 
-`cost` above is **cost per completed task**, measured on my own review / impl / UI
-runs (2026-07) and cross-checked against published cost-per-task figures
-([Artificial Analysis](https://artificialanalysis.ai/articles/gpt-5-6-has-landed)).
-Two things fall out of the numbers:
+These are API-equivalent costs, not subscription-bucket economics. Agent Arena
+and WebDev rows live in the JSON because their variants often differ from the
+coding-index variants; the kit never silently merges `max`, `xhigh`, `high`, or
+`reported-default`.
 
-- **Verbosity doesn't reorder the column.** Price spans ~10× across this table;
-  tokens-per-task only ~1.5×, so a chatty cheap model still wins. `gpt-5.6-luna`
-  burns *more* tokens than Sol on a review yet costs ~⅕ as much per task
-  (~$0.21 vs ~$1.04) and finds as many bugs — the cheap lane is genuinely cheapest
-  *per task*, not just per token.
-- **The pricey-per-token models earn their keep through judgement, not volume.**
-  In the efficiency test `fable-5` (~$3.12/task) was the only model to catch every
-  planted bug — including one both cheap incumbents missed — but at ~15× Luna's
-  cost-per-task it is for verifying / synthesising, never bulk work. `opus-4.8` was
-  *worse value than `sonnet-5`* on routine review (more cost, fewer bugs): reserve
-  it for where its gradient is actually needed.
+The operational gate separates exact evidence from contextual evidence. Exact
+requires the same model, harness, and effort and must be relevant to the lane;
+nearby variants and general coding scores for reviewer/judgement remain context.
+`delegation-route table` exposes both counts plus local sample confidence.
 
-`gpt-5.5` is now Pareto-dominated by `gpt-5.6-sol` (equal cost-efficiency, lower
-intelligence and taste) — kept as the battle-tested Codex default, but the
-orchestrator rarely has reason to pick it over Sol. Across the `gpt-5.6-*` trio the
-choice is per task: **Luna** for cheap high-volume execution/review, **Sol** for
-the hardest work plus design/taste, **Terra** in between. All three cleared the row
-bar below; **Terra is kept as a live option even though Luna Pareto-dominates it** —
-let routing prune it, not the table.
+Where published, the JSON also records the exact installed Codex efforts: Luna
+`low`, Terra `low`/`medium`, and Sol `high`. Exact current rows for several
+installed Claude efforts are not published in this snapshot, so their nearby
+variants remain contextual evidence rather than profile-level validation.
 
-`fable-5`'s `1` is the least-efficient-*and*-metered corner: since **2026-07-13** it
-bills as usage credits at API rates ($10 / $50 per Mtok) on Pro/Max/Team, so every
-call is real money on top of being the priciest per task — which is exactly why it's
-reserved for high-value, low-volume judgement work below.
-([Anthropic redeploy note](https://www.anthropic.com/news/redeploying-fable-5).)
+Evidence maps to lanes, not to one global ranking:
+
+- **Clerk/scout:** repository Q&A first; cost, tool reliability, and steerability
+  support the decision.
+- **Builder:** both DeepSWE and Terminal-Bench. WebDev Elo can support a separate
+  frontend-builder decision only.
+- **Reviewer:** precision and recall from SWE-PRBench or Martian. No coding or
+  WebDev score substitutes for this; the current snapshot has no exact-model
+  review rows, so public evidence alone qualifies no reviewer.
+- **Senior/judgement:** real-world steerability and user outcomes are supporting
+  evidence. Judgement remains manual-only; security-sensitive work needs its own
+  evaluation.
+
+External evidence never edits a routing gate. The gate records the owner decision,
+and the local smoke proves only runtime/auth, tool use, permissions, scope, and
+output contracts for the exact production runner.
 
 ## Reasoning effort per model
 
@@ -99,11 +91,24 @@ Effort levels each model exposes (Claude `effort:` / Codex `model_reasoning_effo
 | glm-5.2 | high · max |
 | kimi-k3 | max |
 
-Kimi K3 is provisional: the 2026-07-16 run was truncated by provider quota, but
-its valid subset and the supplied coding benchmarks support controlled use in
-`clerk`, `scout`, `builder`, and `senior`. The installed
-`delegation-kimi check --json` gate remains authoritative for the exact
-backend/effort/lane combination.
+Kimi K3 is provisional: the 2026-07-16 run was truncated by provider quota. Its
+valid subset and exact public rows support controlled `clerk`, `scout`, `builder`,
+and `frontend-builder` use with `--allow-provisional`; `senior` is only a blocked
+candidate. The installed gate remains authoritative for the exact tuple.
+
+## Judgement and super-judgement
+
+Fable `xhigh` and Sol `high` are both manually qualified for judgement by an
+explicit owner decision, not by an automatic benchmark threshold. Fable focuses
+on architecture, trade-offs, and synthesis; Sol focuses on repository fit,
+technical feasibility, failure modes, and verifiability. Inspect the decision with
+`delegation-route resolve --lane judgement`.
+
+For exceptionally complex, high-blast-radius, difficult-to-reverse decisions,
+`super-judgement` pairs them using `independent-then-cross-review`: both write an
+independent verdict before seeing the other, then critique each other, and the
+lead records the final decision. It requires an explicit choice, never dispatches
+automatically, and never merges or deploys.
 
 ## How to apply
 
@@ -126,31 +131,30 @@ backend/effort/lane combination.
 - **Delegated output is unverified until you check it.** Never ship or build on a
   delegated diff or finding without reading it or reproducing the claim — polished
   output is not correct output.
-- **Cost is a tie-breaker only.** When axes conflict for anything that ships:
-  intelligence > taste > cost.
+- **Cost is a tie-breaker only.** Required lane evidence and deliverable quality
+  come first; then domain-specific taste/reliability evidence; then cost.
 - **`cost` is per *task*, not per token.** A model that burns more tokens at a
   lower price can still finish the job cheapest — measured, `gpt-5.6-luna` is the
   cheapest per completed task, verbosity included. Don't up-tier to "save tokens";
   price the task, not the token.
-- **Size the reviewer to the work, not to the top of the table.** The reviewer
-  only needs to be *at least as capable* as what it reviews. A diff the cheap lane
+- **Size the reviewer to the work, not to the top of a general leaderboard.** The
+  reviewer only needs to be *at least as capable* as what it reviews. A diff the cheap lane
   wrote against a plan the strong model authored is reviewed by the *mid* model
   that already has the context — you don't spend your most expensive model on a
   review it isn't uniquely needed for. Reserve the top model as reviewer for when
   its gradient is actually required: high-level design/taste judgement, synthesis
   across multiple attempts, or independently checking something it produced.
-- **The most expensive model does thinking, not typing.** `fable-5` is for two
-  things only — planning, and orchestration/evaluation (judging attempts,
-  reviewing, verifying, synthesizing). Never route code-writing to it unless you
-  explicitly want to; the cost is excessive. It designs the plan and judges the
-  result; it does not produce the diff.
+- **Judgement models do thinking, not typing.** Fable handles architecture,
+  trade-offs, and synthesis; Sol handles technical feasibility, repository fit,
+  failure modes, and verifiability. Neither produces the diff when selected as a
+  judge. Use the pair only through the explicit super-judgement protocol.
 - **Route security-adjacent work to the reasoning model directly.** Anthropic's
   classifier reroutes blocked prompts to Opus 4.8 anyway, so a security-shaped
   Fable call either reroutes or comes back thinner — start on Opus and skip the
   tax. (The broader "benign defensive work gets caught too" claim is unconfirmed
   by Anthropic; don't over-route on it.)
 - **Anything user-facing** (UI, copy, API design) needs a high-taste model.
-- **The cheap mid model has no first-class lane of its own** in this table — use
+- **The cheap mid model has no first-class lane of its own** in this policy — use
   it as the driver/wrapper (the thin agents that shell out to the cheap execution
   lane), not the model you hand a hard task to.
 
@@ -165,27 +169,26 @@ The concrete shape most of this reduces to:
 You pay premium prices for *judgement*, twice (plan + review), and plan-included
 prices for the keystrokes in between.
 
-## Before a new model earns a row
+## Before a model earns a lane
 
-Prove it as an *orchestrated worker*, not a chat model: driven exactly as this
-policy would route it in production. The bar — decide it before looking at any
-output, so the result can't be rationalized after the fact:
+1. **Select the exact production variant.** Model, harness, effort, backend, and
+   permissions are part of the identity. Never inherit a neighboring variant's
+   score.
+2. **Inspect lane-specific evidence.** Run `delegation-evidence lane <lane>`.
+   Builder needs DeepSWE plus Terminal-Bench; reviewer needs review precision and
+   recall; WebDev Elo applies only to frontend work.
+3. **Pre-commit the decision.** Name the incumbent, threshold, fallback, and
+   provisional/qualified outcome before inspecting a new local run.
+4. **Run a small local compatibility smoke.** Check runtime/auth, tool use,
+   permission boundaries, scoped edits, output contracts, and concurrency where
+   relevant. This smoke does not re-score general model quality.
+5. **Record the owner decision in the versioned gate.** External evidence never
+   mutates a decision. `status` records evidence confidence; `selection` records
+   whether a profile is default, fallback, explicit-only, or blocked.
+6. **Refresh or disable.** A stale evidence snapshot (currently >45 days) blocks
+   new qualification decisions until its live sources are checked again.
 
-1. **Harness compatibility** — reliable tool use, scoped edits without collateral
-   changes, honored output contracts, several tasks in parallel. Any hard failure
-   closes the gate regardless of chat-level intelligence.
-2. **Unsupervised completion + judged quality ≥ the cheapest incumbent it would
-   replace** — it finishes real tasks without hand-holding and is judged at least
-   on par.
-3. **Uncorrelated value** — in a review lane it catches ≥1 real bug that *both*
-   incumbents miss. That's a candidate's only plausible edge: as a primary work
-   lane the cheap incumbent already dominates on cost×intelligence.
-
-Miss any one → no row. Measure it; don't inherit it.
-
-The GLM-5.2 evaluation applied this rule per lane: it earned a constrained row
-through clerk/scout, while builder and reviewer stayed explicitly unroutable.
-
-Kimi K3 follows the same fail-closed method across operational and advisor lanes.
-The provisional gate enables `clerk`, `scout`, `builder`, and `senior`; routing
-stays with the incumbent for `reviewer` and `judgement`.
+The current GLM gate keeps `clerk` and `scout` provisional and makes builder a
+blocked candidate. Kimi K3 is provisional for `clerk`, `scout`, `builder`, and
+`frontend-builder`; senior is a blocked candidate, while reviewer and judgement
+remain disabled. Provisional bridge runs require `--allow-provisional`.

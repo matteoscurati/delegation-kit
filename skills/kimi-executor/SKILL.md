@@ -1,9 +1,8 @@
 ---
 name: kimi-executor
 description: >-
-  Dispatch an evaluated and qualified Kimi K3 lane through delegation-kimi.
-  Use only when model routing selects K3 and the exact lane/backend combination
-  is qualified. Never use it before the evaluation gate or as a silent fallback.
+  Dispatch a provisional Kimi K3 lane through delegation-kimi after an explicit
+  decision. Never use it before the evaluation gate or as a silent fallback.
 ---
 
 # Kimi K3 executor bridge
@@ -12,17 +11,21 @@ Kimi K3 is an optional external executor available through native Kimi Code
 (`kimi-code/k3`, effort `max`).
 
 Before every dispatch, run `delegation-kimi check --json`. Require the native
-backend to be available and the requested lane to appear in `qualified_lanes`.
-The versioned routing JSON is authoritative. The shipped provisional gate enables
-`clerk`, `scout`, `builder`, and `senior` at effort `max`. `reviewer` and
-`judgement` remain disabled. Provider quota exhaustion is exit 75 and never
+backend and the requested lane in `provisional_lanes`, then pass
+`--allow-provisional`. The gate permits `clerk`, `scout`, `builder`, and
+`frontend-builder`; senior is blocked, while reviewer and judgement are disabled.
+Provider quota exhaustion is exit 75 and never
 triggers a silent substitution.
+
+The gate points to exact rows in the dated external snapshot. Inspect them with
+`delegation-evidence lane <lane>`; they support the owner decision but never
+replace the local runtime, scope, and permission checks enforced below.
 
 Write a self-contained worker brief to a file, then run:
 
 ```sh
 delegation-kimi run \
-  --lane <clerk|scout|builder|reviewer|senior|judgement> \
+  --lane <clerk|scout|builder|frontend-builder> --allow-provisional \
   --backend auto --effort auto --prompt-file "$brief" \
   --output "$result" --metrics "$metrics" --workdir "$repo"
 ```
@@ -33,7 +36,7 @@ paths, symlinks, canonical path collisions, and unqualified effort overrides.
 There is no public evaluation bypass. `auto` and `native` both resolve to the
 native Kimi Code backend; there is no fallback to select.
 
-All lanes except `builder` are read-only. Kimi Code 0.26 cannot combine
+All lanes except `builder` and `frontend-builder` are read-only. Kimi Code 0.26 cannot combine
 headless prompt mode with `--plan` and bare prompt mode auto-approves writes, so
 the native backend runs with an isolated HOME/TMP and uses macOS `sandbox-exec`
 to deny every write outside runner-owned scratch space; it fails closed on

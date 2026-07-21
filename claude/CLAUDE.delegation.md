@@ -5,7 +5,7 @@ resident **lead** owns the work and enters the expensive **judgement** model onl
 in short bursts; a cheap **executor** does the volume; a **senior** lane handles
 taste, security, and escalation. This file is the always-loaded policy; the
 `model-routing` skill carries the decision procedure and `model-routing.md` carries
-the scored table.
+the dated evidence snapshot and lane mapping.
 
 > **Adapt this to your setup.** The model names below (`opus`/`sonnet`/`fable` on
 > Claude; the reference numbers) are the author's. Swap them for your own tiers —
@@ -17,14 +17,18 @@ the scored table.
 - **Lead = the capable-but-not-metered model** (author: **Opus 4.8 @ xhigh**).
   Owns requirements, decisions, integration, verification, the final response.
   Resident. Drop to medium effort for routine coordination.
-- **Judgement = the most expensive model** (author: **Fable 5**). **Two touches per
+- **Judgement = Fable 5 or Sol high**, selected explicitly. Fable emphasizes
+  architecture, trade-offs, and synthesis; Sol emphasizes repository fit,
+  technical feasibility, failure modes, and verifiability. **Two touches per
   feature, max — a plan up front, a verdict/synthesis at the end**; only a crossed
   commitment boundary (workers contradicting beyond their brief, a subtask failing
   verification twice, a judgment call outside the success criteria, or the plan
   changing structurally mid-run) buys a third, and spending it is never silent.
   Terse structured output. Never typing, never babysitting workers, never resident;
   reserve for architecture-moving decisions and the high-value calls where its
-  gradient pays. Installable as the `fable-judge` profile.
+  gradient pays. Installable as `fable-judge` and the Codex `sol-judge` profile.
+  `super-judgement` pairs them only after an explicit decision: independent
+  verdicts first, cross-review second, final authority stays with the lead.
 - **Executor + routine reviewer = the cheap-and-capable model** (author:
   **Sonnet 5**, via the `sonnet-*` profiles). Bulk implementation, migrations,
   tests, extraction, repo mapping, and the **default** diff/bug-review lane.
@@ -46,23 +50,38 @@ the scored table.
 ### Optional evaluated GLM executor
 
 GLM-5.2 may replace an executor profile only through the installed
-`glm-executor` skill. Require `delegation-glm check --json` to report the exact
-lane in `qualified_lanes`; otherwise it is unavailable, even if Claude can list
+`glm-executor` skill. The current gate reports `clerk` and `scout` in
+`provisional_lanes`; dispatch requires an explicit decision and
+`--allow-provisional`, even if Claude can list
 the model. The bridge pins GLM-5.2 and runs only through the isolated Claude→Z.AI
-backend, keyed by `ZAI_API_KEY` or the 600-mode key the installer stored. Both
-qualified lanes (`clerk`, `scout`) route at `high`, and an effort the gate did not
-pin is refused. Never silently substitute another model or promote an unevaluated
-lane.
+backend, keyed by `ZAI_API_KEY` or the 600-mode key the installer stored. All
+provisional lanes route at `high`, and an effort the gate did not pin is refused.
+Builder is a blocked candidate and reviewer remains disabled.
+Never silently substitute another model or promote an unevaluated lane.
 
 ### Optional gated Kimi model
 
-Kimi K3 is provisionally qualified for `clerk`, `scout`, `builder`, and `senior`
+Kimi K3 is provisional for `clerk`, `scout`, `builder`, and `frontend-builder`
 only through the installed `kimi-executor` skill, using the native Kimi Code CLI
-at effort `max`. `reviewer` and `judgement` remain disabled.
-Require `delegation-kimi check --json` to list the requested lane before dispatch.
+at effort `max`; senior is blocked, and reviewer/judgement remain disabled.
+Require an explicit decision and `--allow-provisional` before dispatch.
 Kimi K3 is not scored or qualified merely because a CLI can reach it. If the gate
 or runtime is absent, keep the incumbent; never silently substitute a model,
 effort, or neighboring lane.
+
+### Evidence-backed qualification
+
+Use `delegation-evidence lane <lane>` to inspect the current external snapshot.
+It reports coverage for the exact model+harness+effort row but never qualifies a
+lane or edits a gate. Builder needs DeepSWE plus Terminal-Bench; WebDev applies
+only to frontend work; reviewer needs review precision and recall. Runtime/auth
+and a small local scope/permission smoke remain mandatory.
+Use `delegation-route resolve --lane judgement` or `super-judgement` for the
+central manual gate. The router reports decisions but never dispatches.
+Before spawning a native profile, require it in the relevant
+default/fallback/explicit group. Invoking an explicit-only profile is the manual
+selection event; never spawn a blocked profile. External runners enforce the
+central graph directly before runtime/auth checks.
 
 ## Rules
 
@@ -73,7 +92,7 @@ effort, or neighboring lane.
 - **Route review by content, not habit** — security/auth/payments/migrations/
   user-facing → senior; routine bug-hunting stays on the executor (often cheaper
   *and* higher-recall there). Size the reviewer to the work, not to the top of the
-  table.
+  evidence for that lane.
 - **Escalation ladder:** executor miss/ambiguity → senior → judgement. Never retry
   the same failure on the executor twice — escalate. Security never delegates
   downward: it starts on the senior lane. (Standing rule: judge the output, not the
@@ -91,7 +110,8 @@ effort, or neighboring lane.
   affected result labeled `[DEGRADED: <lane>]`, one lane max; with two or more gone
   there is no team, so say so and work as ordinary single-model.
 - **Delegated output is unverified until you check it.** **Tie-breakers:**
-  intelligence > taste > cost; and `cost` is per *task*, not per token.
+  required lane evidence > deliverable quality > cost; and `cost` is per *task*,
+  not per token.
 
 ## Reaching Codex from Claude (cross-provider bridge)
 
@@ -153,19 +173,10 @@ model family; treat its output as **unverified until checked**.
 
 ---
 
-## Reference numbers (author's, point-in-time — re-derive yours)
+## Evidence discipline
 
-Not law — a worked example, measured on the author's work and plans as of
-**2026-07**. Your models, plans, and numbers differ; see `ADAPTING.md`.
-
-- **Efficiency (cost per finished task, measured/published):** the cheap lane is
-  cheapest *per task* even when more verbose (author's cheapest reviewer ~$0.13–0.21/
-  task vs the judgement model ~$3.12/task). Price spans ~10× across the table;
-  tokens-per-task only ~1.5× — so verbosity doesn't reorder the ranking.
-- **Routine review:** the cheap reviewer measured *cheaper and higher-recall* than
-  the senior model on routine bug-hunting — hence "route review by content."
-- **Judgement model billing:** the author's most expensive model bills as metered
-  usage credits (real money per call) — the reason it is two-touches-only.
-- **Subscription buckets:** on the author's Claude plan the executor drains a
-  *separate* weekly bucket from the lead/judgement models — so pushing volume to
-  the executor spares the shared pool. Check whether your plan meters the same way.
+The reference snapshot is dated and machine-readable in
+`config/model-evidence.json`; `delegation-evidence check` fails when it is stale.
+Keep API cost/task separate from subscription buckets, keep variants exact, and
+never infer reviewer or security quality from a general coding leaderboard. See
+`evaluation/README.md` and `ADAPTING.md` before changing a routing gate.

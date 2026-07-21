@@ -88,16 +88,16 @@ elif [ "$miss" = 0 ]; then
   [ "$via_plugin" = 1 ] && ok "all $total subagent profiles installed (some via plugin cache)" \
     || ok "all $total subagent profiles installed"
 else bad "$miss/$total subagent profile(s) missing from $CLAUDE_HOME/agents/ (and plugin cache) — run ./install.sh or /plugin install"; fi
-# skill + the co-located scored table the skill points at
+# skill + the co-located evidence-backed policy the skill points at
 if [ -f "$CLAUDE_HOME/skills/model-routing/SKILL.md" ]; then
   [ -f "$CLAUDE_HOME/skills/model-routing/model-routing.md" ] \
-    && ok "model-routing skill installed (+ scored table)" \
+    && ok "model-routing skill installed (+ evidence-backed policy)" \
     || warn "model-routing skill installed but model-routing.md is missing beside it (dangling pointer) — re-run ./install.sh"
 elif found_path "$CLAUDE_HOME/plugins" '*model-routing/SKILL.md'; then
   if found_path "$CLAUDE_HOME/plugins" '*model-routing/model-routing.md'; then
-    ok "model-routing skill installed (via plugin cache, + scored table)"
+    ok "model-routing skill installed (via plugin cache, + evidence-backed policy)"
   else
-    warn "model-routing skill installed via plugin cache, but the scored table (model-routing.md) is not beside it — the skill's pointer dangles; run ./install.sh to co-locate it (the table also lives at the kit root)"
+    warn "model-routing skill installed via plugin cache, but model-routing.md is not beside it — the skill's pointer dangles; run ./install.sh to co-locate it (the policy also lives at the kit root)"
   fi
 else bad "model-routing skill missing — run ./install.sh or /plugin install"; fi
 # orchestrate skill (the fan-out loop runbook; optional add-on to the routing policy)
@@ -147,6 +147,38 @@ if [ -f "$CODEX_HOME/skills/kimi-executor/SKILL.md" ]; then
   ok "optional Kimi executor skill installed for Codex"
 else warn "optional Kimi executor skill missing for Codex"; fi
 
+# ---- external evidence snapshot ----
+hdr "Model-routing evidence"
+if ! have jq; then
+  warn "jq not on PATH — model evidence cannot be validated"
+elif have delegation-evidence; then
+  evidence_check="$(delegation-evidence check --json 2>/dev/null || true)"
+  if [ -n "$evidence_check" ] && printf '%s' "$evidence_check" | jq -e '.valid == true' >/dev/null 2>&1; then
+    evidence_age="$(printf '%s' "$evidence_check" | jq -r '.age_days')"
+    ok "external model evidence snapshot valid (${evidence_age}d old)"
+    info "external evidence is advisory; versioned routing gates remain authoritative"
+  else
+    warn "model evidence missing, invalid, or stale — refresh/reinstall before changing lane qualifications"
+  fi
+else
+  warn "delegation-evidence not installed — re-run ./install.sh"
+fi
+
+hdr "Central routing gates"
+if ! have jq; then
+  warn "jq not on PATH — central routing gates cannot be validated"
+elif have delegation-route; then
+  route_check="$(delegation-route check --json 2>/dev/null || true)"
+  if [ -n "$route_check" ] && printf '%s' "$route_check" | jq -e '.valid == true and .read_only == true' >/dev/null 2>&1; then
+    ok "central routing gates valid ($(printf '%s' "$route_check" | jq -r '.profiles') profiles)"
+    info "judgement and super-judgement require explicit selection; the router never dispatches"
+  else
+    bad "central routing gates are missing or invalid — re-run ./install.sh"
+  fi
+else
+  warn "delegation-route not installed — re-run ./install.sh"
+fi
+
 # ---- optional GLM-5.2 external executor ----
 hdr "GLM-5.2 optional executor"
 if ! have jq; then
@@ -157,12 +189,14 @@ elif have delegation-glm; then
     ok "delegation-glm installed and pinned to glm-5.2"
     glm_selected="$(printf '%s' "$glm_check" | jq -r '.selected_backend')"
     glm_lanes="$(printf '%s' "$glm_check" | jq -r '.qualified_lanes | join(",")')"
+    glm_provisional="$(printf '%s' "$glm_check" | jq -r '.provisional_lanes | join(",")')"
     [ "$glm_selected" = none ] \
       && info "GLM runtime unavailable — optional lane will not be selected" \
       || ok "GLM backend available ($glm_selected)"
     [ -n "$glm_lanes" ] \
       && ok "GLM evaluation-qualified lanes: $glm_lanes" \
-      || info "GLM has no evaluation-qualified lanes; routing remains disabled"
+      || info "GLM has no automatically qualified lanes"
+    [ -z "$glm_provisional" ] || info "GLM provisional lanes (explicit flag required): $glm_provisional"
   else
     bad "delegation-glm check failed or is not pinned to glm-5.2"
   fi
@@ -180,12 +214,14 @@ elif have delegation-kimi; then
     ok "delegation-kimi installed and pinned to kimi-k3"
     kimi_selected="$(printf '%s' "$kimi_check" | jq -r '.selected_backend')"
     kimi_lanes="$(printf '%s' "$kimi_check" | jq -r '.qualified_lanes | join(",")')"
+    kimi_provisional="$(printf '%s' "$kimi_check" | jq -r '.provisional_lanes | join(",")')"
     [ "$kimi_selected" = none ] \
       && info "Kimi runtime unavailable — optional lanes will not be selected" \
       || ok "Kimi backend available ($kimi_selected)"
     [ -n "$kimi_lanes" ] \
       && ok "Kimi evaluation-qualified lanes: $kimi_lanes" \
-      || info "Kimi has no evaluation-qualified lanes; routing remains disabled"
+      || info "Kimi has no automatically qualified lanes"
+    [ -z "$kimi_provisional" ] || info "Kimi provisional lanes (explicit flag required): $kimi_provisional"
   else
     bad "delegation-kimi check failed or is not pinned to kimi-k3"
   fi

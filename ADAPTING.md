@@ -9,7 +9,8 @@ Here's what to change and how.
 | role | what it does | author's pick |
 |---|---|---|
 | **lead** | owns the work, integrates, verifies; enters judgement only in bursts | Opus 4.8 @ xhigh |
-| **judgement** | plan + final verdict/synthesis; expensive; two touches/feature | Fable 5 (via the `fable-judge` profile) |
+| **judgement** | plan + final verdict/synthesis; explicit, manual gate | Fable 5 or Sol high |
+| **super-judgement** | independent dual verdict + cross-review for exceptional decisions | Fable 5 + Sol high |
 | **executor** | bulk implementation, migrations, tests, extraction, repo mapping, **default review** | Sonnet 5 |
 | **senior** | security (direct), user-facing taste, escalation target, material review | Opus 4.8 |
 | **clerk / scout / builder** | cheap sub-lanes of the executor (extract / map / build) | Sonnet (Claude) · Luna+Terra (Codex) |
@@ -30,27 +31,37 @@ Four places — keep them in sync:
 2. **Codex profiles** — both files per profile must match:
    - `codex/agents/<name>.toml`: `model = "..."`, `model_reasoning_effort = "..."`
    - `codex/profiles/<name>.config.toml`: same `model` + `model_reasoning_effort`
-3. **The prose** — `claude/CLAUDE.delegation.md`, `codex/AGENTS.md`,
-   `model-routing.md`: update the "reference mapping" lines and the scored table.
-4. **Other sync surfaces** — keep these in step too: `codex/config.snippet.toml`,
+3. **The central gate** — `config/routing-gates.json`: update exact profile,
+   status, selection, evidence references, fallback, and any compound lane.
+4. **The prose** — `claude/CLAUDE.delegation.md`, `codex/AGENTS.md`,
+   `model-routing.md`: update the reference mapping and lane-evidence notes.
+5. **Other sync surfaces** — keep these in step too: `codex/config.snippet.toml`,
    `README.md`, `.claude-plugin/marketplace.json`, and `skills/orchestrate/*`.
 
 Then re-run `./install.sh` (it refreshes copied files; run `./uninstall.sh` first
 if you changed the prose blocks, since those are append-once).
 
-## Re-deriving the numbers (`cost` / `intelligence` / `taste`)
+## Refreshing evidence and qualifying lanes
 
-Don't inherit the author's scores — they're "my numbers, not benchmarks." Use the
-method in `model-routing.md`:
+Do not inherit a global 1–10 score. Start from
+`config/model-evidence.json` and keep every model+harness+effort row exact:
 
-- **cost = efficiency (cost per finished task)**, not sticker $/token. Measure it:
-  run the *same* task on each candidate, record tokens spent, multiply by its
-  price-per-token (or plan-burn weight). A verbose-but-cheap model often still wins.
-- **intelligence** = how hard a task you can hand it unsupervised. **taste** =
-  UI/UX, code quality, API design, copy.
-- **Before a model earns a lane**, apply the 3-gate test in `model-routing.md`
-  ("Before a new model earns a row"): harness compatibility, unsupervised
-  completion ≥ the cheapest incumbent, and uncorrelated value in review.
+- `delegation-evidence check` verifies schema and freshness;
+- `delegation-evidence lane <lane>` shows relevant coverage without qualifying it;
+- `delegation-route check` validates the operational decision graph;
+- `delegation-route table` generates the internal table from the central gate;
+- API cost per task is not subscription-bucket cost;
+- WebDev preference applies only to frontend work;
+- coding-agent results never substitute for reviewer precision/recall.
+- put same-variant, lane-relevant rows in `exact_evidence_ids`; put neighboring
+  efforts, different harnesses, or supporting domains in `context_evidence_ids`;
+- never copy a legacy aggregate score without task count, repetitions, confidence,
+  and limitations. Unknown sample metadata remains `null`.
+
+To add a model, refresh current sources, add the exact variant, pre-commit a
+lane-specific threshold against its incumbent, run a small local runtime/scope
+smoke, then record the owner decision in the relevant fail-closed routing gate.
+See `evaluation/README.md` for the complete workflow.
 
 ## Author-specific choices to reconsider
 
@@ -71,5 +82,7 @@ These are baked into the reference, not universal — decide for yourself:
 
 1. Map each role to one of your models (table above).
 2. Edit `agents/*.md` + `codex/agents/*.toml` + `codex/profiles/*.config.toml`.
-3. Re-score `model-routing.md` for your plans (or delete rows you don't use).
-4. `./uninstall.sh && ./install.sh`.
+3. Refresh `config/model-evidence.json` and define lane-specific thresholds.
+4. Update `config/routing-gates.json`; keep manual judgement explicit-only.
+5. Run the local compatibility smoke and update only the relevant routing gate.
+6. `./uninstall.sh && ./install.sh`.

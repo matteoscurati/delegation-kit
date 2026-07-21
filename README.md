@@ -5,8 +5,8 @@ models — a cheap lane executes, a senior lane reviews taste/security, an expen
 lane does judgement — with a symmetric bridge so each can reach the other.
 
 It ships as a **reference implementation**: the author's concrete models
-(`sonnet`/`opus`/`fable` on Claude; `luna`/`terra`/`sol` on Codex) and measured
-numbers, wired up and ready to run. Swap the models for your own tiers with
+(`sonnet`/`opus`/`fable` on Claude; `luna`/`terra`/`sol` on Codex), a dated
+external-evidence snapshot, and fail-closed local gates. Swap the models for your own tiers with
 [`ADAPTING.md`](./ADAPTING.md) — the *structure* is the transferable part.
 
 ## What it installs
@@ -17,46 +17,52 @@ numbers, wired up and ready to run. Swap the models for your own tiers with
 | 6 subagent profiles | `agents/*.md` | `sonnet-clerk` · `sonnet-scout` · `sonnet-builder` · `sonnet-reviewer` · `opus-reviewer` · `fable-judge` (judgement lane) (model+effort pinned) |
 | routing skill | `skills/model-routing/` | surfaces the decision procedure when you delegate |
 | orchestrate skill | `skills/orchestrate/` | the fan-out loop — plan → delegate to workers → verify → advisor judges plan + ship |
-| optional GLM skill | `skills/glm-executor/` | dispatches only evaluation-qualified GLM-5.2 lanes through the guarded runner |
-| optional Kimi skill | `skills/kimi-executor/` | exposes Kimi K3 only where its versioned gate qualifies the exact lane/backend/effort |
+| optional GLM skill | `skills/glm-executor/` | dispatches only gate-allowed GLM lanes; provisional use is explicit |
+| optional Kimi skill | `skills/kimi-executor/` | exposes only exact gate-allowed Kimi lane/backend/effort tuples |
 | lane discipline | `@import` in `CLAUDE.md` | always-loaded policy ([`claude/CLAUDE.delegation.md`](./claude/CLAUDE.delegation.md)) |
 
 **Codex** (`~/.codex/`)
 | piece | where | what |
 |---|---|---|
-| 4 native profiles | `agents/*.toml` | `luna-clerk` · `terra-scout` · `terra-builder` · `sol-reviewer` |
-| 4 ephemeral profiles | `*.config.toml` | for `codex exec --ephemeral -p <name>` |
+| 5 native profiles | `agents/*.toml` | `luna-clerk` · `terra-scout` · `terra-builder` · `sol-reviewer` · `sol-judge` |
+| 5 ephemeral profiles | `*.config.toml` | for `codex exec --ephemeral -p <name>` |
 | collaboration policy | appended to `AGENTS.md` | usage-aware routing **+ a Codex→Claude bridge** |
 | optional GLM skill | `skills/glm-executor/` | same fail-closed GLM-5.2 executor path |
 | optional Kimi skill | `skills/kimi-executor/` | same fail-closed provisional Kimi K3 path |
 | config snippet | printed for manual merge | `[agents]` fan-out caps + lead defaults |
 
-The universal installer also adds the `delegation-glm` and `delegation-kimi`
-commands under `~/.local/bin`, with versioned routing gates under
-`~/.local/share/delegation-kit/`. The shipped
-2026-07 evaluation qualifies only `clerk` and `scout`, both routed at `high`,
-through the isolated Claude→Z.AI backend. `builder` and `reviewer` remain
-disabled. The runner refuses every unqualified lane and every effort the gate did
-not pin, and also refuses execution unless at least one of Claude Code or Codex is
+The universal installer also adds `delegation-glm`, `delegation-kimi`,
+`delegation-evidence`, and the read-only central router `delegation-route` under
+`~/.local/bin`, with versioned gates under `~/.local/share/delegation-kit/`.
+GLM `clerk` and `scout` are provisional and require `--allow-provisional`;
+builder is a blocked candidate and reviewer is disabled. The runner refuses every
+blocked lane and every effort the gate did not pin, and also refuses execution unless at least one of Claude Code or Codex is
 installed; it is an agent option, not a standalone GLM client. The installer asks
 for the Z.AI API key and stores it in `~/.local/share/delegation-kit/config/zai.env`
 (mode 600); an explicit `ZAI_API_KEY` in the environment overrides it.
 
-Kimi K3 is installed as a **provisional coding model**. The gate enables `clerk`,
-`scout`, `builder`, and `senior` through the native Kimi Code CLI at effort
-`max`. `reviewer` and `judgement` remain disabled. Provider quota exhaustion
+Kimi K3 is installed as a **provisional coding model**. Its gate permits explicit
+`clerk`, `scout`, `builder`, and `frontend-builder` runs at `max`; senior is a
+blocked candidate, and reviewer/judgement remain disabled. Provider quota exhaustion
 returns exit 75 without silently falling back or changing the quality
-qualification. `delegation-kimi check --json` is the source of truth; CLI
+qualification. Provisional runs require `--allow-provisional`; CLI
 availability or a provider model listing is not enough.
 
-The shared scored table (cost / intelligence / taste per model) lives in
-[`model-routing.md`](./model-routing.md).
+The evidence-backed routing policy lives in [`model-routing.md`](./model-routing.md).
+Its raw, dated model+harness+effort snapshot is
+[`config/model-evidence.json`](./config/model-evidence.json), with source and lane
+methodology in [`evaluation/README.md`](./evaluation/README.md). The universal
+installer exposes it as `delegation-evidence`; external evidence is advisory and
+cannot mutate a routing gate.
 
-GLM-5.2's scored row and routing limits come from a pre-publication high/max
-evaluation against the incumbent profiles, with promotion decided separately
-for each lane. The repository ships only the resulting versioned gate; the GLM
-evaluation harness, test fixtures, raw outputs, and reports are kept outside the
-public package.
+The central decision file is [`config/routing-gates.json`](./config/routing-gates.json).
+It is the dispatch authority: GLM and Kimi validate it against their complete
+backend gates before every check/run, and refuse drift. Exact and contextual
+benchmark references are stored separately, and the generated table exposes
+local sample size/confidence instead of treating legacy scores as comparable.
+Fable `xhigh` and Sol `high` are explicit, manually qualified judgement profiles.
+`super-judgement` pairs them as independent judges followed by cross-review; the
+lead retains final authority and no dispatch, merge, or deploy is automatic.
 
 ## Install
 
@@ -71,13 +77,20 @@ prints the Codex config snippet (it never auto-edits `config.toml`). Keep the
 checkout where it is — Claude's `@import` points
 at it, so `git pull` updates the policy live. Remove with `./uninstall.sh`.
 
-Then verify the bridge is actually **wired** (not just written) with `./doctor.sh` —
+Then verify the bridge and evidence snapshot are actually **wired** (not just
+written) with `./doctor.sh` —
 it checks both CLIs, auth, the installed profiles *and* the always-loaded policy
 blocks, and the Codex sandbox/network posture. `./doctor.sh --ping` also does a live
 round-trip in both directions; `--ping-glm` and `--ping-kimi` separately ping the
 first evaluation-qualified lane and skip when no lane is qualified. The failure it
 catches is silent: profiles present but a policy block missing means the bridge
 never fires.
+
+Run the fail-closed regression suite after changing a gate:
+
+```sh
+tests/routing-gates.sh
+```
 
 **Claude-only, one command (plugin):**
 ```
@@ -97,8 +110,9 @@ model runner/gate, register the
 - **Senior** handles security (routed directly), user-facing taste, and escalation.
 - **Route review by content, not habit**; **size the reviewer to the work**;
   escalate cheap → senior → judgement, never retry an unsuitable cheap worker twice.
-- Tie-breakers: **intelligence > taste > cost**, and **`cost` is per task, not per
-  token** — a chatty cheap model can still be cheapest to finish the job.
+- Tie-breakers: **required lane evidence > deliverable quality > cost**, and
+  **`cost` is per task, not per token** — a chatty cheap model can still be
+  cheapest to finish the job.
 
 ## Cross-provider bridge
 

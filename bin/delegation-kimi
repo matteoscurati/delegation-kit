@@ -13,6 +13,8 @@ while [ -L "$SOURCE" ]; do
 done
 ROOT="$(cd "$(dirname "$SOURCE")/.." && pwd)"
 ROUTING_FILE="$ROOT/config/kimi-k3-routing.json"
+CENTRAL_GATES="${DELEGATION_ROUTING_GATES_FILE:-$ROOT/config/routing-gates.json}"
+ROUTER="$ROOT/bin/delegation-route"
 KIMI_HOME="${KIMI_CODE_HOME:-$HOME/.kimi-code}"
 CREDENTIAL_FILE="$KIMI_HOME/credentials/kimi-code.json"
 NATIVE_MODEL="kimi-code/k3"
@@ -23,10 +25,10 @@ usage() {
   cat <<'EOF'
 Usage:
   delegation-kimi check [--json]
-  delegation-kimi run --lane <clerk|scout|builder|reviewer|senior|judgement> \
+  delegation-kimi run --lane <clerk|scout|builder|frontend-builder|reviewer|senior|judgement> \
     [--effort <auto|max>] [--backend <auto|native>] \
     (--prompt-file <path> | --prompt <text>) --output <path> --workdir <path> \
-    [--metrics <path>]
+    [--metrics <path>] [--allow-provisional]
 
 Exit codes: 64 invalid input, 69 unavailable, 70 dispatch failure,
 75 temporary/rate-limit failure, 78 lane not qualified.
@@ -70,18 +72,32 @@ native_status() {
 }
 
 qualified_lanes() {
-  if [ -f "$ROUTING_FILE" ] && have jq; then
-    jq -c '.qualified_lanes // []' "$ROUTING_FILE" 2>/dev/null || printf '[]'
+  if [ -f "$CENTRAL_GATES" ] && have jq; then
+    jq -c '[.profiles["kimi-k3"].lanes | to_entries[] | select(.value.status == "qualified") | .key] | sort' "$CENTRAL_GATES" 2>/dev/null || printf '[]'
   else
     printf '[]'
   fi
 }
 
-is_qualified() {
+provisional_lanes() {
+  if [ -f "$CENTRAL_GATES" ] && have jq; then
+    jq -c '[.profiles["kimi-k3"].lanes | to_entries[] | select(.value.status == "provisional") | .key] | sort' "$CENTRAL_GATES" 2>/dev/null || printf '[]'
+  else
+    printf '[]'
+  fi
+}
+
+gate_status() {
   local lane="$1" backend="$2"
-  [ -f "$ROUTING_FILE" ] && have jq || return 1
-  jq -e --arg lane "$lane" --arg backend "$backend" \
-    '.lanes[$lane].backends[$backend].qualified == true' "$ROUTING_FILE" >/dev/null 2>&1
+  [ "$backend" = native ] || { printf 'disabled\n'; return; }
+  jq -r --arg lane "$lane" '.profiles["kimi-k3"].lanes[$lane].status // "disabled"' \
+    "$CENTRAL_GATES" 2>/dev/null || printf 'disabled\n'
+}
+
+is_allowed() {
+  local lane="$1" backend="$2" allow_provisional="$3" status
+  status="$(gate_status "$lane" "$backend")"
+  [ "$status" = qualified ] || { [ "$status" = provisional ] && [ "$allow_provisional" = 1 ]; }
 }
 
 preferred_backends() {
@@ -92,14 +108,19 @@ preferred_backends() {
 }
 
 default_effort() {
-  printf 'max\n'
+  jq -r '.profiles["kimi-k3"].effort // empty' "$CENTRAL_GATES" 2>/dev/null
 }
 
 qualified_effort() {
   local lane="$1" backend="$2"
-  jq -er --arg lane "$lane" --arg backend "$backend" \
-    '.lanes[$lane].backends[$backend].effort | select(type == "string")' \
-    "$ROUTING_FILE" 2>/dev/null
+  [ "$backend" = native ] || return 1
+  [ "$(gate_status "$lane" "$backend")" != disabled ] || return 1
+  default_effort
+}
+
+validate_gate_graph() {
+  [ -x "$ROUTER" ] || return 1
+  DELEGATION_ROUTING_GATES_FILE="$CENTRAL_GATES" "$ROUTER" check --json >/dev/null 2>&1
 }
 
 # A dead session is not a broken dispatch: it means the runtime is unavailable
@@ -146,21 +167,23 @@ prepare_native_home() {
 }
 
 print_check() {
-  local as_json="${1:-0}" native_ok=false selected="none" lanes
+  local as_json="${1:-0}" native_ok=false selected="none" lanes provisional
   have jq || die 69 "jq is required"
+  validate_gate_graph || die 78 "central and executable routing gates are missing, invalid, or inconsistent"
   native_status && native_ok=true || true
   lanes="$(qualified_lanes)"
+  provisional="$(provisional_lanes)"
   [ "$native_ok" = true ] && selected=native
   if [ "$as_json" = 1 ]; then
     jq -n \
       --arg model "kimi-k3" --arg native_model "$NATIVE_MODEL" \
-      --arg selected "$selected" --argjson efforts "$EFFORTS" --argjson lanes "$lanes" \
+      --arg selected "$selected" --argjson efforts "$EFFORTS" --argjson lanes "$lanes" --argjson provisional "$provisional" \
       --argjson native "$native_ok" --arg native_reason "$NATIVE_REASON" \
       '{model:$model,models:{native:$native_model},efforts:$efforts,
-        selected_backend:$selected,qualified_lanes:$lanes,backends:{
+        selected_backend:$selected,qualified_lanes:$lanes,provisional_lanes:$provisional,backends:{
           native:{available:$native,reason:$native_reason,efforts:["max"]}}}'
   else
-    printf 'Kimi K3: selected=%s qualified=%s\n' "$selected" "$lanes"
+    printf 'Kimi K3: selected=%s qualified=%s provisional=%s\n' "$selected" "$lanes" "$provisional"
     printf '  native: %s (%s; model=%s; effort=max)\n' "$native_ok" "$NATIVE_REASON" "$NATIVE_MODEL"
   fi
 }
@@ -194,7 +217,7 @@ backend_available() {
 
 run_command() {
   local lane="" effort="auto" backend="auto" prompt_file="" prompt="" output="" workdir="" metrics=""
-  local prompt_source="" backend_checked=0 expected_effort=""
+  local prompt_source="" backend_checked=0 expected_effort="" allow_provisional=0
   while [ "$#" -gt 0 ]; do
     case "$1" in
       --lane) lane="${2:-}"; shift 2 ;;
@@ -205,11 +228,12 @@ run_command() {
       --output) output="${2:-}"; shift 2 ;;
       --workdir) workdir="${2:-}"; shift 2 ;;
       --metrics) metrics="${2:-}"; shift 2 ;;
+      --allow-provisional) allow_provisional=1; shift ;;
       -h|--help) usage; exit 0 ;;
       *) die 64 "unknown run argument: $1" ;;
     esac
   done
-  case "$lane" in clerk|scout|builder|reviewer|senior|judgement) ;; *) die 64 "invalid lane: $lane" ;; esac
+  case "$lane" in clerk|scout|builder|frontend-builder|reviewer|senior|judgement) ;; *) die 64 "invalid lane: $lane" ;; esac
   case "$effort" in auto|max) ;; *) die 64 "invalid effort: $effort" ;; esac
   case "$backend" in auto|native) ;; *) die 64 "invalid backend: $backend" ;; esac
   [ -z "$prompt_file" ] || [ -z "$prompt_source" ] || die 64 "use only one of --prompt-file or --prompt"
@@ -226,13 +250,14 @@ run_command() {
   have jq || die 69 "jq is required"
   [ -f "$ROUTING_FILE" ] || die 69 "routing file missing: $ROUTING_FILE"
   jq -e . "$ROUTING_FILE" >/dev/null 2>&1 || die 69 "routing file is invalid JSON"
+  validate_gate_graph || die 78 "central and executable routing gates are missing, invalid, or inconsistent"
 
   if [ "$backend" = auto ]; then
     local candidate qualified_seen=0
     backend=""
     while IFS= read -r candidate; do
       case "$candidate" in native) ;; *) continue ;; esac
-      is_qualified "$lane" "$candidate" || continue
+      is_allowed "$lane" "$candidate" "$allow_provisional" || continue
       qualified_seen=1
       if backend_available "$candidate"; then
         backend="$candidate"; backend_checked=1; break
@@ -244,10 +269,22 @@ run_command() {
       # "this lane failed evaluation" — they are different facts with different
       # lifetimes.
       [ "$qualified_seen" = 0 ] || die 69 "$NATIVE_REASON"
-      die 78 "lane '$lane' is not qualified for any backend"
+      status="$(gate_status "$lane" native)"
+      if [ "$status" != provisional ]; then
+        die 78 "lane '$lane' has non-dispatchable status '$status'"
+      else
+        die 78 "lane '$lane' is provisional; pass --allow-provisional after an explicit routing decision"
+      fi
     fi
   else
-    is_qualified "$lane" "$backend" || die 78 "lane '$lane' is not qualified for backend '$backend'"
+    if ! is_allowed "$lane" "$backend" "$allow_provisional"; then
+      status="$(gate_status "$lane" "$backend")"
+      if [ "$status" != provisional ]; then
+        die 78 "lane '$lane' backend '$backend' has non-dispatchable status '$status'"
+      else
+        die 78 "lane '$lane' backend '$backend' is provisional; pass --allow-provisional after an explicit routing decision"
+      fi
+    fi
   fi
 
   [ "$effort" != auto ] || effort="$(default_effort)"
@@ -275,7 +312,7 @@ run_command() {
   [ "$output" != "$metrics" ] || die 64 "output and metrics paths resolve to the same file"
   [ ! -L "$output" ] || die 64 "output must not be a symlink"
   [ ! -L "$metrics" ] || die 64 "metrics must not be a symlink"
-  if [ "$lane" != builder ]; then
+  if [ "$lane" != builder ] && [ "$lane" != frontend-builder ]; then
     case "$output" in "$workdir"/*) die 64 "read-only lane output must be outside workdir" ;; esac
     case "$metrics" in "$workdir"/*) die 64 "read-only lane metrics must be outside workdir" ;; esac
   fi
@@ -291,7 +328,7 @@ run_command() {
   error_tmp="$tmp/error.txt"
   started="$(date +%s)"
 
-  if [ "$lane" = builder ]; then
+  if [ "$lane" = builder ] || [ "$lane" = frontend-builder ]; then
     (cd "$workdir" && kimi --prompt "$prompt" --model "$NATIVE_MODEL" \
       --output-format stream-json </dev/null) >"$events" 2>"$tmp/stderr" || rc=$?
   else

@@ -1,0 +1,111 @@
+# Evidence-backed model routing
+
+The kit separates three facts that are easy to blur together:
+
+1. **External capability evidence** — recent, broad benchmarks and live arenas.
+2. **Local compatibility** — the exact runtime, harness, permissions, model, and
+   effort work on this machine.
+3. **Routing qualification** — an explicit owner decision stored in a versioned
+   `config/*-routing.json` gate.
+
+External evidence informs a decision but never edits a gate or qualifies a lane
+automatically. A strong public score cannot prove that a local runner respects
+scope, permissions, output contracts, or the pinned effort.
+
+Operational decisions live in `config/routing-gates.json`. Inspect them with
+`delegation-route`; `status` records confidence and `selection` records whether a
+profile is default, fallback, explicit-only, or blocked. Judgement is manual-only,
+and the Fable+Sol super-judgement pair never dispatches automatically.
+The central file is authoritative: both external runners validate the complete
+decision graph and read their dispatch status from it before checking runtime or
+authentication. Their backend-specific JSON files retain transport and legacy
+measurement details but cannot widen the central gate.
+
+## Versioned snapshot
+
+[`config/model-evidence.json`](../config/model-evidence.json) records raw metrics,
+not subjective 1–10 scores. Every row is an exact combination of model, harness,
+and effort. Results from different variants are never silently merged.
+
+The snapshot includes exact rows for the installed Codex profiles where the
+source publishes them: Luna `low`, Terra `low`/`medium`, and Sol `high`. Missing
+exact Claude-profile variants remain explicit evidence gaps; nearby `max` or
+`xhigh` results are context, not substitutes.
+
+Routing decisions therefore separate `exact_evidence_ids` from
+`context_evidence_ids`. Exact means the same model, harness, and effort; it must
+also be relevant to the lane. Nearby variants, different harnesses, and general
+coding evidence for review/judgement are context and are shown separately in the
+generated table.
+
+The 2026-07-21 snapshot uses only current sources:
+
+- [Artificial Analysis Coding Agent Index v1.2](https://artificialanalysis.ai/agents/coding-agents/)
+  with its [July 2026 methodology](https://artificialanalysis.ai/methodology/coding-agents-benchmarking):
+  DeepSWE, Terminal-Bench v2, SWE-Atlas-QnA, three repeats, cost/time/token data.
+- [Arena Agent Arena](https://arena.ai/leaderboard/agent), dated 2026-07-19,
+  with [causal-evaluation methodology](https://arena.ai/blog/agent-arena-methodology/):
+  real-world confirmed success, feedback, steerability, bash recovery, and tool
+  hallucination.
+- [Arena Code Arena WebDev](https://arena.ai/leaderboard/code/webdev?rankBy=labs),
+  dated 2026-07-19: human-preference evidence for frontend/product output only.
+- [SWE-PRBench](https://arxiv.org/abs/2603.26130) and the continuously refreshed
+  [Martian Code Review Bench](https://github.com/withmartian/code-review-benchmark)
+  as the required evidence family for reviewer lanes.
+- [Terminal-Bench 2.0](https://www.tbench.ai/leaderboard/terminal-bench/2.0?verified=true)
+  and [SWE-bench-Live](https://swe-bench-live.github.io/) as recent secondary
+  checks for terminal work and contamination-resistant issue resolution.
+
+Run:
+
+```sh
+bin/delegation-evidence check
+bin/delegation-evidence sources
+bin/delegation-evidence models
+bin/delegation-evidence lane builder
+bin/delegation-route check
+bin/delegation-route table
+tests/routing-gates.sh
+bin/delegation-evidence lane reviewer --json
+```
+
+`check` fails with exit 78 when the snapshot is older than the configured
+freshness window. Refreshing means verifying the live source pages, recording a
+new dated snapshot, and reviewing any routing decision affected by the change.
+
+## Lane mapping
+
+The mapping is evidence coverage, not an automatic score:
+
+| lane | primary evidence | supporting evidence |
+|---|---|---|
+| clerk | SWE-Atlas-QnA | cost, tool reliability |
+| scout | SWE-Atlas-QnA | steerability, time/task |
+| builder | DeepSWE + Terminal-Bench | cost, token use |
+| frontend-builder | Code Arena WebDev | DeepSWE, confirmed success |
+| reviewer | review precision + recall | false-positive rate |
+| senior | steerability + user outcomes | review evidence, WebDev taste |
+| judgement | manual decision only | Agent Arena is supporting context |
+
+WebDev Elo never promotes a general builder. Coding-agent scores never promote a
+reviewer. No public benchmark auto-promotes judgement or security-sensitive work.
+
+## Qualification workflow
+
+1. Select the exact production variant: model, harness, effort, and permissions.
+2. Inspect relevant coverage with `delegation-evidence lane <lane>`.
+3. Pre-commit the incumbent, lane-specific threshold, and fallback.
+4. Run only a small local compatibility smoke: runtime/auth, tool use, scoped
+   writes, output contract, concurrency where relevant.
+5. Record the owner decision in the routing gate, distinguishing `candidate`,
+   `provisional`, `qualified`, `manual-qualified`, and `disabled`; record routing
+   selection separately as default, fallback, explicit-only, or blocked.
+6. Never preserve an aggregate local score without its task count, repetitions,
+   and confidence. Old incomplete runs are labeled `legacy_local_result`; unknown
+   sample metadata stays `null` and cannot be compared across lanes.
+6. Keep the runner fail-closed on the exact lane/backend/effort tuple.
+
+For a reviewer, missing SWE-PRBench/Martian precision and recall means missing
+evidence, even when the same model is strong on DeepSWE or WebDev. For a local
+bridge, missing runtime/auth means unavailable, even when external evidence is
+strong.

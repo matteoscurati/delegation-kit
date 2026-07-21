@@ -34,13 +34,13 @@ echo "  - removed 6 subagent profiles + model-routing, orchestrate, GLM & Kimi s
 strip_guarded "$CLAUDE_HOME/CLAUDE.md"
 
 echo "Codex -> $CODEX_HOME"
-for a in luna-clerk terra-scout terra-builder sol-reviewer; do
+for a in luna-clerk terra-scout terra-builder sol-reviewer sol-judge; do
   rm -f "$CODEX_HOME/agents/$a.toml" "$CODEX_HOME/$a.config.toml"
 done
 rm -rf "$CODEX_HOME/skills/glm-executor" "$CODEX_HOME/skills/kimi-executor"
-echo "  - removed 4 native + 4 ephemeral profiles"
+echo "  - removed 5 native + 5 ephemeral profiles"
 strip_guarded "$CODEX_HOME/AGENTS.md"
-rm -f "$BIN_HOME/delegation-glm" "$BIN_HOME/delegation-kimi"
+rm -f "$BIN_HOME/delegation-glm" "$BIN_HOME/delegation-kimi" "$BIN_HOME/delegation-evidence" "$BIN_HOME/delegation-route"
 # Everything else under $DATA_HOME is a byte-for-byte copy of a repo file that
 # re-running install.sh restores; the key is the only unrecoverable thing here,
 # and install.sh promises never to replace it without consent. Back it up rather
@@ -52,7 +52,7 @@ if [ -f "$DATA_HOME/config/zai.env" ]; then
   chmod 600 "$zai_key_backup"
 fi
 rm -rf "$DATA_HOME"
-echo "  - removed optional GLM/Kimi bridges + routing gates"
+echo "  - removed optional GLM/Kimi bridges, central routing gates, and evidence snapshot"
 [ -z "$zai_key_backup" ] \
   || echo "  - Z.AI API key preserved at $zai_key_backup (mode 600) — delete it yourself when done"
 echo

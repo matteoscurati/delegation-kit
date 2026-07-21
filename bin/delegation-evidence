@@ -1,0 +1,149 @@
+#!/usr/bin/env bash
+# Inspect the versioned external-evidence snapshot used by delegation-kit.
+# Evidence informs a lane decision; it never mutates a routing gate or qualifies
+# a model on its own.
+set -euo pipefail
+
+SOURCE="${BASH_SOURCE[0]}"
+while [ -L "$SOURCE" ]; do
+  SOURCE_DIR="$(cd "$(dirname "$SOURCE")" && pwd)"
+  SOURCE="$(readlink "$SOURCE")"
+  [[ "$SOURCE" = /* ]] || SOURCE="$SOURCE_DIR/$SOURCE"
+done
+ROOT="$(cd "$(dirname "$SOURCE")/.." && pwd)"
+DEFAULT_DATA="$ROOT/config/model-evidence.json"
+DATA="${DELEGATION_EVIDENCE_FILE:-$DEFAULT_DATA}"
+
+usage() {
+  cat <<'EOF'
+usage: delegation-evidence <check|sources|models|lane NAME> [--json]
+
+  check       validate schema, references, and snapshot freshness
+  sources     list the benchmark sources in the snapshot
+  models      list exact model+harness+effort evidence rows
+  lane NAME   show which rows contain the lane's required/supporting metrics
+
+External evidence never changes config/*-routing.json automatically.
+EOF
+}
+
+command -v jq >/dev/null 2>&1 || { echo "delegation-evidence: jq is required" >&2; exit 69; }
+[ -r "$DATA" ] || { echo "delegation-evidence: cannot read $DATA" >&2; exit 66; }
+
+json=0
+args=()
+for arg in "$@"; do
+  case "$arg" in
+    --json) json=1 ;;
+    *) args+=("$arg") ;;
+  esac
+done
+if [ "${#args[@]}" -gt 0 ]; then set -- "${args[@]}"; else set --; fi
+cmd="${1:-}"
+
+validate() {
+  jq -e '
+    .schema_version == 1 and
+    (.snapshot_at | type == "string") and
+    (.max_snapshot_age_days | type == "number" and . > 0) and
+    (.policy.external_evidence_never_auto_qualifies == true) and
+    (.sources | type == "object" and length > 0) and
+    (.lane_evidence | type == "object" and length > 0) and
+    (.evidence | type == "array" and length > 0) and
+    ([.evidence[].id] | length == (unique | length)) and
+    ([.evidence[] | select((.model | type) != "string" or (.harness | type) != "string" or (.effort | type) != "string")] | length == 0) and
+    ([.evidence[].source] - (.sources | keys) | length == 0)
+  ' "$DATA" >/dev/null
+
+  local config_dir gate
+  config_dir="$(cd "$(dirname "$DATA")" && pwd)"
+  for gate in "$config_dir"/*-routing.json; do
+    [ -f "$gate" ] || continue
+    jq -e --slurpfile evidence "$DATA" '
+      (.external_evidence_ids // []) as $ids |
+      [$evidence[0].evidence[].id] as $known |
+      (($ids - $known) | length) == 0
+    ' "$gate" >/dev/null || {
+      echo "delegation-evidence: unknown external_evidence_id in $gate" >&2
+      return 78
+    }
+  done
+
+  local snapshot_epoch now_epoch age_days max_age
+  snapshot_epoch="$(jq -r '.snapshot_at | fromdateiso8601' "$DATA")"
+  now_epoch="$(date -u +%s)"
+  age_days=$(( (now_epoch - snapshot_epoch) / 86400 ))
+  max_age="$(jq -r '.max_snapshot_age_days' "$DATA")"
+  [ "$age_days" -le "$max_age" ] || {
+    echo "delegation-evidence: snapshot is stale (${age_days}d > ${max_age}d); refresh sources before routing" >&2
+    return 78
+  }
+  printf '%s\n' "$age_days"
+}
+
+case "$cmd" in
+  check)
+    age="$(validate)"
+    if [ "$json" = 1 ]; then
+      jq -n --arg file "$DATA" --argjson age_days "$age" \
+        --arg snapshot "$(jq -r .snapshot_at "$DATA")" \
+        '{valid:true,file:$file,snapshot_at:$snapshot,age_days:$age_days}'
+    else
+      echo "evidence snapshot valid: $(jq -r .snapshot_at "$DATA") (${age}d old)"
+      echo "routing mutation: disabled (evidence is advisory)"
+    fi
+    ;;
+  sources)
+    validate >/dev/null
+    if [ "$json" = 1 ]; then
+      jq '.sources' "$DATA"
+    else
+      jq -r '.sources | to_entries[] | [.key, .value.observed_at, .value.name, .value.url] | @tsv' "$DATA" \
+        | awk -F '\t' 'BEGIN{printf "%-31s %-10s %-42s %s\n","SOURCE","OBSERVED","NAME","URL"} {printf "%-31s %-10s %-42s %s\n",$1,$2,$3,$4}'
+    fi
+    ;;
+  models)
+    validate >/dev/null
+    if [ "$json" = 1 ]; then
+      jq '.evidence' "$DATA"
+    else
+      jq -r '.evidence[] | [.model, .harness, .effort, .source, (.provisional // false)] | @tsv' "$DATA" \
+        | awk -F '\t' 'BEGIN{printf "%-23s %-22s %-16s %-30s %s\n","MODEL","HARNESS","EFFORT","SOURCE","PROVISIONAL"} {printf "%-23s %-22s %-16s %-30s %s\n",$1,$2,$3,$4,$5}'
+    fi
+    ;;
+  lane)
+    validate >/dev/null
+    lane="${2:-}"
+    [ -n "$lane" ] || { usage >&2; exit 2; }
+    jq -e --arg lane "$lane" '.lane_evidence[$lane] != null' "$DATA" >/dev/null \
+      || { echo "delegation-evidence: unknown lane '$lane'" >&2; exit 2; }
+    filter='
+      def hasmetric($p): try (getpath($p | split(".")) != null) catch false;
+      .lane_evidence[$lane] as $policy |
+      [.evidence[] |
+        . as $row |
+        {id,model,harness,effort,source,provisional:(.provisional // false),
+         required_present: [$policy.required_metrics[] as $metric | select($row.metrics | hasmetric($metric)) | $metric],
+         required_total: ($policy.required_metrics | length),
+         supporting_present: [$policy.supporting_metrics[] as $metric | select($row.metrics | hasmetric($metric)) | $metric],
+         supporting_total: ($policy.supporting_metrics | length)} |
+        select((.required_present | length) > 0 or (.supporting_present | length) > 0)] as $rows |
+      {lane:$lane,policy:$policy,rows:$rows,auto_qualifies:false}'
+    if [ "$json" = 1 ]; then
+      jq --arg lane "$lane" "$filter" "$DATA"
+    else
+      text_filter="$filter"'
+        | "lane: \(.lane)",
+          "required: \(.policy.required_metrics | join(", "))",
+          "supporting: \(.policy.supporting_metrics | join(", "))",
+          "note: \(.policy.note)",
+          "",
+          (.rows[] | [.model,.harness,.effort,((.required_present|length)|tostring)+"/"+(.required_total|tostring),((.supporting_present|length)|tostring)+"/"+(.supporting_total|tostring),(.provisional|tostring)] | @tsv)
+      '
+      jq -r --arg lane "$lane" "$text_filter" "$DATA" \
+        | awk -F '\t' 'NR<=5{print; next} NR==6{printf "%-23s %-22s %-16s %-9s %-10s %s\n","MODEL","HARNESS","EFFORT","REQUIRED","SUPPORT","PROVISIONAL"} {printf "%-23s %-22s %-16s %-9s %-10s %s\n",$1,$2,$3,$4,$5,$6}'
+    fi
+    ;;
+  -h|--help|"") usage ;;
+  *) usage >&2; exit 2 ;;
+esac

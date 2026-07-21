@@ -1,0 +1,199 @@
+#!/usr/bin/env bash
+# Inspect and resolve delegation-kit's versioned routing decisions. This command
+# is read-only: it never dispatches a model or mutates a gate.
+set -euo pipefail
+
+SOURCE="${BASH_SOURCE[0]}"
+while [ -L "$SOURCE" ]; do
+  SOURCE_DIR="$(cd "$(dirname "$SOURCE")" && pwd)"
+  SOURCE="$(readlink "$SOURCE")"
+  [[ "$SOURCE" = /* ]] || SOURCE="$SOURCE_DIR/$SOURCE"
+done
+ROOT="$(cd "$(dirname "$SOURCE")/.." && pwd)"
+GATES="${DELEGATION_ROUTING_GATES_FILE:-$ROOT/config/routing-gates.json}"
+EVIDENCE="${DELEGATION_EVIDENCE_FILE:-$ROOT/config/model-evidence.json}"
+GLM_GATE="${DELEGATION_GLM_ROUTING_FILE:-$ROOT/config/glm-5.2-routing.json}"
+KIMI_GATE="$ROOT/config/kimi-k3-routing.json"
+
+usage() {
+  cat <<'EOF'
+usage: delegation-route <check|lane NAME|profile NAME|resolve --lane NAME|table> [--json]
+
+  check             validate gates, enums, references, and compound lanes
+  lane NAME         list every profile configured for a lane
+  profile NAME      show one exact profile and all its lane decisions
+  resolve --lane N  return the allowed routing decision; never dispatches
+  table             print the internal routing table (Markdown, or JSON)
+EOF
+}
+
+die() { local code="$1"; shift; printf 'delegation-route: %s\n' "$*" >&2; exit "$code"; }
+command -v jq >/dev/null 2>&1 || die 69 "jq is required"
+[ -r "$GATES" ] || die 66 "cannot read $GATES"
+[ -r "$EVIDENCE" ] || die 66 "cannot read $EVIDENCE"
+
+validate() {
+  jq -e . "$GATES" >/dev/null || die 65 "invalid gate JSON"
+  jq -e . "$EVIDENCE" >/dev/null || die 65 "invalid evidence JSON"
+  jq -e --slurpfile evidence "$EVIDENCE" '
+    def legal_pair:
+      .status as $status | .selection as $selection |
+      ($status == "disabled" and $selection == "blocked") or
+      ($status == "candidate" and $selection == "blocked") or
+      ($status == "provisional" and (["default","fallback","preferred-explicit","explicit-only"] | index($selection))) or
+      ($status == "qualified" and (["default","fallback","preferred-explicit","explicit-only"] | index($selection))) or
+      ($status == "manual-qualified" and $selection == "explicit-only");
+    def evidence_by_id: ($evidence[0].evidence | map({key:.id,value:.}) | from_entries);
+    def evidence_lane($lane):
+      if $lane == "material-review" or $lane == "routine-review" or $lane == "security" then "reviewer"
+      else $lane end;
+    def has_metric($metrics; $path): try ($metrics | getpath($path | split(".")) != null) catch false;
+    . as $root | evidence_by_id as $rows |
+    (.profiles | keys) as $profiles |
+    .schema_version == 1 and
+    (.profiles | type == "object" and length > 0) and
+    (.compound_lanes | type == "object") and
+    ([.profiles[] | .model, .harness, .effort] | all(type == "string" and length > 0)) and
+    ([.profiles[].lanes[] | .status] | all(. as $v | $statuses | index($v) != null)) and
+    ([.profiles[].lanes[] | .selection] | all(. as $v | $selections | index($v) != null)) and
+    ([.compound_lanes[] | .status] | all(. as $v | $statuses | index($v) != null)) and
+    ([.compound_lanes[] | .selection] | all(. as $v | $selections | index($v) != null)) and
+    ([.profiles[].lanes[], .compound_lanes[]] | all(legal_pair)) and
+    ([.profiles[].lanes[] | select((.fallback // null) != null) | .fallback] - $profiles | length == 0) and
+    ([.profiles | to_entries[] as $p | $p.value.lanes[] |
+      select((.exact_evidence_ids | type) != "array" or (.context_evidence_ids | type) != "array")] | length == 0) and
+    ([.profiles | to_entries[] as $p | $p.value.lanes[] as $lane |
+      $lane.exact_evidence_ids[]? as $id |
+      select($rows[$id].model != $p.value.model or $rows[$id].harness != $p.value.harness or $rows[$id].effort != $p.value.effort)] | length == 0) and
+    ([.profiles | to_entries[] as $p | $p.value.lanes | to_entries[] as $lane |
+      $lane.value.exact_evidence_ids[]? as $id |
+      ($evidence[0].lane_evidence[evidence_lane($lane.key)].required_metrics // [])[] as $metric |
+      select(has_metric($rows[$id].metrics; $metric) | not)] | length == 0) and
+    ([.profiles[].lanes[] | ((.exact_evidence_ids + .context_evidence_ids) | length) == ((.exact_evidence_ids + .context_evidence_ids) | unique | length)] | all) and
+    ([.profiles | to_entries[] as $p | $p.value.lanes | to_entries[] |
+      select(.value.selection == "default") | .key] | group_by(.) | all(length <= 1)) and
+    ([.compound_lanes[] | .members[] as $member |
+      select(.status != "manual-qualified" or .selection != "explicit-only" or
+             .automatic_dispatch != false or .automatic_merge != false or
+             .final_authority != "lead" or
+             $root.profiles[$member].lanes.judgement.status != "manual-qualified")] | length == 0)
+  ' --argjson statuses "$(jq '.status_values' "$GATES")" \
+    --argjson selections "$(jq '.selection_values' "$GATES")" "$GATES" >/dev/null \
+    || die 65 "gate schema or enum validation failed"
+
+  local evidence_ids gate_ids missing members
+  evidence_ids="$(jq -c '[.evidence[].id]' "$EVIDENCE")"
+  gate_ids="$(jq -c '[.profiles[].lanes[] | .exact_evidence_ids[]?, .context_evidence_ids[]?] | unique' "$GATES")"
+  missing="$(jq -n --argjson known "$evidence_ids" --argjson used "$gate_ids" '$used - $known')"
+  [ "$missing" = "[]" ] || die 65 "unknown evidence ids: $missing"
+  members="$(jq -c '[.profiles | keys[]]' "$GATES")"
+  missing="$(jq -c --argjson known "$members" '[.compound_lanes[].members[]] | unique - $known' "$GATES")"
+  [ "$missing" = "[]" ] || die 65 "unknown compound-lane members: $missing"
+
+  [ -r "$GLM_GATE" ] || die 66 "cannot read executable GLM gate $GLM_GATE"
+  [ -r "$KIMI_GATE" ] || die 66 "cannot read executable Kimi gate $KIMI_GATE"
+  jq -e -n --slurpfile central "$GATES" --slurpfile bridge "$GLM_GATE" '
+    [$central[0].profiles | to_entries[] | select(.value.model == "glm-5.2" and .value.harness == "claude-zai") as $p |
+     $p.value.lanes | to_entries[] | {key:.key,value:{status:.value.status,selection:.value.selection,effort:$p.value.effort}}] | from_entries as $expected |
+    [$bridge[0].lanes | to_entries[] | {key:.key,value:{status:.value.backends["claude-zai"].status,selection:.value.backends["claude-zai"].selection,effort:(.value.backends["claude-zai"].effort // .value.default_effort)}}] | from_entries as $actual |
+    ($bridge[0].model == "glm-5.2") and (($expected | keys) == ($actual | keys)) and
+    all($expected | keys[]; $expected[.] == $actual[.]) and
+    (($expected | to_entries | map(select(.value.status == "qualified") | .key) | sort) == (($bridge[0].qualified_lanes // []) | sort)) and
+    (($expected | to_entries | map(select(.value.status == "provisional") | .key) | sort) == (($bridge[0].provisional_lanes // []) | sort)) and
+    all($bridge[0].lanes[]; (.backends["claude-zai"].qualified == (.backends["claude-zai"].status == "qualified")))
+  ' >/dev/null || die 65 "central routing and GLM executable gate disagree"
+  jq -e -n --slurpfile central "$GATES" --slurpfile bridge "$KIMI_GATE" '
+    [$central[0].profiles | to_entries[] | select(.value.model == "kimi-k3" and .value.harness == "kimi-code-cli") as $p |
+     $p.value.lanes | to_entries[] | {key:.key,value:{status:.value.status,selection:.value.selection,effort:$p.value.effort}}] | from_entries as $expected |
+    [$bridge[0].lanes | to_entries[] | {key:.key,value:{status:.value.backends.native.status,selection:.value.backends.native.selection,effort:(.value.backends.native.effort // .value.default_effort)}}] | from_entries as $actual |
+    ($bridge[0].model == "kimi-k3") and (($expected | keys) == ($actual | keys)) and
+    all($expected | keys[]; $expected[.] == $actual[.]) and
+    (($expected | to_entries | map(select(.value.status == "qualified") | .key) | sort) == (($bridge[0].qualified_lanes // []) | sort)) and
+    (($expected | to_entries | map(select(.value.status == "provisional") | .key) | sort) == (($bridge[0].provisional_lanes // []) | sort)) and
+    all($bridge[0].lanes[]; (.backends.native.qualified == (.backends.native.status == "qualified")))
+  ' >/dev/null || die 65 "central routing and Kimi executable gate disagree"
+}
+
+profile_rows() {
+  jq -c '
+    .profiles | to_entries[] as $p |
+    $p.value.lanes | to_entries[] |
+    {profile:$p.key,model:$p.value.model,harness:$p.value.harness,effort:$p.value.effort,
+     lane:.key,status:.value.status,selection:.value.selection,
+     exact_evidence_ids:(.value.exact_evidence_ids // []),context_evidence_ids:(.value.context_evidence_ids // []),
+     local_evaluation:(.value.local_evaluation // null),
+     fallback:(.value.fallback // null),evidence_gap:(.value.evidence_gap // null)}
+  ' "$GATES"
+}
+
+as_json=0
+for arg in "$@"; do [ "$arg" != --json ] || as_json=1; done
+command="${1:-}"
+validate
+
+case "$command" in
+  check)
+    if [ "$as_json" = 0 ]; then
+      printf 'routing gates valid: %s profiles, %s compound lanes\n' \
+        "$(jq '.profiles | length' "$GATES")" "$(jq '.compound_lanes | length' "$GATES")"
+    else
+      jq -n --arg file "$GATES" --argjson profiles "$(jq '.profiles | length' "$GATES")" \
+        --argjson compounds "$(jq '.compound_lanes | length' "$GATES")" \
+        '{valid:true,file:$file,profiles:$profiles,compound_lanes:$compounds,read_only:true}'
+    fi
+    ;;
+  lane)
+    lane="${2:-}"; [ -n "$lane" ] || die 64 "lane name is required"
+    if jq -e --arg lane "$lane" '.compound_lanes[$lane] != null' "$GATES" >/dev/null; then
+      jq --arg lane "$lane" '.compound_lanes[$lane] + {lane:$lane}' "$GATES"
+    else
+      rows="$(profile_rows | jq -sc --arg lane "$lane" '[.[] | select(.lane == $lane)]')"
+      [ "$rows" != "[]" ] || die 64 "unknown lane: $lane"
+      if [ "$as_json" = 1 ]; then printf '%s\n' "$rows"
+      else printf '%s\n' "$rows" | jq -r '.[] | "\(.profile)\t\(.status)\t\(.selection)\t\(.model)/\(.harness)/\(.effort)"'; fi
+    fi
+    ;;
+  profile)
+    profile="${2:-}"; [ -n "$profile" ] || die 64 "profile name is required"
+    jq -e --arg profile "$profile" '.profiles[$profile] != null' "$GATES" >/dev/null || die 64 "unknown profile: $profile"
+    jq --arg profile "$profile" '.profiles[$profile] + {profile:$profile}' "$GATES"
+    ;;
+  resolve)
+    shift; lane=""
+    while [ "$#" -gt 0 ]; do
+      case "$1" in --lane) lane="${2:-}"; shift 2 ;; --json) shift ;; *) die 64 "unknown resolve argument: $1" ;; esac
+    done
+    [ -n "$lane" ] || die 64 "--lane is required"
+    if jq -e --arg lane "$lane" '.compound_lanes[$lane] != null' "$GATES" >/dev/null; then
+      status="$(jq -r --arg lane "$lane" '.compound_lanes[$lane].status' "$GATES")"
+      [ "$status" = manual-qualified ] || die 78 "compound lane '$lane' has non-dispatchable status '$status'"
+      jq --arg lane "$lane" '.compound_lanes[$lane] + {lane:$lane,requires_explicit_choice:true}' "$GATES"
+    else
+      rows="$(profile_rows | jq -sc --arg lane "$lane" '[.[] | select(.lane == $lane)]')"
+      [ "$rows" != "[]" ] || die 64 "unknown lane: $lane"
+      jq -n --arg lane "$lane" --argjson rows "$rows" '
+        {lane:$lane,
+         defaults:[$rows[] | select(.selection == "default" and (.status == "qualified" or .status == "provisional"))],
+         fallbacks:[$rows[] | select(.selection == "fallback" and (.status == "qualified" or .status == "provisional"))],
+         explicit:[$rows[] | select((.selection == "explicit-only" or .selection == "preferred-explicit") and (.status == "qualified" or .status == "provisional" or .status == "manual-qualified"))],
+         blocked:[$rows[] | select(.selection == "blocked" or .status == "candidate" or .status == "disabled")],
+         automatic_dispatch:false}'
+    fi
+    ;;
+  table)
+    rows="$(profile_rows | jq -s '.')"
+    if [ "$as_json" = 1 ]; then
+      jq -n --argjson profiles "$rows" --argjson compounds "$(jq '.compound_lanes' "$GATES")" \
+        '{profiles:$profiles,compound_lanes:$compounds}'
+    else
+      printf '| Profile | Exact variant | Lane | Exact evidence | Context | Local n | Confidence | Status | Selection | Fallback | Gap |\n'
+      printf '|---|---|---|---:|---:|---:|---|---|---|---|---|\n'
+      printf '%s\n' "$rows" | jq -r '.[] | "| `\(.profile)` | \(.model) / \(.harness) / `\(.effort)` | \(.lane) | \(.exact_evidence_ids | length) | \(.context_evidence_ids | length) | \(.local_evaluation.task_count // "—") | \(.local_evaluation.confidence // "—") | \(.status) | \(.selection) | \(.fallback // "—") | \(.evidence_gap // "—") |"'
+      printf '\n| Compound lane | Members | Protocol | Status | Selection | Final authority |\n'
+      printf '|---|---|---|---|---|---|\n'
+      jq -r '.compound_lanes | to_entries[] | "| `\(.key)` | \(.value.members | join(" + ")) | \(.value.protocol) | \(.value.status) | \(.value.selection) | \(.value.final_authority) |"' "$GATES"
+    fi
+    ;;
+  -h|--help|"") usage ;;
+  *) die 64 "unknown command: $command" ;;
+esac

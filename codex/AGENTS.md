@@ -1,35 +1,55 @@
 # Usage-aware collaboration (installed by delegation-kit)
 
 > **Adapt to your setup.** The profile names below (`luna-clerk` / `terra-scout` /
-> `terra-builder` / `sol-reviewer`) and their models are the author's reference
+> `terra-builder` / `sol-reviewer` / `sol-judge`) and their models are the author's reference
 > mapping — swap them for your own tiers (see `ADAPTING.md`). The *structure* is
 > the transferable part.
 
 - Default to solving simple, well-scoped work directly. Do not create subagents for a routine single-file change.
 - The lead owns requirements, decisions, integration, verification, and the final response.
 - For genuinely separable work, use at most two direct workers by default. Give each a bounded task, explicit file ownership, and a concise return format. Never allow recursive delegation.
-- Prefer `luna-clerk` for deterministic inventory, extraction, transformation, and test-log summaries; `terra-scout` for read-only repository mapping; `terra-builder` for a bounded implementation with clear acceptance checks; and `sol-reviewer` only for a material final correctness or security review.
-- When the native subagent tool cannot select a model, use the matching ephemeral CLI profile: `codex exec --ephemeral -p luna-clerk`, `terra-scout`, `terra-builder`, or `sol-reviewer`. Do not claim a native worker is cheaper unless its model is actually pinned.
+- Prefer `luna-clerk` for deterministic inventory, extraction, transformation, and test-log summaries; `terra-scout` for read-only repository mapping; `terra-builder` for a bounded implementation; `sol-reviewer` for material review; and `sol-judge` for explicit technical judgement.
+- When the native subagent tool cannot select a model, use the matching ephemeral CLI profile. `sol-judge` is read-only and explicit-only; it never edits, delegates, merges, or deploys.
 - Avoid double fan-out: in Ultra mode, let Ultra orchestrate and do not add a second manual delegation layer. Ultra is exceptional, not the default.
 - Escalate Luna to Terra, or Terra to Sol, when the task becomes ambiguous or high risk. Do not repeatedly retry an unsuitable cheap worker.
 - Workers should return distilled evidence, changed paths, checks run, and unresolved risks—not raw logs or broad essays.
 
 ## Optional evaluated GLM executor
 
-GLM-5.2 is available only through the installed `glm-executor` skill and only
-for a lane that `delegation-glm check --json` lists in `qualified_lanes`. The
-bridge pins the exact model and the effort the gate pinned — both qualified lanes
-(`clerk`, `scout`) route at `high`, and any other effort is refused — and runs
-only through the isolated Claude→Z.AI backend, keyed by `ZAI_API_KEY` or the
-600-mode key the installer stored. If the runtime or lane gate is absent, keep
-using the incumbent profile; never silently substitute another model.
+GLM-5.2 is available only through the installed `glm-executor` skill. The current
+gate lists `clerk` and `scout` in `provisional_lanes`; an explicit decision and
+`--allow-provisional` are required. Builder is blocked. The bridge runs only through the isolated Claude→Z.AI
+backend, keyed by `ZAI_API_KEY` or the 600-mode key the installer stored. Prefer
+the incumbent for costly edits on the unmeasured builder lane. If the runtime or
+lane gate is absent, keep using the incumbent profile; never silently substitute.
+
+## Evidence-backed qualification
+
+Use `delegation-evidence lane <lane>` to inspect the dated external snapshot.
+Evidence is lane-specific and advisory: DeepSWE/Terminal-Bench support builder,
+WebDev supports only frontend-builder, and reviewer requires review precision and
+recall. The command cannot mutate a routing gate. Runtime/auth and a small local
+scope/permission smoke remain mandatory for the exact production variant.
+Use `delegation-route resolve --lane <lane>` for the central operational decision.
+Before spawning a native profile, require it to appear in the appropriate
+default/fallback/explicit group. Invoking an explicit-only native profile is the
+manual selection event; blocked profiles must not be spawned. External runners
+enforce the same central graph in code before every check or dispatch.
+
+## Judgement
+
+Fable `xhigh` and `sol-judge` (Sol `high`) are manually qualified, explicit-only
+judges. Fable covers architecture, trade-offs, and synthesis; Sol covers technical
+feasibility, repository fit, failure modes, and verifiability. For an explicitly
+approved `super-judgement`, they reason independently before cross-reviewing each
+other; the lead keeps final authority. Never trigger the pair automatically.
 
 ## Optional gated Kimi model
 
-Kimi K3 is provisionally usable for `clerk`, `scout`, `builder`, and `senior`
+Kimi K3 is provisionally usable for `clerk`, `scout`, `builder`, and `frontend-builder`
 through the installed `kimi-executor` skill, using the native Kimi Code CLI at
-effort `max`, and only when `delegation-kimi check --json` lists the lane in
-`qualified_lanes`. `reviewer` and `judgement` remain disabled. Installed
+effort `max`, only with `--allow-provisional`. Senior is blocked; reviewer and
+judgement remain disabled. Installed
 runtimes and visible model names are not qualification. If the exact gate is
 absent, keep the incumbent profile; never silently substitute another model,
 effort, or lane.

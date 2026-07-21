@@ -1,0 +1,96 @@
+{
+  "schema_version": 1,
+  "updated_at": "2026-07-21T00:00:00Z",
+  "evidence_file": "model-evidence.json",
+  "status_values": ["disabled", "candidate", "provisional", "qualified", "manual-qualified"],
+  "selection_values": ["default", "fallback", "preferred-explicit", "explicit-only", "blocked"],
+  "profiles": {
+    "luna-clerk": {
+      "model": "gpt-5.6-luna", "harness": "codex", "effort": "low",
+      "lanes": {"clerk": {"status": "provisional", "selection": "default", "exact_evidence_ids": ["aa-codex-gpt-5.6-luna-low"], "context_evidence_ids": [], "fallback": "sonnet-clerk"}}
+    },
+    "terra-scout": {
+      "model": "gpt-5.6-terra", "harness": "codex", "effort": "low",
+      "lanes": {"scout": {"status": "provisional", "selection": "default", "exact_evidence_ids": ["aa-codex-gpt-5.6-terra-low"], "context_evidence_ids": [], "fallback": "sonnet-scout"}}
+    },
+    "terra-builder": {
+      "model": "gpt-5.6-terra", "harness": "codex", "effort": "medium",
+      "lanes": {"builder": {"status": "provisional", "selection": "default", "exact_evidence_ids": ["aa-codex-gpt-5.6-terra-medium"], "context_evidence_ids": [], "fallback": "sonnet-builder"}}
+    },
+    "sol-reviewer": {
+      "model": "gpt-5.6-sol", "harness": "codex", "effort": "high",
+      "lanes": {"material-review": {"status": "manual-qualified", "selection": "explicit-only", "exact_evidence_ids": [], "context_evidence_ids": ["aa-codex-gpt-5.6-sol-high"], "evidence_gap": "No exact review precision/recall row."}}
+    },
+    "sol-judge": {
+      "model": "gpt-5.6-sol", "harness": "codex", "effort": "high",
+      "lanes": {"judgement": {"status": "manual-qualified", "selection": "explicit-only", "exact_evidence_ids": [], "context_evidence_ids": ["aa-codex-gpt-5.6-sol-high", "arena-agent-gpt-5.6-sol-xhigh"], "evidence_gap": "Judgement is manual-only; the Agent Arena row also differs in harness and effort.", "qualification_basis": "Owner decision: technical feasibility, repository fit, failure modes, and verifiability."}}
+    },
+    "sonnet-clerk": {
+      "model": "claude-sonnet-5", "harness": "claude-code", "effort": "low",
+      "lanes": {"clerk": {"status": "provisional", "selection": "fallback", "exact_evidence_ids": [], "context_evidence_ids": [], "evidence_gap": "No current exact Claude Code low row.", "fallback": "luna-clerk"}}
+    },
+    "sonnet-scout": {
+      "model": "claude-sonnet-5", "harness": "claude-code", "effort": "low",
+      "lanes": {"scout": {"status": "provisional", "selection": "fallback", "exact_evidence_ids": [], "context_evidence_ids": [], "evidence_gap": "No current exact Claude Code low row.", "fallback": "terra-scout"}}
+    },
+    "sonnet-builder": {
+      "model": "claude-sonnet-5", "harness": "claude-code", "effort": "medium",
+      "lanes": {"builder": {"status": "provisional", "selection": "fallback", "exact_evidence_ids": [], "context_evidence_ids": [], "evidence_gap": "No current exact Claude Code medium row.", "fallback": "terra-builder"}}
+    },
+    "sonnet-reviewer": {
+      "model": "claude-sonnet-5", "harness": "claude-code", "effort": "medium",
+      "lanes": {"routine-review": {"status": "provisional", "selection": "default", "exact_evidence_ids": [], "context_evidence_ids": [], "evidence_gap": "No exact review precision/recall row.", "fallback": "opus-reviewer"}}
+    },
+    "opus-reviewer": {
+      "model": "claude-opus-4.8", "harness": "claude-code", "effort": "high",
+      "lanes": {
+        "senior": {"status": "manual-qualified", "selection": "explicit-only", "exact_evidence_ids": [], "context_evidence_ids": ["aa-claude-opus-4.8-max", "arena-agent-opus-4.8-thinking"], "evidence_gap": "Published variants differ from the installed high profile."},
+        "security": {"status": "manual-qualified", "selection": "explicit-only", "exact_evidence_ids": [], "context_evidence_ids": [], "qualification_basis": "Manual specialist lane; public coding scores do not qualify security review."}
+      }
+    },
+    "fable-judge": {
+      "model": "claude-fable-5", "harness": "claude-code", "effort": "xhigh",
+      "lanes": {"judgement": {"status": "manual-qualified", "selection": "explicit-only", "exact_evidence_ids": [], "context_evidence_ids": ["aa-claude-fable-5-max", "arena-agent-fable-5-high"], "evidence_gap": "Published max/high variants are context, not the installed xhigh profile.", "qualification_basis": "Owner decision: architecture, trade-offs, synthesis, and final verdict."}}
+    },
+    "glm-clerk": {
+      "model": "glm-5.2", "harness": "claude-zai", "effort": "high",
+      "lanes": {"clerk": {"status": "provisional", "selection": "explicit-only", "exact_evidence_ids": [], "context_evidence_ids": ["aa-claude-glm-5.2"], "local_evaluation": {"run_id": "2026-07-14-glm-5.2", "task_count": null, "repeats": null, "confidence": "low", "limitations": "Legacy compatibility run; sample metadata is unavailable."}, "fallback": "luna-clerk"}}
+    },
+    "glm-scout": {
+      "model": "glm-5.2", "harness": "claude-zai", "effort": "high",
+      "lanes": {"scout": {"status": "provisional", "selection": "explicit-only", "exact_evidence_ids": [], "context_evidence_ids": ["aa-claude-glm-5.2", "arena-agent-glm-5.2-max"], "local_evaluation": {"run_id": "2026-07-14-glm-5.2", "task_count": null, "repeats": null, "confidence": "low", "limitations": "Legacy compatibility run measured at max before high was pinned; sample metadata is unavailable."}, "evidence_gap": "No exact claude-zai/high public row.", "fallback": "terra-scout"}}
+    },
+    "glm-builder": {
+      "model": "glm-5.2", "harness": "claude-zai", "effort": "high",
+      "lanes": {"builder": {"status": "candidate", "selection": "blocked", "exact_evidence_ids": [], "context_evidence_ids": ["aa-claude-glm-5.2"], "evidence_gap": "No exact local builder run; external DeepSWE is 29%.", "fallback": "terra-builder"}}
+    },
+    "glm-reviewer": {
+      "model": "glm-5.2", "harness": "claude-zai", "effort": "high",
+      "lanes": {"reviewer": {"status": "disabled", "selection": "blocked", "exact_evidence_ids": [], "context_evidence_ids": [], "evidence_gap": "No exact review precision/recall row."}}
+    },
+    "kimi-k3": {
+      "model": "kimi-k3", "harness": "kimi-code-cli", "effort": "max",
+      "lanes": {
+        "clerk": {"status": "provisional", "selection": "explicit-only", "exact_evidence_ids": ["aa-kimi-code-kimi-k3"], "context_evidence_ids": [], "local_evaluation": {"run_id": "2026-07-16-kimi-k3", "task_count": null, "repeats": null, "confidence": "low", "limitations": "Provider quota truncated the run; valid-subset size is not recorded in the published gate."}, "fallback": "luna-clerk"},
+        "scout": {"status": "provisional", "selection": "explicit-only", "exact_evidence_ids": ["aa-kimi-code-kimi-k3"], "context_evidence_ids": ["arena-agent-kimi-k3"], "local_evaluation": {"run_id": "2026-07-16-kimi-k3", "task_count": null, "repeats": null, "confidence": "low", "limitations": "Provider quota truncated the run; valid-subset size is not recorded in the published gate."}, "fallback": "terra-scout"},
+        "builder": {"status": "provisional", "selection": "explicit-only", "exact_evidence_ids": ["aa-kimi-code-kimi-k3"], "context_evidence_ids": [], "local_evaluation": {"run_id": "2026-07-16-kimi-k3", "task_count": null, "repeats": null, "confidence": "low", "limitations": "Provider quota truncated the run; valid-subset size is not recorded in the published gate."}, "fallback": "terra-builder"},
+        "frontend-builder": {"status": "provisional", "selection": "preferred-explicit", "exact_evidence_ids": [], "context_evidence_ids": ["webdev-kimi-k3", "aa-kimi-code-kimi-k3"], "local_evaluation": {"run_id": "2026-07-16-kimi-k3", "task_count": null, "repeats": null, "confidence": "low", "limitations": "No frontend-specific local pack; provider quota truncated the general run."}, "evidence_gap": "WebDev uses a different harness/default effort; coding evidence is supporting only.", "fallback": "sonnet-builder"},
+        "senior": {"status": "candidate", "selection": "blocked", "exact_evidence_ids": [], "context_evidence_ids": ["arena-agent-kimi-k3"], "evidence_gap": "Steerability evidence is insufficient for promotion."},
+        "judgement": {"status": "disabled", "selection": "blocked", "exact_evidence_ids": [], "context_evidence_ids": []},
+        "reviewer": {"status": "disabled", "selection": "blocked", "exact_evidence_ids": [], "context_evidence_ids": [], "evidence_gap": "No exact review precision/recall row."}
+      }
+    }
+  },
+  "compound_lanes": {
+    "super-judgement": {
+      "status": "manual-qualified",
+      "selection": "explicit-only",
+      "members": ["fable-judge", "sol-judge"],
+      "protocol": "independent-then-cross-review",
+      "final_authority": "lead",
+      "automatic_dispatch": false,
+      "automatic_merge": false,
+      "activation": "Use only for highly complex, high-blast-radius, difficult-to-reverse decisions with at least two documented complexity triggers."
+    }
+  }
+}
