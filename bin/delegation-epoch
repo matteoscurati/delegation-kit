@@ -1,0 +1,610 @@
+#!/usr/bin/env python3
+"""Inspect and normalize Epoch AI's public benchmark ZIP without changing gates."""
+
+from __future__ import annotations
+
+import argparse
+import csv
+import hashlib
+import io
+import json
+import os
+import re
+import sys
+import tempfile
+import urllib.error
+import urllib.parse
+import urllib.request
+import zipfile
+from collections import Counter
+from pathlib import Path, PurePosixPath
+from typing import Any, Iterable, NoReturn
+
+DEFAULT_SOURCE = "https://epoch.ai/data/benchmark_data.zip"
+DATA_PAGE = "https://epoch.ai/benchmarks/use-this-data"
+MAX_COMPRESSED_BYTES = 16 * 1024 * 1024
+MAX_UNCOMPRESSED_BYTES = 128 * 1024 * 1024
+DOWNLOAD_TIMEOUT_SECONDS = 60
+
+DIMENSION_FIELDS = {
+    "Model version",
+    "Harness",
+    "Agent",
+    "Scaffold",
+    "Environment model",
+    "Tool setting",
+    "Reasoning effort",
+    "Reasoning level",
+    "Reasoning",
+    "Release date",
+    "Organization",
+    "Country",
+    "Training compute (FLOP)",
+    "Training compute notes",
+    "Name",
+    "Provider",
+}
+PROVENANCE_FIELDS = {
+    "Source",
+    "Source link",
+    "Source Link",
+    "Source link (site from table)",
+    "Notes",
+    "Notes (details)",
+    "id",
+    "ID",
+    "UUID",
+}
+HARNESS_FIELDS = ("Harness", "Agent", "Scaffold", "Environment model", "Tool setting")
+EFFORT_FIELDS = ("Reasoning effort", "Reasoning level", "Reasoning")
+MODEL_SUFFIX = re.compile(
+    r"_(?P<effort>promax|xhigh|max|high|medium|low|none|unknown)$", re.IGNORECASE
+)
+EFFORT_ALIASES = {
+    "extra high": "xhigh",
+    "extra-high": "xhigh",
+    "x-high": "xhigh",
+    "maximum": "max",
+    "no reasoning": "none",
+    "default": "unknown",
+    "reported-default": "unknown",
+    "": "unknown",
+}
+LANE_METRIC_MAP = {
+    "deepswe": {
+        "Pass@1": ("coding", "deep_swe_pass_pct", 100.0),
+        "Mean cost (USD)": ("coding", "cost_per_task_usd", 1.0),
+    },
+    "terminalbench": {
+        "Accuracy mean": ("coding", "terminal_bench_v2_pass_pct", 100.0),
+        "Accuracy SE": ("coding", "terminal_bench_v2_standard_error", 1.0),
+    },
+    "webdev_arena": {
+        "Arena Score": ("webdev", "elo", 1.0),
+        "95% CI Low": ("webdev", "ci_low", 1.0),
+        "95% CI High": ("webdev", "ci_high", 1.0),
+    },
+}
+
+
+class EpochDataError(Exception):
+    """A fail-closed input or archive validation error."""
+
+
+def fail(message: str, code: int = 65) -> NoReturn:
+    print(f"delegation-epoch: {message}", file=sys.stderr)
+    raise SystemExit(code)
+
+
+def read_source(source: str) -> bytes:
+    parsed = urllib.parse.urlparse(source)
+    if parsed.scheme:
+        if parsed.scheme != "https":
+            raise EpochDataError("remote sources must use https")
+        request = urllib.request.Request(
+            source,
+            headers={"User-Agent": "delegation-kit-epoch-importer/1"},
+        )
+        try:
+            with urllib.request.urlopen(request, timeout=DOWNLOAD_TIMEOUT_SECONDS) as response:
+                if urllib.parse.urlparse(response.geturl()).scheme != "https":
+                    raise EpochDataError("remote source redirected away from https")
+                declared = response.headers.get("Content-Length")
+                if declared and int(declared) > MAX_COMPRESSED_BYTES:
+                    raise EpochDataError("archive exceeds the compressed-size limit")
+                data = response.read(MAX_COMPRESSED_BYTES + 1)
+        except (urllib.error.URLError, TimeoutError, ValueError) as exc:
+            raise EpochDataError(f"cannot download archive: {exc}") from exc
+    else:
+        path = Path(source)
+        try:
+            if path.stat().st_size > MAX_COMPRESSED_BYTES:
+                raise EpochDataError("archive exceeds the compressed-size limit")
+            data = path.read_bytes()
+        except OSError as exc:
+            raise EpochDataError(f"cannot read archive: {exc}") from exc
+
+    if len(data) > MAX_COMPRESSED_BYTES:
+        raise EpochDataError("archive exceeds the compressed-size limit")
+    if not data.startswith(b"PK"):
+        raise EpochDataError("source is not a ZIP archive")
+    return data
+
+
+def safe_members(archive: zipfile.ZipFile) -> list[zipfile.ZipInfo]:
+    members = archive.infolist()
+    names = [member.filename for member in members]
+    if len(names) != len(set(names)):
+        raise EpochDataError("archive contains duplicate member names")
+
+    total_size = 0
+    for member in members:
+        path = PurePosixPath(member.filename)
+        if (
+            path.is_absolute()
+            or ".." in path.parts
+            or "\\" in member.filename
+            or member.flag_bits & 0x1
+        ):
+            raise EpochDataError(f"unsafe ZIP member: {member.filename}")
+        total_size += member.file_size
+        if total_size > MAX_UNCOMPRESSED_BYTES:
+            raise EpochDataError("archive exceeds the uncompressed-size limit")
+    return members
+
+
+def nonempty(row: dict[str, str], fields: Iterable[str]) -> str:
+    for field in fields:
+        value = (row.get(field) or "").strip()
+        if value:
+            return value
+    return ""
+
+
+def normalize_effort(row: dict[str, str], model_version: str) -> tuple[str, str]:
+    raw = nonempty(row, EFFORT_FIELDS)
+    match = MODEL_SUFFIX.search(model_version)
+    if raw:
+        effort = EFFORT_ALIASES.get(raw.casefold(), raw.casefold().replace(" ", "-"))
+    elif match:
+        effort = match.group("effort").casefold()
+    else:
+        effort = "unknown"
+    if effort == "unknown":
+        normalized = "unknown"
+    else:
+        normalized = effort
+    model = MODEL_SUFFIX.sub("", model_version) if match else model_version
+    return model, normalized
+
+
+def scalar(value: str) -> Any:
+    stripped = value.strip()
+    if not stripped:
+        return None
+    try:
+        if re.fullmatch(r"[-+]?\d+", stripped):
+            return int(stripped)
+        if re.fullmatch(
+            r"[-+]?(?:\d+\.\d*|\.\d+|\d+)(?:[eE][-+]?\d+)?", stripped
+        ):
+            return float(stripped)
+    except ValueError:
+        pass
+    return stripped
+
+
+def dataset_kind(name: str) -> str:
+    if name.startswith("additional_eci_data/"):
+        return "metadata"
+    if name == "epoch_capabilities_index.csv":
+        return "index"
+    if name.endswith("_external.csv"):
+        return "external"
+    return "internal"
+
+
+def license_for(name: str, kind: str) -> dict[str, str]:
+    if name == "aider_polyglot_external.csv" or name == "terminalbench_external.csv":
+        return {
+            "id": "Apache-2.0",
+            "url": "https://www.apache.org/licenses/LICENSE-2.0",
+            "note": "Epoch identifies this derived dataset as Apache-2.0.",
+        }
+    if kind == "external":
+        return {
+            "id": "upstream-original",
+            "url": DATA_PAGE,
+            "note": "External-project data retains its original license; preserve its source.",
+        }
+    return {
+        "id": "CC-BY-4.0",
+        "url": "https://creativecommons.org/licenses/by/4.0/",
+        "note": "Credit Epoch AI and preserve the benchmark source.",
+    }
+
+
+def parse_csv(
+    archive: zipfile.ZipFile, member: zipfile.ZipInfo
+) -> tuple[list[str], list[dict[str, str]]]:
+    try:
+        text = archive.read(member).decode("utf-8-sig")
+    except (UnicodeDecodeError, RuntimeError, zipfile.BadZipFile) as exc:
+        raise EpochDataError(f"cannot decode {member.filename}: {exc}") from exc
+    reader = csv.DictReader(io.StringIO(text, newline=""), strict=True)
+    fields = reader.fieldnames or []
+    if not fields or len(fields) != len(set(fields)):
+        raise EpochDataError(f"invalid or duplicate CSV headers in {member.filename}")
+    try:
+        rows = list(reader)
+    except csv.Error as exc:
+        raise EpochDataError(f"malformed CSV in {member.filename}: {exc}") from exc
+    for row_number, row in enumerate(rows, start=2):
+        if None in row or any(value is None for value in row.values()):
+            raise EpochDataError(
+                f"row width does not match headers in {member.filename}:{row_number}"
+            )
+    return fields, rows
+
+
+def normalize_record(
+    member_name: str,
+    row_number: int,
+    row: dict[str, str],
+) -> dict[str, Any] | None:
+    kind = dataset_kind(member_name)
+    if kind == "metadata":
+        return None
+
+    model_version = (row.get("Model version") or "").strip()
+    model, effort = normalize_effort(row, model_version)
+    harness = nonempty(row, HARNESS_FIELDS) or "unknown"
+    evidence_class = (
+        "exact" if model and harness != "unknown" and effort != "unknown" else "contextual"
+    )
+
+    metrics = {
+        key: parsed
+        for key, value in row.items()
+        if key not in DIMENSION_FIELDS
+        and key not in PROVENANCE_FIELDS
+        and (parsed := scalar(value)) is not None
+    }
+    source_name = (row.get("Source") or "").strip()
+    source_link = nonempty(
+        row, ("Source link", "Source Link", "Source link (site from table)")
+    )
+    if not source_link and source_name.startswith(("https://", "http://")):
+        source_link = source_name
+    record_id = nonempty(row, ("id", "ID", "UUID"))
+
+    return {
+        "benchmark": PurePosixPath(member_name).stem.removesuffix("_external"),
+        "dataset": member_name,
+        "dataset_kind": kind,
+        "license": license_for(member_name, kind),
+        "model": model or "unknown",
+        "model_version": model_version or "unknown",
+        "harness": harness,
+        "effort": effort,
+        "evidence_class": evidence_class,
+        "metrics": metrics,
+        "model_metadata": {
+            key: value
+            for key, field in (
+                ("display_name", "Name"),
+                ("release_date", "Release date"),
+                ("organization", "Organization"),
+                ("country", "Country"),
+                ("training_compute_flop", "Training compute (FLOP)"),
+                ("training_compute_notes", "Training compute notes"),
+            )
+            if (value := scalar(row.get(field, ""))) is not None
+        },
+        "provenance": {
+            "row": row_number,
+            **({"record_id": record_id} if record_id else {}),
+            **({"source_name": source_name} if source_name else {}),
+            **({"source_url": source_link} if source_link else {}),
+            **(
+                {"notes": nonempty(row, ("Notes", "Notes (details)"))}
+                if nonempty(row, ("Notes", "Notes (details)"))
+                else {}
+            ),
+        },
+    }
+
+
+def load_archive(source: str) -> tuple[dict[str, Any], list[dict[str, Any]]]:
+    data = read_source(source)
+    digest = hashlib.sha256(data).hexdigest()
+    try:
+        archive = zipfile.ZipFile(io.BytesIO(data))
+        members = safe_members(archive)
+    except zipfile.BadZipFile as exc:
+        raise EpochDataError(f"invalid ZIP archive: {exc}") from exc
+
+    names = {member.filename for member in members}
+    if "README.md" not in names:
+        raise EpochDataError("archive is missing README.md attribution")
+    csv_members = sorted(
+        (
+            member
+            for member in members
+            if not member.is_dir() and member.filename.endswith(".csv")
+        ),
+        key=lambda member: member.filename,
+    )
+    if not csv_members:
+        raise EpochDataError("archive contains no CSV datasets")
+
+    datasets: list[dict[str, Any]] = []
+    records: list[dict[str, Any]] = []
+    header_shapes: Counter[tuple[str, ...]] = Counter()
+    for member in csv_members:
+        fields, rows = parse_csv(archive, member)
+        kind = dataset_kind(member.filename)
+        header_shapes[tuple(fields)] += 1
+        datasets.append(
+            {
+                "name": member.filename,
+                "kind": kind,
+                "rows": len(rows),
+                "columns": fields,
+                "license": license_for(member.filename, kind),
+            }
+        )
+        for row_number, row in enumerate(rows, start=2):
+            record = normalize_record(member.filename, row_number, row)
+            if record is not None:
+                records.append(record)
+
+    exact = sum(record["evidence_class"] == "exact" for record in records)
+    archive_dates = [member.date_time for member in members if not member.is_dir()]
+    latest_date = max(archive_dates) if archive_dates else None
+    manifest = {
+        "schema_version": 1,
+        "source": {
+            "url_or_path": source,
+            "data_page": DATA_PAGE,
+            "sha256": digest,
+            "archive_date": (
+                f"{latest_date[0]:04d}-{latest_date[1]:02d}-{latest_date[2]:02d}"
+                if latest_date
+                else None
+            ),
+            "license": {
+                "id": "CC-BY-4.0-with-upstream-exceptions",
+                "citation": "Epoch AI, AI Benchmarking Hub",
+                "url": DATA_PAGE,
+            },
+        },
+        "policy": {
+            "advisory_only": True,
+            "routing_gate_mutation": False,
+            "unknown_identity_is_contextual": True,
+            "raw_archive_persisted": False,
+        },
+        "summary": {
+            "csv_files": len(csv_members),
+            "rows": sum(dataset["rows"] for dataset in datasets),
+            "normalized_records": len(records),
+            "exact_records": exact,
+            "contextual_records": len(records) - exact,
+            "header_variants": len(header_shapes),
+        },
+        "datasets": datasets,
+    }
+    return manifest, records
+
+
+def filter_records(
+    records: list[dict[str, Any]],
+    models: list[str],
+    benchmarks: list[str],
+) -> list[dict[str, Any]]:
+    model_filter = {model.casefold() for model in models}
+    benchmark_filter = {benchmark.casefold() for benchmark in benchmarks}
+    return [
+        record
+        for record in records
+        if (not model_filter or record["model"].casefold() in model_filter)
+        and (not benchmark_filter or record["benchmark"].casefold() in benchmark_filter)
+    ]
+
+
+def slug(value: str) -> str:
+    return re.sub(r"[^a-z0-9]+", "-", value.casefold()).strip("-") or "unknown"
+
+
+def evidence_payload(
+    manifest: dict[str, Any],
+    records: list[dict[str, Any]],
+    models: list[str],
+    benchmarks: list[str],
+) -> dict[str, Any]:
+    selected = filter_records(records, models, benchmarks)
+    evidence = []
+    seen_ids: Counter[str] = Counter()
+    for record in selected:
+        mappings = LANE_METRIC_MAP.get(record["benchmark"])
+        if not mappings:
+            continue
+        metrics: dict[str, dict[str, Any]] = {}
+        for source_field, (group, metric, multiplier) in mappings.items():
+            value = record["metrics"].get(source_field)
+            if not isinstance(value, (int, float)):
+                continue
+            metrics.setdefault(group, {})[metric] = value * multiplier
+        if not metrics:
+            continue
+        base_id = "-".join(
+            (
+                "epoch",
+                slug(record["benchmark"]),
+                slug(record["model"]),
+                slug(record["harness"]),
+                slug(record["effort"]),
+            )
+        )
+        seen_ids[base_id] += 1
+        evidence_id = (
+            base_id if seen_ids[base_id] == 1 else f"{base_id}-{seen_ids[base_id]}"
+        )
+        evidence.append(
+            {
+                "id": evidence_id,
+                "model": record["model"],
+                "harness": record["harness"],
+                "effort": record["effort"],
+                "source": f"epoch-ai-zip-{manifest['source']['archive_date']}",
+                "metrics": metrics,
+                "epoch_classification": record["evidence_class"],
+                "provenance": {
+                    "archive_sha256": manifest["source"]["sha256"],
+                    "dataset": record["dataset"],
+                    "dataset_license": record["license"],
+                    **record["provenance"],
+                },
+            }
+        )
+    source_id = f"epoch-ai-zip-{manifest['source']['archive_date']}"
+    return {
+        "schema_version": 1,
+        "source": {
+            "id": source_id,
+            "value": {
+                "name": "Epoch AI Benchmark Data ZIP",
+                "url": manifest["source"]["data_page"],
+                "download_url": manifest["source"]["url_or_path"],
+                "data_date": manifest["source"]["archive_date"],
+                "archive_sha256": manifest["source"]["sha256"],
+                "license": manifest["source"]["license"],
+                "scope": "Advisory normalized rows; never auto-qualifies or mutates a gate.",
+            },
+        },
+        "policy": manifest["policy"],
+        "filters": {"models": models, "benchmarks": benchmarks},
+        "summary": {
+            "selected_records": len(selected),
+            "mapped_evidence_rows": len(evidence),
+            "exact_rows": sum(
+                row["epoch_classification"] == "exact" for row in evidence
+            ),
+            "contextual_rows": sum(
+                row["epoch_classification"] == "contextual" for row in evidence
+            ),
+        },
+        "evidence": evidence,
+    }
+
+
+def write_json(payload: Any, output: str | None) -> None:
+    rendered = json.dumps(payload, indent=2, ensure_ascii=False, sort_keys=True) + "\n"
+    if not output or output == "-":
+        sys.stdout.write(rendered)
+        return
+    target = Path(output)
+    target.parent.mkdir(parents=True, exist_ok=True)
+    temporary: str | None = None
+    try:
+        with tempfile.NamedTemporaryFile(
+            mode="w",
+            encoding="utf-8",
+            dir=target.parent,
+            prefix=f".{target.name}.",
+            delete=False,
+        ) as handle:
+            handle.write(rendered)
+            temporary = handle.name
+        os.replace(temporary, target)
+    except OSError as exc:
+        if temporary:
+            Path(temporary).unlink(missing_ok=True)
+        fail(f"cannot write {target}: {exc}", 73)
+
+
+def parser() -> argparse.ArgumentParser:
+    cli = argparse.ArgumentParser(
+        prog="delegation-epoch",
+        description="Validate or normalize Epoch AI's public benchmark ZIP.",
+    )
+    cli.add_argument(
+        "--source",
+        default=DEFAULT_SOURCE,
+        help="HTTPS URL or local ZIP path (default: Epoch AI's current ZIP)",
+    )
+    commands = cli.add_subparsers(dest="command", required=True)
+
+    check = commands.add_parser("check", help="validate the archive and print its manifest")
+    check.add_argument("--json", action="store_true", help="print the full JSON manifest")
+
+    normalize = commands.add_parser(
+        "normalize", help="emit advisory normalized records without changing routing gates"
+    )
+    normalize.add_argument("--model", action="append", default=[], help="exact normalized model")
+    normalize.add_argument(
+        "--benchmark", action="append", default=[], help="exact normalized benchmark name"
+    )
+    normalize.add_argument("--output", help="atomic JSON output path; default is stdout")
+
+    evidence = commands.add_parser(
+        "evidence",
+        help="emit manually reviewable rows using delegation-kit's lane metric names",
+    )
+    evidence.add_argument("--model", action="append", default=[], help="exact normalized model")
+    evidence.add_argument(
+        "--benchmark", action="append", default=[], help="exact normalized benchmark name"
+    )
+    evidence.add_argument("--output", help="atomic JSON output path; default is stdout")
+    return cli
+
+
+def main() -> None:
+    args = parser().parse_args()
+    try:
+        manifest, records = load_archive(args.source)
+    except EpochDataError as exc:
+        fail(str(exc))
+
+    if args.command == "check":
+        if args.json:
+            write_json(manifest, None)
+        else:
+            summary = manifest["summary"]
+            print(
+                "Epoch archive valid: "
+                f"{summary['csv_files']} CSV, {summary['rows']} rows, "
+                f"{summary['normalized_records']} advisory records"
+            )
+            print(f"sha256: {manifest['source']['sha256']}")
+            print("routing mutation: disabled")
+        return
+
+    if args.command == "evidence":
+        write_json(
+            evidence_payload(manifest, records, args.model, args.benchmark),
+            args.output,
+        )
+        return
+
+    selected = filter_records(records, args.model, args.benchmark)
+    payload = {
+        "schema_version": 1,
+        "source": manifest["source"],
+        "policy": manifest["policy"],
+        "filters": {"models": args.model, "benchmarks": args.benchmark},
+        "summary": {
+            **manifest["summary"],
+            "selected_records": len(selected),
+            "selected_exact_records": sum(
+                record["evidence_class"] == "exact" for record in selected
+            ),
+        },
+        "records": selected,
+    }
+    write_json(payload, args.output)
+
+
+if __name__ == "__main__":
+    main()

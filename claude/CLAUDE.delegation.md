@@ -59,6 +59,20 @@ provisional lanes route at `high`, and an effort the gate did not pin is refused
 Builder is a blocked candidate and reviewer remains disabled.
 Never silently substitute another model or promote an unevaluated lane.
 
+### Optional Gemini 3.6 Flash executor
+
+Gemini 3.6 Flash is available only through `gemini-executor` and
+`delegation-gemini`, using the authenticated Antigravity CLI (`agy`). The initial
+gate exposes only `scout` at `medium` as provisional and requires an explicit
+decision plus `--allow-provisional`. Builder and frontend-builder at `high` are
+blocked candidates; reviewer and judgement are disabled. Runtime/model listing
+is not qualification, and the runner never changes model, effort, backend, or
+lane silently. Dispatches are prompt-only: embed all relevant file excerpts in
+the brief. Never use `--dangerously-skip-permissions` or grant headless
+filesystem, shell, network, MCP, subagent, or editing tools. The runner starts
+`agy` with an empty temporary workspace and home, carries across only macOS
+Keychain access for OAuth, and explicitly denies every tool namespace.
+
 ### Optional gated Kimi model
 
 Kimi K3 is provisional for `clerk`, `scout`, `builder`, and `frontend-builder`
@@ -68,6 +82,14 @@ Require an explicit decision and `--allow-provisional` before dispatch.
 Kimi K3 is not scored or qualified merely because a CLI can reach it. If the gate
 or runtime is absent, keep the incumbent; never silently substitute a model,
 effort, or neighboring lane.
+
+### Optional blocked Qwen candidate
+
+Qwen3.8 Max Preview is installed only through `qwen-executor` and
+`delegation-qwen`, pinned to the Qwen Cloud Token Plan OpenAI-compatible backend
+at `xhigh`. Subscription access, a valid key, or a smoke test is not
+qualification. Every normal lane remains blocked until exact local evaluation
+promotes both routing gates. Never use `--evaluation` for ordinary work.
 
 ### Evidence-backed qualification
 

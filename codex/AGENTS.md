@@ -23,6 +23,21 @@ backend, keyed by `ZAI_API_KEY` or the 600-mode key the installer stored. Prefer
 the incumbent for costly edits on the unmeasured builder lane. If the runtime or
 lane gate is absent, keep using the incumbent profile; never silently substitute.
 
+## Optional Gemini 3.6 Flash executor
+
+Gemini 3.6 Flash is available only through `gemini-executor` and
+`delegation-gemini`, using the authenticated Antigravity CLI (`agy`). The initial
+gate permits only `scout` at `medium`, provisionally and with an explicit
+`--allow-provisional` decision. Builder and frontend-builder at `high` are
+blocked candidates; reviewer and judgement are disabled. A visible model name,
+OAuth session, launch benchmark, or smoke test is not qualification. Never
+silently change the exact model, effort, backend, or lane. The bridge is
+prompt-only: include all needed file excerpts in the brief, and never enable
+`--dangerously-skip-permissions` or assume headless tools can read the repo.
+The runner starts `agy` with an empty temporary workspace and home, carries
+across only macOS Keychain access for OAuth, and explicitly denies every tool
+namespace.
+
 ## Evidence-backed qualification
 
 Use `delegation-evidence lane <lane>` to inspect the dated external snapshot.
@@ -53,6 +68,14 @@ judgement remain disabled. Installed
 runtimes and visible model names are not qualification. If the exact gate is
 absent, keep the incumbent profile; never silently substitute another model,
 effort, or lane.
+
+## Optional blocked Qwen candidate
+
+Qwen3.8 Max Preview is installed only through `qwen-executor` and
+`delegation-qwen`, pinned to the Qwen Cloud Token Plan OpenAI-compatible backend
+at `xhigh`. Subscription access, a valid key, or a smoke test is not
+qualification. Every normal lane remains blocked until exact local evaluation
+promotes both routing gates. Never use `--evaluation` for ordinary work.
 
 ## Reaching Claude from Codex (cross-provider bridge)
 

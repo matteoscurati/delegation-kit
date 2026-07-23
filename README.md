@@ -18,7 +18,9 @@ external-evidence snapshot, and fail-closed local gates. Swap the models for you
 | routing skill | `skills/model-routing/` | surfaces the decision procedure when you delegate |
 | orchestrate skill | `skills/orchestrate/` | the fan-out loop — plan → delegate to workers → verify → advisor judges plan + ship |
 | optional GLM skill | `skills/glm-executor/` | dispatches only gate-allowed GLM lanes; provisional use is explicit |
+| optional Gemini skill | `skills/gemini-executor/` | Antigravity-backed Gemini 3.6 Flash scout; provisional use is explicit |
 | optional Kimi skill | `skills/kimi-executor/` | exposes only exact gate-allowed Kimi lane/backend/effort tuples |
+| blocked Qwen skill | `skills/qwen-executor/` | Token Plan candidate; no normal dispatch before evaluation |
 | lane discipline | `@import` in `CLAUDE.md` | always-loaded policy ([`claude/CLAUDE.delegation.md`](./claude/CLAUDE.delegation.md)) |
 
 **Codex** (`~/.codex/`)
@@ -28,11 +30,14 @@ external-evidence snapshot, and fail-closed local gates. Swap the models for you
 | 5 ephemeral profiles | `*.config.toml` | for `codex exec --ephemeral -p <name>` |
 | collaboration policy | appended to `AGENTS.md` | usage-aware routing **+ a Codex→Claude bridge** |
 | optional GLM skill | `skills/glm-executor/` | same fail-closed GLM-5.2 executor path |
+| optional Gemini skill | `skills/gemini-executor/` | same fail-closed Gemini 3.6 Flash executor path |
 | optional Kimi skill | `skills/kimi-executor/` | same fail-closed provisional Kimi K3 path |
+| blocked Qwen skill | `skills/qwen-executor/` | same fail-closed Qwen3.8 preview candidate path |
 | config snippet | printed for manual merge | `[agents]` fan-out caps + lead defaults |
 
-The universal installer also adds `delegation-glm`, `delegation-kimi`,
-`delegation-evidence`, and the read-only central router `delegation-route` under
+The universal installer also adds `delegation-glm`, `delegation-gemini`, `delegation-kimi`, `delegation-qwen`,
+`delegation-evidence`, the ZIP-only `delegation-epoch` importer, and the read-only
+central router `delegation-route` under
 `~/.local/bin`, with versioned gates under `~/.local/share/delegation-kit/`.
 GLM `clerk` and `scout` are provisional and require `--allow-provisional`;
 builder is a blocked candidate and reviewer is disabled. The runner refuses every
@@ -40,6 +45,21 @@ blocked lane and every effort the gate did not pin, and also refuses execution u
 installed; it is an agent option, not a standalone GLM client. The installer asks
 for the Z.AI API key and stores it in `~/.local/share/delegation-kit/config/zai.env`
 (mode 600); an explicit `ZAI_API_KEY` in the environment overrides it.
+Failed GLM dispatches write a sanitized `<output>.error.json` that distinguishes
+runtime exit, malformed streams, model mismatch, missing/empty results, auth, and
+rate limits. Raw events and stderr are deleted unless an existing private
+directory is explicitly supplied with `--debug-dir`; those artifacts are
+sensitive and must not be committed.
+
+Gemini 3.6 Flash uses the installed, user-authenticated Antigravity CLI (`agy`).
+Only `scout` at `medium` is provisional and requires `--allow-provisional`;
+builder and frontend-builder at `high` remain blocked candidates, while reviewer
+and judgement are disabled. The runner never substitutes another Gemini variant
+or treats OAuth/model listing as qualification. This bridge is prompt-only:
+the lead must embed the relevant tracked-file excerpts in the brief, because
+headless filesystem and other tool permissions are never auto-approved. `agy`
+starts with an empty temporary workspace and home; only macOS Keychain access
+is carried across for OAuth, while all tool namespaces are explicitly denied.
 
 Kimi K3 is installed as a **provisional coding model**. Its gate permits explicit
 `clerk`, `scout`, `builder`, and `frontend-builder` runs at `max`; senior is a
@@ -48,6 +68,12 @@ returns exit 75 without silently falling back or changing the quality
 qualification. Provisional runs require `--allow-provisional`; CLI
 availability or a provider model listing is not enough.
 
+Qwen3.8 Max Preview is installed as a **blocked candidate**, pinned to the
+Qwen Cloud Token Plan OpenAI-compatible endpoint and `xhigh`. Its dedicated
+`sk-sp-` key is stored separately and never imported silently from another tool.
+Runtime availability is not qualification; `--evaluation` is reserved for a
+controlled local qualification run.
+
 The evidence-backed routing policy lives in [`model-routing.md`](./model-routing.md).
 Its raw, dated model+harness+effort snapshot is
 [`config/model-evidence.json`](./config/model-evidence.json), with source and lane
@@ -55,8 +81,21 @@ methodology in [`evaluation/README.md`](./evaluation/README.md). The universal
 installer exposes it as `delegation-evidence`; external evidence is advisory and
 cannot mutate a routing gate.
 
+Epoch AI's public benchmark data is consumed only from its downloadable ZIP:
+
+```sh
+delegation-epoch check
+delegation-epoch evidence --model gpt-5.6-sol --benchmark deepswe
+```
+
+The importer downloads into memory, validates archive/CSV safety, preserves
+source and license metadata, and emits normalized JSON to stdout or an explicit
+output path. It never persists the ZIP, extracts a corpus into the checkout, or
+edits `config/model-evidence.json` or a routing gate. The Airtable/`epochai`
+client is intentionally out of scope.
+
 The central decision file is [`config/routing-gates.json`](./config/routing-gates.json).
-It is the dispatch authority: GLM and Kimi validate it against their complete
+It is the dispatch authority: GLM, Gemini, Kimi, and Qwen validate it against their complete
 backend gates before every check/run, and refuse drift. Exact and contextual
 benchmark references are stored separately, and the generated table exposes
 local sample size/confidence instead of treating legacy scores as comparable.
@@ -90,6 +129,10 @@ Run the fail-closed regression suite after changing a gate:
 
 ```sh
 tests/routing-gates.sh
+tests/epoch-zip.sh
+tests/glm-runner-diagnostics.sh
+tests/gemini-runner-diagnostics.sh
+tests/qwen-runner.sh
 ```
 
 **Claude-only, one command (plugin):**
@@ -98,7 +141,7 @@ tests/routing-gates.sh
 /plugin install delegation-kit
 ```
 This installs the 6 agents plus the `model-routing`, `orchestrate`, and guarded
-`glm-executor` and `kimi-executor` skills. It does not install either external
+`glm-executor`, `gemini-executor`, `kimi-executor`, and blocked `qwen-executor` skills. It does not install any external
 model runner/gate, register the
 `CLAUDE.md` policy prose, or install the Codex side — run `./install.sh` for those.
 

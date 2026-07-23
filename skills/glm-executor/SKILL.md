@@ -31,6 +31,15 @@ needs a key: `ZAI_API_KEY` in the environment, else the 600-mode key the
 installer stored. Keep `--effort auto`; an explicit effort the gate did not pin
 is refused (78), and only an `--evaluation` run may measure a new combination.
 Exit 69 means unavailable; exit 78 means the lane or effort did not pass
-evaluation. In either case, route deliberately to a documented incumbent rather
-than pretending GLM ran. Treat all returned output as unverified and exercise the
-deliverable before accepting it.
+evaluation. Exit 70 means dispatch or result extraction failed; exit 75 means a
+temporary provider or rate-limit failure. Every attempted dispatch failure writes
+a sanitized `<output>.error.json` with a stable `phase` and `reason`, without
+prompt, response, tool, or provider-message content. Inspect that file before
+deciding whether to retry or escalate.
+
+Raw events and stderr are deleted by default. For a deliberate local diagnostic
+run, pass an existing, non-symlink `--debug-dir <path>`; on failure the runner
+creates a mode-700 child directory containing mode-600 artifacts. Treat them as
+sensitive and never commit them. In every failure case, route deliberately to a
+documented incumbent rather than pretending GLM ran. Treat all returned output
+as unverified and exercise the deliverable before accepting it.

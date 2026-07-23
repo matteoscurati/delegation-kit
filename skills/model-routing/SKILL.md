@@ -13,7 +13,7 @@ advisory and the versioned routing gate remains authoritative.
 Use `delegation-route resolve --lane <lane>` for the operational decision. It is
 read-only and never dispatches a model.
 For native Claude/Codex agents, the lead must resolve first; invoking an
-explicit-only profile is the manual selection event. GLM/Kimi runners enforce the
+explicit-only profile is the manual selection event. GLM/Gemini/Kimi/Qwen runners enforce the
 same graph directly and refuse drift.
 
 ## When to delegate at all
@@ -47,6 +47,17 @@ Kimi K3 is provisional for `clerk`, `scout`, `builder`, and `frontend-builder` a
 `max`; senior is a blocked candidate, while reviewer and judgement are disabled.
 Provisional dispatch requires `--allow-provisional`. Provider quota failures are
 temporary runtime failures, not quality evidence.
+
+Qwen3.8 Max Preview is a blocked candidate. Token Plan availability is only a
+runtime fact; it cannot enter a candidate set until exact local lane evidence
+promotes both the central and executable gates.
+
+Gemini 3.6 Flash is provisional only for `scout` at `medium` through `agy`.
+Builder and frontend-builder at `high` remain blocked; reviewer and judgement
+are disabled. Dispatch requires an explicit decision and
+`--allow-provisional`. It is a prompt-only bridge: put the required tracked-file
+excerpts into the brief. It uses an isolated temporary home/workspace, retains
+only macOS Keychain access for OAuth, and denies every tool namespace.
 
 ## Sizing and escalation
 - **Size the reviewer to the work, not to a general leaderboard.** A diff the cheap

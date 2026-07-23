@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "updated_at": "2026-07-21T00:00:00Z",
+  "updated_at": "2026-07-23T00:00:00Z",
   "evidence_file": "model-evidence.json",
   "status_values": ["disabled", "candidate", "provisional", "qualified", "manual-qualified"],
   "selection_values": ["default", "fallback", "preferred-explicit", "explicit-only", "blocked"],
@@ -78,6 +78,96 @@
         "senior": {"status": "candidate", "selection": "blocked", "exact_evidence_ids": [], "context_evidence_ids": ["arena-agent-kimi-k3"], "evidence_gap": "Steerability evidence is insufficient for promotion."},
         "judgement": {"status": "disabled", "selection": "blocked", "exact_evidence_ids": [], "context_evidence_ids": []},
         "reviewer": {"status": "disabled", "selection": "blocked", "exact_evidence_ids": [], "context_evidence_ids": [], "evidence_gap": "No exact review precision/recall row."}
+      }
+    },
+    "gemini-3.6-flash-scout": {
+      "model": "gemini-3.6-flash",
+      "harness": "agy",
+      "effort": "medium",
+      "lanes": {
+        "scout": {
+          "status": "provisional",
+          "selection": "explicit-only",
+          "exact_evidence_ids": [],
+          "context_evidence_ids": [],
+          "local_evaluation": {
+            "run_id": "2026-07-23-agy-prompt-only-smoke",
+            "task_count": 1,
+            "repeats": 1,
+            "confidence": "low",
+            "limitations": "One self-contained architecture-review task verified the exact OAuth/model/effort/output path, but it was not held out, scored, repeated, or a repository-navigation test."
+          },
+          "evidence_gap": "No exact public agy/medium benchmark row; launch claims use different or unspecified harnesses.",
+          "fallback": "terra-scout"
+        }
+      }
+    },
+    "gemini-3.6-flash-builder": {
+      "model": "gemini-3.6-flash",
+      "harness": "agy",
+      "effort": "high",
+      "lanes": {
+        "builder": {
+          "status": "candidate",
+          "selection": "blocked",
+          "exact_evidence_ids": [],
+          "context_evidence_ids": [],
+          "evidence_gap": "No local scoped-edit evaluation for the exact agy/high route.",
+          "fallback": "terra-builder"
+        }
+      }
+    },
+    "gemini-3.6-flash-frontend-builder": {
+      "model": "gemini-3.6-flash",
+      "harness": "agy",
+      "effort": "high",
+      "lanes": {
+        "frontend-builder": {
+          "status": "candidate",
+          "selection": "blocked",
+          "exact_evidence_ids": [],
+          "context_evidence_ids": [],
+          "evidence_gap": "No frontend-specific local evaluation for the exact agy/high route.",
+          "fallback": "sonnet-builder"
+        }
+      }
+    },
+    "gemini-3.6-flash-reviewer": {
+      "model": "gemini-3.6-flash",
+      "harness": "agy",
+      "effort": "high",
+      "lanes": {
+        "reviewer": {
+          "status": "disabled",
+          "selection": "blocked",
+          "exact_evidence_ids": [],
+          "context_evidence_ids": [],
+          "evidence_gap": "No exact review precision/recall evaluation."
+        }
+      }
+    },
+    "gemini-3.6-flash-judgement": {
+      "model": "gemini-3.6-flash",
+      "harness": "agy",
+      "effort": "high",
+      "lanes": {
+        "judgement": {
+          "status": "disabled",
+          "selection": "blocked",
+          "exact_evidence_ids": [],
+          "context_evidence_ids": [],
+          "evidence_gap": "Runtime availability and launch claims cannot qualify judgement."
+        }
+      }
+    },
+    "qwen3.8-max-preview": {
+      "model": "qwen3.8-max-preview", "harness": "token-plan-openai", "effort": "xhigh",
+      "lanes": {
+        "clerk": {"status": "candidate", "selection": "blocked", "exact_evidence_ids": [], "context_evidence_ids": [], "evidence_gap": "No exact public benchmark or local clerk evaluation.", "fallback": "luna-clerk"},
+        "scout": {"status": "candidate", "selection": "blocked", "exact_evidence_ids": [], "context_evidence_ids": [], "evidence_gap": "No exact public benchmark or local repository-navigation evaluation.", "fallback": "terra-scout"},
+        "reviewer": {"status": "candidate", "selection": "blocked", "exact_evidence_ids": [], "context_evidence_ids": [], "evidence_gap": "No exact review precision/recall evaluation."},
+        "senior": {"status": "candidate", "selection": "blocked", "exact_evidence_ids": [], "context_evidence_ids": [], "evidence_gap": "No exact high-risk judgement or steerability evaluation."},
+        "judgement": {"status": "disabled", "selection": "blocked", "exact_evidence_ids": [], "context_evidence_ids": [], "evidence_gap": "Preview marketing claims and runtime access cannot qualify judgement."}
       }
     }
   },

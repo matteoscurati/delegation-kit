@@ -109,13 +109,69 @@ chmod 755 "$DATA_HOME/bin/delegation-kimi"
 ln -sfn "$DATA_HOME/bin/delegation-kimi" "$BIN_HOME/delegation-kimi"
 echo "Kimi bridge -> $BIN_HOME/delegation-kimi (routing gate: $DATA_HOME/config/kimi-k3-routing.json)"
 
+cp "$KIT/bin/delegation-gemini" "$DATA_HOME/bin/delegation-gemini"
+cp "$KIT/config/gemini-3.6-flash-routing.json" "$DATA_HOME/config/gemini-3.6-flash-routing.json"
+chmod 755 "$DATA_HOME/bin/delegation-gemini"
+ln -sfn "$DATA_HOME/bin/delegation-gemini" "$BIN_HOME/delegation-gemini"
+echo "Gemini bridge -> $BIN_HOME/delegation-gemini (routing gate: $DATA_HOME/config/gemini-3.6-flash-routing.json)"
+
+cp "$KIT/bin/delegation-qwen" "$DATA_HOME/bin/delegation-qwen"
+cp "$KIT/config/qwen3.8-max-preview-routing.json" "$DATA_HOME/config/qwen3.8-max-preview-routing.json"
+chmod 755 "$DATA_HOME/bin/delegation-qwen"
+ln -sfn "$DATA_HOME/bin/delegation-qwen" "$BIN_HOME/delegation-qwen"
+echo "Qwen bridge -> $BIN_HOME/delegation-qwen (blocked candidate gate: $DATA_HOME/config/qwen3.8-max-preview-routing.json)"
+
+# Qwen Token Plan credentials are isolated from DashScope and from ai-consultants.
+# Never copy a key from another tool silently; accept an explicit environment
+# value or ask once, preserving an existing mode-600 file by default.
+QWEN_KEY_FILE="$DATA_HOME/config/qwen-token-plan.env"
+qwen_store_key() { # $1=key
+  ( umask 077; printf 'QWEN_TOKEN_PLAN_API_KEY=%s\n' "$1" >"$QWEN_KEY_FILE" )
+  chmod 600 "$QWEN_KEY_FILE"
+  echo "  + Qwen Token Plan key stored in $QWEN_KEY_FILE (mode 600)"
+}
+qwen_ask=1
+if [ -f "$QWEN_KEY_FILE" ]; then
+  if [ ! -t 0 ]; then
+    echo "  + Qwen Token Plan key already stored in $QWEN_KEY_FILE"
+    qwen_ask=0
+  else
+    printf '  Qwen Token Plan key already stored in %s. Replace it? [y/N] ' "$QWEN_KEY_FILE"
+    read -r qwen_replace || qwen_replace=""
+    case "$qwen_replace" in [yY]*) ;; *) qwen_ask=0 ;; esac
+  fi
+fi
+if [ "$qwen_ask" = 1 ]; then
+  if [ -n "${QWEN_TOKEN_PLAN_API_KEY:-}" ]; then
+    case "$QWEN_TOKEN_PLAN_API_KEY" in sk-sp-*) ;; *) echo "  ! QWEN_TOKEN_PLAN_API_KEY is not a Token Plan key (expected sk-sp- prefix)"; QWEN_TOKEN_PLAN_API_KEY="" ;; esac
+    if [ -n "$QWEN_TOKEN_PLAN_API_KEY" ]; then
+      if [ ! -t 0 ]; then qwen_store_key "$QWEN_TOKEN_PLAN_API_KEY"
+      else
+        printf '  Store QWEN_TOKEN_PLAN_API_KEY in %s? [Y/n] ' "$QWEN_KEY_FILE"
+        read -r qwen_use_env || qwen_use_env=""
+        case "$qwen_use_env" in [nN]*) echo "  ! not stored — Qwen works only where the variable is exported" ;; *) qwen_store_key "$QWEN_TOKEN_PLAN_API_KEY" ;; esac
+      fi
+    fi
+  elif [ ! -t 0 ]; then
+    echo "  ! no Qwen Token Plan key configured — candidate runtime stays unavailable"
+  else
+    printf '  Qwen Token Plan API key (sk-sp-..., input hidden, Enter to skip): '
+    read -rs qwen_key || qwen_key=""; printf '\n'
+    case "$qwen_key" in "") echo "  ! skipped — Qwen candidate runtime stays unavailable" ;; sk-sp-*) qwen_store_key "$qwen_key" ;; *) echo "  ! rejected — expected a Token Plan key with sk-sp- prefix" ;; esac
+    unset qwen_key
+  fi
+fi
+
 # Shared, read-only evidence inspector. This snapshot informs routing decisions
 # but deliberately has no code path that mutates either executor gate.
 cp "$KIT/bin/delegation-evidence" "$DATA_HOME/bin/delegation-evidence"
+cp "$KIT/bin/delegation-epoch" "$DATA_HOME/bin/delegation-epoch"
 cp "$KIT/config/model-evidence.json" "$DATA_HOME/config/model-evidence.json"
-chmod 755 "$DATA_HOME/bin/delegation-evidence"
+chmod 755 "$DATA_HOME/bin/delegation-evidence" "$DATA_HOME/bin/delegation-epoch"
 ln -sfn "$DATA_HOME/bin/delegation-evidence" "$BIN_HOME/delegation-evidence"
+ln -sfn "$DATA_HOME/bin/delegation-epoch" "$BIN_HOME/delegation-epoch"
 echo "Model evidence -> $BIN_HOME/delegation-evidence (snapshot: $DATA_HOME/config/model-evidence.json)"
+echo "Epoch ZIP feed -> $BIN_HOME/delegation-epoch (advisory only; raw data is not persisted)"
 
 cp "$KIT/bin/delegation-route" "$DATA_HOME/bin/delegation-route"
 cp "$KIT/config/routing-gates.json" "$DATA_HOME/config/routing-gates.json"
@@ -140,6 +196,10 @@ if [ "$do_claude" = 1 ]; then
   echo "  + optional GLM executor skill -> $CLAUDE_HOME/skills/glm-executor/"
   cp -R "$KIT/skills/kimi-executor" "$CLAUDE_HOME/skills/"
   echo "  + optional Kimi executor skill -> $CLAUDE_HOME/skills/kimi-executor/"
+  cp -R "$KIT/skills/gemini-executor" "$CLAUDE_HOME/skills/"
+  echo "  + optional Gemini executor skill -> $CLAUDE_HOME/skills/gemini-executor/"
+  cp -R "$KIT/skills/qwen-executor" "$CLAUDE_HOME/skills/"
+  echo "  + blocked Qwen candidate skill -> $CLAUDE_HOME/skills/qwen-executor/"
 fi
 
 if [ "$do_codex" = 1 ]; then
@@ -153,6 +213,10 @@ if [ "$do_codex" = 1 ]; then
   echo "  + optional GLM executor skill -> $CODEX_HOME/skills/glm-executor/"
   cp -R "$KIT/skills/kimi-executor" "$CODEX_HOME/skills/"
   echo "  + optional Kimi executor skill -> $CODEX_HOME/skills/kimi-executor/"
+  cp -R "$KIT/skills/gemini-executor" "$CODEX_HOME/skills/"
+  echo "  + optional Gemini executor skill -> $CODEX_HOME/skills/gemini-executor/"
+  cp -R "$KIT/skills/qwen-executor" "$CODEX_HOME/skills/"
+  echo "  + blocked Qwen candidate skill -> $CODEX_HOME/skills/qwen-executor/"
   append_guarded "$CODEX_HOME/AGENTS.md" "$(cat "$KIT/codex/AGENTS.md")"
   echo
   echo "  Codex config is NOT auto-edited. Review and merge into $CODEX_HOME/config.toml:"

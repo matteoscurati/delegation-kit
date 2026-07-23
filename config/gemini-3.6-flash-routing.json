@@ -1,0 +1,88 @@
+{
+  "model": "gemini-3.6-flash",
+  "status": "provisional",
+  "evaluated_at": "2026-07-23T00:00:00Z",
+  "source_run": "2026-07-23-agy-prompt-only-smoke",
+  "qualification_basis": "The installed and authenticated Antigravity CLI exposes the exact Gemini 3.6 Flash variants. Scout/medium is provisional through a prompt-only bridge with a successful live compatibility run; editing lanes remain blocked until locally evaluated behind enforceable write isolation.",
+  "preferred_backends": [
+    "agy"
+  ],
+  "qualified_lanes": [],
+  "provisional_lanes": [
+    "scout"
+  ],
+  "lanes": {
+    "scout": {
+      "default_effort": "medium",
+      "backends": {
+        "agy": {
+          "qualified": false,
+          "status": "provisional",
+          "selection": "explicit-only",
+          "effort": "medium",
+          "runtime_model": "gemini-3.6-flash-medium",
+          "local_evaluation": {
+            "run_id": "2026-07-23-agy-prompt-only-smoke",
+            "outcome": "passed-live-compatibility-smoke",
+            "task_count": 1,
+            "repeats": 1,
+            "confidence": "low",
+            "limitations": "One self-contained architecture-review task verified the exact OAuth/model/effort/output path, but it was not held out, scored, repeated, or a repository-navigation test."
+          }
+        }
+      }
+    },
+    "builder": {
+      "default_effort": "high",
+      "backends": {
+        "agy": {
+          "qualified": false,
+          "status": "candidate",
+          "selection": "blocked",
+          "effort": "high",
+          "runtime_model": "gemini-3.6-flash-high",
+          "local_evaluation": null
+        }
+      }
+    },
+    "frontend-builder": {
+      "default_effort": "high",
+      "backends": {
+        "agy": {
+          "qualified": false,
+          "status": "candidate",
+          "selection": "blocked",
+          "effort": "high",
+          "runtime_model": "gemini-3.6-flash-high",
+          "local_evaluation": null
+        }
+      }
+    },
+    "reviewer": {
+      "default_effort": "high",
+      "backends": {
+        "agy": {
+          "qualified": false,
+          "status": "disabled",
+          "selection": "blocked",
+          "effort": "high",
+          "runtime_model": "gemini-3.6-flash-high",
+          "local_evaluation": null
+        }
+      }
+    },
+    "judgement": {
+      "default_effort": "high",
+      "backends": {
+        "agy": {
+          "qualified": false,
+          "status": "disabled",
+          "selection": "blocked",
+          "effort": "high",
+          "runtime_model": "gemini-3.6-flash-high",
+          "local_evaluation": null
+        }
+      }
+    }
+  }
+}

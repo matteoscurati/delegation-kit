@@ -22,6 +22,21 @@ ROUTER="$ROOT/bin/delegation-route"
 KEY_FILE="${DELEGATION_GLM_KEY_FILE:-$ROOT/config/zai.env}"
 MODEL="glm-5.2"
 RUN_TMP=""
+RUN_OUTPUT_TMP=""
+RUN_METRICS_TMP=""
+
+cleanup_run() {
+  [ -z "$RUN_OUTPUT_TMP" ] || rm -f -- "$RUN_OUTPUT_TMP"
+  [ -z "$RUN_METRICS_TMP" ] || rm -f -- "$RUN_METRICS_TMP"
+  [ -z "$RUN_TMP" ] || rm -rf -- "$RUN_TMP"
+}
+
+normalized_destination() {
+  local path="$1" parent name
+  parent="$(cd "$(dirname "$path")" && pwd -P)" || return 1
+  name="$(basename "$path")"
+  printf '%s/%s' "$parent" "$name"
+}
 
 usage() {
   cat <<'EOF'
@@ -30,10 +45,14 @@ Usage:
   delegation-glm run --lane <clerk|scout|builder|reviewer> \
     [--effort <auto|high|max>] [--backend <auto|claude-zai>] \
     --prompt-file <path> --output <path> --workdir <path> \
-    [--metrics <path>] [--max-cost-usd <amount>] [--allow-provisional] [--evaluation]
+    [--metrics <path>] [--max-cost-usd <amount>] [--debug-dir <path>] \
+    [--allow-provisional] [--evaluation]
 
 Exit codes: 64 invalid input, 69 unavailable, 70 dispatch failure,
 75 temporary/rate-limit failure, 78 lane not qualified.
+
+Failures write a sanitized diagnostic to <output>.error.json. --debug-dir
+additionally preserves the raw event stream and stderr in a private subdirectory.
 EOF
 }
 
@@ -194,12 +213,72 @@ print_check() {
   fi
 }
 
+EXTRACT_REASON=""
+RESULT_SUBTYPE=""
+OBSERVED_MODELS_JSON="[]"
+
 extract_claude() {
   local events="$1" output="$2" metrics="$3" started="$4" backend="$5" effort="$6" lane="$7"
-  jq -e --arg model "$MODEL" 'select(.type == "system" and .subtype == "init") | .model == $model' \
-    "$events" >/dev/null || return 1
-  jq -rs '[.[] | select(.type == "result") | .result] | map(select(type == "string")) | last // empty' "$events" >"$output"
-  [ -s "$output" ] || return 1
+  EXTRACT_REASON=""
+  RESULT_SUBTYPE=""
+  OBSERVED_MODELS_JSON="[]"
+
+  if ! jq -se 'type == "array" and all(.[]; type == "object")' \
+      "$events" >/dev/null 2>&1; then
+    EXTRACT_REASON="invalid_stream"
+    return 1
+  fi
+  OBSERVED_MODELS_JSON="$(jq -sc --arg model "$MODEL" '
+    [.[] | select(.type == "system" and .subtype == "init") |
+      if .model == $model then $model else "<unexpected>" end] | unique
+  ' "$events")"
+  if ! jq -se 'any(.[]; .type == "system" and .subtype == "init")' \
+      "$events" >/dev/null; then
+    EXTRACT_REASON="missing_init"
+    return 1
+  fi
+  if ! jq -se --arg model "$MODEL" '
+      all(.[]; .type != "system" or .subtype != "init" or .model == $model)
+    ' "$events" >/dev/null; then
+    EXTRACT_REASON="model_mismatch"
+    return 1
+  fi
+  if ! jq -se 'any(.[]; .type == "result")' "$events" >/dev/null; then
+    EXTRACT_REASON="missing_result"
+    return 1
+  fi
+  RESULT_SUBTYPE="$(jq -rs '
+    [.[] | select(.type == "result") | .subtype |
+      if . == "success" or . == "error_during_execution" or
+          . == "error_max_turns" or . == "error_max_budget_usd"
+      then . else "<unexpected>" end] | last // ""
+  ' "$events")"
+  if jq -se '
+      ([.[] | select(.type == "result")] | last // {}) as $r |
+      ($r.is_error == true) or
+      (($r.subtype | type) == "string" and ($r.subtype | startswith("error")))
+    ' "$events" >/dev/null; then
+    EXTRACT_REASON="result_error"
+    return 1
+  fi
+  if ! jq -se '
+      ([.[] | select(.type == "result")] | last // {}) as $r |
+      $r.subtype == "success" and ($r.result | type) == "string"
+    ' "$events" >/dev/null; then
+    EXTRACT_REASON="invalid_stream"
+    return 1
+  fi
+  jq -rs '
+    ([.[] | select(.type == "result")] | last // {}) | .result |
+    select(type == "string" and length > 0) // empty
+  ' "$events" >"$output" || {
+    EXTRACT_REASON="invalid_stream"
+    return 1
+  }
+  if [ ! -s "$output" ]; then
+    EXTRACT_REASON="empty_result"
+    return 1
+  fi
   jq -s --arg model "$MODEL" --arg backend "$backend" --arg effort "$effort" \
     --arg lane "$lane" --argjson started "$started" '
     ([.[] | select(.type == "result")] | last // {}) as $r |
@@ -210,12 +289,81 @@ extract_claude() {
              reasoning:($u.reasoning_tokens // 0),
              cache_read:($u.cache_read_input_tokens // 0),
              cache_write:($u.cache_creation_input_tokens // 0)},
-     provider_cost_usd:($r.total_cost_usd // 0)}' "$events" >"$metrics"
+     provider_cost_usd:($r.total_cost_usd // 0)}' "$events" >"$metrics" || {
+    EXTRACT_REASON="invalid_stream"
+    return 1
+  }
+}
+
+preserve_debug_artifacts() {
+  local debug_parent="$1" events="$2" stderr_file="$3"
+  DEBUG_RUN_DIR=""
+  [ -n "$debug_parent" ] || return 0
+  DEBUG_RUN_DIR="$(mktemp -d "$debug_parent/delegation-glm.XXXXXX")" || return 1
+  chmod 700 "$DEBUG_RUN_DIR"
+  cp "$events" "$DEBUG_RUN_DIR/events.jsonl"
+  cp "$stderr_file" "$DEBUG_RUN_DIR/stderr.txt"
+  chmod 600 "$DEBUG_RUN_DIR/events.jsonl" "$DEBUG_RUN_DIR/stderr.txt"
+}
+
+write_failure_diagnostic() {
+  local diagnostic="$1" events="$2" stderr_file="$3" started="$4"
+  local backend="$5" effort="$6" lane="$7" phase="$8" reason="$9"
+  local cli_exit="${10}" debug_path="${11}"
+  local stream_valid=false event_bytes=0 stderr_bytes=0 counts="{}"
+  local observed_models="$OBSERVED_MODELS_JSON" result_subtype="$RESULT_SUBTYPE"
+  local diagnostic_parent diagnostic_name diagnostic_tmp finished
+
+  [ -f "$events" ] && event_bytes="$(wc -c <"$events" | tr -d ' ')"
+  [ -f "$stderr_file" ] && stderr_bytes="$(wc -c <"$stderr_file" | tr -d ' ')"
+  if jq -se 'type == "array" and all(.[]; type == "object")' \
+      "$events" >/dev/null 2>&1; then
+    stream_valid=true
+    counts="$(jq -sc '
+      map((.type // "unknown") as $type |
+        if ["system","assistant","user","result","rate_limit_event"] |
+            index($type)
+        then $type else "unknown" end) |
+      group_by(.) | map({key:.[0],value:length}) | from_entries
+    ' "$events")"
+    [ "$observed_models" != "[]" ] || observed_models="$(jq -sc --arg model "$MODEL" '
+      [.[] | select(.type == "system" and .subtype == "init") |
+        if .model == $model then $model else "<unexpected>" end] | unique
+    ' "$events")"
+    [ -n "$result_subtype" ] || result_subtype="$(jq -rs '
+      [.[] | select(.type == "result") | .subtype |
+        if . == "success" or . == "error_during_execution" or
+            . == "error_max_turns" or . == "error_max_budget_usd"
+        then . else "<unexpected>" end] | last // ""
+    ' "$events")"
+  fi
+  finished="$(date +%s)"
+  diagnostic_parent="$(dirname "$diagnostic")"
+  diagnostic_name="$(basename "$diagnostic")"
+  diagnostic_tmp="$(mktemp "$diagnostic_parent/.$diagnostic_name.XXXXXX")"
+  jq -n \
+    --arg model "$MODEL" --arg backend "$backend" --arg effort "$effort" \
+    --arg lane "$lane" --arg phase "$phase" --arg reason "$reason" \
+    --arg result_subtype "$result_subtype" --arg debug_dir "$debug_path" \
+    --argjson cli_exit "$cli_exit" --argjson stream_valid "$stream_valid" \
+    --argjson event_bytes "$event_bytes" --argjson stderr_bytes "$stderr_bytes" \
+    --argjson event_counts "$counts" --argjson observed_models "$observed_models" \
+    --argjson elapsed_seconds "$((finished - started))" '
+    {schema_version:1,model:$model,backend:$backend,effort:$effort,lane:$lane,
+     phase:$phase,reason:$reason,cli_exit_code:$cli_exit,
+     result_subtype:(if $result_subtype == "" then null else $result_subtype end),
+     observed_models:$observed_models,
+     event_stream:{valid:$stream_valid,bytes:$event_bytes,counts:$event_counts},
+     stderr_bytes:$stderr_bytes,elapsed_seconds:$elapsed_seconds,
+     debug_dir:(if $debug_dir == "" then null else $debug_dir end)}
+  ' >"$diagnostic_tmp"
+  chmod 600 "$diagnostic_tmp"
+  mv "$diagnostic_tmp" "$diagnostic"
 }
 
 run_command() {
-  local lane="" effort="auto" backend="auto" prompt_file="" output="" workdir="" metrics=""
-  local max_cost="2.00" evaluation=0 allow_provisional=0
+  local lane="" effort="auto" backend="auto" prompt_file="" output="" workdir="" metrics="" diagnostic=""
+  local debug_dir="" max_cost="2.00" evaluation=0 allow_provisional=0
   while [ "$#" -gt 0 ]; do
     case "$1" in
       --lane) lane="${2:-}"; shift 2 ;;
@@ -226,6 +374,7 @@ run_command() {
       --workdir) workdir="${2:-}"; shift 2 ;;
       --metrics) metrics="${2:-}"; shift 2 ;;
       --max-cost-usd) max_cost="${2:-}"; shift 2 ;;
+      --debug-dir) debug_dir="${2:-}"; shift 2 ;;
       --allow-provisional) allow_provisional=1; shift ;;
       --evaluation) evaluation=1; shift ;;
       -h|--help) usage; exit 0 ;;
@@ -238,10 +387,27 @@ run_command() {
   [ -f "$prompt_file" ] || die 64 "prompt file missing: $prompt_file"
   [ -d "$workdir" ] || die 64 "workdir missing: $workdir"
   [ -n "$output" ] || die 64 "--output is required"
+  if [ -n "$debug_dir" ]; then
+    [ -d "$debug_dir" ] || die 64 "debug directory missing: $debug_dir"
+    [ ! -L "$debug_dir" ] || die 64 "debug directory must not be a symlink: $debug_dir"
+    debug_dir="$(cd "$debug_dir" && pwd -P)"
+  fi
   have jq || die 69 "jq is required"
   validate_gate_graph || die 78 "central and executable routing gates are missing, invalid, or inconsistent"
   metrics="${metrics:-$output.metrics.json}"
-  mkdir -p "$(dirname "$output")" "$(dirname "$metrics")"
+  diagnostic="$output.error.json"
+  mkdir -p "$(dirname "$output")" "$(dirname "$metrics")" "$(dirname "$diagnostic")"
+  [ ! -d "$output" ] || die 64 "output path is a directory: $output"
+  [ ! -d "$metrics" ] || die 64 "metrics path is a directory: $metrics"
+  [ ! -d "$diagnostic" ] || die 64 "diagnostic path is a directory: $diagnostic"
+  local normalized_output normalized_metrics normalized_diagnostic
+  normalized_output="$(normalized_destination "$output")"
+  normalized_metrics="$(normalized_destination "$metrics")"
+  normalized_diagnostic="$(normalized_destination "$diagnostic")"
+  [ "$normalized_output" != "$normalized_metrics" ] \
+    || die 64 "output and metrics paths must be distinct"
+  [ "$normalized_metrics" != "$normalized_diagnostic" ] \
+    || die 64 "metrics path collides with reserved diagnostic path: $diagnostic"
 
   backend="claude-zai"
   # Qualification before availability: "never approved" (78) is a permanent fact
@@ -269,11 +435,22 @@ run_command() {
       || die 78 "lane '$lane' backend '$backend' is qualified only at effort '$expected_effort'"
   fi
 
-  local tmp events rc=0 started
+  local tmp events stderr_file rc=0 started
+  local output_parent output_name metrics_parent metrics_name
+  local phase="" reason="" final_rc=0 cli_exit=null debug_warning=""
   tmp="$(mktemp -d "${TMPDIR:-/tmp}/delegation-glm.XXXXXX")"
   RUN_TMP="$tmp"
-  trap 'rm -rf -- "$RUN_TMP"' EXIT
+  trap cleanup_run EXIT
   events="$tmp/events.jsonl"
+  stderr_file="$tmp/stderr"
+  : >"$events"
+  : >"$stderr_file"
+  output_parent="$(dirname "$output")"
+  output_name="$(basename "$output")"
+  metrics_parent="$(dirname "$metrics")"
+  metrics_name="$(basename "$metrics")"
+  RUN_OUTPUT_TMP="$(mktemp "$output_parent/.$output_name.XXXXXX")"
+  RUN_METRICS_TMP="$(mktemp "$metrics_parent/.$metrics_name.XXXXXX")"
   started="$(date +%s)"
 
   local permission="plan"
@@ -296,13 +473,22 @@ run_command() {
       --permission-mode "$permission" --setting-sources '' --strict-mcp-config \
       --output-format stream-json --verbose --no-session-persistence \
       --max-budget-usd "$max_cost"
-  ) >"$events" 2>"$tmp/stderr" || rc=$?
+  ) >"$events" 2>"$stderr_file" || rc=$?
   if [ "$rc" -eq 0 ]; then
-    extract_claude "$events" "$output" "$metrics" "$started" "$backend" "$effort" "$lane" || rc=70
+    if ! extract_claude "$events" "$RUN_OUTPUT_TMP" "$RUN_METRICS_TMP" \
+        "$started" "$backend" "$effort" "$lane"; then
+      phase="extract"
+      reason="$EXTRACT_REASON"
+      final_rc=70
+    fi
+  else
+    phase="dispatch"
+    reason="process_exit"
+    final_rc=70
+    cli_exit="$rc"
   fi
 
-  if [ "$rc" -ne 0 ]; then
-    cp "$tmp/stderr" "$output.stderr" 2>/dev/null || true
+  if [ "$final_rc" -ne 0 ]; then
     # A dead or malformed key is the runtime being unavailable (69), not the
     # worker breaking (70). The API key is now GLM's only credential and
     # claude_zai_status can only see that the string is non-empty — never that it
@@ -315,15 +501,41 @@ run_command() {
     # from a tool call would masquerade as an auth failure.
     if jq -se 'any(.[]; .type == "system" and .subtype == "api_retry"
                        and (.error_status // 0) == 401)' "$events" >/dev/null 2>&1; then
-      exit 69
+      reason="authentication_failed"
+      final_rc=69
+    elif jq -se 'any(.[]; .type == "system" and .subtype == "api_retry"
+                         and (.error_status // 0) == 429)' "$events" >/dev/null 2>&1; then
+      reason="rate_limited"
+      final_rc=75
+    elif grep -Eqi 'rate.?limit|too many requests|1312|1305' "$stderr_file" 2>/dev/null; then
+      reason="rate_limited"
+      final_rc=75
     fi
-    if jq -se 'any(.[]; .type == "system" and .subtype == "api_retry"
-                       and (.error_status // 0) == 429)' "$events" >/dev/null 2>&1; then
-      exit 75
+
+    DEBUG_RUN_DIR=""
+    if [ -n "$debug_dir" ] && ! preserve_debug_artifacts "$debug_dir" "$events" "$stderr_file"; then
+      debug_warning="could not preserve raw debug artifacts under $debug_dir"
+      DEBUG_RUN_DIR=""
     fi
-    grep -Eqi 'rate.?limit|too many requests|1312|1305' "$tmp/stderr" 2>/dev/null && exit 75
-    exit 70
+    write_failure_diagnostic "$diagnostic" "$events" "$stderr_file" "$started" \
+      "$backend" "$effort" "$lane" "$phase" "$reason" "$cli_exit" "$DEBUG_RUN_DIR"
+    if [ -n "$DEBUG_RUN_DIR" ]; then
+      if ! cp "$diagnostic" "$DEBUG_RUN_DIR/diagnostic.json" ||
+          ! chmod 600 "$DEBUG_RUN_DIR/diagnostic.json"; then
+        debug_warning="could not copy the sanitized diagnostic into $DEBUG_RUN_DIR"
+      fi
+    fi
+    [ -z "$debug_warning" ] || printf 'delegation-glm: warning: %s\n' "$debug_warning" >&2
+    printf 'delegation-glm: %s (details: %s)\n' "$reason" "$diagnostic" >&2
+    [ -z "$DEBUG_RUN_DIR" ] || printf 'delegation-glm: raw debug artifacts: %s\n' "$DEBUG_RUN_DIR" >&2
+    exit "$final_rc"
   fi
+
+  mv "$RUN_OUTPUT_TMP" "$output"
+  RUN_OUTPUT_TMP=""
+  mv "$RUN_METRICS_TMP" "$metrics"
+  RUN_METRICS_TMP=""
+  rm -f -- "$output.error.json"
   return 0
 }
 
