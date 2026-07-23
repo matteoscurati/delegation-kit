@@ -64,6 +64,27 @@ expect_failure 78 env DELEGATION_ROUTING_GATES_FILE="$TMP/bad-pair.json" \
   bin/delegation-glm check --json
 expect_failure 78 env DELEGATION_ROUTING_GATES_FILE="$TMP/bad-pair.json" \
   bin/delegation-kimi check --json
+expect_failure 78 env DELEGATION_ROUTING_GATES_FILE="$TMP/bad-pair.json" \
+  bin/delegation-qwen check --json
+expect_failure 78 env DELEGATION_ROUTING_GATES_FILE="$TMP/bad-pair.json" \
+  bin/delegation-gemini check --json
+
+# Qwen is installed as a blocked candidate and cannot dispatch normal work.
+expect_failure 78 bin/delegation-qwen run --lane clerk --effort auto --backend auto \
+  --prompt-file README.md --output "$TMP/qwen.txt" --workdir "$ROOT"
+
+# Qwen bridge drift is checked in both directions.
+jq '.lanes.clerk.backends["token-plan-openai"].status = "provisional" |
+    .lanes.clerk.backends["token-plan-openai"].selection = "explicit-only" |
+    .provisional_lanes = ["clerk"]' config/qwen3.8-max-preview-routing.json >"$TMP/bad-qwen.json"
+expect_failure 65 env DELEGATION_QWEN_ROUTING_FILE="$TMP/bad-qwen.json" \
+  bin/delegation-route check --json
+
+# Gemini bridge drift is checked in both directions.
+jq '.lanes.scout.backends.agy.effort = "high"' \
+  config/gemini-3.6-flash-routing.json >"$TMP/bad-gemini.json"
+expect_failure 65 env DELEGATION_GEMINI_ROUTING_FILE="$TMP/bad-gemini.json" \
+  bin/delegation-route check --json
 
 # Disabled/candidate profiles never leak into explicit/fallback candidates.
 bin/delegation-route resolve --lane judgement --json >"$TMP/judgement.json"

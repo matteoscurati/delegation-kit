@@ -30,31 +30,42 @@ for a in sonnet-clerk sonnet-scout sonnet-builder sonnet-reviewer opus-reviewer 
 done
 rm -rf "$CLAUDE_HOME/skills/model-routing" "$CLAUDE_HOME/skills/orchestrate" \
   "$CLAUDE_HOME/skills/glm-executor" "$CLAUDE_HOME/skills/kimi-executor"
-echo "  - removed 6 subagent profiles + model-routing, orchestrate, GLM & Kimi skills"
+rm -rf "$CLAUDE_HOME/skills/qwen-executor" "$CLAUDE_HOME/skills/gemini-executor"
+echo "  - removed 6 subagent profiles + model-routing, orchestrate, GLM, Gemini, Kimi & Qwen skills"
 strip_guarded "$CLAUDE_HOME/CLAUDE.md"
 
 echo "Codex -> $CODEX_HOME"
 for a in luna-clerk terra-scout terra-builder sol-reviewer sol-judge; do
   rm -f "$CODEX_HOME/agents/$a.toml" "$CODEX_HOME/$a.config.toml"
 done
-rm -rf "$CODEX_HOME/skills/glm-executor" "$CODEX_HOME/skills/kimi-executor"
+rm -rf "$CODEX_HOME/skills/glm-executor" "$CODEX_HOME/skills/gemini-executor" \
+  "$CODEX_HOME/skills/kimi-executor" "$CODEX_HOME/skills/qwen-executor"
 echo "  - removed 5 native + 5 ephemeral profiles"
 strip_guarded "$CODEX_HOME/AGENTS.md"
-rm -f "$BIN_HOME/delegation-glm" "$BIN_HOME/delegation-kimi" "$BIN_HOME/delegation-evidence" "$BIN_HOME/delegation-route"
+rm -f "$BIN_HOME/delegation-glm" "$BIN_HOME/delegation-gemini" "$BIN_HOME/delegation-kimi" "$BIN_HOME/delegation-qwen" \
+  "$BIN_HOME/delegation-evidence" "$BIN_HOME/delegation-epoch" "$BIN_HOME/delegation-route"
 # Everything else under $DATA_HOME is a byte-for-byte copy of a repo file that
 # re-running install.sh restores; the key is the only unrecoverable thing here,
 # and install.sh promises never to replace it without consent. Back it up rather
 # than destroy it, matching the *.delegation-kit.bak convention below.
 zai_key_backup=""
+qwen_key_backup=""
 if [ -f "$DATA_HOME/config/zai.env" ]; then
   zai_key_backup="$DATA_HOME.zai.env.bak"
   ( umask 077; cp "$DATA_HOME/config/zai.env" "$zai_key_backup" )
   chmod 600 "$zai_key_backup"
 fi
+if [ -f "$DATA_HOME/config/qwen-token-plan.env" ]; then
+  qwen_key_backup="$DATA_HOME.qwen-token-plan.env.bak"
+  ( umask 077; cp "$DATA_HOME/config/qwen-token-plan.env" "$qwen_key_backup" )
+  chmod 600 "$qwen_key_backup"
+fi
 rm -rf "$DATA_HOME"
-echo "  - removed optional GLM/Kimi bridges, central routing gates, and evidence snapshot"
+echo "  - removed optional GLM/Gemini/Kimi/Qwen bridges, central routing gates, evidence snapshot, and Epoch ZIP importer"
 [ -z "$zai_key_backup" ] \
   || echo "  - Z.AI API key preserved at $zai_key_backup (mode 600) — delete it yourself when done"
+[ -z "$qwen_key_backup" ] \
+  || echo "  - Qwen Token Plan API key preserved at $qwen_key_backup (mode 600) — delete it yourself when done"
 echo
 echo "Done. config.toml was never auto-edited, so nothing to revert there."
 echo "Backups (*.delegation-kit.bak) left in place; delete when satisfied."

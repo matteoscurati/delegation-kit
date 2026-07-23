@@ -16,10 +16,15 @@ Operational decisions live in `config/routing-gates.json`. Inspect them with
 `delegation-route`; `status` records confidence and `selection` records whether a
 profile is default, fallback, explicit-only, or blocked. Judgement is manual-only,
 and the Fable+Sol super-judgement pair never dispatches automatically.
-The central file is authoritative: both external runners validate the complete
+The central file is authoritative: all external runners validate the complete
 decision graph and read their dispatch status from it before checking runtime or
 authentication. Their backend-specific JSON files retain transport and legacy
 measurement details but cannot widen the central gate.
+
+Qwen3.8 Max Preview is intentionally represented with empty exact/context
+evidence arrays. Its Token Plan runtime is available for controlled local
+evaluation, but availability, preview marketing, and a smoke response are not
+capability evidence and cannot promote a lane.
 
 ## Versioned snapshot
 
@@ -38,7 +43,7 @@ also be relevant to the lane. Nearby variants, different harnesses, and general
 coding evidence for review/judgement are context and are shown separately in the
 generated table.
 
-The 2026-07-21 snapshot uses only current sources:
+The 2026-07-22 snapshot uses only current sources:
 
 - [Artificial Analysis Coding Agent Index v1.2](https://artificialanalysis.ai/agents/coding-agents/)
   with its [July 2026 methodology](https://artificialanalysis.ai/methodology/coding-agents-benchmarking):
@@ -55,6 +60,67 @@ The 2026-07-21 snapshot uses only current sources:
 - [Terminal-Bench 2.0](https://www.tbench.ai/leaderboard/terminal-bench/2.0?verified=true)
   and [SWE-bench-Live](https://swe-bench-live.github.io/) as recent secondary
   checks for terminal work and contamination-resistant issue resolution.
+- [OpenBench](https://github.com/minghinmatthewlam/openbench), observed
+  2026-07-22, as a reproducible local framework for measuring the combined
+  model+harness system on coding tasks. It is tracked for future evaluations,
+  but its published results currently contain no Qwen3.8 Max Preview row and
+  therefore add no exact model evidence to this snapshot.
+
+### Local harness evaluation with OpenBench
+
+OpenBench belongs to the local-evaluation layer, not to the broad external
+leaderboard layer. Its useful controls include disposable workspaces,
+checker-polarity validation against untouched and golden workspaces, a null
+adapter, partial credit, repeated trials, confidence intervals, and
+time/token/cost telemetry.
+
+An OpenBench result is exact evidence only when the evaluated model, harness,
+effort, permissions, and tool surface match the production route. Running a
+model through `pi`, OpenCode, or another agentic wrapper measures that combined
+system and must not qualify a different local runner. The current Qwen Token
+Plan runner is read-only, while OpenBench coding tasks require workspace edits;
+OpenBench can therefore inform a future agentic Qwen builder evaluation but
+cannot promote any current Qwen lane.
+
+OpenBench results remain coding evidence. They do not substitute for
+review-precision/recall evaluation and never qualify `reviewer`, `senior`,
+`judgement`, or security-sensitive work. Before recording a future run, retain
+the task pack and version, exact model and harness, effort and permissions,
+trial count, checker scores, confidence, failures/timeouts, token accounting,
+and raw-result provenance.
+
+### Epoch AI ZIP advisory intake
+
+[`bin/delegation-epoch`](../bin/delegation-epoch) reads only Epoch AI's public
+[`benchmark_data.zip`](https://epoch.ai/data/benchmark_data.zip). It does not use
+Airtable or the `epochai` package. The archive is downloaded into memory,
+size/path/encoding/CSV structure is validated, and the raw ZIP and extracted
+corpus are never persisted by the tool.
+
+```sh
+bin/delegation-epoch check
+bin/delegation-epoch normalize --model gpt-5.6-sol --benchmark deepswe
+bin/delegation-epoch evidence --model gpt-5.6-sol --benchmark deepswe
+```
+
+`normalize` preserves every non-empty benchmark-specific metric. `evidence`
+maps only reviewed fields into this repository's lane metric names:
+DeepSWE `Pass@1`, Terminal-Bench `Accuracy mean`, and WebDev Arena score plus
+their available cost/error bounds. The output includes a stable archive hash,
+dataset and row provenance, attribution, and license metadata.
+
+An Epoch row is labeled `exact` only when that row names model, harness, and
+effort. This is exact source identity, not automatic production-route evidence:
+a `mini-swe-agent` result remains contextual for a `codex` profile. Missing or
+unknown harness/effort is always labeled `contextual`. Review the generated JSON
+before manually adding selected source/evidence objects to
+`config/model-evidence.json`; the importer has no gate or snapshot mutation
+path.
+
+Epoch's own data is attributed under CC BY 4.0. External-project rows preserve
+their source links and original licensing; the documented Apache-2.0 overrides
+for Aider Polyglot and Terminal-Bench are recorded explicitly. Do not commit the
+downloaded ZIP, extracted CSVs, or one-off normalized outputs.
 
 Run:
 
@@ -66,6 +132,10 @@ bin/delegation-evidence lane builder
 bin/delegation-route check
 bin/delegation-route table
 tests/routing-gates.sh
+tests/epoch-zip.sh
+tests/glm-runner-diagnostics.sh
+tests/gemini-runner-diagnostics.sh
+tests/qwen-runner.sh
 bin/delegation-evidence lane reviewer --json
 ```
 

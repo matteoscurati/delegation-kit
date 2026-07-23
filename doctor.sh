@@ -111,11 +111,21 @@ if [ -f "$CLAUDE_HOME/skills/glm-executor/SKILL.md" ]; then
 elif found_path "$CLAUDE_HOME/plugins" '*glm-executor/SKILL.md'; then
   ok "optional GLM executor skill installed (via plugin cache; universal install still required for runner)"
 else warn "optional GLM executor skill missing — GLM cannot be selected even after evaluation"; fi
+if [ -f "$CLAUDE_HOME/skills/gemini-executor/SKILL.md" ]; then
+  ok "optional Gemini executor skill installed"
+elif found_path "$CLAUDE_HOME/plugins" '*gemini-executor/SKILL.md'; then
+  ok "optional Gemini executor skill installed (via plugin cache; universal install still required for runner)"
+else warn "optional Gemini executor skill missing — Gemini cannot be selected even after evaluation"; fi
 if [ -f "$CLAUDE_HOME/skills/kimi-executor/SKILL.md" ]; then
   ok "optional Kimi executor skill installed"
 elif found_path "$CLAUDE_HOME/plugins" '*kimi-executor/SKILL.md'; then
   ok "optional Kimi executor skill installed (via plugin cache; universal install still required for runner)"
 else warn "optional Kimi executor skill missing — Kimi cannot be selected even after evaluation"; fi
+if [ -f "$CLAUDE_HOME/skills/qwen-executor/SKILL.md" ]; then
+  ok "blocked Qwen candidate skill installed"
+elif found_path "$CLAUDE_HOME/plugins" '*qwen-executor/SKILL.md'; then
+  ok "blocked Qwen candidate skill installed (via plugin cache; universal install still required for runner)"
+else warn "Qwen candidate skill missing — re-run ./install.sh"; fi
 # always-loaded policy (the plugin path does NOT install this — install.sh does)
 if [ -f "$CLAUDE_HOME/CLAUDE.md" ] && grep -qF "$BEGIN" "$CLAUDE_HOME/CLAUDE.md"; then
   ok "delegation policy registered in CLAUDE.md (@import present)"
@@ -143,9 +153,15 @@ else bad "AGENTS.md has NO delegation-kit block -> Codex->Claude policy is NOT l
 if [ -f "$CODEX_HOME/skills/glm-executor/SKILL.md" ]; then
   ok "optional GLM executor skill installed for Codex"
 else warn "optional GLM executor skill missing for Codex"; fi
+if [ -f "$CODEX_HOME/skills/gemini-executor/SKILL.md" ]; then
+  ok "optional Gemini executor skill installed for Codex"
+else warn "optional Gemini executor skill missing for Codex"; fi
 if [ -f "$CODEX_HOME/skills/kimi-executor/SKILL.md" ]; then
   ok "optional Kimi executor skill installed for Codex"
 else warn "optional Kimi executor skill missing for Codex"; fi
+if [ -f "$CODEX_HOME/skills/qwen-executor/SKILL.md" ]; then
+  ok "blocked Qwen candidate skill installed for Codex"
+else warn "Qwen candidate skill missing for Codex"; fi
 
 # ---- external evidence snapshot ----
 hdr "Model-routing evidence"
@@ -162,6 +178,13 @@ elif have delegation-evidence; then
   fi
 else
   warn "delegation-evidence not installed — re-run ./install.sh"
+fi
+if ! have python3; then
+  warn "python3 not on PATH — Epoch ZIP evidence cannot be inspected"
+elif have delegation-epoch; then
+  ok "Epoch ZIP advisory importer installed (live download not run by doctor)"
+else
+  warn "delegation-epoch not installed — re-run ./install.sh"
 fi
 
 hdr "Central routing gates"
@@ -204,6 +227,31 @@ else
   warn "delegation-glm not installed — re-run ./install.sh after evaluating GLM"
 fi
 
+# ---- optional Gemini 3.6 Flash external executor ----
+hdr "Gemini 3.6 Flash optional executor"
+if ! have jq; then
+  warn "jq not on PATH — delegation-gemini cannot run"
+elif have delegation-gemini; then
+  gemini_check="$(delegation-gemini check --json 2>/dev/null || true)"
+  if [ -n "$gemini_check" ] && printf '%s' "$gemini_check" | jq -e '.model == "gemini-3.6-flash"' >/dev/null 2>&1; then
+    ok "delegation-gemini installed and pinned to gemini-3.6-flash"
+    gemini_selected="$(printf '%s' "$gemini_check" | jq -r '.selected_backend')"
+    gemini_lanes="$(printf '%s' "$gemini_check" | jq -r '.qualified_lanes | join(",")')"
+    gemini_provisional="$(printf '%s' "$gemini_check" | jq -r '.provisional_lanes | join(",")')"
+    [ "$gemini_selected" = none ] \
+      && info "Gemini Antigravity runtime unavailable — optional lane will not be selected" \
+      || ok "Gemini backend available ($gemini_selected)"
+    [ -n "$gemini_lanes" ] \
+      && ok "Gemini evaluation-qualified lanes: $gemini_lanes" \
+      || info "Gemini has no automatically qualified lanes"
+    [ -z "$gemini_provisional" ] || info "Gemini provisional lanes (explicit flag required): $gemini_provisional"
+  else
+    bad "delegation-gemini check failed or is not pinned to gemini-3.6-flash"
+  fi
+else
+  warn "delegation-gemini not installed — re-run ./install.sh"
+fi
+
 # ---- optional Kimi K3 external executor ----
 hdr "Kimi K3 optional executor"
 if ! have jq; then
@@ -227,6 +275,27 @@ elif have delegation-kimi; then
   fi
 else
   warn "delegation-kimi not installed — re-run ./install.sh to install the gated candidate"
+fi
+
+# ---- Qwen3.8 Max Preview blocked candidate ----
+hdr "Qwen3.8 Max Preview candidate"
+if ! have jq; then
+  warn "jq not on PATH — delegation-qwen cannot run"
+elif have delegation-qwen; then
+  qwen_check="$(delegation-qwen check --json 2>/dev/null || true)"
+  if [ -n "$qwen_check" ] && printf '%s' "$qwen_check" | jq -e '.model == "qwen3.8-max-preview"' >/dev/null 2>&1; then
+    ok "delegation-qwen installed and pinned to qwen3.8-max-preview"
+    qwen_selected="$(printf '%s' "$qwen_check" | jq -r '.selected_backend')"
+    qwen_candidates="$(printf '%s' "$qwen_check" | jq -r '.candidate_lanes | join(",")')"
+    [ "$qwen_selected" = none ] \
+      && info "Qwen Token Plan runtime unavailable" \
+      || ok "Qwen Token Plan runtime available ($qwen_selected)"
+    info "Qwen remains blocked candidate: ${qwen_candidates:-none}; availability is not qualification"
+  else
+    bad "delegation-qwen check failed or is not pinned to qwen3.8-max-preview"
+  fi
+else
+  warn "delegation-qwen not installed — re-run ./install.sh to install the blocked candidate"
 fi
 
 # ---- Codex config: multi_agent + sandbox/network posture ----

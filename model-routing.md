@@ -90,11 +90,25 @@ Effort levels each model exposes (Claude `effort:` / Codex `model_reasoning_effo
 | gpt-5.5 | low · medium · high |
 | glm-5.2 | high · max |
 | kimi-k3 | max |
+| gemini-3.6-flash | medium (scout provisional) · high (editing candidate) |
+| qwen3.8-max-preview | xhigh (candidate; evaluation only) |
 
 Kimi K3 is provisional: the 2026-07-16 run was truncated by provider quota. Its
 valid subset and exact public rows support controlled `clerk`, `scout`, `builder`,
 and `frontend-builder` use with `--allow-provisional`; `senior` is only a blocked
 candidate. The installed gate remains authoritative for the exact tuple.
+
+Qwen3.8 Max Preview is a blocked Token Plan candidate. The subscription and
+runner establish availability only; there is no exact public benchmark or local
+lane evaluation in this repository yet. Normal dispatch is therefore refused.
+
+Gemini 3.6 Flash is reachable through the authenticated Antigravity CLI. Only
+the exact `gemini-3.6-flash-medium` scout tuple is provisional and requires
+`--allow-provisional`; high-effort editing lanes remain blocked pending scoped
+local evaluation. Runtime discovery is compatibility evidence, not qualification.
+The Antigravity bridge is prompt-only: the lead supplies selected file excerpts
+in the brief. The runner uses an empty temporary workspace and home, retains
+only macOS Keychain access for OAuth, and explicitly denies every tool namespace.
 
 ## Judgement and super-judgement
 
@@ -192,3 +206,5 @@ The current GLM gate keeps `clerk` and `scout` provisional and makes builder a
 blocked candidate. Kimi K3 is provisional for `clerk`, `scout`, `builder`, and
 `frontend-builder`; senior is a blocked candidate, while reviewer and judgement
 remain disabled. Provisional bridge runs require `--allow-provisional`.
+Qwen3.8 Max Preview remains blocked for every normal lane until a controlled
+`--evaluation` run records lane-specific evidence and both gates are updated.

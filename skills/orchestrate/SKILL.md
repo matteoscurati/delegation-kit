@@ -58,11 +58,13 @@ background subshells:
   `claude -p` dispatch per the bridge section of `CLAUDE.delegation.md` (brief on a
   temp file, non-zero exit or empty output = failed dispatch, one output file per
   worker).
-- **Gated external candidates** — use GLM or Kimi only through their executor
+- **Gated external candidates** — use GLM, Gemini, or Kimi only through their executor
   skill and only when that runner's gate allows the requested lane. A provisional
   lane additionally requires the runner's explicit `--allow-provisional` flag.
   Qualification on one lane never promotes a neighboring one. This rule applies
   equally to operational workers, Senior, and Judgement.
+  Gemini is provisional only for scout/medium. Qwen3.8 Max Preview remains
+  blocked entirely until an evaluated gate promotes it.
 
 ## The loop
 

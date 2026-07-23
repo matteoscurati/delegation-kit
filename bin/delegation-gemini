@@ -1,0 +1,265 @@
+#!/usr/bin/env bash
+# Run the pinned Gemini 3.6 Flash variants through Antigravity CLI.  This is a
+# fail-closed bridge: it never substitutes a model, effort, or harness.
+set -euo pipefail
+
+SOURCE="${BASH_SOURCE[0]}"
+while [ -L "$SOURCE" ]; do
+  SOURCE_DIR="$(cd "$(dirname "$SOURCE")" && pwd)"; SOURCE="$(readlink "$SOURCE")"
+  [[ "$SOURCE" = /* ]] || SOURCE="$SOURCE_DIR/$SOURCE"
+done
+ROOT="$(cd "$(dirname "$SOURCE")/.." && pwd)"
+ROUTING_FILE="${DELEGATION_GEMINI_ROUTING_FILE:-$ROOT/config/gemini-3.6-flash-routing.json}"
+CENTRAL_GATES="${DELEGATION_ROUTING_GATES_FILE:-$ROOT/config/routing-gates.json}"
+ROUTER="$ROOT/bin/delegation-route"
+MODEL="gemini-3.6-flash"
+USER_KEYCHAINS="${HOME:?HOME is required}/Library/Keychains"
+RUN_TMP="" RUN_OUTPUT_TMP="" RUN_METRICS_TMP=""
+
+cleanup_run() { [ -z "$RUN_OUTPUT_TMP" ] || rm -f -- "$RUN_OUTPUT_TMP"; [ -z "$RUN_METRICS_TMP" ] || rm -f -- "$RUN_METRICS_TMP"; [ -z "$RUN_TMP" ] || rm -rf -- "$RUN_TMP"; }
+die() { local code="$1"; shift; printf 'delegation-gemini: %s\n' "$*" >&2; exit "$code"; }
+have() { command -v "$1" >/dev/null 2>&1; }
+
+usage() {
+  cat <<'EOF'
+Usage:
+  delegation-gemini check [--json]
+  delegation-gemini run --lane <scout|builder|frontend-builder|reviewer|judgement> \
+    [--effort <auto|medium|high>] [--backend <auto|agy>] \
+    --prompt-file <path> --output <path> --workdir <path> \
+    [--metrics <path>] [--debug-dir <path>] [--allow-provisional] [--evaluation]
+
+Exit codes: 64 invalid input, 69 unavailable/authentication failure,
+70 dispatch/extract failure, 75 temporary/rate-limit failure, 78 routing gate refusal.
+Failures write sanitized metadata to <output>.error.json.  Raw stdout/stderr is
+preserved only when --debug-dir is supplied.
+
+The headless Antigravity permission prompt cannot be answered safely. Therefore
+the runner is prompt-only and starts agy in an empty isolated workspace: include
+every file excerpt and fact needed by the model in --prompt-file. Filesystem,
+shell, network, MCP, and editing tools are not approved by this bridge.
+EOF
+}
+
+normalized_destination() { local parent name; parent="$(cd "$(dirname "$1")" && pwd -P)" || return 1; name="$(basename "$1")"; printf '%s/%s' "$parent" "$name"; }
+
+prepare_isolated_home() {
+  local isolated_home="$1"
+  [ -d "$USER_KEYCHAINS" ] || return 1
+  mkdir -p "$isolated_home/.gemini/antigravity-cli" "$isolated_home/Library"
+  chmod 700 "$isolated_home" "$isolated_home/.gemini" "$isolated_home/.gemini/antigravity-cli" "$isolated_home/Library"
+  ln -s "$USER_KEYCHAINS" "$isolated_home/Library/Keychains"
+  jq -n '{
+    model:"gemini-3.6-flash-medium",
+    permissions:{
+      allow:[],
+      deny:[
+        "read_file(*)","write_file(*)","command(*)","unsandboxed(*)",
+        "read_url(*)","execute_url(*)","mcp(*)"
+      ]
+    },
+    toolPermission:"strict",
+    artifactReviewPolicy:"asks-for-review",
+    allowNonWorkspaceAccess:"off"
+  }' >"$isolated_home/.gemini/antigravity-cli/settings.json"
+  chmod 600 "$isolated_home/.gemini/antigravity-cli/settings.json"
+}
+
+agy_status() {
+  local required_model="${1:-gemini-3.6-flash-medium}"
+  AGY_REASON=""
+  have agy || { AGY_REASON="agy not on PATH"; return 1; }
+  local help models plugins status_tmp
+  help="$(agy --help 2>&1 || true)"
+  for flag in --print --model --effort --mode --print-timeout --sandbox; do
+    grep -q -- "$flag" <<<"$help" || { AGY_REASON="agy lacks $flag"; return 1; }
+  done
+  status_tmp="$(mktemp -d "${TMPDIR:-/tmp}/delegation-gemini-status.XXXXXX")"
+  if ! prepare_isolated_home "$status_tmp/home"; then
+    rm -rf -- "$status_tmp"
+    AGY_REASON="cannot create isolated Antigravity home with macOS Keychain access"
+    return 1
+  fi
+  if ! plugins="$(HOME="$status_tmp/home" agy plugin list 2>&1)"; then
+    rm -rf -- "$status_tmp"
+    AGY_REASON="Antigravity plugin inventory unavailable"
+    return 1
+  fi
+  if [ "$plugins" != "No imported plugins." ]; then
+    rm -rf -- "$status_tmp"
+    AGY_REASON="isolated Antigravity home unexpectedly imports plugins"
+    return 1
+  fi
+  if ! models="$(HOME="$status_tmp/home" agy models 2>&1)"; then
+    rm -rf -- "$status_tmp"
+    AGY_REASON="agy model inventory unavailable; authenticate interactively"
+    return 1
+  fi
+  rm -rf -- "$status_tmp"
+  grep -Fxq "$required_model" <<<"$models" \
+    || { AGY_REASON="agy does not expose required model $required_model"; return 1; }
+  AGY_REASON="ready"
+}
+
+validate_gate_graph() {
+  [ -x "$ROUTER" ] || return 1
+  DELEGATION_ROUTING_GATES_FILE="$CENTRAL_GATES" DELEGATION_GEMINI_ROUTING_FILE="$ROUTING_FILE" \
+    "$ROUTER" check --json >/dev/null 2>&1
+}
+
+# The executable config is independently validated by delegation-route; the
+# central gate remains the authority for dispatch status and pinned effort.
+gate_row() {
+  local lane="$1"
+  jq -c --arg model "$MODEL" --arg lane "$lane" '
+    [.profiles[] | select(.model == $model and .harness == "agy") |
+      select(.lanes[$lane] != null) |
+      {status:.lanes[$lane].status,effort:.effort}] | unique | first // {status:"disabled",effort:null}
+  ' "$CENTRAL_GATES" 2>/dev/null
+}
+gate_status() { gate_row "$1" | jq -r '.status'; }
+gate_effort() { gate_row "$1" | jq -r '.effort // empty'; }
+qualified_lanes() { jq -c --arg model "$MODEL" '[.profiles[] | select(.model == $model and .harness == "agy") | .lanes | to_entries[] | select(.value.status == "qualified") | .key] | unique | sort' "$CENTRAL_GATES"; }
+provisional_lanes() { jq -c --arg model "$MODEL" '[.profiles[] | select(.model == $model and .harness == "agy") | .lanes | to_entries[] | select(.value.status == "provisional") | .key] | unique | sort' "$CENTRAL_GATES"; }
+gate_efforts() { jq -c --arg model "$MODEL" '[.profiles[] | select(.model == $model and .harness == "agy") | .effort] | unique | sort' "$CENTRAL_GATES"; }
+
+print_check() {
+  local as_json="${1:-0}" available=false selected="none"
+  have jq || die 69 "jq is required"
+  validate_gate_graph || die 78 "central and executable routing gates are missing, invalid, or inconsistent"
+  agy_status && available=true && selected=agy || true
+  local lanes provisional efforts
+  lanes="$(qualified_lanes)"; provisional="$(provisional_lanes)"; efforts="$(gate_efforts)"
+  if [ "$as_json" = 1 ]; then
+    jq -n --arg model "$MODEL" --arg selected "$selected" --argjson available "$available" --arg reason "$AGY_REASON" \
+      --argjson lanes "$lanes" --argjson provisional "$provisional" --argjson efforts "$efforts" \
+      '{model:$model,selected_backend:$selected,efforts:$efforts,qualified_lanes:$lanes,provisional_lanes:$provisional,backends:{agy:{available:$available,reason:$reason}}}'
+  else
+    printf 'Gemini 3.6 Flash: selected=%s efforts=%s qualified=%s provisional=%s\n  agy: %s (%s)\n' "$selected" "$efforts" "$lanes" "$provisional" "$available" "$AGY_REASON"
+  fi
+}
+
+DEBUG_RUN_DIR=""
+preserve_debug() {
+  local parent="$1" stdout_file="$2" stderr_file="$3"
+  DEBUG_RUN_DIR=""
+  [ -n "$parent" ] || return 0
+  DEBUG_RUN_DIR="$(mktemp -d "$parent/delegation-gemini.XXXXXX")" || return 1
+  chmod 700 "$DEBUG_RUN_DIR"
+  cp "$stdout_file" "$DEBUG_RUN_DIR/stdout.txt"; cp "$stderr_file" "$DEBUG_RUN_DIR/stderr.txt"
+  chmod 600 "$DEBUG_RUN_DIR/stdout.txt" "$DEBUG_RUN_DIR/stderr.txt"
+}
+
+write_diagnostic() {
+  local diagnostic="$1" stdout_file="$2" stderr_file="$3" started="$4" backend="$5" effort="$6" lane="$7" phase="$8" reason="$9" cli_exit="${10}" debug_path="${11}"
+  local parent name tmp finished stdout_bytes stderr_bytes
+  stdout_bytes="$(wc -c <"$stdout_file" | tr -d ' ')"; stderr_bytes="$(wc -c <"$stderr_file" | tr -d ' ')"; finished="$(date +%s)"
+  parent="$(dirname "$diagnostic")"; name="$(basename "$diagnostic")"; tmp="$(mktemp "$parent/.$name.XXXXXX")"
+  jq -n --arg model "$MODEL" --arg backend "$backend" --arg effort "$effort" --arg lane "$lane" --arg phase "$phase" --arg reason "$reason" --arg debug_dir "$debug_path" \
+    --argjson cli_exit "$cli_exit" --argjson stdout_bytes "$stdout_bytes" --argjson stderr_bytes "$stderr_bytes" --argjson elapsed_seconds "$((finished - started))" \
+    '{schema_version:1,model:$model,backend:$backend,effort:$effort,lane:$lane,phase:$phase,reason:$reason,cli_exit_code:$cli_exit,stdout_bytes:$stdout_bytes,stderr_bytes:$stderr_bytes,elapsed_seconds:$elapsed_seconds,debug_dir:(if $debug_dir == "" then null else $debug_dir end)}' >"$tmp"
+  chmod 600 "$tmp"; mv "$tmp" "$diagnostic"
+}
+
+classify_failure() {
+  local stderr_file="$1" text
+  text="$(tr '[:upper:]' '[:lower:]' <"$stderr_file")"
+  if grep -Eq '(^|[^0-9])401([^0-9]|$)|unauthori[sz]ed|authentication|invalid_grant|oauth.*(fail|expired)|login required|not authenticated' <<<"$text"; then printf 'authentication_failed 69';
+  elif grep -Eq '(^|[^0-9])429([^0-9]|$)|rate.?limit|too many requests|resource exhausted|quota exceeded' <<<"$text"; then printf 'rate_limited 75';
+  else printf 'process_exit 70'; fi
+}
+
+run_command() {
+  local lane="" effort="auto" backend="auto" prompt_file="" output="" workdir="" metrics="" debug_dir="" allow_provisional=0 evaluation=0
+  while [ "$#" -gt 0 ]; do
+    case "$1" in
+      --lane) lane="${2:-}"; shift 2 ;; --effort) effort="${2:-}"; shift 2 ;; --backend) backend="${2:-}"; shift 2 ;;
+      --prompt-file) prompt_file="${2:-}"; shift 2 ;; --output) output="${2:-}"; shift 2 ;; --workdir) workdir="${2:-}"; shift 2 ;;
+      --metrics) metrics="${2:-}"; shift 2 ;; --debug-dir) debug_dir="${2:-}"; shift 2 ;; --allow-provisional) allow_provisional=1; shift ;;
+      --evaluation) evaluation=1; shift ;; -h|--help) usage; return 0 ;; *) die 64 "unknown run argument: $1" ;;
+    esac
+  done
+  case "$lane" in scout|builder|frontend-builder|reviewer|judgement) ;; *) die 64 "invalid lane: $lane" ;; esac
+  case "$effort" in auto|medium|high) ;; *) die 64 "invalid effort: $effort" ;; esac
+  case "$backend" in auto|agy) ;; *) die 64 "invalid backend: $backend" ;; esac
+  [ -f "$prompt_file" ] || die 64 "prompt file missing: $prompt_file"; [ -d "$workdir" ] || die 64 "workdir missing: $workdir"; [ -n "$output" ] || die 64 "--output is required"
+  [ -z "$debug_dir" ] || { [ -d "$debug_dir" ] && [ ! -L "$debug_dir" ] || die 64 "debug directory missing or symlinked: $debug_dir"; debug_dir="$(cd "$debug_dir" && pwd -P)"; }
+  have jq || die 69 "jq is required"; validate_gate_graph || die 78 "central and executable routing gates are missing, invalid, or inconsistent"
+  metrics="${metrics:-$output.metrics.json}"; local diagnostic="$output.error.json"
+  mkdir -p "$(dirname "$output")" "$(dirname "$metrics")" "$(dirname "$diagnostic")"
+  [ ! -e "$output" ] && [ ! -e "$metrics" ] && [ ! -e "$diagnostic" ] || die 64 "output, metrics, and diagnostic paths must not already exist"
+  [ ! -L "$output" ] && [ ! -L "$metrics" ] && [ ! -L "$diagnostic" ] || die 64 "output, metrics, and diagnostic paths must not be symlinks"
+  local norm_output norm_metrics norm_diagnostic
+  norm_output="$(normalized_destination "$output")"; norm_metrics="$(normalized_destination "$metrics")"; norm_diagnostic="$(normalized_destination "$diagnostic")"
+  [ "$norm_output" != "$norm_metrics" ] || die 64 "output and metrics paths must be distinct"
+  [ "$norm_output" != "$norm_diagnostic" ] && [ "$norm_metrics" != "$norm_diagnostic" ] || die 64 "path collides with reserved diagnostic path"
+  backend=agy
+  local status pinned
+  status="$(gate_status "$lane")"; pinned="$(gate_effort "$lane")"
+  if [ "$evaluation" = 0 ]; then
+    [ "$status" != provisional ] || [ "$allow_provisional" = 1 ] || die 78 "lane '$lane' is provisional; pass --allow-provisional after an explicit routing decision"
+    [ "$status" = qualified ] || { [ "$status" = provisional ] || die 78 "lane '$lane' has non-dispatchable status '$status'"; }
+  else
+    [ "$status" != disabled ] || die 78 "lane '$lane' is disabled even for evaluation"
+  fi
+  [ "$effort" != auto ] || effort="$pinned"
+  case "$effort" in medium|high) ;; *) die 78 "lane '$lane' has no pinned usable effort" ;; esac
+  if [ "$evaluation" = 0 ] && [ "$effort" != "$pinned" ]; then die 78 "lane '$lane' is qualified only at effort '$pinned'"; fi
+  local runtime_model="gemini-3.6-flash-$effort"
+  agy_status "$runtime_model" || die 69 "$AGY_REASON"
+  local user_prompt dispatch_prompt
+  user_prompt="$(<"$prompt_file")"
+  dispatch_prompt="You are running in a prompt-only, read-only delegated analysis lane.
+All context available to you is included in this prompt. Do not call filesystem,
+shell, browser, network, MCP, subagent, or editing tools. Analyze only the
+provided material and return a complete textual answer.
+
+$user_prompt"
+  local tmp stdout_file stderr_file started rc=0 phase="" reason="" final_rc=0 cli_exit=null permission=plan
+  tmp="$(mktemp -d "${TMPDIR:-/tmp}/delegation-gemini.XXXXXX")"; RUN_TMP="$tmp"; trap cleanup_run EXIT
+  mkdir -p "$tmp/workspace"
+  chmod 700 "$tmp/workspace"
+  prepare_isolated_home "$tmp/home" || die 69 "cannot create isolated Antigravity home with macOS Keychain access"
+  stdout_file="$tmp/stdout"; stderr_file="$tmp/stderr"; : >"$stdout_file"; : >"$stderr_file"
+  RUN_OUTPUT_TMP="$(mktemp "$(dirname "$output")/.$(basename "$output").XXXXXX")"; RUN_METRICS_TMP="$(mktemp "$(dirname "$metrics")/.$(basename "$metrics").XXXXXX")"; started="$(date +%s)"
+  (cd "$tmp/workspace" && HOME="$tmp/home" agy -p "$dispatch_prompt" --model "$runtime_model" --effort "$effort" --mode "$permission" --sandbox --print-timeout 5m) >"$stdout_file" 2>"$stderr_file" || rc=$?
+  if [ "$rc" -ne 0 ]; then phase=dispatch; read -r reason final_rc <<<"$(classify_failure "$stderr_file")"; cli_exit="$rc"
+  elif grep -Eqi 'no output produced|permission.+auto-denied|tool required the .+ permission' "$stderr_file"; then phase=dispatch; reason=tool_permission_denied; final_rc=70; cli_exit=0
+  elif [ ! -s "$stdout_file" ] || ! grep -q '[^[:space:]]' "$stdout_file"; then phase=extract; reason=empty_output; final_rc=70
+  else
+    if ! cp "$stdout_file" "$RUN_OUTPUT_TMP"; then phase=publish; reason=output_stage_failed; final_rc=70; fi
+  fi
+  if [ "$final_rc" -eq 0 ]; then
+    jq -n --arg model "$MODEL" --arg runtime_model "$runtime_model" --arg backend "$backend" --arg effort "$effort" --arg lane "$lane" --argjson started "$started" '{model:$model,runtime_model:$runtime_model,backend:$backend,effort:$effort,lane:$lane,context_mode:"prompt_only",workspace_mode:"isolated_empty",home_mode:"isolated_keychain_oauth",started_at_epoch:$started,finished_at_epoch:now,duration_seconds:(now-$started),tokens:null,provider_cost_usd:null}' >"$RUN_METRICS_TMP" || { phase=extract; reason=metrics_write_failed; final_rc=70; }
+  fi
+  if [ "$final_rc" -eq 0 ]; then
+    if ! mv "$RUN_METRICS_TMP" "$metrics"; then
+      phase=publish; reason=metrics_publish_failed; final_rc=70
+    else
+      RUN_METRICS_TMP=""
+      if ! mv "$RUN_OUTPUT_TMP" "$output"; then
+        rm -f -- "$metrics"
+        phase=publish; reason=output_publish_failed; final_rc=70
+      else
+        RUN_OUTPUT_TMP=""
+      fi
+    fi
+  fi
+  if [ "$final_rc" -ne 0 ]; then
+    preserve_debug "$debug_dir" "$stdout_file" "$stderr_file" || DEBUG_RUN_DIR=""
+    write_diagnostic "$diagnostic" "$stdout_file" "$stderr_file" "$started" "$backend" "$effort" "$lane" "$phase" "$reason" "$cli_exit" "$DEBUG_RUN_DIR"
+    if [ -n "$DEBUG_RUN_DIR" ]; then cp "$diagnostic" "$DEBUG_RUN_DIR/diagnostic.json" && chmod 600 "$DEBUG_RUN_DIR/diagnostic.json" || true; fi
+    printf 'delegation-gemini: %s (details: %s)\n' "$reason" "$diagnostic" >&2; exit "$final_rc"
+  fi
+  rm -f -- "$diagnostic"
+}
+
+case "${1:-}" in
+  check)
+    shift
+    if [ "${1:-}" = --json ]; then print_check 1; else print_check 0; fi
+    ;;
+  run) shift; run_command "$@" ;;
+  -h|--help|"") usage ;;
+  *) die 64 "unknown command: $1" ;;
+esac
