@@ -21,7 +21,7 @@ tier you have.
 
 ## Where to change the model / effort
 
-Four places — keep them in sync:
+Five places — keep them in sync:
 
 1. **Claude subagent profiles** — `agents/*.md` frontmatter:
    ```yaml
@@ -35,11 +35,14 @@ Four places — keep them in sync:
    status, selection, evidence references, fallback, and any compound lane.
 4. **The prose** — `claude/CLAUDE.delegation.md`, `codex/AGENTS.md`,
    `model-routing.md`: update the reference mapping and lane-evidence notes.
-5. **Other sync surfaces** — keep these in step too: `codex/config.snippet.toml`,
-   `README.md`, `.claude-plugin/marketplace.json`, and `skills/orchestrate/*`.
+5. **Executable bridges and sync surfaces** — for an external model, keep its
+   `bin/delegation-*`, `config/*-routing.json`, `skills/*-executor/SKILL.md`,
+   installer, uninstaller, doctor, routing-gate drift test, README, plugin
+   manifests, and `skills/orchestrate/*` in step. Grok 4.5 is the current worked
+   example: only `builder` and `frontend-builder`, Grok Build CLI, effort `high`.
 
-Then re-run `./install.sh` (it refreshes copied files; run `./uninstall.sh` first
-if you changed the prose blocks, since those are append-once).
+Then re-run `./install.sh`; it refreshes copied files and replaces the guarded
+policy blocks while retaining backups. Uninstalling first is unnecessary.
 
 ## Refreshing evidence and qualifying lanes
 
@@ -85,4 +88,4 @@ These are baked into the reference, not universal — decide for yourself:
 3. Refresh `config/model-evidence.json` and define lane-specific thresholds.
 4. Update `config/routing-gates.json`; keep manual judgement explicit-only.
 5. Run the local compatibility smoke and update only the relevant routing gate.
-6. `./uninstall.sh && ./install.sh`.
+6. Run the gate and runner tests, then `./install.sh` and `./doctor.sh`.

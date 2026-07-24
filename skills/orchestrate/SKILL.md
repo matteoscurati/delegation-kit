@@ -58,13 +58,14 @@ background subshells:
   `claude -p` dispatch per the bridge section of `CLAUDE.delegation.md` (brief on a
   temp file, non-zero exit or empty output = failed dispatch, one output file per
   worker).
-- **Gated external candidates** — use GLM, Gemini, or Kimi only through their executor
+- **Gated external candidates** — use GLM, Gemini, Kimi, or Grok only through their executor
   skill and only when that runner's gate allows the requested lane. A provisional
   lane additionally requires the runner's explicit `--allow-provisional` flag.
   Qualification on one lane never promotes a neighboring one. This rule applies
   equally to operational workers, Senior, and Judgement.
-  Gemini is provisional only for scout/medium. Qwen3.8 Max Preview remains
-  blocked entirely until an evaluated gate promotes it.
+  Gemini is provisional only for scout/medium. Grok 4.5 is provisional only for
+  builder and frontend-builder at high. Qwen3.8 Max Preview remains blocked
+  entirely until an evaluated gate promotes it.
 
 ## The loop
 
@@ -72,7 +73,8 @@ background subshells:
    is too vague for that, ask one question and stop. Set a **budget** now (below).
    Check the lanes are reachable — executor profiles, the judgement model, the
    Codex bridge or gated external candidate if you'll use it (`doctor.sh`; use
-   `--ping-glm` or `--ping-kimi` only for a live qualified-lane check). A lane
+   `--ping-glm`, `--ping-kimi`, or `--ping-grok` only for a live gated-lane
+   check). A lane
    with no path → **degraded mode** (below), announced up front.
 2. **Plan.** Decompose into self-contained subtasks with inputs (in-tree by path,
    everything else inline), acceptance criteria, and wave assignments that maximize

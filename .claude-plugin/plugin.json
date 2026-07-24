@@ -1,9 +1,9 @@
 {
   "name": "delegation-kit",
-  "version": "0.3.0",
-  "description": "Teach Claude Code how and when to delegate coding work across lanes — cheap execution, senior review, expensive judgement — with bridges to Codex, GLM-5.2, Gemini 3.6 Flash, provisional Kimi K3, and blocked Qwen3.8 preview.",
+  "version": "0.4.0",
+  "description": "Teach Claude Code how and when to delegate coding work across lanes — cheap execution, senior review, expensive judgement — with bridges to Codex, GLM-5.2, Gemini 3.6 Flash, Kimi K3, Grok 4.5, and Qwen3.8 preview.",
   "author": { "name": "Matteo Scurati", "url": "https://github.com/matteoscurati" },
   "homepage": "https://github.com/matteoscurati/delegation-kit",
   "license": "MIT",
-  "keywords": ["delegation", "subagents", "model-routing", "orchestration", "codex", "glm", "gemini", "kimi", "qwen"]
+  "keywords": ["delegation", "subagents", "model-routing", "orchestration", "codex", "glm", "gemini", "kimi", "grok", "qwen"]
 }

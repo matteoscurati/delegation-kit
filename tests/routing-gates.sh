@@ -68,6 +68,8 @@ expect_failure 78 env DELEGATION_ROUTING_GATES_FILE="$TMP/bad-pair.json" \
   bin/delegation-qwen check --json
 expect_failure 78 env DELEGATION_ROUTING_GATES_FILE="$TMP/bad-pair.json" \
   bin/delegation-gemini check --json
+expect_failure 78 env DELEGATION_ROUTING_GATES_FILE="$TMP/bad-pair.json" \
+  bin/delegation-grok check --json
 
 # Qwen is installed as a blocked candidate and cannot dispatch normal work.
 expect_failure 78 bin/delegation-qwen run --lane clerk --effort auto --backend auto \
@@ -84,6 +86,12 @@ expect_failure 65 env DELEGATION_QWEN_ROUTING_FILE="$TMP/bad-qwen.json" \
 jq '.lanes.scout.backends.agy.effort = "high"' \
   config/gemini-3.6-flash-routing.json >"$TMP/bad-gemini.json"
 expect_failure 65 env DELEGATION_GEMINI_ROUTING_FILE="$TMP/bad-gemini.json" \
+  bin/delegation-route check --json
+
+# Grok bridge drift is checked in both directions.
+jq '.lanes.builder.backends["grok-build"].effort = "max"' \
+  config/grok-4.5-routing.json >"$TMP/bad-grok.json"
+expect_failure 65 env DELEGATION_GROK_ROUTING_FILE="$TMP/bad-grok.json" \
   bin/delegation-route check --json
 
 # Disabled/candidate profiles never leak into explicit/fallback candidates.

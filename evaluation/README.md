@@ -43,11 +43,14 @@ also be relevant to the lane. Nearby variants, different harnesses, and general
 coding evidence for review/judgement are context and are shown separately in the
 generated table.
 
-The 2026-07-22 snapshot uses only current sources:
+The snapshot through 2026-07-24 is intentionally mixed-version: existing model
+rows retain the dated source that produced them, while Grok 4.5 uses newly
+observed sources. A newer source never silently rewrites an older row.
 
 - [Artificial Analysis Coding Agent Index v1.2](https://artificialanalysis.ai/agents/coding-agents/)
   with its [July 2026 methodology](https://artificialanalysis.ai/methodology/coding-agents-benchmarking):
-  DeepSWE, Terminal-Bench v2, SWE-Atlas-QnA, three repeats, cost/time/token data.
+  retained for the existing non-Grok rows: DeepSWE, Terminal-Bench v2,
+  SWE-Atlas-QnA, three repeats, cost/time/token data.
 - [Arena Agent Arena](https://arena.ai/leaderboard/agent), dated 2026-07-19,
   with [causal-evaluation methodology](https://arena.ai/blog/agent-arena-methodology/):
   real-world confirmed success, feedback, steerability, bash recovery, and tool
@@ -57,14 +60,21 @@ The 2026-07-22 snapshot uses only current sources:
 - [SWE-PRBench](https://arxiv.org/abs/2603.26130) and the continuously refreshed
   [Martian Code Review Bench](https://github.com/withmartian/code-review-benchmark)
   as the required evidence family for reviewer lanes.
-- [Terminal-Bench 2.0](https://www.tbench.ai/leaderboard/terminal-bench/2.0?verified=true)
-  and [SWE-bench-Live](https://swe-bench-live.github.io/) as recent secondary
-  checks for terminal work and contamination-resistant issue resolution.
+- The dated [Terminal-Bench 2.0](https://www.tbench.ai/leaderboard/terminal-bench/2.0?verified=true)
+  snapshot and [SWE-bench-Live](https://swe-bench-live.github.io/) remain
+  secondary context. Current Grok comparisons use Terminal-Bench 2.1 through
+  their explicitly named source/harness rather than overwriting those rows.
 - [OpenBench](https://github.com/minghinmatthewlam/openbench), observed
   2026-07-22, as a reproducible local framework for measuring the combined
   model+harness system on coding tasks. It is tracked for future evaluations,
   but its published results currently contain no Qwen3.8 Max Preview row and
   therefore add no exact model evidence to this snapshot.
+- [Artificial Analysis Grok Build comparison](https://artificialanalysis.ai/agents/coding-agents/comparisons/codex-vs-grok-build),
+  Coding Agent Index v1.3 observed 2026-07-24, for the exact Grok 4.5 + Grok
+  Build + high builder row.
+- [OpenBench's Grok 4.5 release](https://github.com/minghinmatthewlam/openbench/blob/main/docs/releases/2026-07-20-grok45/index.html)
+  and the current [Code Arena WebDev leaderboard](https://arena.ai/leaderboard/code/webdev?rankBy=labs)
+  as contextual support for Grok's builder and frontend-builder promotion.
 
 ### Local harness evaluation with OpenBench
 
@@ -81,6 +91,12 @@ system and must not qualify a different local runner. The current Qwen Token
 Plan runner is read-only, while OpenBench coding tasks require workspace edits;
 OpenBench can therefore inform a future agentic Qwen builder evaluation but
 cannot promote any current Qwen lane.
+
+For Grok 4.5, the July 20 OpenBench GrokBuild row is retained as contextual
+builder evidence because its reported effort and full runner policy are not an
+exact attestation of `delegation-grok`. The exact builder row comes from
+Artificial Analysis; WebDev remains frontend-only context. Neither result
+qualifies review, senior, judgement, or security work.
 
 OpenBench results remain coding evidence. They do not substitute for
 review-precision/recall evaluation and never qualify `reviewer`, `senior`,
@@ -117,6 +133,13 @@ before manually adding selected source/evidence objects to
 `config/model-evidence.json`; the importer has no gate or snapshot mutation
 path.
 
+The 2026-07-24 ZIP contains twelve Grok 4.5 rows, all contextual: Blueprint
+Bench 2, Chess Puzzles, two Epoch Capabilities Index entries, GPQA Diamond, OTIS
+Mock AIME, ProofBench, SciCode, SimpleBench, SimpleQA Verified, Surface Evolver
+Bench, and Vending-Bench 2. It contains no Grok 4.5 row for DeepSWE,
+Terminal-Bench, WebDev Arena, or code review, so Epoch does not qualify either
+promoted lane; it remains broad capability context only.
+
 Epoch's own data is attributed under CC BY 4.0. External-project rows preserve
 their source links and original licensing; the documented Apache-2.0 overrides
 for Aider Polyglot and Terminal-Bench are recorded explicitly. Do not commit the
@@ -136,6 +159,7 @@ tests/epoch-zip.sh
 tests/glm-runner-diagnostics.sh
 tests/gemini-runner-diagnostics.sh
 tests/qwen-runner.sh
+tests/grok-runner.sh
 bin/delegation-evidence lane reviewer --json
 ```
 

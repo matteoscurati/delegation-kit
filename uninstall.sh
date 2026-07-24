@@ -30,8 +30,9 @@ for a in sonnet-clerk sonnet-scout sonnet-builder sonnet-reviewer opus-reviewer 
 done
 rm -rf "$CLAUDE_HOME/skills/model-routing" "$CLAUDE_HOME/skills/orchestrate" \
   "$CLAUDE_HOME/skills/glm-executor" "$CLAUDE_HOME/skills/kimi-executor"
-rm -rf "$CLAUDE_HOME/skills/qwen-executor" "$CLAUDE_HOME/skills/gemini-executor"
-echo "  - removed 6 subagent profiles + model-routing, orchestrate, GLM, Gemini, Kimi & Qwen skills"
+rm -rf "$CLAUDE_HOME/skills/qwen-executor" "$CLAUDE_HOME/skills/gemini-executor" \
+  "$CLAUDE_HOME/skills/grok-executor"
+echo "  - removed 6 subagent profiles + model-routing, orchestrate, GLM, Gemini, Kimi, Qwen & Grok skills"
 strip_guarded "$CLAUDE_HOME/CLAUDE.md"
 
 echo "Codex -> $CODEX_HOME"
@@ -39,10 +40,11 @@ for a in luna-clerk terra-scout terra-builder sol-reviewer sol-judge; do
   rm -f "$CODEX_HOME/agents/$a.toml" "$CODEX_HOME/$a.config.toml"
 done
 rm -rf "$CODEX_HOME/skills/glm-executor" "$CODEX_HOME/skills/gemini-executor" \
-  "$CODEX_HOME/skills/kimi-executor" "$CODEX_HOME/skills/qwen-executor"
+  "$CODEX_HOME/skills/kimi-executor" "$CODEX_HOME/skills/qwen-executor" \
+  "$CODEX_HOME/skills/grok-executor"
 echo "  - removed 5 native + 5 ephemeral profiles"
 strip_guarded "$CODEX_HOME/AGENTS.md"
-rm -f "$BIN_HOME/delegation-glm" "$BIN_HOME/delegation-gemini" "$BIN_HOME/delegation-kimi" "$BIN_HOME/delegation-qwen" \
+rm -f "$BIN_HOME/delegation-glm" "$BIN_HOME/delegation-gemini" "$BIN_HOME/delegation-kimi" "$BIN_HOME/delegation-qwen" "$BIN_HOME/delegation-grok" \
   "$BIN_HOME/delegation-evidence" "$BIN_HOME/delegation-epoch" "$BIN_HOME/delegation-route"
 # Everything else under $DATA_HOME is a byte-for-byte copy of a repo file that
 # re-running install.sh restores; the key is the only unrecoverable thing here,
@@ -61,7 +63,7 @@ if [ -f "$DATA_HOME/config/qwen-token-plan.env" ]; then
   chmod 600 "$qwen_key_backup"
 fi
 rm -rf "$DATA_HOME"
-echo "  - removed optional GLM/Gemini/Kimi/Qwen bridges, central routing gates, evidence snapshot, and Epoch ZIP importer"
+echo "  - removed optional GLM/Gemini/Kimi/Qwen/Grok bridges, central routing gates, evidence snapshot, and Epoch ZIP importer"
 [ -z "$zai_key_backup" ] \
   || echo "  - Z.AI API key preserved at $zai_key_backup (mode 600) — delete it yourself when done"
 [ -z "$qwen_key_backup" ] \

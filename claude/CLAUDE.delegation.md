@@ -91,6 +91,19 @@ at `xhigh`. Subscription access, a valid key, or a smoke test is not
 qualification. Every normal lane remains blocked until exact local evaluation
 promotes both routing gates. Never use `--evaluation` for ordinary work.
 
+### Optional Grok 4.5 builder
+
+Grok 4.5 is provisional for `builder` and `frontend-builder` only through
+`grok-executor` and `delegation-grok`, using Grok Build CLI at effort `high`.
+Require an explicit routing decision and `--allow-provisional`. The runner pins
+CLI `0.2.111` and the exact tuple, extracts only `.text`, uses an ephemeral HOME
+without memory, subagents, web, plugins, MCP, compatibility imports, or updates,
+and requires the custom `delegation-kit` sandbox to attest enforcement.
+Permission mode is `dontAsk`, with only file edits explicitly allowed; terminal
+execution is not exposed and the lead runs verification. Runs have 40-turn and
+15-minute limits. No other Grok lane
+is exposed, and failure never authorizes silent fallback.
+
 ### Evidence-backed qualification
 
 Use `delegation-evidence lane <lane>` to inspect the current external snapshot.

@@ -13,7 +13,7 @@ advisory and the versioned routing gate remains authoritative.
 Use `delegation-route resolve --lane <lane>` for the operational decision. It is
 read-only and never dispatches a model.
 For native Claude/Codex agents, the lead must resolve first; invoking an
-explicit-only profile is the manual selection event. GLM/Gemini/Kimi/Qwen runners enforce the
+explicit-only profile is the manual selection event. GLM/Gemini/Kimi/Grok/Qwen runners enforce the
 same graph directly and refuse drift.
 
 ## When to delegate at all
@@ -58,6 +58,13 @@ are disabled. Dispatch requires an explicit decision and
 `--allow-provisional`. It is a prompt-only bridge: put the required tracked-file
 excerpts into the brief. It uses an isolated temporary home/workspace, retains
 only macOS Keychain access for OAuth, and denies every tool namespace.
+
+Grok 4.5 is provisional for `builder` and `frontend-builder` at `high` through
+Grok Build CLI. Dispatch requires an explicit decision and
+`--allow-provisional`. The runner pins CLI `0.2.111`, model, and effort,
+extracts only `.text`, uses an isolated HOME plus the attested custom
+`delegation-kit` sandbox, and enforces turn and wall-clock limits. No other Grok
+lane is enabled.
 
 ## Sizing and escalation
 - **Size the reviewer to the work, not to a general leaderboard.** A diff the cheap

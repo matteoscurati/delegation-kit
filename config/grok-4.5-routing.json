@@ -1,0 +1,83 @@
+{
+  "model": "grok-4.5",
+  "status": "provisional",
+  "evaluated_at": "2026-07-24T00:00:00Z",
+  "promoted_at": "2026-07-24T00:00:00Z",
+  "source_run": "2026-07-24-grok-build",
+  "external_evidence_file": "model-evidence.json",
+  "external_evidence_ids": [
+    "aa-grok-build-grok-4.5-high",
+    "openbench-grok-build-grok-4.5",
+    "webdev-grok-4.5"
+  ],
+  "qualification_basis": "Owner promotion after exact Grok Build/high coding evidence, supporting OpenBench and WebDev results, an authenticated runtime smoke, and a scoped local edit check. Use remains provisional and explicit.",
+  "preferred_backends": ["grok-build"],
+  "qualified_lanes": [],
+  "provisional_lanes": ["builder", "frontend-builder"],
+  "lanes": {
+    "builder": {
+      "default_effort": "high",
+      "preferred_backends": ["grok-build"],
+      "backends": {
+        "grok-build": {
+          "qualified": false,
+          "status": "provisional",
+          "selection": "explicit-only",
+          "effort": "high",
+          "runtime_model": "grok-4.5",
+          "runtime_cli_version": "0.2.111",
+          "runtime_controls": {
+            "sandbox": "delegation-kit",
+            "isolated_home": true,
+            "permission_mode": "dontAsk",
+            "max_turns": 40,
+            "timeout_seconds": 900,
+            "plugins": false,
+            "mcp": false,
+            "terminal": false
+          },
+          "local_evaluation": {
+            "run_id": "2026-07-24-grok-build",
+            "outcome": "passed-runtime-and-scoped-edit-smoke",
+            "task_count": 1,
+            "repeats": 1,
+            "confidence": "low",
+            "limitations": "A single transparent compatibility task is not a held-out comparative evaluation; the hardened runner is edit-only and lead verification is separate."
+          }
+        }
+      }
+    },
+    "frontend-builder": {
+      "default_effort": "high",
+      "preferred_backends": ["grok-build"],
+      "backends": {
+        "grok-build": {
+          "qualified": false,
+          "status": "provisional",
+          "selection": "preferred-explicit",
+          "effort": "high",
+          "runtime_model": "grok-4.5",
+          "runtime_cli_version": "0.2.111",
+          "runtime_controls": {
+            "sandbox": "delegation-kit",
+            "isolated_home": true,
+            "permission_mode": "dontAsk",
+            "max_turns": 40,
+            "timeout_seconds": 900,
+            "plugins": false,
+            "mcp": false,
+            "terminal": false
+          },
+          "local_evaluation": {
+            "run_id": "2026-07-24-grok-build",
+            "outcome": "builder-path-compatible",
+            "task_count": 0,
+            "repeats": 0,
+            "confidence": "low",
+            "limitations": "No frontend-specific local pack; promotion relies on WebDev evidence plus the shared edit-only scoped runner."
+          }
+        }
+      }
+    }
+  }
+}

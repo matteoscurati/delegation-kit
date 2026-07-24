@@ -16,6 +16,7 @@ GLM_GATE="${DELEGATION_GLM_ROUTING_FILE:-$ROOT/config/glm-5.2-routing.json}"
 KIMI_GATE="$ROOT/config/kimi-k3-routing.json"
 QWEN_GATE="${DELEGATION_QWEN_ROUTING_FILE:-$ROOT/config/qwen3.8-max-preview-routing.json}"
 GEMINI_GATE="${DELEGATION_GEMINI_ROUTING_FILE:-$ROOT/config/gemini-3.6-flash-routing.json}"
+GROK_GATE="${DELEGATION_GROK_ROUTING_FILE:-$ROOT/config/grok-4.5-routing.json}"
 
 usage() {
   cat <<'EOF'
@@ -96,6 +97,7 @@ validate() {
   [ -r "$KIMI_GATE" ] || die 66 "cannot read executable Kimi gate $KIMI_GATE"
   [ -r "$QWEN_GATE" ] || die 66 "cannot read executable Qwen gate $QWEN_GATE"
   [ -r "$GEMINI_GATE" ] || die 66 "cannot read executable Gemini gate $GEMINI_GATE"
+  [ -r "$GROK_GATE" ] || die 66 "cannot read executable Grok gate $GROK_GATE"
   jq -e -n --slurpfile central "$GATES" --slurpfile bridge "$GLM_GATE" '
     [$central[0].profiles | to_entries[] | select(.value.model == "glm-5.2" and .value.harness == "claude-zai") as $p |
      $p.value.lanes | to_entries[] | {key:.key,value:{status:.value.status,selection:.value.selection,effort:$p.value.effort}}] | from_entries as $expected |
@@ -136,6 +138,16 @@ validate() {
     (($expected | to_entries | map(select(.value.status == "provisional") | .key) | sort) == (($bridge[0].provisional_lanes // []) | sort)) and
     all($bridge[0].lanes[]; (.backends.agy.qualified == (.backends.agy.status == "qualified")))
   ' >/dev/null || die 65 "central routing and Gemini executable gate disagree"
+  jq -e -n --slurpfile central "$GATES" --slurpfile bridge "$GROK_GATE" '
+    [$central[0].profiles | to_entries[] | select(.value.model == "grok-4.5" and .value.harness == "grok-build-cli") as $p |
+     $p.value.lanes | to_entries[] | {key:.key,value:{status:.value.status,selection:.value.selection,effort:$p.value.effort}}] | from_entries as $expected |
+    [$bridge[0].lanes | to_entries[] | {key:.key,value:{status:.value.backends["grok-build"].status,selection:.value.backends["grok-build"].selection,effort:(.value.backends["grok-build"].effort // .value.default_effort)}}] | from_entries as $actual |
+    ($bridge[0].model == "grok-4.5") and (($expected | keys) == ($actual | keys)) and
+    all($expected | keys[]; $expected[.] == $actual[.]) and
+    (($expected | to_entries | map(select(.value.status == "qualified") | .key) | sort) == (($bridge[0].qualified_lanes // []) | sort)) and
+    (($expected | to_entries | map(select(.value.status == "provisional") | .key) | sort) == (($bridge[0].provisional_lanes // []) | sort)) and
+    all($bridge[0].lanes[]; (.backends["grok-build"].qualified == (.backends["grok-build"].status == "qualified")))
+  ' >/dev/null || die 65 "central routing and Grok executable gate disagree"
 }
 
 profile_rows() {
