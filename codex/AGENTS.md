@@ -77,6 +77,19 @@ at `xhigh`. Subscription access, a valid key, or a smoke test is not
 qualification. Every normal lane remains blocked until exact local evaluation
 promotes both routing gates. Never use `--evaluation` for ordinary work.
 
+## Optional Grok 4.5 builder
+
+Grok 4.5 is provisionally usable for `builder` and `frontend-builder` only
+through the installed `grok-executor` skill and `delegation-grok`, using Grok
+Build CLI at effort `high`. Require an explicit decision and
+`--allow-provisional`. The runner pins CLI `0.2.111`, model, and effort,
+extracts only `.text`, uses an ephemeral HOME without memory, subagents, web,
+plugins, MCP, compatibility imports, or updates, and requires the custom
+`delegation-kit` sandbox to attest enforcement. Permission mode is `dontAsk`,
+with only file edits explicitly allowed; terminal execution is not exposed and
+the lead runs verification. Runs have 40-turn and 15-minute limits. No other
+Grok lane is enabled, and failure never triggers a silent substitution.
+
 ## Reaching Claude from Codex (cross-provider bridge)
 
 The lanes above route among OpenAI models. Reach across to Claude when it earns it:

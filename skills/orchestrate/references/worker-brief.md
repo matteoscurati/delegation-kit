@@ -1,9 +1,10 @@
 # Worker brief format
 
 Every executor dispatch is one bounded call — a `sonnet-*` subagent (Agent or
-Workflow), or a `codex exec` on a `luna`/`terra` profile across the bridge —
-carrying this brief. The worker has no memory of the conversation and no
-follow-ups; it sees this text and the working tree, nothing else.
+Workflow), a `codex exec` on a `luna`/`terra` profile across the bridge, or a
+gate-approved external runner such as `delegation-grok` — carrying this brief.
+The worker has no memory of the conversation and no follow-ups; it sees this
+text and the working tree, nothing else.
 
 **Inputs discipline.** Unlike a stateless API worker, our executors *share the
 repo's working tree*, so reference in-tree files **by path** (`src/foo.ts:42`),
@@ -41,4 +42,6 @@ parallelism, schema returns, worktree isolation) and the Agent tool for a couple
 of workers. Drop to raw `codex exec`/`claude -p` only to reach a different model
 family — and when you do, harden the dispatch (brief on a temp file passed as a
 quoted expansion, non-zero exit or empty output = failed dispatch, one output file
-per parallel worker) per the bridge section of `CLAUDE.delegation.md`.
+per parallel worker) per the bridge section of `CLAUDE.delegation.md`. For
+external runners, resolve the lane first, obey the executor skill, and pass
+`--allow-provisional` only after an explicit routing decision.

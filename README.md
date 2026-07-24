@@ -20,6 +20,7 @@ external-evidence snapshot, and fail-closed local gates. Swap the models for you
 | optional GLM skill | `skills/glm-executor/` | dispatches only gate-allowed GLM lanes; provisional use is explicit |
 | optional Gemini skill | `skills/gemini-executor/` | Antigravity-backed Gemini 3.6 Flash scout; provisional use is explicit |
 | optional Kimi skill | `skills/kimi-executor/` | exposes only exact gate-allowed Kimi lane/backend/effort tuples |
+| provisional Grok skill | `skills/grok-executor/` | Grok Build-backed builder and frontend-builder at pinned high effort |
 | blocked Qwen skill | `skills/qwen-executor/` | Token Plan candidate; no normal dispatch before evaluation |
 | lane discipline | `@import` in `CLAUDE.md` | always-loaded policy ([`claude/CLAUDE.delegation.md`](./claude/CLAUDE.delegation.md)) |
 
@@ -32,10 +33,12 @@ external-evidence snapshot, and fail-closed local gates. Swap the models for you
 | optional GLM skill | `skills/glm-executor/` | same fail-closed GLM-5.2 executor path |
 | optional Gemini skill | `skills/gemini-executor/` | same fail-closed Gemini 3.6 Flash executor path |
 | optional Kimi skill | `skills/kimi-executor/` | same fail-closed provisional Kimi K3 path |
+| provisional Grok skill | `skills/grok-executor/` | same fail-closed Grok 4.5 builder path |
 | blocked Qwen skill | `skills/qwen-executor/` | same fail-closed Qwen3.8 preview candidate path |
 | config snippet | printed for manual merge | `[agents]` fan-out caps + lead defaults |
 
-The universal installer also adds `delegation-glm`, `delegation-gemini`, `delegation-kimi`, `delegation-qwen`,
+The universal installer also adds `delegation-glm`, `delegation-gemini`, `delegation-kimi`,
+`delegation-grok`, `delegation-qwen`,
 `delegation-evidence`, the ZIP-only `delegation-epoch` importer, and the read-only
 central router `delegation-route` under
 `~/.local/bin`, with versioned gates under `~/.local/share/delegation-kit/`.
@@ -68,6 +71,26 @@ returns exit 75 without silently falling back or changing the quality
 qualification. Provisional runs require `--allow-provisional`; CLI
 availability or a provider model listing is not enough.
 
+Grok 4.5 is installed as a **provisional builder** through Grok Build CLI.
+`builder` and `frontend-builder` are available only at effort `high`, after an
+explicit decision and `--allow-provisional`. The runner pins the model, extracts
+only the public `text` field from JSON output, pins CLI `0.2.111`, and caps runs
+at 40 turns and 15 minutes. An ephemeral HOME disables memory, subagents, web,
+plugins, MCP, compatibility imports, and automatic updates. The custom
+`delegation-kit` sandbox must attest OS enforcement before output is published;
+the permission mode is `dontAsk`, with only file edits explicitly allowed; the
+terminal tool is not exposed.
+The lead remains responsible for running tests and every command after review.
+Failures expose sanitized metadata by default, with raw debug artifacts only
+through explicit `--debug-dir`. No other Grok lane is exposed.
+
+```sh
+delegation-grok check --json
+delegation-grok run --lane builder --allow-provisional \
+  --effort auto --backend auto --prompt-file "$brief" \
+  --output "$result" --metrics "$metrics" --workdir "$repo"
+```
+
 Qwen3.8 Max Preview is installed as a **blocked candidate**, pinned to the
 Qwen Cloud Token Plan OpenAI-compatible endpoint and `xhigh`. Its dedicated
 `sk-sp-` key is stored separately and never imported silently from another tool.
@@ -95,7 +118,7 @@ edits `config/model-evidence.json` or a routing gate. The Airtable/`epochai`
 client is intentionally out of scope.
 
 The central decision file is [`config/routing-gates.json`](./config/routing-gates.json).
-It is the dispatch authority: GLM, Gemini, Kimi, and Qwen validate it against their complete
+It is the dispatch authority: GLM, Gemini, Kimi, Grok, and Qwen validate it against their complete
 backend gates before every check/run, and refuse drift. Exact and contextual
 benchmark references are stored separately, and the generated table exposes
 local sample size/confidence instead of treating legacy scores as comparable.
@@ -119,11 +142,11 @@ at it, so `git pull` updates the policy live. Remove with `./uninstall.sh`.
 Then verify the bridge and evidence snapshot are actually **wired** (not just
 written) with `./doctor.sh` —
 it checks both CLIs, auth, the installed profiles *and* the always-loaded policy
-blocks, and the Codex sandbox/network posture. `./doctor.sh --ping` also does a live
-round-trip in both directions; `--ping-glm` and `--ping-kimi` separately ping the
-first evaluation-qualified lane and skip when no lane is qualified. The failure it
-catches is silent: profiles present but a policy block missing means the bridge
-never fires.
+blocks, and the Codex sandbox/network posture. `./doctor.sh --ping` also does a
+live round-trip in both directions; `--ping-glm`, `--ping-kimi`, and
+`--ping-grok` separately exercise their gated runtimes. The failure it catches
+is silent: profiles present but a policy block missing means the bridge never
+fires.
 
 Run the fail-closed regression suite after changing a gate:
 
@@ -132,7 +155,9 @@ tests/routing-gates.sh
 tests/epoch-zip.sh
 tests/glm-runner-diagnostics.sh
 tests/gemini-runner-diagnostics.sh
+tests/grok-runner.sh
 tests/qwen-runner.sh
+git diff --check
 ```
 
 **Claude-only, one command (plugin):**
@@ -141,8 +166,9 @@ tests/qwen-runner.sh
 /plugin install delegation-kit
 ```
 This installs the 6 agents plus the `model-routing`, `orchestrate`, and guarded
-`glm-executor`, `gemini-executor`, `kimi-executor`, and blocked `qwen-executor` skills. It does not install any external
-model runner/gate, register the
+`glm-executor`, `gemini-executor`, `kimi-executor`, provisional `grok-executor`,
+and blocked `qwen-executor` skills. It does not install any external model
+runner/gate, register the
 `CLAUDE.md` policy prose, or install the Codex side — run `./install.sh` for those.
 
 ## How it works

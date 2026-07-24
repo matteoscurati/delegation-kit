@@ -28,13 +28,14 @@ bin/delegation-route resolve --lane judgement --json
 bin/delegation-route resolve --lane super-judgement --json
 ```
 
-The 2026-07-21 snapshot uses Artificial Analysis Coding Agent Index v1.2 for
+The snapshot through 2026-07-24 uses Artificial Analysis Coding Agent Index for
 end-to-end coding, Agent Arena for real-world reliability, Code Arena WebDev for
 frontend preference, and SWE-PRBench/Martian for review. It stores raw metrics
 rather than compressing unrelated capabilities into subjective 1–10 scores.
 
 | exact model + harness + effort | coding index | DeepSWE | Terminal-Bench | repo Q&A | API cost/task |
 |---|---:|---:|---:|---:|---:|
+| Grok 4.5 + Grok Build, high | 64 | 60% | 85% | 48% | $2.59 |
 | GPT-5.6 Sol + Codex, max | 61 | 69% | 88% | 27% | $7.08 |
 | Fable 5 + Claude Code, max | 59 | 66% | 83% | 29% | $11.72 |
 | Kimi K3 + Kimi Code CLI, max | 57 | 64% | 84% | 23% | $3.18 |
@@ -92,6 +93,7 @@ Effort levels each model exposes (Claude `effort:` / Codex `model_reasoning_effo
 | kimi-k3 | max |
 | gemini-3.6-flash | medium (scout provisional) · high (editing candidate) |
 | qwen3.8-max-preview | xhigh (candidate; evaluation only) |
+| grok-4.5 | high (builder and frontend-builder provisional) |
 
 Kimi K3 is provisional: the 2026-07-16 run was truncated by provider quota. Its
 valid subset and exact public rows support controlled `clerk`, `scout`, `builder`,
@@ -109,6 +111,14 @@ local evaluation. Runtime discovery is compatibility evidence, not qualification
 The Antigravity bridge is prompt-only: the lead supplies selected file excerpts
 in the brief. The runner uses an empty temporary workspace and home, retains
 only macOS Keychain access for OAuth, and explicitly denies every tool namespace.
+
+Grok 4.5 is provisional for `builder` and `frontend-builder` through Grok Build
+CLI at `high`. The exact Artificial Analysis coding row supports builder; the
+WebDev and OpenBench rows are contextual support. The owner promotion is
+explicit, and the local run proves only runtime, JSON extraction, scoped writes,
+and sandbox compatibility. Dispatch still requires `--allow-provisional`; the
+runner pins CLI `0.2.111`, isolates HOME, disables plugins/MCP/imported config,
+requires an attested custom sandbox, and caps turns and wall time.
 
 ## Judgement and super-judgement
 
@@ -206,5 +216,9 @@ The current GLM gate keeps `clerk` and `scout` provisional and makes builder a
 blocked candidate. Kimi K3 is provisional for `clerk`, `scout`, `builder`, and
 `frontend-builder`; senior is a blocked candidate, while reviewer and judgement
 remain disabled. Provisional bridge runs require `--allow-provisional`.
+Grok 4.5 is provisional for `builder` and `frontend-builder` through Grok Build
+CLI at `high`; builder is explicit-only and frontend-builder is
+preferred-explicit. The runner pins CLI `0.2.111` and applies isolated,
+fail-closed runtime controls. No Grok reviewer, senior, or judgement lane exists.
 Qwen3.8 Max Preview remains blocked for every normal lane until a controlled
 `--evaluation` run records lane-specific evidence and both gates are updated.

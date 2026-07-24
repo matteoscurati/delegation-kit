@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "updated_at": "2026-07-23T00:00:00Z",
+  "updated_at": "2026-07-24T00:00:00Z",
   "evidence_file": "model-evidence.json",
   "status_values": ["disabled", "candidate", "provisional", "qualified", "manual-qualified"],
   "selection_values": ["default", "fallback", "preferred-explicit", "explicit-only", "blocked"],
@@ -157,6 +157,53 @@
           "exact_evidence_ids": [],
           "context_evidence_ids": [],
           "evidence_gap": "Runtime availability and launch claims cannot qualify judgement."
+        }
+      }
+    },
+    "grok-build": {
+      "model": "grok-4.5",
+      "harness": "grok-build-cli",
+      "effort": "high",
+      "runtime_cli_version": "0.2.111",
+      "runtime_controls": {
+        "sandbox": "delegation-kit",
+        "isolated_home": true,
+        "permission_mode": "dontAsk",
+        "max_turns": 40,
+        "timeout_seconds": 900,
+        "plugins": false,
+        "mcp": false,
+        "terminal": false
+      },
+      "lanes": {
+        "builder": {
+          "status": "provisional",
+          "selection": "explicit-only",
+          "exact_evidence_ids": ["aa-grok-build-grok-4.5-high"],
+          "context_evidence_ids": ["openbench-grok-build-grok-4.5"],
+          "local_evaluation": {
+            "run_id": "2026-07-24-grok-build",
+            "task_count": 1,
+            "repeats": 1,
+            "confidence": "low",
+            "limitations": "One transparent runtime and scoped-edit compatibility task; not a held-out comparative evaluation; the hardened runner is edit-only."
+          },
+          "fallback": "terra-builder"
+        },
+        "frontend-builder": {
+          "status": "provisional",
+          "selection": "preferred-explicit",
+          "exact_evidence_ids": [],
+          "context_evidence_ids": ["webdev-grok-4.5", "aa-grok-build-grok-4.5-high", "openbench-grok-build-grok-4.5"],
+          "local_evaluation": {
+            "run_id": "2026-07-24-grok-build",
+            "task_count": 0,
+            "repeats": 0,
+            "confidence": "low",
+            "limitations": "No frontend-specific local pack; the edit-only scoped runner is shared with builder."
+          },
+          "evidence_gap": "WebDev uses a different harness and reported-default effort; frontend promotion is an explicit owner decision.",
+          "fallback": "sonnet-builder"
         }
       }
     },

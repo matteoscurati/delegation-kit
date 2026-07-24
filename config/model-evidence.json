@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "snapshot_at": "2026-07-22T00:00:00Z",
+  "snapshot_at": "2026-07-24T00:00:00Z",
   "max_snapshot_age_days": 45,
   "policy": {
     "external_evidence_never_auto_qualifies": true,
@@ -67,6 +67,30 @@
       "category": "local-harness-evaluation-framework",
       "scope": "Reproducible coding-agent harness evaluation with isolated workspaces, deterministic and partial-credit checkers, null controls, repeated trials, confidence intervals, and time/token/cost telemetry",
       "limitations": "No published Qwen3.8 Max Preview row; core correctness currently saturates for frontier systems; coding tasks do not qualify reviewer, senior, judgement, or security lanes; results from a different harness are contextual rather than exact production evidence"
+    },
+    "aa-coding-agent-v1.3": {
+      "name": "Artificial Analysis Coding Agent Index v1.3",
+      "url": "https://artificialanalysis.ai/agents/coding-agents/comparisons/codex-vs-grok-build",
+      "methodology_url": "https://artificialanalysis.ai/methodology/coding-agents-benchmarking",
+      "observed_at": "2026-07-24",
+      "scope": "Current Grok Build versus Codex comparison across DeepSWE, Terminal-Bench, and SWE-Atlas-QnA with model, harness, effort, cost, time, and token telemetry"
+    },
+    "openbench-grok45-2026-07-20": {
+      "name": "OpenBench Grok 4.5 release",
+      "url": "https://github.com/minghinmatthewlam/openbench/blob/main/docs/releases/2026-07-20-grok45/index.html",
+      "observed_at": "2026-07-24",
+      "data_date": "2026-07-20",
+      "category": "local-harness-evaluation",
+      "scope": "Grok 4.5 evaluated across GrokBuild, Cursor, pi, and OpenCode harnesses on short deterministic coding tasks",
+      "limitations": "The report flags non-comparable provenance across harnesses; the task set is small and short-horizon, and the GrokBuild effort is not an exact production-runner attestation"
+    },
+    "code-arena-webdev-2026-07-24": {
+      "name": "Arena Code Arena WebDev",
+      "url": "https://arena.ai/leaderboard/code/webdev?rankBy=labs",
+      "methodology_url": "https://arena.ai/blog/new-categories-code-arena/",
+      "observed_at": "2026-07-24",
+      "data_date": "2026-07-24",
+      "scope": "Human-preference WebDev leaderboard; Grok 4.5 score is contextual because the production Grok Build harness and effort are not attested"
     }
   },
   "lane_evidence": {
@@ -276,6 +300,30 @@
       "effort": "max",
       "source": "code-arena-webdev-2026-07-19",
       "metrics": {"webdev": {"elo": 1593, "ci_low": 1583, "ci_high": 1603}}
+    },
+    {
+      "id": "aa-grok-build-grok-4.5-high",
+      "model": "grok-4.5",
+      "harness": "grok-build-cli",
+      "effort": "high",
+      "source": "aa-coding-agent-v1.3",
+      "metrics": {"coding": {"index": 64, "deep_swe_pass_pct": 60, "terminal_bench_v2_pass_pct": 85, "swe_atlas_qna_pass_pct": 48, "cost_per_task_usd": 2.59, "time_per_task_minutes": 16.5, "tokens_per_task_millions": 3.6}}
+    },
+    {
+      "id": "openbench-grok-build-grok-4.5",
+      "model": "grok-4.5",
+      "harness": "grok-build-cli",
+      "effort": "reported-default",
+      "source": "openbench-grok45-2026-07-20",
+      "metrics": {"coding": {"tasks_passed": 40, "tasks_total": 45, "pass_pct": 88.9, "ci_low": 76.5, "ci_high": 95.2, "median_seconds": 64.6, "total_tokens_per_solve": 607005}}
+    },
+    {
+      "id": "webdev-grok-4.5",
+      "model": "grok-4.5",
+      "harness": "arena-code-webdev",
+      "effort": "reported-default",
+      "source": "code-arena-webdev-2026-07-24",
+      "metrics": {"webdev": {"elo": 1558, "ci_low": 1545, "ci_high": 1571}}
     }
   ]
 }

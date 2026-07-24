@@ -1,0 +1,427 @@
+#!/usr/bin/env bash
+# Run the pinned Grok 4.5 model through Grok Build CLI. Fails closed: only the
+# versioned builder lanes, exact model, effort, backend, and scoped workspace
+# sandbox can dispatch.
+set -euo pipefail
+umask 077
+
+SOURCE="${BASH_SOURCE[0]}"
+while [ -L "$SOURCE" ]; do
+  SOURCE_DIR="$(cd "$(dirname "$SOURCE")" && pwd)"
+  SOURCE="$(readlink "$SOURCE")"
+  [[ "$SOURCE" = /* ]] || SOURCE="$SOURCE_DIR/$SOURCE"
+done
+ROOT="$(cd "$(dirname "$SOURCE")/.." && pwd)"
+ROUTING_FILE="${DELEGATION_GROK_ROUTING_FILE:-$ROOT/config/grok-4.5-routing.json}"
+CENTRAL_GATES="${DELEGATION_ROUTING_GATES_FILE:-$ROOT/config/routing-gates.json}"
+ROUTER="$ROOT/bin/delegation-route"
+MODEL="grok-4.5"
+RUNTIME_MODEL="grok-4.5"
+USAGE_MODEL="grok-4.5-build"
+BACKEND="grok-build"
+EFFORTS='["high"]'
+REQUIRED_GROK_VERSION="0.2.111"
+SANDBOX_PROFILE="delegation-kit"
+MAX_TURNS=40
+TIMEOUT_SECONDS="${DELEGATION_GROK_TIMEOUT_SECONDS:-900}"
+SOURCE_GROK_HOME="${DELEGATION_GROK_HOME:-${HOME:?HOME is required}/.grok}"
+RUN_TMP=""
+
+cleanup() { [ -z "$RUN_TMP" ] || rm -rf -- "$RUN_TMP"; }
+trap cleanup EXIT
+
+usage() {
+  cat <<'EOF'
+Usage:
+  delegation-grok check [--json]
+  delegation-grok run --lane <builder|frontend-builder> \
+    [--effort <auto|high>] [--backend <auto|grok-build>] \
+    --prompt-file <path> --output <path> --workdir <path> \
+    [--metrics <path>] [--debug-dir <existing-private-directory>] \
+    [--allow-provisional]
+
+Exit codes: 64 invalid input, 69 unavailable/authentication failure,
+70 dispatch/extract failure, 75 temporary/rate-limit failure,
+78 routing gate refusal.
+EOF
+}
+
+die() { local code="$1"; shift; printf 'delegation-grok: %s\n' "$*" >&2; exit "$code"; }
+have() { command -v "$1" >/dev/null 2>&1; }
+
+timeout_bin() {
+  if have timeout; then
+    command -v timeout
+  elif have gtimeout; then
+    command -v gtimeout
+  else
+    return 1
+  fi
+}
+
+prepare_isolated_home() {
+  local isolated_home="$1" auth_path config_path sandbox_path
+  auth_path="$isolated_home/.grok/auth.json"
+  config_path="$isolated_home/.grok/config.toml"
+  sandbox_path="$isolated_home/.grok/sandbox.toml"
+  [ -r "$SOURCE_GROK_HOME/auth.json" ] || {
+    GROK_REASON="Grok Build credentials missing; run: grok login"
+    return 1
+  }
+  mkdir -p "$isolated_home/.grok"
+  cp "$SOURCE_GROK_HOME/auth.json" "$auth_path"
+  chmod 600 "$auth_path"
+  cat >"$config_path" <<'EOF'
+[compat.claude]
+skills = false
+rules = false
+agents = false
+mcps = false
+hooks = false
+sessions = false
+
+[compat.cursor]
+skills = false
+rules = false
+agents = false
+mcps = false
+hooks = false
+sessions = false
+
+[compat.codex]
+sessions = false
+
+[workflows]
+enabled = false
+EOF
+  cat >"$sandbox_path" <<'EOF'
+[profiles.delegation-kit]
+extends = "strict"
+restrict_network = true
+EOF
+  chmod 600 "$config_path" "$sandbox_path"
+}
+
+inspect_isolation() {
+  local isolated_home="$1" inspect_file="$2" inspect_workdir="${3:-$PWD}"
+  (cd "$inspect_workdir" && HOME="$isolated_home" grok inspect --json) \
+    >"$inspect_file" 2>/dev/null || {
+    GROK_REASON="Grok Build isolation inspection failed"
+    return 1
+  }
+  jq -e '
+    (.mcpServers | length) == 0 and
+    (.plugins | length) == 0 and
+    (.permissions.sources | length) == 0 and
+    (.hooks | length) == 0
+  ' "$inspect_file" >/dev/null 2>&1 || {
+    GROK_REASON="Grok Build isolation is contaminated by plugins, MCP, permissions, or hooks"
+    return 1
+  }
+}
+
+validate_gate_graph() {
+  [ -x "$ROUTER" ] || return 1
+  DELEGATION_ROUTING_GATES_FILE="$CENTRAL_GATES" \
+    DELEGATION_GROK_ROUTING_FILE="$ROUTING_FILE" \
+    "$ROUTER" check --json >/dev/null 2>&1
+}
+
+runtime_status() {
+  GROK_REASON=""
+  have grok || { GROK_REASON="grok not on PATH"; return 1; }
+  have jq || { GROK_REASON="jq is required"; return 1; }
+  timeout_bin >/dev/null || { GROK_REASON="timeout or gtimeout is required"; return 1; }
+  [[ "$TIMEOUT_SECONDS" =~ ^[1-9][0-9]*$ ]] \
+    || { GROK_REASON="DELEGATION_GROK_TIMEOUT_SECONDS must be a positive integer"; return 1; }
+  local help models version status_tmp
+  version="$(grok --version 2>&1 || true)"
+  grep -Eq "^grok ${REQUIRED_GROK_VERSION}([[:space:]]|$)" <<<"$version" \
+    || { GROK_REASON="Grok Build CLI version mismatch; require $REQUIRED_GROK_VERSION"; return 1; }
+  help="$(grok --help 2>&1 || true)"
+  for flag in --prompt-file --model --reasoning-effort --output-format --permission-mode --sandbox --no-memory --no-subagents --tools --max-turns; do
+    grep -q -- "$flag" <<<"$help" || { GROK_REASON="grok lacks required flag $flag"; return 1; }
+  done
+  status_tmp="$(mktemp -d "${TMPDIR:-/tmp}/delegation-grok-status.XXXXXX")"
+  prepare_isolated_home "$status_tmp/home" || { rm -rf -- "$status_tmp"; return 1; }
+  models="$(HOME="$status_tmp/home" grok models 2>&1)" \
+    || { rm -rf -- "$status_tmp"; GROK_REASON="Grok Build model inventory unavailable; run: grok login"; return 1; }
+  grep -Fq "You are logged in with grok.com." <<<"$models" \
+    || { rm -rf -- "$status_tmp"; GROK_REASON="Grok Build is logged out; run: grok login"; return 1; }
+  grep -Eq '^[[:space:]]*\*?[[:space:]]*grok-4\.5([[:space:]]|$)' <<<"$models" \
+    || { rm -rf -- "$status_tmp"; GROK_REASON="Grok Build does not expose required model grok-4.5"; return 1; }
+  inspect_isolation "$status_tmp/home" "$status_tmp/inspect.json" \
+    || { rm -rf -- "$status_tmp"; return 1; }
+  rm -rf -- "$status_tmp"
+  GROK_REASON="ready"
+}
+
+qualified_lanes() {
+  jq -c '[.profiles["grok-build"].lanes | to_entries[] |
+    select(.value.status == "qualified") | .key] | sort' "$CENTRAL_GATES" 2>/dev/null || printf '[]'
+}
+
+provisional_lanes() {
+  jq -c '[.profiles["grok-build"].lanes | to_entries[] |
+    select(.value.status == "provisional") | .key] | sort' "$CENTRAL_GATES" 2>/dev/null || printf '[]'
+}
+
+gate_status() {
+  local lane="$1"
+  jq -r --arg lane "$lane" '.profiles["grok-build"].lanes[$lane].status // "disabled"' \
+    "$CENTRAL_GATES" 2>/dev/null || printf 'disabled\n'
+}
+
+is_allowed() {
+  local lane="$1" allow_provisional="$2" status
+  status="$(gate_status "$lane")"
+  [ "$status" = qualified ] || { [ "$status" = provisional ] && [ "$allow_provisional" = 1 ]; }
+}
+
+default_effort() {
+  jq -r '.profiles["grok-build"].effort // empty' "$CENTRAL_GATES" 2>/dev/null
+}
+
+print_check() {
+  local as_json="${1:-0}" available=false selected="none" lanes provisional
+  have jq || die 69 "jq is required"
+  validate_gate_graph || die 78 "central and executable routing gates are missing, invalid, or inconsistent"
+  runtime_status && available=true || true
+  lanes="$(qualified_lanes)"
+  provisional="$(provisional_lanes)"
+  [ "$available" = true ] && selected="$BACKEND"
+  if [ "$as_json" = 1 ]; then
+    jq -n --arg model "$MODEL" --arg runtime_model "$RUNTIME_MODEL" \
+      --arg usage_model "$USAGE_MODEL" --arg selected "$selected" \
+      --argjson available "$available" --arg reason "$GROK_REASON" \
+      --argjson efforts "$EFFORTS" --argjson lanes "$lanes" \
+      --argjson provisional "$provisional" --arg cli_version "$REQUIRED_GROK_VERSION" \
+      --arg sandbox "$SANDBOX_PROFILE" --argjson max_turns "$MAX_TURNS" \
+      --argjson timeout_seconds "$TIMEOUT_SECONDS" \
+      '{model:$model,runtime_model:$runtime_model,usage_model:$usage_model,
+        runtime_cli_version:$cli_version,
+        efforts:$efforts,selected_backend:$selected,qualified_lanes:$lanes,
+        provisional_lanes:$provisional,backends:{"grok-build":{
+          available:$available,reason:$reason,efforts:["high"],
+          sandbox:$sandbox,permission_mode:"dontAsk",
+          max_turns:$max_turns,timeout_seconds:$timeout_seconds,
+          isolated_home:true,plugins:false,mcp:false,terminal:false}}}'
+  else
+    printf 'Grok 4.5: selected=%s qualified=%s provisional=%s\n' "$selected" "$lanes" "$provisional"
+    printf '  grok-build: %s (%s; model=%s; cli=%s; effort=high; sandbox=%s; max-turns=%s; timeout=%ss)\n' \
+      "$available" "$GROK_REASON" "$RUNTIME_MODEL" "$REQUIRED_GROK_VERSION" \
+      "$SANDBOX_PROFILE" "$MAX_TURNS" "$TIMEOUT_SECONDS"
+  fi
+}
+
+auth_failure() {
+  grep -Eqi 'not logged in|logged out|login required|unauthorized|authentication|invalid token|status.?401' "$1"
+}
+
+temporary_failure() {
+  grep -Eqi 'rate.?limit|too many requests|usage limit|quota|temporar.*unavailable|status.?429' "$1"
+}
+
+extract_result() {
+  local response="$1" output="$2" metrics="$3" started="$4" lane="$5"
+  jq -e --arg usage_model "$USAGE_MODEL" '
+    (.text | type == "string" and length > 0) and
+    (.stopReason == "EndTurn" or .stopReason == "end_turn") and
+    (.modelUsage[$usage_model] | type == "object")
+  ' "$response" >/dev/null 2>&1 || return 1
+  jq -r '.text' "$response" >"$output" || return 1
+  jq -e --arg model "$MODEL" --arg runtime_model "$RUNTIME_MODEL" \
+    --arg usage_model "$USAGE_MODEL" --arg lane "$lane" --argjson started "$started" '
+    . as $r | ($r.modelUsage[$usage_model] // {}) as $u |
+    {model:$model,runtime_model:$runtime_model,usage_model:$usage_model,
+     backend:"grok-build",effort:"high",lane:$lane,
+     runtime_cli_version:$cli_version,
+     sandbox:$sandbox,permission_mode:"dontAsk",
+     isolated_home:true,plugins:false,mcp:false,
+     terminal:false,
+     max_turns:$max_turns,timeout_seconds:$timeout_seconds,
+     started_at_epoch:$started,finished_at_epoch:now,
+     duration_seconds:(now-$started),stop_reason:($r.stopReason // null),
+     turns:($r.num_turns // null),
+     tokens:{input:($r.usage.input_tokens // $u.inputTokens // 0),
+       output:($r.usage.output_tokens // $u.outputTokens // 0),
+       reasoning:($r.usage.reasoning_tokens // 0),
+       cache_read:($r.usage.cache_read_input_tokens // $u.cacheReadInputTokens // 0),
+       total:($r.usage.total_tokens // 0)},
+     provider_cost_usd:($r.total_cost_usd // $u.costUSD // null)}
+  ' --arg cli_version "$REQUIRED_GROK_VERSION" --arg sandbox "$SANDBOX_PROFILE" \
+    --argjson max_turns "$MAX_TURNS" --argjson timeout_seconds "$TIMEOUT_SECONDS" \
+    "$response" >"$metrics"
+}
+
+write_diagnostic() {
+  local path="$1" phase="$2" reason="$3" rc="$4" started="$5"
+  local response="$6" stderr_file="$7" debug_path="$8" finished
+  finished="$(date +%s)"
+  jq -n --arg model "$MODEL" --arg runtime_model "$RUNTIME_MODEL" \
+    --arg cli_version "$REQUIRED_GROK_VERSION" --arg lane "$lane" \
+    --arg phase "$phase" --arg reason "$reason" --argjson rc "$rc" \
+    --argjson started "$started" --argjson finished "$finished" \
+    --argjson stdout_bytes "$(wc -c <"$response" | tr -d ' ')" \
+    --argjson stderr_bytes "$(wc -c <"$stderr_file" | tr -d ' ')" \
+    --arg debug_path "$debug_path" '
+    {model:$model,runtime_model:$runtime_model,runtime_cli_version:$cli_version,
+     backend:"grok-build",effort:"high",lane:$lane,phase:$phase,reason:$reason,
+     cli_exit_code:$rc,started_at_epoch:$started,finished_at_epoch:$finished,
+     duration_seconds:($finished-$started),
+     captured_bytes:{stdout:$stdout_bytes,stderr:$stderr_bytes},
+     debug_path:(if $debug_path == "" then null else $debug_path end)}
+  ' >"$path"
+}
+
+preserve_debug() {
+  local debug_dir="$1" response="$2" stderr_file="$3"
+  [ -n "$debug_dir" ] || return 0
+  DEBUG_PATH="$(mktemp -d "$debug_dir/delegation-grok.XXXXXX")"
+  cp "$response" "$DEBUG_PATH/response.json"
+  cp "$stderr_file" "$DEBUG_PATH/stderr.txt"
+  chmod 700 "$DEBUG_PATH"
+  chmod 600 "$DEBUG_PATH/response.json" "$DEBUG_PATH/stderr.txt"
+}
+
+run_command() {
+  local lane="" effort="auto" backend="auto" prompt_file="" output="" workdir="" metrics="" debug_dir=""
+  local allow_provisional=0
+  while [ "$#" -gt 0 ]; do
+    case "$1" in
+      --lane) lane="${2:-}"; shift 2 ;;
+      --effort) effort="${2:-}"; shift 2 ;;
+      --backend) backend="${2:-}"; shift 2 ;;
+      --prompt-file) prompt_file="${2:-}"; shift 2 ;;
+      --output) output="${2:-}"; shift 2 ;;
+      --workdir) workdir="${2:-}"; shift 2 ;;
+      --metrics) metrics="${2:-}"; shift 2 ;;
+      --debug-dir) debug_dir="${2:-}"; shift 2 ;;
+      --allow-provisional) allow_provisional=1; shift ;;
+      -h|--help) usage; exit 0 ;;
+      *) die 64 "unknown run argument: $1" ;;
+    esac
+  done
+  case "$lane" in builder|frontend-builder) ;; *) die 64 "invalid lane: $lane" ;; esac
+  case "$effort" in auto|high) ;; *) die 64 "invalid effort: $effort" ;; esac
+  case "$backend" in auto|grok-build) ;; *) die 64 "invalid backend: $backend" ;; esac
+  [ -f "$prompt_file" ] || die 64 "prompt file missing: $prompt_file"
+  [ -s "$prompt_file" ] || die 64 "prompt file must not be empty"
+  [ -d "$workdir" ] || die 64 "workdir missing: $workdir"
+  [ -z "$debug_dir" ] || [ -d "$debug_dir" ] || die 64 "debug directory missing: $debug_dir"
+  [ -n "$output" ] || die 64 "--output is required"
+  have jq || die 69 "jq is required"
+  [ -r "$ROUTING_FILE" ] || die 69 "routing file missing: $ROUTING_FILE"
+  jq -e . "$ROUTING_FILE" >/dev/null 2>&1 || die 69 "routing file is invalid JSON"
+  validate_gate_graph || die 78 "central and executable routing gates are missing, invalid, or inconsistent"
+  is_allowed "$lane" "$allow_provisional" || {
+    status="$(gate_status "$lane")"
+    if [ "$status" != provisional ]; then
+      die 78 "lane '$lane' has non-dispatchable status '$status'"
+    else
+      die 78 "lane '$lane' is provisional; pass --allow-provisional after an explicit routing decision"
+    fi
+  }
+  [ "$effort" != auto ] || effort="$(default_effort)"
+  [ "$effort" = high ] || die 78 "lane '$lane' is qualified only at effort 'high'"
+  runtime_status || die 69 "$GROK_REASON"
+
+  workdir="$(cd "$workdir" && pwd -P)"
+  metrics="${metrics:-$output.metrics.json}"
+  local output_parent metrics_parent output_name metrics_name diagnostic
+  output_parent="$(dirname "$output")"; metrics_parent="$(dirname "$metrics")"
+  output_name="$(basename "$output")"; metrics_name="$(basename "$metrics")"
+  [ -d "$output_parent" ] || die 64 "output parent directory must already exist: $output_parent"
+  [ -d "$metrics_parent" ] || die 64 "metrics parent directory must already exist: $metrics_parent"
+  output="$(cd "$output_parent" && pwd -P)/$output_name"
+  metrics="$(cd "$metrics_parent" && pwd -P)/$metrics_name"
+  [ -z "$debug_dir" ] || debug_dir="$(cd "$debug_dir" && pwd -P)"
+  diagnostic="$output.error.json"
+  [ "$output" != "$metrics" ] || die 64 "output and metrics paths resolve to the same file"
+  [ ! -e "$output" ] && [ ! -L "$output" ] || die 64 "output already exists or is a symlink"
+  [ ! -e "$metrics" ] && [ ! -L "$metrics" ] || die 64 "metrics already exists or is a symlink"
+  [ ! -e "$diagnostic" ] && [ ! -L "$diagnostic" ] || die 64 "diagnostic already exists or is a symlink"
+
+  local response result_tmp metrics_tmp stderr_file rc=0 started timer reason phase
+  local DEBUG_PATH=""
+  RUN_TMP="$(mktemp -d "${TMPDIR:-/tmp}/delegation-grok.XXXXXX")"
+  response="$RUN_TMP/response.json"; result_tmp="$RUN_TMP/result.txt"
+  metrics_tmp="$RUN_TMP/metrics.json"; stderr_file="$RUN_TMP/stderr.txt"
+  cp "$prompt_file" "$RUN_TMP/prompt.txt"
+  prepare_isolated_home "$RUN_TMP/home" || die 69 "$GROK_REASON"
+  inspect_isolation "$RUN_TMP/home" "$RUN_TMP/inspect.json" "$workdir" || die 69 "$GROK_REASON"
+  timer="$(timeout_bin)" || die 69 "timeout or gtimeout is required"
+  started="$(date +%s)"
+  (cd "$workdir" && HOME="$RUN_TMP/home" "$timer" -k 10 "$TIMEOUT_SECONDS" \
+    grok --prompt-file "$RUN_TMP/prompt.txt" \
+    --model "$RUNTIME_MODEL" --reasoning-effort high \
+    --permission-mode dontAsk --sandbox "$SANDBOX_PROFILE" \
+    --output-format json --no-memory --no-subagents --disable-web-search --no-auto-update \
+    --tools 'grep,read_file,search_replace,list_dir,todo_write' \
+    --allow 'Edit(**)' \
+    --max-turns "$MAX_TURNS" \
+    --deny 'Edit(**/.grok/config.toml)' \
+    --deny 'Edit(**/.grok/sandbox.toml)' \
+    --deny 'Edit(**/.grok/auth.json)') \
+    >"$response" 2>"$stderr_file" || rc=$?
+  if [ "$rc" -ne 0 ]; then
+    phase="dispatch"; reason="dispatch_failed"
+    [ "$rc" -ne 124 ] && [ "$rc" -ne 137 ] || reason="timeout"
+    auth_failure "$stderr_file" && reason="authentication_failed"
+    temporary_failure "$stderr_file" && reason="temporarily_unavailable"
+    preserve_debug "$debug_dir" "$response" "$stderr_file"
+    write_diagnostic "$diagnostic" "$phase" "$reason" "$rc" "$started" \
+      "$response" "$stderr_file" "$DEBUG_PATH"
+    case "$reason" in
+      authentication_failed) die 69 "Grok Build authentication failed; sanitized diagnostic: $diagnostic" ;;
+      temporarily_unavailable|timeout) die 75 "Grok Build $reason; sanitized diagnostic: $diagnostic" ;;
+      *) die 70 "Grok Build dispatch failed (exit $rc); sanitized diagnostic: $diagnostic" ;;
+    esac
+  fi
+  jq -e --arg profile "$SANDBOX_PROFILE" '
+    select(.event_type == "ProfileApplied" and .profile == $profile and .enforced == true)
+  ' "$RUN_TMP/home/.grok/sandbox-events.jsonl" >/dev/null 2>&1 || {
+    preserve_debug "$debug_dir" "$response" "$stderr_file"
+    write_diagnostic "$diagnostic" "sandbox" "sandbox_not_enforced" 0 "$started" \
+      "$response" "$stderr_file" "$DEBUG_PATH"
+    die 70 "Grok Build sandbox enforcement was not attested; sanitized diagnostic: $diagnostic"
+  }
+  if jq -e '.stopReason == "MaxTurns" or .stopReason == "max_turns"' "$response" >/dev/null 2>&1; then
+    preserve_debug "$debug_dir" "$response" "$stderr_file"
+    write_diagnostic "$diagnostic" "extract" "max_turns" 0 "$started" \
+      "$response" "$stderr_file" "$DEBUG_PATH"
+    die 70 "Grok Build reached the maximum turn limit; sanitized diagnostic: $diagnostic"
+  fi
+  if jq -e '.stopReason == "Cancelled" or .stopReason == "cancelled"' "$response" >/dev/null 2>&1; then
+    preserve_debug "$debug_dir" "$response" "$stderr_file"
+    write_diagnostic "$diagnostic" "extract" "cancelled" 0 "$started" \
+      "$response" "$stderr_file" "$DEBUG_PATH"
+    die 70 "Grok Build cancelled before completing the task; sanitized diagnostic: $diagnostic"
+  fi
+  extract_result "$response" "$result_tmp" "$metrics_tmp" "$started" "$lane" \
+    || {
+      preserve_debug "$debug_dir" "$response" "$stderr_file"
+      write_diagnostic "$diagnostic" "extract" "malformed_or_mismatched_output" 0 "$started" \
+        "$response" "$stderr_file" "$DEBUG_PATH"
+      die 70 "Grok Build returned malformed, empty, or mismatched output; sanitized diagnostic: $diagnostic"
+    }
+  mv "$metrics_tmp" "$metrics" || die 70 "could not finalize metrics"
+  if ! mv "$result_tmp" "$output"; then
+    rm -f -- "$metrics"
+    die 70 "could not finalize output"
+  fi
+}
+
+case "${1:-}" in
+  check)
+    shift
+    case "${1:-}" in
+      "") print_check 0 ;;
+      --json) shift; [ "$#" -eq 0 ] || die 64 "unknown check argument: $1"; print_check 1 ;;
+      *) die 64 "unknown check argument: $1" ;;
+    esac
+    ;;
+  run) shift; run_command "$@" ;;
+  -h|--help|"") usage ;;
+  *) die 64 "unknown command: $1" ;;
+esac

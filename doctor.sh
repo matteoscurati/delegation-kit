@@ -4,11 +4,12 @@
 # while the always-loaded policy blocks are missing, so neither model ever learns
 # it may reach the other. Nothing errors — the bridge just never fires.
 #
-# Usage: ./doctor.sh [--ping] [--ping-glm] [--ping-kimi]
+# Usage: ./doctor.sh [--ping] [--ping-glm] [--ping-kimi] [--ping-grok]
 #   --ping   also does a live round-trip (real API calls, costs a few tokens per
 #            side). Off by default; static checks are free.
 #   --ping-glm does a separate paid GLM-5.2 ping, but only for a qualified lane.
 #   --ping-kimi does a separate Kimi K3 ping, but only for a qualified lane.
+#   --ping-grok does a paid Grok 4.5 ping through its provisional builder gate.
 # Env overrides (for testing): CLAUDE_HOME (default ~/.claude), CODEX_HOME (~/.codex)
 set -uo pipefail
 shopt -s nullglob   # unmatched globs vanish instead of staying literal
@@ -25,11 +26,13 @@ BEGIN="<!-- >>> delegation-kit >>> -->"
 DO_PING=0
 DO_GLM_PING=0
 DO_KIMI_PING=0
+DO_GROK_PING=0
 while [ "$#" -gt 0 ]; do
   case "$1" in
     --ping) DO_PING=1 ;;
     --ping-glm) DO_GLM_PING=1 ;;
     --ping-kimi) DO_KIMI_PING=1 ;;
+    --ping-grok) DO_GROK_PING=1 ;;
     # print only the leading header comment block (skip the shebang, stop at first non-comment)
     -h|--help) awk 'NR==1{next} /^#/{sub(/^# ?/,""); print; next} {exit}' "$0"; exit 0 ;;
     *) echo "unknown arg: $1" >&2; exit 2 ;;
@@ -126,6 +129,11 @@ if [ -f "$CLAUDE_HOME/skills/qwen-executor/SKILL.md" ]; then
 elif found_path "$CLAUDE_HOME/plugins" '*qwen-executor/SKILL.md'; then
   ok "blocked Qwen candidate skill installed (via plugin cache; universal install still required for runner)"
 else warn "Qwen candidate skill missing — re-run ./install.sh"; fi
+if [ -f "$CLAUDE_HOME/skills/grok-executor/SKILL.md" ]; then
+  ok "provisional Grok builder skill installed"
+elif found_path "$CLAUDE_HOME/plugins" '*grok-executor/SKILL.md'; then
+  ok "provisional Grok builder skill installed (via plugin cache; universal install still required for runner)"
+else warn "Grok builder skill missing — re-run ./install.sh"; fi
 # always-loaded policy (the plugin path does NOT install this — install.sh does)
 if [ -f "$CLAUDE_HOME/CLAUDE.md" ] && grep -qF "$BEGIN" "$CLAUDE_HOME/CLAUDE.md"; then
   ok "delegation policy registered in CLAUDE.md (@import present)"
@@ -162,6 +170,9 @@ else warn "optional Kimi executor skill missing for Codex"; fi
 if [ -f "$CODEX_HOME/skills/qwen-executor/SKILL.md" ]; then
   ok "blocked Qwen candidate skill installed for Codex"
 else warn "Qwen candidate skill missing for Codex"; fi
+if [ -f "$CODEX_HOME/skills/grok-executor/SKILL.md" ]; then
+  ok "provisional Grok builder skill installed for Codex"
+else warn "Grok builder skill missing for Codex"; fi
 
 # ---- external evidence snapshot ----
 hdr "Model-routing evidence"
@@ -277,6 +288,39 @@ else
   warn "delegation-kimi not installed — re-run ./install.sh to install the gated candidate"
 fi
 
+# ---- optional Grok 4.5 builder executor ----
+hdr "Grok 4.5 builder executor"
+if ! have jq; then
+  warn "jq not on PATH — delegation-grok cannot run"
+elif have delegation-grok; then
+  grok_check="$(delegation-grok check --json 2>/dev/null || true)"
+  if [ -n "$grok_check" ] && printf '%s' "$grok_check" | jq -e '
+      .model == "grok-4.5" and .runtime_cli_version == "0.2.111" and
+      .backends["grok-build"].sandbox == "delegation-kit" and
+      .backends["grok-build"].permission_mode == "dontAsk" and
+      .backends["grok-build"].isolated_home == true and
+      .backends["grok-build"].plugins == false and
+      .backends["grok-build"].mcp == false and
+      .backends["grok-build"].terminal == false and
+      .backends["grok-build"].max_turns == 40 and
+      .backends["grok-build"].timeout_seconds == 900
+    ' >/dev/null 2>&1; then
+    ok "delegation-grok installed and pinned to grok-4.5/high with isolated runtime controls"
+    grok_selected="$(printf '%s' "$grok_check" | jq -r '.selected_backend')"
+    grok_provisional="$(printf '%s' "$grok_check" | jq -r '.provisional_lanes | join(",")')"
+    if [ "$grok_selected" = none ]; then
+      info "Grok Build runtime unavailable — optional lanes will not be selected"
+    else
+      ok "Grok Build backend available ($grok_selected)"
+    fi
+    [ -z "$grok_provisional" ] || info "Grok provisional lanes (explicit flag required): $grok_provisional"
+  else
+    bad "delegation-grok check failed or is not pinned to grok-4.5"
+  fi
+else
+  warn "delegation-grok not installed — re-run ./install.sh"
+fi
+
 # ---- Qwen3.8 Max Preview blocked candidate ----
 hdr "Qwen3.8 Max Preview candidate"
 if ! have jq; then
@@ -371,6 +415,31 @@ if [ "$DO_KIMI_PING" = 1 ]; then
         ok "Kimi K3 qualified-lane ping returned PONG"
       else
         bad "Kimi K3 ping failed"
+      fi
+      rm -rf "$ping_dir"
+    fi
+  fi
+fi
+
+if [ "$DO_GROK_PING" = 1 ]; then
+  hdr "Grok 4.5 live ping (--ping-grok)"
+  if ! have delegation-grok; then
+    bad "Grok ping unavailable — delegation-grok is not installed"
+  else
+    grok_check="$(delegation-grok check --json 2>/dev/null || true)"
+    if ! printf '%s' "$grok_check" | jq -e '.provisional_lanes | index("builder") != null' >/dev/null 2>&1; then
+      info "skipped — Grok builder lane is not provisional"
+    else
+      ping_dir="$(mktemp -d "${TMPDIR:-/tmp}/delegation-grok-ping.XXXXXX")"
+      mkdir -p "$ping_dir/work" "$ping_dir/results"
+      printf 'Reply with exactly PONG and do not edit files.\n' >"$ping_dir/prompt.txt"
+      if delegation-grok run --lane builder --allow-provisional \
+          --effort auto --backend auto --prompt-file "$ping_dir/prompt.txt" \
+          --output "$ping_dir/results/out.txt" --workdir "$ping_dir/work" \
+          >/dev/null 2>&1 && grep -Fxq PONG "$ping_dir/results/out.txt"; then
+        ok "Grok 4.5 provisional builder ping returned PONG"
+      else
+        bad "Grok 4.5 ping failed"
       fi
       rm -rf "$ping_dir"
     fi

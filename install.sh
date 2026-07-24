@@ -121,6 +121,12 @@ chmod 755 "$DATA_HOME/bin/delegation-qwen"
 ln -sfn "$DATA_HOME/bin/delegation-qwen" "$BIN_HOME/delegation-qwen"
 echo "Qwen bridge -> $BIN_HOME/delegation-qwen (blocked candidate gate: $DATA_HOME/config/qwen3.8-max-preview-routing.json)"
 
+cp "$KIT/bin/delegation-grok" "$DATA_HOME/bin/delegation-grok"
+cp "$KIT/config/grok-4.5-routing.json" "$DATA_HOME/config/grok-4.5-routing.json"
+chmod 755 "$DATA_HOME/bin/delegation-grok"
+ln -sfn "$DATA_HOME/bin/delegation-grok" "$BIN_HOME/delegation-grok"
+echo "Grok bridge -> $BIN_HOME/delegation-grok (provisional builder gate: $DATA_HOME/config/grok-4.5-routing.json)"
+
 # Qwen Token Plan credentials are isolated from DashScope and from ai-consultants.
 # Never copy a key from another tool silently; accept an explicit environment
 # value or ask once, preserving an existing mode-600 file by default.
@@ -200,6 +206,8 @@ if [ "$do_claude" = 1 ]; then
   echo "  + optional Gemini executor skill -> $CLAUDE_HOME/skills/gemini-executor/"
   cp -R "$KIT/skills/qwen-executor" "$CLAUDE_HOME/skills/"
   echo "  + blocked Qwen candidate skill -> $CLAUDE_HOME/skills/qwen-executor/"
+  cp -R "$KIT/skills/grok-executor" "$CLAUDE_HOME/skills/"
+  echo "  + provisional Grok builder skill -> $CLAUDE_HOME/skills/grok-executor/"
 fi
 
 if [ "$do_codex" = 1 ]; then
@@ -217,6 +225,8 @@ if [ "$do_codex" = 1 ]; then
   echo "  + optional Gemini executor skill -> $CODEX_HOME/skills/gemini-executor/"
   cp -R "$KIT/skills/qwen-executor" "$CODEX_HOME/skills/"
   echo "  + blocked Qwen candidate skill -> $CODEX_HOME/skills/qwen-executor/"
+  cp -R "$KIT/skills/grok-executor" "$CODEX_HOME/skills/"
+  echo "  + provisional Grok builder skill -> $CODEX_HOME/skills/grok-executor/"
   append_guarded "$CODEX_HOME/AGENTS.md" "$(cat "$KIT/codex/AGENTS.md")"
   echo
   echo "  Codex config is NOT auto-edited. Review and merge into $CODEX_HOME/config.toml:"
