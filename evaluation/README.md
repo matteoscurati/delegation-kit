@@ -43,20 +43,27 @@ also be relevant to the lane. Nearby variants, different harnesses, and general
 coding evidence for review/judgement are context and are shown separately in the
 generated table.
 
-The snapshot through 2026-07-25 is intentionally mixed-version: existing model
-rows retain the dated source that produced them, while Grok 4.5 and Opus 5 use
-newly observed sources. A newer source never silently rewrites an older row.
+The snapshot observed through 2026-07-25 keeps historical rows only when no
+current equivalent exists. Current exact variants use the latest verified source;
+nearby variants, different harnesses, preliminary rows, and general-capability
+benchmarks remain separately labeled context.
 
 - [Artificial Analysis Coding Agent Index v1.2](https://artificialanalysis.ai/agents/coding-agents/)
   with its [July 2026 methodology](https://artificialanalysis.ai/methodology/coding-agents-benchmarking):
-  retained for the existing non-Grok rows: DeepSWE, Terminal-Bench v2,
-  SWE-Atlas-QnA, three repeats, cost/time/token data.
-- [Arena Agent Arena](https://arena.ai/leaderboard/agent), dated 2026-07-19,
+  retained only for historical variants that do not have a directly comparable
+  current replacement.
+- [Artificial Analysis Coding Agent Index v1.3](https://artificialanalysis.ai/agents/coding-agents/),
+  observed 2026-07-25: 113 DeepSWE, 84 Terminal-Bench v2, and 124
+  SWE-Atlas-QnA tasks with three attempts. It supplies current exact rows for
+  Luna `low`, Terra `low`/`medium`, Sol `high`, Opus 5 `high`, Kimi K3 through
+  Kimi Code CLI `max`, and Grok 4.5 through Grok Build `high`.
+- [Arena Agent Arena](https://arena.ai/leaderboard/agent), dated 2026-07-21,
   with [causal-evaluation methodology](https://arena.ai/blog/agent-arena-methodology/):
-  real-world confirmed success, feedback, steerability, bash recovery, and tool
-  hallucination.
+  1,242,857 real-world sessions covering confirmed success, user feedback, and
+  steerability. It still has no Opus 5, Gemini 3.6 Flash, or Qwen3.8 row.
 - [Arena Code Arena WebDev](https://arena.ai/leaderboard/code/webdev?rankBy=labs),
-  dated 2026-07-19: human-preference evidence for frontend/product output only.
+  dated 2026-07-24: 477,155 human-preference votes across 19 labs for
+  frontend/product output only. Kimi K3 and Gemini 3.6 Flash are preliminary.
 - [SWE-PRBench](https://arxiv.org/abs/2603.26130) and the continuously refreshed
   [Martian Code Review Bench](https://github.com/withmartian/code-review-benchmark)
   as the required evidence family for reviewer lanes.
@@ -64,17 +71,32 @@ newly observed sources. A newer source never silently rewrites an older row.
   snapshot and [SWE-bench-Live](https://swe-bench-live.github.io/) remain
   secondary context. Current Grok comparisons use Terminal-Bench 2.1 through
   their explicitly named source/harness rather than overwriting those rows.
-- [OpenBench](https://github.com/minghinmatthewlam/openbench), observed
-  2026-07-22, as a reproducible local framework for measuring the combined
-  model+harness system on coding tasks. It is tracked for future evaluations,
-  but its published results currently contain no Qwen3.8 Max Preview row and
-  therefore add no exact model evidence to this snapshot.
-- [Artificial Analysis Grok Build comparison](https://artificialanalysis.ai/agents/coding-agents/comparisons/codex-vs-grok-build),
-  Coding Agent Index v1.3 observed 2026-07-24, for the exact Grok 4.5 + Grok
-  Build + high builder row.
+- [CursorBench 3.2](https://cursor.com/cursorbench), observed 2026-07-25,
+  for ambiguous multi-file understanding, planning, implementation, bugfinding,
+  and review tasks. Every row uses Cursor's harness; its Grok 4.5 row also carries
+  the publisher's possible training-contamination warning. It supplies the first
+  coding-context rows for Gemini 3.6 Flash `medium` and `high`, but not for the
+  production `agy` harness.
+- [FrontierCode 1.1](https://cognition.com/frontiercode), with its
+  [revision notes](https://cognition.com/blog/frontier-code-1.1), for
+  maintainer-defined mergeability across correctness, tests, scope, style, and
+  codebase conventions.
+- [FrontierSWE](https://www.frontierswe.com/) and
+  [Mercor APEX-SWE](https://www.mercor.com/apex/) as additional builder-quality
+  context. Their published runners are not silently treated as production
+  Claude→Z.AI, Grok Build, or Codex variants.
+- [OpenBench](https://github.com/minghinmatthewlam/openbench), plus its
+  [Kimi K3](https://github.com/minghinmatthewlam/openbench/blob/main/docs/releases/2026-07-20-kimi-k3/index.html)
+  and [GPT-5.6](https://github.com/minghinmatthewlam/openbench/blob/main/docs/releases/2026-07-21-gpt56/index.html)
+  releases, as reproducible local-harness context. Kimi was not run through Kimi
+  Code CLI, and the Codex GPT-5.6 Sol row used `medium`, not the production
+  reviewer/judge `high` effort.
 - [OpenBench's Grok 4.5 release](https://github.com/minghinmatthewlam/openbench/blob/main/docs/releases/2026-07-20-grok45/index.html)
   and the current [Code Arena WebDev leaderboard](https://arena.ai/leaderboard/code/webdev?rankBy=labs)
   as contextual support for Grok's builder and frontend-builder promotion.
+- Epoch's [Capabilities Index](https://epoch.ai/data/eci-documentation) and
+  [Blueprint-Bench 2](https://andonlabs.com/evals/blueprint-bench-2) are retained
+  as broad general/multimodal context, never as coding-lane qualification.
 - Anthropic's [Claude Opus 5 launch](https://www.anthropic.com/news/claude-opus-5)
   and [migration documentation](https://platform.claude.com/docs/en/about-claude/models/whats-new-opus-5),
   observed 2026-07-25, for the pinned `claude-opus-5` identity, supported effort
@@ -86,7 +108,8 @@ newly observed sources. A newer source never silently rewrites an older row.
 ### Local harness evaluation with OpenBench
 
 OpenBench belongs to the local-evaluation layer, not to the broad external
-leaderboard layer. Its useful controls include disposable workspaces,
+leaderboard layer. The registered July releases add contextual Kimi K3,
+GPT-5.6 Sol, and Grok 4.5 rows. Its useful controls include disposable workspaces,
 checker-polarity validation against untouched and golden workspaces, a null
 adapter, partial credit, repeated trials, confidence intervals, and
 time/token/cost telemetry.
@@ -140,12 +163,15 @@ before manually adding selected source/evidence objects to
 `config/model-evidence.json`; the importer has no gate or snapshot mutation
 path.
 
-The 2026-07-24 ZIP contains twelve Grok 4.5 rows, all contextual: Blueprint
-Bench 2, Chess Puzzles, two Epoch Capabilities Index entries, GPQA Diamond, OTIS
-Mock AIME, ProofBench, SciCode, SimpleBench, SimpleQA Verified, Surface Evolver
-Bench, and Vending-Bench 2. It contains no Grok 4.5 row for DeepSWE,
-Terminal-Bench, WebDev Arena, or code review, so Epoch does not qualify either
-promoted lane; it remains broad capability context only.
+The 2026-07-25 ZIP snapshot has SHA-256
+`72a03e2fb8f7e24aba2fafdb08558100e6131b70d67370246dd1bf22daf36cff`
+and contains 74 benchmark CSVs, 5,671 rows, and 5,617 normalized advisory
+records. New relevant families include FrontierCode, FrontierSWE, APEX Agents,
+Blueprint-Bench 2, and Epoch Capabilities Index. Exact model-name records exist
+for Fable 5, Opus 5, Sonnet 5, GLM-5.2, all three GPT-5.6 tiers, Grok 4.5, and
+Kimi K3; Gemini 3.6 Flash and Qwen3.8 Max Preview have no exact model-name ZIP
+record. Unknown harness or effort remains contextual, so the archive does not
+qualify a production lane by itself.
 
 Epoch's own data is attributed under CC BY 4.0. External-project rows preserve
 their source links and original licensing; the documented Apache-2.0 overrides
