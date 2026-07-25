@@ -108,19 +108,19 @@ defaults blindly:
 
 ```sh
 # read-only review / analysis (no edits):
-claude -p "<self-contained prompt>" --model opus --effort high --permission-mode plan
+claude -p "<self-contained prompt>" --model claude-opus-5 --effort high --permission-mode plan
 
 # let it edit:
 claude -p "<self-contained prompt>" --model sonnet --effort medium --permission-mode acceptEdits
 
 # give it a role (reviewer / taste), or a structured output:
-claude -p "<prompt>" --model opus --effort high --permission-mode plan \
+claude -p "<prompt>" --model claude-opus-5 --effort high --permission-mode plan \
   --append-system-prompt "You are a senior security reviewer. Report findings only."
 # ...or define a named agent inline: --agents '<json>'
 # ...or machine-readable: --output-format stream-json
 ```
 
-- **Model + effort:** `--model opus|sonnet|<full-id>` picks the family/tier;
+- **Model + effort:** `--model claude-opus-5|sonnet|<full-id>` picks the family/tier;
   `--effort low|medium|high|xhigh|max` sets the depth (available levels depend on
   the model). Reserve `opus` for taste/security/material review, `sonnet` for
   high-volume execution; scale effort to blast radius, not prestige.

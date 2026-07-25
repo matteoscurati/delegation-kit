@@ -8,11 +8,11 @@ Here's what to change and how.
 
 | role | what it does | author's pick |
 |---|---|---|
-| **lead** | owns the work, integrates, verifies; enters judgement only in bursts | Opus 4.8 @ xhigh |
+| **lead** | owns the work, integrates, verifies; enters judgement only in bursts | Opus 5 @ xhigh |
 | **judgement** | plan + final verdict/synthesis; explicit, manual gate | Fable 5 or Sol high |
 | **super-judgement** | independent dual verdict + cross-review for exceptional decisions | Fable 5 + Sol high |
 | **executor** | bulk implementation, migrations, tests, extraction, repo mapping, **default review** | Sonnet 5 |
-| **senior** | security (direct), user-facing taste, escalation target, material review | Opus 4.8 |
+| **senior** | security (direct), user-facing taste, escalation target, material review | Opus 5 |
 | **clerk / scout / builder** | cheap sub-lanes of the executor (extract / map / build) | Sonnet (Claude) · Luna+Terra (Codex) |
 
 Pick one model per role from *your* table. A role can share a model with another

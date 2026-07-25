@@ -76,7 +76,9 @@ else warn "no $CLAUDE_HOME/.credentials.json, no \$ANTHROPIC_API_KEY, and no Key
 # ---- Claude side install (direct dir OR plugin cache) ----
 hdr "Claude Code install ($CLAUDE_HOME)"
 total=0; miss=0; via_plugin=0
-# one walk of the plugin cache up front, instead of a fresh find per missing agent
+# One walk of the plugin cache up front, instead of a fresh find per missing agent.
+# This broad inventory is only a presence check; exact profile validation below
+# resolves a direct install or a plugin listed as active by Claude Code.
 plugin_md=""; [ -d "$CLAUDE_HOME/plugins" ] && plugin_md="$(find "$CLAUDE_HOME/plugins" -type f -name '*.md' 2>/dev/null)"
 for f in "$KIT"/agents/*.md; do
   total=$((total+1)); name="$(basename "$f")"
@@ -91,6 +93,24 @@ elif [ "$miss" = 0 ]; then
   [ "$via_plugin" = 1 ] && ok "all $total subagent profiles installed (some via plugin cache)" \
     || ok "all $total subagent profiles installed"
 else bad "$miss/$total subagent profile(s) missing from $CLAUDE_HOME/agents/ (and plugin cache) — run ./install.sh or /plugin install"; fi
+opus_profile=""
+if [ -f "$CLAUDE_HOME/agents/opus-reviewer.md" ]; then
+  opus_profile="$CLAUDE_HOME/agents/opus-reviewer.md"
+elif have jq && [ -r "$CLAUDE_HOME/plugins/installed_plugins.json" ]; then
+  while IFS= read -r plugin_root; do
+    candidate="$plugin_root/agents/opus-reviewer.md"
+    if [ -f "$candidate" ]; then opus_profile="$candidate"; break; fi
+  done < <(jq -r '.plugins[][]? | .installPath // empty' "$CLAUDE_HOME/plugins/installed_plugins.json" 2>/dev/null)
+fi
+if [ -z "$opus_profile" ]; then
+  bad "cannot resolve the active opus-reviewer profile — run ./install.sh or reinstall the plugin"
+elif grep -Fxq 'model: claude-opus-5' "$opus_profile" \
+    && grep -Fxq 'effort: high' "$opus_profile" \
+    && grep -Fq 'Opus 5 senior reviewer' "$opus_profile"; then
+  ok "opus-reviewer pinned to claude-opus-5/high"
+else
+  bad "active opus-reviewer is stale or not pinned to claude-opus-5/high — re-run ./install.sh"
+fi
 # skill + the co-located evidence-backed policy the skill points at
 if [ -f "$CLAUDE_HOME/skills/model-routing/SKILL.md" ]; then
   [ -f "$CLAUDE_HOME/skills/model-routing/model-routing.md" ] \

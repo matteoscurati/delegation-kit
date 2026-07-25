@@ -73,6 +73,13 @@ validate() {
       ($evidence[0].lane_evidence[evidence_lane($lane.key)].required_metrics // [])[] as $metric |
       select(has_metric($rows[$id].metrics; $metric) | not)] | length == 0) and
     ([.profiles[].lanes[] | ((.exact_evidence_ids + .context_evidence_ids) | length) == ((.exact_evidence_ids + .context_evidence_ids) | unique | length)] | all) and
+    ([.profiles[].lanes[] | select((.provider_fallback // null) != null) |
+      .provider_fallback |
+      .possible == true and
+      (.target_model | type == "string" and length > 0) and
+      (.trigger | type == "string" and length > 0) and
+      .exact_variant_guaranteed == false and
+      (.source_evidence_id | type == "string" and length > 0)] | all) and
     ([.profiles | to_entries[] as $p | $p.value.lanes | to_entries[] |
       select(.value.selection == "default") | .key] | group_by(.) | all(length <= 1)) and
     ([.compound_lanes[] | .members[] as $member |
@@ -86,7 +93,9 @@ validate() {
 
   local evidence_ids gate_ids missing members
   evidence_ids="$(jq -c '[.evidence[].id]' "$EVIDENCE")"
-  gate_ids="$(jq -c '[.profiles[].lanes[] | .exact_evidence_ids[]?, .context_evidence_ids[]?] | unique' "$GATES")"
+  gate_ids="$(jq -c '[.profiles[].lanes[] |
+    .exact_evidence_ids[]?, .context_evidence_ids[]?, .provider_fallback.source_evidence_id?] |
+    map(select(. != null)) | unique' "$GATES")"
   missing="$(jq -n --argjson known "$evidence_ids" --argjson used "$gate_ids" '$used - $known')"
   [ "$missing" = "[]" ] || die 65 "unknown evidence ids: $missing"
   members="$(jq -c '[.profiles | keys[]]' "$GATES")"
@@ -158,6 +167,7 @@ profile_rows() {
      lane:.key,status:.value.status,selection:.value.selection,
      exact_evidence_ids:(.value.exact_evidence_ids // []),context_evidence_ids:(.value.context_evidence_ids // []),
      local_evaluation:(.value.local_evaluation // null),
+     provider_fallback:(.value.provider_fallback // null),
      fallback:(.value.fallback // null),evidence_gap:(.value.evidence_gap // null)}
   ' "$GATES"
 }

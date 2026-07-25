@@ -1,12 +1,13 @@
 {
   "schema_version": 1,
-  "snapshot_at": "2026-07-24T00:00:00Z",
+  "snapshot_at": "2026-07-25T00:00:00Z",
   "max_snapshot_age_days": 45,
   "policy": {
     "external_evidence_never_auto_qualifies": true,
     "exact_variant_required": true,
     "local_runtime_smoke_required": true,
-    "review_lane_requires_review_benchmark": true
+    "review_lane_requires_review_benchmark": true,
+    "provider_fallbacks_must_be_explicit": true
   },
   "sources": {
     "aa-coding-agent-v1.2": {
@@ -91,6 +92,15 @@
       "observed_at": "2026-07-24",
       "data_date": "2026-07-24",
       "scope": "Human-preference WebDev leaderboard; Grok 4.5 score is contextual because the production Grok Build harness and effort are not attested"
+    },
+    "anthropic-opus-5-2026-07-24": {
+      "name": "Anthropic Claude Opus 5 launch and model documentation",
+      "url": "https://www.anthropic.com/news/claude-opus-5",
+      "methodology_url": "https://platform.claude.com/docs/en/about-claude/models/whats-new-opus-5",
+      "observed_at": "2026-07-25",
+      "data_date": "2026-07-24",
+      "scope": "First-party release evidence for model identity, availability, effort range, context and output limits, pricing, and qualitative improvements in code review and agentic work",
+      "limitations": "Launch claims and customer reports are contextual evidence, not an independent review precision/recall benchmark and not an exact Claude Code high evaluation"
     }
   },
   "lane_evidence": {
@@ -324,6 +334,24 @@
       "effort": "reported-default",
       "source": "code-arena-webdev-2026-07-24",
       "metrics": {"webdev": {"elo": 1558, "ci_low": 1545, "ci_high": 1571}}
+    },
+    {
+      "id": "anthropic-claude-opus-5-launch",
+      "model": "claude-opus-5",
+      "harness": "anthropic-launch",
+      "effort": "reported-mixed",
+      "source": "anthropic-opus-5-2026-07-24",
+      "metrics": {
+        "launch": {
+          "context_window_tokens": 1000000,
+          "max_output_tokens": 128000,
+          "input_price_per_million_usd": 5,
+          "output_price_per_million_usd": 25,
+          "adaptive_thinking_default": true,
+          "supported_efforts": ["low", "medium", "high", "xhigh", "max"],
+          "code_review_improvement_claimed": true
+        }
+      }
     }
   ]
 }

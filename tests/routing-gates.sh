@@ -26,6 +26,40 @@ expect_failure() {
 cd "$ROOT"
 expect_success bin/delegation-route check --json
 
+# The senior/taste/security profile is pinned to the exact current Opus model.
+bin/delegation-route profile opus-reviewer --json >"$TMP/opus-reviewer.json"
+jq -e '
+  .model == "claude-opus-5" and .harness == "claude-code" and
+  .effort == "high" and
+  .lanes.senior.status == "manual-qualified" and
+  (.lanes.senior.context_evidence_ids | index("anthropic-claude-opus-5-launch") != null) and
+  .lanes.security.status == "manual-qualified" and
+  .lanes.security.local_evaluation.run_id == "2026-07-25-claude-opus-5-security-smoke" and
+  .lanes.security.provider_fallback.possible == true and
+  .lanes.security.provider_fallback.target_model == "claude-opus-4.8" and
+  .lanes.security.provider_fallback.exact_variant_guaranteed == false
+' "$TMP/opus-reviewer.json" >/dev/null
+grep -Fxq 'model: claude-opus-5' agents/opus-reviewer.md
+grep -Fxq 'effort: high' agents/opus-reviewer.md
+pass=$((pass + 1))
+
+# Provider-controlled model fallback must remain visible to route consumers.
+bin/delegation-route resolve --lane security --json >"$TMP/security.json"
+jq -e '
+  .explicit | length == 1 and
+  .[0].model == "claude-opus-5" and
+  .[0].provider_fallback.possible == true and
+  .[0].provider_fallback.target_model == "claude-opus-4.8" and
+  .[0].provider_fallback.exact_variant_guaranteed == false
+' "$TMP/security.json" >/dev/null
+pass=$((pass + 1))
+
+# Provider fallback declarations must be complete and evidence-backed.
+jq '.profiles["opus-reviewer"].lanes.security.provider_fallback.exact_variant_guaranteed = true' \
+  config/routing-gates.json >"$TMP/bad-provider-fallback.json"
+expect_failure 65 env DELEGATION_ROUTING_GATES_FILE="$TMP/bad-provider-fallback.json" \
+  bin/delegation-route check --json
+
 # Illegal status/selection pairs must fail schema validation.
 jq '.profiles["kimi-k3"].lanes.judgement.selection = "explicit-only"' \
   config/routing-gates.json >"$TMP/bad-pair.json"
