@@ -71,10 +71,10 @@
     },
     "aa-coding-agent-v1.3": {
       "name": "Artificial Analysis Coding Agent Index v1.3",
-      "url": "https://artificialanalysis.ai/agents/coding-agents/comparisons/codex-vs-grok-build",
+      "url": "https://artificialanalysis.ai/agents/coding-agents/",
       "methodology_url": "https://artificialanalysis.ai/methodology/coding-agents-benchmarking",
-      "observed_at": "2026-07-24",
-      "scope": "Current Grok Build versus Codex comparison across DeepSWE, Terminal-Bench, and SWE-Atlas-QnA with model, harness, effort, cost, time, and token telemetry"
+      "observed_at": "2026-07-25",
+      "scope": "Current 44-variant leaderboard across 113 DeepSWE, 84 Terminal-Bench v2, and 124 SWE-Atlas-QnA tasks with three attempts plus model, harness, effort, cost, time, and token telemetry"
     },
     "openbench-grok45-2026-07-20": {
       "name": "OpenBench Grok 4.5 release",
@@ -89,9 +89,9 @@
       "name": "Arena Code Arena WebDev",
       "url": "https://arena.ai/leaderboard/code/webdev?rankBy=labs",
       "methodology_url": "https://arena.ai/blog/new-categories-code-arena/",
-      "observed_at": "2026-07-24",
+      "observed_at": "2026-07-25",
       "data_date": "2026-07-24",
-      "scope": "Human-preference WebDev leaderboard; Grok 4.5 score is contextual because the production Grok Build harness and effort are not attested"
+      "scope": "477,155 human-preference WebDev votes across 19 labs; Kimi K3 and Gemini 3.6 Flash rows are preliminary; results are frontend-only context unless the production harness and effort are attested"
     },
     "anthropic-opus-5-2026-07-24": {
       "name": "Anthropic Claude Opus 5 launch and model documentation",
@@ -101,6 +101,92 @@
       "data_date": "2026-07-24",
       "scope": "First-party release evidence for model identity, availability, effort range, context and output limits, pricing, and qualitative improvements in code review and agentic work",
       "limitations": "Launch claims and customer reports are contextual evidence, not an independent review precision/recall benchmark and not an exact Claude Code high evaluation"
+    },
+    "agent-arena-2026-07-21": {
+      "name": "Arena Agent Arena",
+      "url": "https://arena.ai/leaderboard/agent",
+      "methodology_url": "https://arena.ai/blog/agent-arena-methodology/",
+      "observed_at": "2026-07-25",
+      "data_date": "2026-07-21",
+      "scope": "1,242,857 in-the-wild sessions across 38 models with causal estimates for confirmed success, user feedback, and steerability",
+      "limitations": "Arena variants and effort labels are contextual unless they match the production runner; no Claude Opus 5, Gemini 3.6 Flash, or Qwen3.8 Max Preview row was published"
+    },
+    "cursorbench-3.2-2026-07-08": {
+      "name": "CursorBench 3.2",
+      "url": "https://cursor.com/cursorbench",
+      "observed_at": "2026-07-25",
+      "data_date": "2026-07-09",
+      "scope": "Ambiguous multi-file tasks derived from real Cursor sessions, including codebase understanding, bugfinding, planning, implementation, and code review",
+      "limitations": "The Cursor agent harness differs from every production runner in this kit; Cursor reports possible Grok 4.5 training contamination from an earlier benchmark codebase snapshot; no review precision or recall is published"
+    },
+    "frontiercode-1.1-2026-07-07": {
+      "name": "FrontierCode 1.1",
+      "url": "https://cognition.com/frontiercode",
+      "methodology_url": "https://cognition.com/blog/frontier-code-1.1",
+      "observed_at": "2026-07-25",
+      "data_date": "2026-07-07",
+      "scope": "Maintainer-authored real-repository tasks graded for mergeability across correctness, tests, scope discipline, style, and codebase standards",
+      "limitations": "Scores remain model-plus-harness evidence; a matching model name does not qualify a different production runner or a reviewer lane"
+    },
+    "frontierswe-2026-07-25": {
+      "name": "FrontierSWE",
+      "url": "https://www.frontierswe.com/",
+      "observed_at": "2026-07-25",
+      "data_date": "2026-07-25",
+      "scope": "Pairwise agentic software-engineering leaderboard reporting mean rank and dominance across repository tasks",
+      "limitations": "Only Fable 5, Grok 4.5, and GLM-5.2 among current targets are listed; Grok CLI and Claude Code results are contextual for different local bridges"
+    },
+    "apex-swe-2026-07-25": {
+      "name": "Mercor APEX-SWE",
+      "url": "https://www.mercor.com/apex/",
+      "observed_at": "2026-07-25",
+      "data_date": "2026-07-25",
+      "scope": "Real-world software-engineering tasks spanning integration, observability, bug fixes, and feature builds",
+      "limitations": "Published rows do not attest the complete production runner configuration; scores are builder context and not reviewer evidence"
+    },
+    "openbench-kimi-k3-2026-07-20": {
+      "name": "OpenBench Kimi K3 release",
+      "url": "https://github.com/minghinmatthewlam/openbench/blob/main/docs/releases/2026-07-20-kimi-k3/index.html",
+      "observed_at": "2026-07-25",
+      "data_date": "2026-07-20",
+      "category": "local-harness-evaluation",
+      "scope": "Kimi K3 evaluated through GrokBuild, OpenCode, and pi on short deterministic coding tasks",
+      "limitations": "None of the published harnesses is the production Kimi Code CLI max route; the report warns that provenance is not comparable across harnesses"
+    },
+    "openbench-gpt56-2026-07-21": {
+      "name": "OpenBench GPT-5.6 release",
+      "url": "https://github.com/minghinmatthewlam/openbench/blob/main/docs/releases/2026-07-21-gpt56/index.html",
+      "observed_at": "2026-07-25",
+      "data_date": "2026-07-21",
+      "category": "local-harness-evaluation",
+      "scope": "GPT-5.6 Sol evaluated across seven agent harnesses with 311 countable result cells",
+      "limitations": "The Codex row uses medium effort, not the production Sol high reviewer/judge profile; coding correctness does not qualify review or judgement"
+    },
+    "epoch-zip-2026-07-25": {
+      "name": "Epoch AI benchmark data ZIP",
+      "url": "https://epoch.ai/benchmarks/use-this-data",
+      "data_url": "https://epoch.ai/data/benchmark_data.zip",
+      "observed_at": "2026-07-25",
+      "archive_sha256": "72a03e2fb8f7e24aba2fafdb08558100e6131b70d67370246dd1bf22daf36cff",
+      "scope": "74 benchmark CSVs, 5,671 rows, and 5,617 advisory normalized records spanning coding, agents, multimodal reasoning, and general capabilities",
+      "limitations": "Many imported rows have unknown harness or effort and remain contextual; the ZIP contains no exact Gemini 3.6 Flash or Qwen3.8 Max Preview record and cannot mutate a routing gate"
+    },
+    "epoch-capabilities-index-2026-07-24": {
+      "name": "Epoch Capabilities Index",
+      "url": "https://epoch.ai/eci",
+      "methodology_url": "https://epoch.ai/data/eci-documentation",
+      "observed_at": "2026-07-25",
+      "data_date": "2026-07-24",
+      "scope": "Composite general-capability scale built from more than 50 benchmarks, with a software-engineering subset",
+      "limitations": "A composite capability score is broad context and cannot qualify a production coding, review, security, or judgement lane"
+    },
+    "blueprint-bench-2-2026-05": {
+      "name": "Blueprint-Bench 2",
+      "url": "https://andonlabs.com/evals/blueprint-bench-2",
+      "observed_at": "2026-07-25",
+      "data_date": "2026-05",
+      "scope": "Agentic multimodal spatial-reasoning evaluation over 50 apartments with a persistent cross-task notepad",
+      "limitations": "Spatial reconstruction is useful general agent context but is not coding-lane qualification"
     }
   },
   "lane_evidence": {
@@ -147,8 +233,8 @@
       "model": "gpt-5.6-sol",
       "harness": "codex",
       "effort": "max",
-      "source": "aa-coding-agent-v1.2",
-      "metrics": {"coding": {"index": 61, "deep_swe_pass_pct": 69, "terminal_bench_v2_pass_pct": 88, "swe_atlas_qna_pass_pct": 27, "cost_per_task_usd": 7.08, "time_per_task_minutes": 10.2, "tokens_per_task_millions": 13.2}}
+      "source": "aa-coding-agent-v1.3",
+      "metrics": {"coding": {"index": 67, "deep_swe_pass_pct": 69, "terminal_bench_v2_pass_pct": 88, "swe_atlas_qna_pass_pct": 43}}
     },
     {
       "id": "aa-claude-fable-5-max",
@@ -159,20 +245,36 @@
       "metrics": {"coding": {"index": 59, "deep_swe_pass_pct": 66, "terminal_bench_v2_pass_pct": 83, "swe_atlas_qna_pass_pct": 29, "cost_per_task_usd": 11.72, "time_per_task_minutes": 23.4, "tokens_per_task_millions": 14.1}}
     },
     {
+      "id": "aa-claude-fable-5-max-with-fallback",
+      "model": "claude-fable-5",
+      "harness": "claude-code-with-fallback",
+      "effort": "max",
+      "source": "aa-coding-agent-v1.3",
+      "metrics": {"coding": {"index": 66, "deep_swe_pass_pct": 66, "terminal_bench_v2_pass_pct": 83, "swe_atlas_qna_pass_pct": 49, "cost_per_task_usd": 11.71}}
+    },
+    {
+      "id": "aa-claude-opus-5-high",
+      "model": "claude-opus-5",
+      "harness": "claude-code",
+      "effort": "high",
+      "source": "aa-coding-agent-v1.3",
+      "metrics": {"coding": {"index": 63, "deep_swe_pass_pct": 61, "terminal_bench_v2_pass_pct": 80, "swe_atlas_qna_pass_pct": 49, "cost_per_task_usd": 3.80, "time_per_task_minutes": 13.4, "tokens_per_task_millions": 9.7}}
+    },
+    {
       "id": "aa-kimi-code-kimi-k3",
       "model": "kimi-k3",
       "harness": "kimi-code-cli",
       "effort": "max",
-      "source": "aa-coding-agent-v1.2",
-      "metrics": {"coding": {"index": 57, "deep_swe_pass_pct": 64, "terminal_bench_v2_pass_pct": 84, "swe_atlas_qna_pass_pct": 23, "cost_per_task_usd": 3.18, "time_per_task_minutes": 23.8, "tokens_per_task_millions": 10.6}}
+      "source": "aa-coding-agent-v1.3",
+      "metrics": {"coding": {"index": 61, "deep_swe_pass_pct": 64, "terminal_bench_v2_pass_pct": 84, "swe_atlas_qna_pass_pct": 37, "cost_per_task_usd": 3.18, "time_per_task_minutes": 23.8, "tokens_per_task_millions": 10.6}}
     },
     {
       "id": "aa-codex-gpt-5.6-terra-max",
       "model": "gpt-5.6-terra",
       "harness": "codex",
       "effort": "max",
-      "source": "aa-coding-agent-v1.2",
-      "metrics": {"coding": {"index": 57, "deep_swe_pass_pct": 67, "terminal_bench_v2_pass_pct": 84, "swe_atlas_qna_pass_pct": 21, "cost_per_task_usd": 2.76, "time_per_task_minutes": 8.4, "tokens_per_task_millions": 9.5}}
+      "source": "aa-coding-agent-v1.3",
+      "metrics": {"coding": {"index": 62, "deep_swe_pass_pct": 67, "terminal_bench_v2_pass_pct": 84, "swe_atlas_qna_pass_pct": 36}}
     },
     {
       "id": "aa-claude-opus-4.8-max",
@@ -187,56 +289,56 @@
       "model": "gpt-5.6-luna",
       "harness": "codex",
       "effort": "max",
-      "source": "aa-coding-agent-v1.2",
-      "metrics": {"coding": {"index": 54, "deep_swe_pass_pct": 63, "terminal_bench_v2_pass_pct": 80, "swe_atlas_qna_pass_pct": 18, "cost_per_task_usd": 1.57, "time_per_task_minutes": 8.0, "tokens_per_task_millions": 15.5}}
+      "source": "aa-coding-agent-v1.3",
+      "metrics": {"coding": {"index": 59, "deep_swe_pass_pct": 63, "terminal_bench_v2_pass_pct": 80, "swe_atlas_qna_pass_pct": 33}}
     },
     {
       "id": "aa-codex-gpt-5.6-sol-high",
       "model": "gpt-5.6-sol",
       "harness": "codex",
       "effort": "high",
-      "source": "aa-coding-agent-v1.2",
-      "metrics": {"coding": {"index": 58, "deep_swe_pass_pct": 65, "terminal_bench_v2_pass_pct": 83, "swe_atlas_qna_pass_pct": 27, "reported_cost_per_task_usd": 0, "cost_comparable": false, "cost_note": "Source displayed $0.00; treat cost as unavailable, not free.", "time_per_task_minutes": 6.3, "tokens_per_task_millions": 8.1}}
+      "source": "aa-coding-agent-v1.3",
+      "metrics": {"coding": {"index": 64, "deep_swe_pass_pct": 65, "terminal_bench_v2_pass_pct": 83, "swe_atlas_qna_pass_pct": 45, "cost_per_task_usd": 4.14}}
     },
     {
       "id": "aa-codex-gpt-5.6-terra-medium",
       "model": "gpt-5.6-terra",
       "harness": "codex",
       "effort": "medium",
-      "source": "aa-coding-agent-v1.2",
-      "metrics": {"coding": {"index": 44, "deep_swe_pass_pct": 46, "terminal_bench_v2_pass_pct": 69, "swe_atlas_qna_pass_pct": 17, "cost_per_task_usd": 0.90, "time_per_task_minutes": 4.3, "tokens_per_task_millions": 3.1}}
+      "source": "aa-coding-agent-v1.3",
+      "metrics": {"coding": {"index": 48, "deep_swe_pass_pct": 46, "terminal_bench_v2_pass_pct": 69, "swe_atlas_qna_pass_pct": 28, "cost_per_task_usd": 0.90}}
     },
     {
       "id": "aa-codex-gpt-5.6-terra-low",
       "model": "gpt-5.6-terra",
       "harness": "codex",
       "effort": "low",
-      "source": "aa-coding-agent-v1.2",
-      "metrics": {"coding": {"index": 34, "deep_swe_pass_pct": 30, "terminal_bench_v2_pass_pct": 58, "swe_atlas_qna_pass_pct": 14, "cost_per_task_usd": 0.48, "time_per_task_minutes": 2.8, "tokens_per_task_millions": 1.5}}
+      "source": "aa-coding-agent-v1.3",
+      "metrics": {"coding": {"index": 37, "deep_swe_pass_pct": 30, "terminal_bench_v2_pass_pct": 58, "swe_atlas_qna_pass_pct": 23, "cost_per_task_usd": 0.48}}
     },
     {
       "id": "aa-codex-gpt-5.6-luna-low",
       "model": "gpt-5.6-luna",
       "harness": "codex",
       "effort": "low",
-      "source": "aa-coding-agent-v1.2",
-      "metrics": {"coding": {"index": 23, "deep_swe_pass_pct": 10, "terminal_bench_v2_pass_pct": 50, "swe_atlas_qna_pass_pct": 10, "cost_per_task_usd": 0.21, "time_per_task_minutes": 1.9, "tokens_per_task_millions": 1.5}}
+      "source": "aa-coding-agent-v1.3",
+      "metrics": {"coding": {"index": 25, "deep_swe_pass_pct": 10, "terminal_bench_v2_pass_pct": 50, "swe_atlas_qna_pass_pct": 15, "cost_per_task_usd": 0.21}}
     },
     {
       "id": "aa-claude-glm-5.2",
       "model": "glm-5.2",
       "harness": "claude-code",
       "effort": "reported-default",
-      "source": "aa-coding-agent-v1.2",
-      "metrics": {"coding": {"index": 40, "deep_swe_pass_pct": 29, "terminal_bench_v2_pass_pct": 72, "swe_atlas_qna_pass_pct": 19, "cost_per_task_usd": 6.51, "time_per_task_minutes": 25.1, "tokens_per_task_millions": 6.5}}
+      "source": "aa-coding-agent-v1.3",
+      "metrics": {"coding": {"index": 43, "deep_swe_pass_pct": 29, "terminal_bench_v2_pass_pct": 72, "swe_atlas_qna_pass_pct": 29, "cost_per_task_usd": 6.51}}
     },
     {
       "id": "arena-agent-fable-5-high",
       "model": "claude-fable-5",
       "harness": "arena-agent-mode",
       "effort": "high",
-      "source": "agent-arena-2026-07-19",
-      "metrics": {"agent": {"net_improvement_pct": 13.22, "confirmed_success_effect_pct": 11.71, "praise_vs_complaint_effect_pct": 24.97, "steerability_effect_pct": 15.64, "bash_recovery_effect_pct": 12.67, "tool_hallucination_effect_pct": 1.08, "sessions": 23509}}
+      "source": "agent-arena-2026-07-21",
+      "metrics": {"agent": {"net_improvement_pct": 12.72, "confirmed_success_effect_pct": 10.67, "praise_vs_complaint_effect_pct": 23.94, "steerability_effect_pct": 14.62, "sessions": 23549}}
     },
     {
       "id": "arena-agent-opus-4.8-thinking",
@@ -251,65 +353,73 @@
       "model": "gpt-5.6-sol",
       "harness": "arena-agent-mode",
       "effort": "xhigh",
-      "source": "agent-arena-2026-07-19",
-      "metrics": {"agent": {"net_improvement_pct": 9.86, "confirmed_success_effect_pct": 7.64, "praise_vs_complaint_effect_pct": 21.97, "steerability_effect_pct": 9.95, "bash_recovery_effect_pct": 8.64, "tool_hallucination_effect_pct": 1.08, "sessions": 15457}}
+      "source": "agent-arena-2026-07-21",
+      "metrics": {"agent": {"net_improvement_pct": 10.12, "confirmed_success_effect_pct": 7.25, "praise_vs_complaint_effect_pct": 23.53, "steerability_effect_pct": 9.71, "sessions": 15991}}
     },
     {
       "id": "arena-agent-kimi-k3",
       "model": "kimi-k3",
       "harness": "arena-agent-mode",
       "effort": "reported-default",
-      "source": "agent-arena-2026-07-19",
-      "metrics": {"agent": {"net_improvement_pct": 9.62, "confirmed_success_effect_pct": 14.42, "praise_vs_complaint_effect_pct": 20.62, "steerability_effect_pct": 5.58, "bash_recovery_effect_pct": 6.41, "tool_hallucination_effect_pct": 1.08, "sessions": 8344}}
+      "source": "agent-arena-2026-07-21",
+      "metrics": {"agent": {"net_improvement_pct": 9.71, "confirmed_success_effect_pct": 14.00, "praise_vs_complaint_effect_pct": 20.30, "steerability_effect_pct": 6.52, "sessions": 11490}}
     },
     {
       "id": "arena-agent-sonnet-5-high",
       "model": "claude-sonnet-5",
       "harness": "arena-agent-mode",
       "effort": "high",
-      "source": "agent-arena-2026-07-19",
-      "metrics": {"agent": {"net_improvement_pct": 9.10, "confirmed_success_effect_pct": 8.70, "praise_vs_complaint_effect_pct": 17.59, "steerability_effect_pct": 7.46, "bash_recovery_effect_pct": 10.78, "tool_hallucination_effect_pct": 0.95, "sessions": 24310}}
+      "source": "agent-arena-2026-07-21",
+      "metrics": {"agent": {"net_improvement_pct": 8.66, "confirmed_success_effect_pct": 8.14, "praise_vs_complaint_effect_pct": 16.88, "steerability_effect_pct": 6.20, "sessions": 24359}}
     },
     {
       "id": "arena-agent-glm-5.2-max",
       "model": "glm-5.2",
       "harness": "arena-agent-mode",
       "effort": "max",
-      "source": "agent-arena-2026-07-19",
-      "metrics": {"agent": {"net_improvement_pct": 6.47, "confirmed_success_effect_pct": 8.53, "praise_vs_complaint_effect_pct": 12.29, "steerability_effect_pct": 5.59, "bash_recovery_effect_pct": 4.85, "tool_hallucination_effect_pct": 1.08, "sessions": 37177}}
+      "source": "agent-arena-2026-07-21",
+      "metrics": {"agent": {"net_improvement_pct": 6.50, "confirmed_success_effect_pct": 8.65, "praise_vs_complaint_effect_pct": 12.94, "steerability_effect_pct": 4.71, "sessions": 38221}}
+    },
+    {
+      "id": "arena-agent-grok-4.5",
+      "model": "grok-4.5",
+      "harness": "arena-agent-mode",
+      "effort": "reported-default",
+      "source": "agent-arena-2026-07-21",
+      "metrics": {"agent": {"net_improvement_pct": 5.56, "confirmed_success_effect_pct": 3.86, "praise_vs_complaint_effect_pct": 8.17, "steerability_effect_pct": 3.80, "sessions": 21424}}
     },
     {
       "id": "webdev-kimi-k3",
       "model": "kimi-k3",
       "harness": "arena-code-webdev",
       "effort": "reported-default",
-      "source": "code-arena-webdev-2026-07-19",
+      "source": "code-arena-webdev-2026-07-24",
       "provisional": true,
-      "metrics": {"webdev": {"elo": 1677, "ci_low": 1660, "ci_high": 1694}}
+      "metrics": {"webdev": {"elo": 1682, "ci_low": 1669, "ci_high": 1695}}
     },
     {
       "id": "webdev-fable-5",
       "model": "claude-fable-5",
       "harness": "arena-code-webdev",
       "effort": "reported-default",
-      "source": "code-arena-webdev-2026-07-19",
-      "metrics": {"webdev": {"elo": 1636, "ci_low": 1624, "ci_high": 1648}}
+      "source": "code-arena-webdev-2026-07-24",
+      "metrics": {"webdev": {"elo": 1630, "ci_low": 1620, "ci_high": 1640}}
     },
     {
       "id": "webdev-gpt-5.6-sol-xhigh",
       "model": "gpt-5.6-sol",
       "harness": "codex-harness",
       "effort": "xhigh",
-      "source": "code-arena-webdev-2026-07-19",
-      "metrics": {"webdev": {"elo": 1633, "ci_low": 1622, "ci_high": 1644}}
+      "source": "code-arena-webdev-2026-07-24",
+      "metrics": {"webdev": {"elo": 1625, "ci_low": 1615, "ci_high": 1635}}
     },
     {
       "id": "webdev-glm-5.2-max",
       "model": "glm-5.2",
       "harness": "arena-code-webdev",
       "effort": "max",
-      "source": "code-arena-webdev-2026-07-19",
-      "metrics": {"webdev": {"elo": 1593, "ci_low": 1583, "ci_high": 1603}}
+      "source": "code-arena-webdev-2026-07-24",
+      "metrics": {"webdev": {"elo": 1588, "ci_low": 1578, "ci_high": 1598}}
     },
     {
       "id": "aa-grok-build-grok-4.5-high",
@@ -333,7 +443,209 @@
       "harness": "arena-code-webdev",
       "effort": "reported-default",
       "source": "code-arena-webdev-2026-07-24",
-      "metrics": {"webdev": {"elo": 1558, "ci_low": 1545, "ci_high": 1571}}
+      "metrics": {"webdev": {"elo": 1550, "ci_low": 1538, "ci_high": 1562}}
+    },
+    {
+      "id": "webdev-gemini-3.6-flash",
+      "model": "gemini-3.6-flash",
+      "harness": "arena-code-webdev",
+      "effort": "reported-default",
+      "source": "code-arena-webdev-2026-07-24",
+      "provisional": true,
+      "metrics": {"webdev": {"elo": 1526, "ci_low": 1513, "ci_high": 1539}}
+    },
+    {
+      "id": "cursorbench-fable-5-xhigh",
+      "model": "claude-fable-5",
+      "harness": "cursor-agent",
+      "effort": "xhigh",
+      "source": "cursorbench-3.2-2026-07-08",
+      "metrics": {"coding": {"cursorbench_score": 68.4}}
+    },
+    {
+      "id": "cursorbench-opus-5-high",
+      "model": "claude-opus-5",
+      "harness": "cursor-agent",
+      "effort": "high",
+      "source": "cursorbench-3.2-2026-07-08",
+      "metrics": {"coding": {"cursorbench_score": 66.7, "cost_per_task_usd": 3.91}}
+    },
+    {
+      "id": "cursorbench-gpt-5.6-sol-high",
+      "model": "gpt-5.6-sol",
+      "harness": "cursor-agent",
+      "effort": "high",
+      "source": "cursorbench-3.2-2026-07-08",
+      "metrics": {"coding": {"cursorbench_score": 63.5}}
+    },
+    {
+      "id": "cursorbench-gpt-5.6-terra-medium",
+      "model": "gpt-5.6-terra",
+      "harness": "cursor-agent",
+      "effort": "medium",
+      "source": "cursorbench-3.2-2026-07-08",
+      "metrics": {"coding": {"cursorbench_score": 50.3}}
+    },
+    {
+      "id": "cursorbench-gpt-5.6-terra-low",
+      "model": "gpt-5.6-terra",
+      "harness": "cursor-agent",
+      "effort": "low",
+      "source": "cursorbench-3.2-2026-07-08",
+      "metrics": {"coding": {"cursorbench_score": 46.9}}
+    },
+    {
+      "id": "cursorbench-gpt-5.6-luna-low",
+      "model": "gpt-5.6-luna",
+      "harness": "cursor-agent",
+      "effort": "low",
+      "source": "cursorbench-3.2-2026-07-08",
+      "metrics": {"coding": {"cursorbench_score": 37.6}}
+    },
+    {
+      "id": "cursorbench-sonnet-5-medium",
+      "model": "claude-sonnet-5",
+      "harness": "cursor-agent",
+      "effort": "medium",
+      "source": "cursorbench-3.2-2026-07-08",
+      "metrics": {"coding": {"cursorbench_score": 52.4}}
+    },
+    {
+      "id": "cursorbench-sonnet-5-low",
+      "model": "claude-sonnet-5",
+      "harness": "cursor-agent",
+      "effort": "low",
+      "source": "cursorbench-3.2-2026-07-08",
+      "metrics": {"coding": {"cursorbench_score": 47.7}}
+    },
+    {
+      "id": "cursorbench-glm-5.2-high",
+      "model": "glm-5.2",
+      "harness": "cursor-agent",
+      "effort": "high",
+      "source": "cursorbench-3.2-2026-07-08",
+      "metrics": {"coding": {"cursorbench_score": 51.5}}
+    },
+    {
+      "id": "cursorbench-gemini-3.6-flash-high",
+      "model": "gemini-3.6-flash",
+      "harness": "cursor-agent",
+      "effort": "high",
+      "source": "cursorbench-3.2-2026-07-08",
+      "metrics": {"coding": {"cursorbench_score": 53.5, "cost_per_task_usd": 1.56}}
+    },
+    {
+      "id": "cursorbench-gemini-3.6-flash-medium",
+      "model": "gemini-3.6-flash",
+      "harness": "cursor-agent",
+      "effort": "medium",
+      "source": "cursorbench-3.2-2026-07-08",
+      "metrics": {"coding": {"cursorbench_score": 51.2, "cost_per_task_usd": 1.48}}
+    },
+    {
+      "id": "cursorbench-grok-4.5-high",
+      "model": "grok-4.5",
+      "harness": "cursor-agent",
+      "effort": "high",
+      "source": "cursorbench-3.2-2026-07-08",
+      "contamination_warning": true,
+      "metrics": {"coding": {"cursorbench_score": 66.7}}
+    },
+    {
+      "id": "frontiercode-fable-5-xhigh",
+      "model": "claude-fable-5",
+      "harness": "claude-code",
+      "effort": "xhigh",
+      "source": "frontiercode-1.1-2026-07-07",
+      "metrics": {"coding": {"frontiercode_mean_at_5": 0.535}}
+    },
+    {
+      "id": "frontiercode-grok-4.5-high",
+      "model": "grok-4.5",
+      "harness": "grok-shell",
+      "effort": "high",
+      "source": "frontiercode-1.1-2026-07-07",
+      "metrics": {"coding": {"frontiercode_mean_at_5": 0.424}}
+    },
+    {
+      "id": "frontiercode-glm-5.2",
+      "model": "glm-5.2",
+      "harness": "mini-swe-agent",
+      "effort": "none",
+      "source": "frontiercode-1.1-2026-07-07",
+      "metrics": {"coding": {"frontiercode_mean_at_5": 0.245}}
+    },
+    {
+      "id": "frontierswe-fable-5",
+      "model": "claude-fable-5",
+      "harness": "claude-code",
+      "effort": "reported-default",
+      "source": "frontierswe-2026-07-25",
+      "metrics": {"coding": {"frontierswe_mean_rank": 2.47, "frontierswe_dominance_pct": 89}}
+    },
+    {
+      "id": "frontierswe-grok-4.5",
+      "model": "grok-4.5",
+      "harness": "grok-cli",
+      "effort": "reported-default",
+      "source": "frontierswe-2026-07-25",
+      "metrics": {"coding": {"frontierswe_mean_rank": 4.09, "frontierswe_dominance_pct": 78}}
+    },
+    {
+      "id": "frontierswe-glm-5.2",
+      "model": "glm-5.2",
+      "harness": "claude-code",
+      "effort": "reported-default",
+      "source": "frontierswe-2026-07-25",
+      "metrics": {"coding": {"frontierswe_mean_rank": 4.85, "frontierswe_dominance_pct": 72}}
+    },
+    {
+      "id": "apex-swe-fable-5-max",
+      "model": "claude-fable-5",
+      "harness": "apex-swe-agent",
+      "effort": "max",
+      "source": "apex-swe-2026-07-25",
+      "metrics": {"coding": {"apex_swe_pass_pct": 54.8, "standard_error_pct": 6.0}}
+    },
+    {
+      "id": "apex-swe-grok-4.5-high",
+      "model": "grok-4.5",
+      "harness": "apex-swe-agent",
+      "effort": "high",
+      "source": "apex-swe-2026-07-25",
+      "metrics": {"coding": {"apex_swe_pass_pct": 51.2, "standard_error_pct": 6.0}}
+    },
+    {
+      "id": "openbench-kimi-k3-grokbuild",
+      "model": "kimi-k3",
+      "harness": "grok-build",
+      "effort": "reported-default",
+      "source": "openbench-kimi-k3-2026-07-20",
+      "metrics": {"coding": {"tasks_passed": 32, "tasks_total": 45, "pass_pct": 71.1}}
+    },
+    {
+      "id": "openbench-kimi-k3-opencode",
+      "model": "kimi-k3",
+      "harness": "opencode",
+      "effort": "reported-default",
+      "source": "openbench-kimi-k3-2026-07-20",
+      "metrics": {"coding": {"tasks_passed": 31, "tasks_total": 45, "pass_pct": 68.9}}
+    },
+    {
+      "id": "openbench-kimi-k3-pi",
+      "model": "kimi-k3",
+      "harness": "pi",
+      "effort": "reported-default",
+      "source": "openbench-kimi-k3-2026-07-20",
+      "metrics": {"coding": {"tasks_passed": 25, "tasks_total": 39, "pass_pct": 64.1}}
+    },
+    {
+      "id": "openbench-gpt-5.6-sol-codex-medium",
+      "model": "gpt-5.6-sol",
+      "harness": "codex",
+      "effort": "medium",
+      "source": "openbench-gpt56-2026-07-21",
+      "metrics": {"coding": {"tasks_passed": 32, "tasks_total": 45, "pass_pct": 71.1}}
     },
     {
       "id": "anthropic-claude-opus-5-launch",

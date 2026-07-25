@@ -28,23 +28,23 @@ bin/delegation-route resolve --lane judgement --json
 bin/delegation-route resolve --lane super-judgement --json
 ```
 
-The snapshot through 2026-07-25 uses Artificial Analysis Coding Agent Index for
-end-to-end coding, Agent Arena for real-world reliability, Code Arena WebDev for
-frontend preference, SWE-PRBench/Martian for review, and Anthropic's July 24
-Opus 5 launch documentation as contextual release evidence. It stores raw
-metrics rather than compressing unrelated capabilities into subjective 1–10
-scores.
+The snapshot observed through 2026-07-25 uses Artificial Analysis Coding Agent
+Index v1.3 for end-to-end coding, Agent Arena for real-world reliability, Code
+Arena WebDev for frontend preference, SWE-PRBench/Martian for review, and
+CursorBench, FrontierCode, FrontierSWE, APEX-SWE, OpenBench, and Epoch's ZIP as
+separately labeled context. It stores raw metrics rather than compressing
+unrelated capabilities into subjective 1–10 scores.
 
-| exact model + harness + effort | coding index | DeepSWE | Terminal-Bench | repo Q&A | API cost/task |
+| current exact model + harness + effort | coding index | DeepSWE | Terminal-Bench | repo Q&A | API cost/task |
 |---|---:|---:|---:|---:|---:|
+| GPT-5.6 Sol + Codex, high | 64 | 65% | 83% | 45% | $4.14 |
 | Grok 4.5 + Grok Build, high | 64 | 60% | 85% | 48% | $2.59 |
-| GPT-5.6 Sol + Codex, max | 61 | 69% | 88% | 27% | $7.08 |
-| Fable 5 + Claude Code, max | 59 | 66% | 83% | 29% | $11.72 |
-| Kimi K3 + Kimi Code CLI, max | 57 | 64% | 84% | 23% | $3.18 |
-| GPT-5.6 Terra + Codex, max | 57 | 67% | 84% | 21% | $2.76 |
-| Opus 4.8 + Claude Code, max (historical predecessor) | 55 | 56% | 79% | 30% | $7.70 |
-| GPT-5.6 Luna + Codex, max | 54 | 63% | 80% | 18% | $1.57 |
-| GLM-5.2 + Claude Code, reported default | 40 | 29% | 72% | 19% | $6.51 |
+| Claude Opus 5 + Claude Code, high | 63 | 61% | 80% | 49% | $3.80 |
+| Kimi K3 + Kimi Code CLI, max | 61 | 64% | 84% | 37% | $3.18 |
+| GPT-5.6 Terra + Codex, medium | 48 | 46% | 69% | 28% | $0.90 |
+| GLM-5.2 + Claude Code, reported default | 43 | 29% | 72% | 29% | $6.51 |
+| GPT-5.6 Terra + Codex, low | 37 | 30% | 58% | 23% | $0.48 |
+| GPT-5.6 Luna + Codex, low | 25 | 10% | 50% | 15% | $0.21 |
 
 These are API-equivalent costs, not subscription-bucket economics. Agent Arena
 and WebDev rows live in the JSON because their variants often differ from the
@@ -56,13 +56,13 @@ requires the same model, harness, and effort and must be relevant to the lane;
 nearby variants and general coding scores for reviewer/judgement remain context.
 `delegation-route table` exposes both counts plus local sample confidence.
 
-Where published, the JSON also records the exact installed Codex efforts: Luna
-`low`, Terra `low`/`medium`, and Sol `high`. Exact current rows for several
-installed Claude efforts are not published in this snapshot, so their nearby
-variants remain contextual evidence rather than profile-level validation.
-The installed `opus-reviewer` now pins `claude-opus-5` at `high`; its launch
-evidence and older Opus 4.8 rows are context only, while the exact local smoke
-proves runtime identity rather than review quality.
+The JSON now records current exact installed rows for Luna `low`, Terra
+`low`/`medium`, Sol `high`, Opus 5 `high`, Kimi K3 `max`, and Grok 4.5 `high`.
+The Opus row measures coding, not review precision/recall, so it remains
+insufficient to qualify senior or security work. Fable `xhigh` has exact-variant
+FrontierCode evidence but no judgement benchmark. Sonnet's new CursorBench rows
+use a different harness. GLM's public rows still do not match the production
+Claude→Z.AI bridge.
 
 Evidence maps to lanes, not to one global ranking:
 
@@ -105,12 +105,17 @@ valid subset and exact public rows support controlled `clerk`, `scout`, `builder
 and `frontend-builder` use with `--allow-provisional`; `senior` is only a blocked
 candidate. The installed gate remains authoritative for the exact tuple.
 
-Qwen3.8 Max Preview is a blocked Token Plan candidate. The subscription and
-runner establish availability only; there is no exact public benchmark or local
-lane evaluation in this repository yet. Normal dispatch is therefore refused.
+Qwen3.8 Max Preview is a blocked Token Plan candidate. The July 25 audit found
+no exact row in Artificial Analysis, Arena, WebDev, OpenBench, or Epoch's ZIP.
+The subscription and runner establish availability only; there is no exact
+public benchmark or local lane evaluation in this repository yet. Normal
+dispatch is therefore refused.
 
-Gemini 3.6 Flash is reachable through the authenticated Antigravity CLI. Only
-the exact `gemini-3.6-flash-medium` scout tuple is provisional and requires
+Gemini 3.6 Flash is reachable through the authenticated Antigravity CLI. Its
+new public evidence consists of CursorBench scores at `medium` (51.2) and `high`
+(53.5), plus a preliminary WebDev result (1526 ±13). All are contextual because
+they use Cursor/Arena rather than the production `agy` harness. Only the exact
+`gemini-3.6-flash-medium` scout tuple is provisional and requires
 `--allow-provisional`; high-effort editing lanes remain blocked pending scoped
 local evaluation. Runtime discovery is compatibility evidence, not qualification.
 The Antigravity bridge is prompt-only: the lead supplies selected file excerpts
