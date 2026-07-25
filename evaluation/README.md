@@ -43,9 +43,9 @@ also be relevant to the lane. Nearby variants, different harnesses, and general
 coding evidence for review/judgement are context and are shown separately in the
 generated table.
 
-The snapshot through 2026-07-24 is intentionally mixed-version: existing model
-rows retain the dated source that produced them, while Grok 4.5 uses newly
-observed sources. A newer source never silently rewrites an older row.
+The snapshot through 2026-07-25 is intentionally mixed-version: existing model
+rows retain the dated source that produced them, while Grok 4.5 and Opus 5 use
+newly observed sources. A newer source never silently rewrites an older row.
 
 - [Artificial Analysis Coding Agent Index v1.2](https://artificialanalysis.ai/agents/coding-agents/)
   with its [July 2026 methodology](https://artificialanalysis.ai/methodology/coding-agents-benchmarking):
@@ -75,6 +75,13 @@ observed sources. A newer source never silently rewrites an older row.
 - [OpenBench's Grok 4.5 release](https://github.com/minghinmatthewlam/openbench/blob/main/docs/releases/2026-07-20-grok45/index.html)
   and the current [Code Arena WebDev leaderboard](https://arena.ai/leaderboard/code/webdev?rankBy=labs)
   as contextual support for Grok's builder and frontend-builder promotion.
+- Anthropic's [Claude Opus 5 launch](https://www.anthropic.com/news/claude-opus-5)
+  and [migration documentation](https://platform.claude.com/docs/en/about-claude/models/whats-new-opus-5),
+  observed 2026-07-25, for the pinned `claude-opus-5` identity, supported effort
+  range, limits, pricing, and first-party qualitative review claims. These are
+  contextual release evidence, not an independent reviewer benchmark. Anthropic
+  also documents that flagged cyber requests may fall back to Opus 4.8; the
+  security gate exposes that provider-controlled exception explicitly.
 
 ### Local harness evaluation with OpenBench
 

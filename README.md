@@ -192,7 +192,7 @@ runner/gate, register the
   them); for programmatic/parallel work drive a GPT lane with
   `codex exec --ephemeral -p <profile>` (or `-m <model> -c model_reasoning_effort=<level>`).
   Both in [`claude/CLAUDE.delegation.md`](./claude/CLAUDE.delegation.md).
-- **Codex → Claude**: call `claude -p "<prompt>" --model opus|sonnet --effort <level>`
+- **Codex → Claude**: call `claude -p "<prompt>" --model claude-opus-5|sonnet --effort <level>`
   for taste, an independent-family second-opinion review, or bucket-aware offload
   (in [`codex/AGENTS.md`](./codex/AGENTS.md)). CLI-only — no reverse plugin exists.
 

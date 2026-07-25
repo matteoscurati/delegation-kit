@@ -28,10 +28,12 @@ bin/delegation-route resolve --lane judgement --json
 bin/delegation-route resolve --lane super-judgement --json
 ```
 
-The snapshot through 2026-07-24 uses Artificial Analysis Coding Agent Index for
+The snapshot through 2026-07-25 uses Artificial Analysis Coding Agent Index for
 end-to-end coding, Agent Arena for real-world reliability, Code Arena WebDev for
-frontend preference, and SWE-PRBench/Martian for review. It stores raw metrics
-rather than compressing unrelated capabilities into subjective 1–10 scores.
+frontend preference, SWE-PRBench/Martian for review, and Anthropic's July 24
+Opus 5 launch documentation as contextual release evidence. It stores raw
+metrics rather than compressing unrelated capabilities into subjective 1–10
+scores.
 
 | exact model + harness + effort | coding index | DeepSWE | Terminal-Bench | repo Q&A | API cost/task |
 |---|---:|---:|---:|---:|---:|
@@ -40,7 +42,7 @@ rather than compressing unrelated capabilities into subjective 1–10 scores.
 | Fable 5 + Claude Code, max | 59 | 66% | 83% | 29% | $11.72 |
 | Kimi K3 + Kimi Code CLI, max | 57 | 64% | 84% | 23% | $3.18 |
 | GPT-5.6 Terra + Codex, max | 57 | 67% | 84% | 21% | $2.76 |
-| Opus 4.8 + Claude Code, max | 55 | 56% | 79% | 30% | $7.70 |
+| Opus 4.8 + Claude Code, max (historical predecessor) | 55 | 56% | 79% | 30% | $7.70 |
 | GPT-5.6 Luna + Codex, max | 54 | 63% | 80% | 18% | $1.57 |
 | GLM-5.2 + Claude Code, reported default | 40 | 29% | 72% | 19% | $6.51 |
 
@@ -58,6 +60,9 @@ Where published, the JSON also records the exact installed Codex efforts: Luna
 `low`, Terra `low`/`medium`, and Sol `high`. Exact current rows for several
 installed Claude efforts are not published in this snapshot, so their nearby
 variants remain contextual evidence rather than profile-level validation.
+The installed `opus-reviewer` now pins `claude-opus-5` at `high`; its launch
+evidence and older Opus 4.8 rows are context only, while the exact local smoke
+proves runtime identity rather than review quality.
 
 Evidence maps to lanes, not to one global ranking:
 
@@ -83,7 +88,7 @@ Effort levels each model exposes (Claude `effort:` / Codex `model_reasoning_effo
 | model | supported effort |
 |---|---|
 | fable-5 | low · medium · high · xhigh · max |
-| opus-4.8 | low · medium · high · xhigh |
+| opus-5 | low · medium · high · xhigh · max |
 | gpt-5.6-sol | low · medium · high |
 | gpt-5.6-terra | low · medium · high |
 | gpt-5.6-luna | low · medium · high |
@@ -172,11 +177,13 @@ automatically, and never merges or deploys.
   trade-offs, and synthesis; Sol handles technical feasibility, repository fit,
   failure modes, and verifiability. Neither produces the diff when selected as a
   judge. Use the pair only through the explicit super-judgement protocol.
-- **Route security-adjacent work to the reasoning model directly.** Anthropic's
-  classifier reroutes blocked prompts to Opus 4.8 anyway, so a security-shaped
-  Fable call either reroutes or comes back thinner — start on Opus and skip the
-  tax. (The broader "benign defensive work gets caught too" claim is unconfirmed
-  by Anthropic; don't over-route on it.)
+- **Route security-adjacent work to Opus 5 directly.** Anthropic states that
+  flagged cyber requests in Claude Code may fall back from Opus 5 to Opus 4.8
+  by default. The gate declares this provider fallback explicitly: the security
+  lane requests Opus 5 but is not exact-variant guaranteed when the classifier
+  fires. Inspect surfaced model identity or use Anthropic's CVP where exact
+  identity is mandatory. The broader claim that benign defensive work is
+  routinely caught is unconfirmed; do not over-route on it.
 - **Anything user-facing** (UI, copy, API design) needs a high-taste model.
 - **The cheap mid model has no first-class lane of its own** in this policy — use
   it as the driver/wrapper (the thin agents that shell out to the cheap execution

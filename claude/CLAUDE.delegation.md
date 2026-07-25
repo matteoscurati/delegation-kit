@@ -14,7 +14,7 @@ the dated evidence snapshot and lane mapping.
 
 ## Lanes (reference mapping — author's models)
 
-- **Lead = the capable-but-not-metered model** (author: **Opus 4.8 @ xhigh**).
+- **Lead = the capable-but-not-metered model** (author: **Opus 5 @ xhigh**).
   Owns requirements, decisions, integration, verification, the final response.
   Resident. Drop to medium effort for routine coordination.
 - **Judgement = Fable 5 or Sol high**, selected explicitly. Fable emphasizes
@@ -32,9 +32,13 @@ the dated evidence snapshot and lane mapping.
 - **Executor + routine reviewer = the cheap-and-capable model** (author:
   **Sonnet 5**, via the `sonnet-*` profiles). Bulk implementation, migrations,
   tests, extraction, repo mapping, and the **default** diff/bug-review lane.
-- **Senior review / taste / security = the high-taste model** (author: **Opus 4.8**,
+- **Senior review / taste / security = the high-taste model** (author: **Opus 5**,
   via `opus-reviewer`). Security-adjacent work routed here **directly**; user-facing
-  taste (UI, copy, API design); escalation target for the executor.
+  taste (UI, copy, API design); escalation target for the executor. Anthropic may
+  fall back from Opus 5 to Opus 4.8 when its safety classifier flags a cyber
+  request, so this lane requests Opus 5 but cannot guarantee that exact variant
+  in that case. Inspect surfaced model identity or use Anthropic's CVP when exact
+  identity is mandatory.
 
 ## Named profiles (installed to `~/.claude/agents/`)
 
@@ -44,7 +48,7 @@ the dated evidence snapshot and lane mapping.
 | `sonnet-scout` | sonnet / low | read-only repo mapping / exploration |
 | `sonnet-builder` | sonnet / medium | bounded implementation with acceptance checks |
 | `sonnet-reviewer` | sonnet / medium | routine correctness/bug review (the default) |
-| `opus-reviewer` | opus / high | security / taste / material review + escalation |
+| `opus-reviewer` | claude-opus-5 / high | security / taste / material review + escalation |
 | `fable-judge` | fable / xhigh | judgement: plan up front + final verdict/synthesis (two-touch) |
 
 ### Optional evaluated GLM executor
