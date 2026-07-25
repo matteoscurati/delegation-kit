@@ -9,6 +9,15 @@ It ships as a **reference implementation**: the author's concrete models
 external-evidence snapshot, and fail-closed local gates. Swap the models for your own tiers with
 [`ADAPTING.md`](./ADAPTING.md) — the *structure* is the transferable part.
 
+## Current release: 0.5.0
+
+Version 0.5.0 replaces the senior, taste, material-review, and security profile
+with exact `claude-opus-5` at `high` effort. The routing gate records the local
+runtime smokes and exposes Anthropic's documented, provider-controlled fallback
+to Opus 4.8 for flagged cyber requests, so callers do not mistake the requested
+model for a guaranteed runtime identity. The doctor now validates both model and
+effort on the active profile.
+
 ## What it installs
 
 **Claude Code** (`~/.claude/`)
