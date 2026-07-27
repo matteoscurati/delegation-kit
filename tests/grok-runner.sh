@@ -83,15 +83,32 @@ EOF
 chmod 755 "$TMP/bin/grok"
 printf 'Reply with exactly PONG.\n' >"$TMP/prompt.txt"
 
+# A stand-in for the vendor auto-update: the ambient CLI moves to a version the
+# pin does not attest, while the archived build stays where it was.
+mkdir -p "$TMP/bin-updated"
+cat >"$TMP/bin-updated/grok" <<EOF
+#!/usr/bin/env bash
+set -euo pipefail
+[ "\${1:-}" != --version ] || { printf 'grok 0.2.112 (deadbeef) [stable]\n'; exit 0; }
+exec "$TMP/bin/grok" "\$@"
+EOF
+chmod 755 "$TMP/bin-updated/grok"
+
 run_grok() {
-  DELEGATION_GROK_HOME="$TMP/grok-home" PATH="$TMP/bin:$PATH" \
-    "$ROOT/bin/delegation-grok" "$@"
+  DELEGATION_GROK_HOME="$TMP/grok-home" DELEGATION_GROK_BIN_STORE="$TMP/store" \
+    PATH="$TMP/bin:$PATH" "$ROOT/bin/delegation-grok" "$@"
+}
+
+run_grok_updated() {
+  DELEGATION_GROK_HOME="$TMP/grok-home" DELEGATION_GROK_BIN_STORE="$TMP/store" \
+    PATH="$TMP/bin-updated:$PATH" "$ROOT/bin/delegation-grok" "$@"
 }
 
 run_grok check --json >"$TMP/check.json"
 jq -e '
   .model == "grok-4.5" and
   .runtime_cli_version == "0.2.111" and
+  .runtime_cli_source == "path" and
   .selected_backend == "grok-build" and
   .provisional_lanes == ["builder","frontend-builder"] and
   .qualified_lanes == [] and
@@ -182,5 +199,78 @@ debug_path="$(jq -r '.debug_path' "$TMP/results/debug.txt.error.json")"
 [ -d "$debug_path" ] || fail "debug path was not preserved"
 [ "$(stat -f '%Lp' "$debug_path")" = 700 ] || fail "debug directory permissions are not 700"
 grep -q 'raw secret' "$debug_path/stderr.txt" || fail "opt-in debug stderr missing"
+
+# ---- pinned CLI store: a vendor auto-update must not touch the routing gate ----
+run_grok pin --from "$TMP/bin/grok" >"$TMP/pin.txt"
+grep -q '0.2.111' "$TMP/pin.txt" || fail "pin did not report the attested version"
+[ -x "$TMP/store/0.2.111/grok" ] || fail "pin did not archive the binary"
+[ -r "$TMP/store/0.2.111/grok.sha256" ] || fail "pin did not record a digest"
+[ "$(stat -f '%Lp' "$TMP/store/0.2.111/grok")" = 500 ] || fail "pinned binary is writable"
+
+run_grok pin --from "$TMP/bin/grok" >"$TMP/pin-again.txt"
+grep -q 'already pinned' "$TMP/pin-again.txt" || fail "second pin was not idempotent"
+
+rc=0
+run_grok pin --from "$TMP/bin-updated/grok" >/dev/null 2>&1 || rc=$?
+[ "$rc" = 69 ] || fail "pinning a non-attested build returned $rc"
+
+# The ambient CLI is now 0.2.112; the lane must keep running the archived build.
+run_grok_updated check --json >"$TMP/check-pinned.json"
+jq -e '
+  .runtime_cli_version == "0.2.111" and
+  .runtime_cli_source == "pinned" and
+  .selected_backend == "grok-build" and
+  .provisional_lanes == ["builder","frontend-builder"]
+' "$TMP/check-pinned.json" >/dev/null || fail "pinned store did not survive an ambient CLI update"
+[ "$(jq -r '.runtime_cli_path' "$TMP/check-pinned.json")" = "$TMP/store/0.2.111/grok" ] \
+  || fail "check did not report the pinned binary path"
+
+run_grok_updated run --lane builder --allow-provisional --prompt-file "$TMP/prompt.txt" \
+  --output "$TMP/results/pinned.txt" --workdir "$TMP/work"
+[ "$(cat "$TMP/results/pinned.txt")" = PONG ] || fail "pinned dispatch failed"
+jq -e '.runtime_cli_version == "0.2.111" and .runtime_cli_source == "pinned"' \
+  "$TMP/results/pinned.txt.metrics.json" >/dev/null || fail "metrics lost pinned provenance"
+
+# A tampered store must fail closed rather than run unattested bytes.
+chmod 600 "$TMP/store/0.2.111/grok.sha256"
+printf '%s  grok\n' deadbeef >"$TMP/store/0.2.111/grok.sha256"
+rc=0
+run_grok_updated run --lane builder --allow-provisional --prompt-file "$TMP/prompt.txt" \
+  --output "$TMP/results/tampered.txt" --workdir "$TMP/work" >/dev/null 2>&1 || rc=$?
+[ "$rc" = 69 ] || fail "digest mismatch returned $rc"
+[ ! -e "$TMP/results/tampered.txt" ] || fail "digest mismatch published output"
+run_grok_updated check --json >"$TMP/check-tampered.json"
+jq -e '
+  .selected_backend == "none" and
+  .runtime_cli_source == "none" and
+  (.backends["grok-build"].reason | test("digest mismatch"))
+' "$TMP/check-tampered.json" >/dev/null || fail "digest mismatch was not reported"
+run_grok pin --from "$TMP/bin/grok" --force >/dev/null
+
+# An explicit override outranks the store, and is version-gated all the same.
+rc=0
+DELEGATION_GROK_BIN="$TMP/bin-updated/grok" run_grok run --lane builder --allow-provisional \
+  --prompt-file "$TMP/prompt.txt" --output "$TMP/results/override.txt" \
+  --workdir "$TMP/work" >/dev/null 2>&1 || rc=$?
+[ "$rc" = 69 ] || fail "non-attested override returned $rc"
+DELEGATION_GROK_BIN="$TMP/bin/grok" run_grok check --json >"$TMP/check-override.json"
+jq -e '.runtime_cli_source == "override" and .selected_backend == "grok-build"' \
+  "$TMP/check-override.json" >/dev/null || fail "override was not honored"
+
+# With no store and no ambient CLI the lane refuses, and says how to fix it.
+mkdir -p "$TMP/nogrok"
+for tool in jq shasum sha256sum timeout gtimeout; do
+  tool_path="$(command -v "$tool" 2>/dev/null || true)"
+  [ -z "$tool_path" ] || ln -sf "$tool_path" "$TMP/nogrok/$tool"
+done
+rm -rf "$TMP/store"
+rc=0
+DELEGATION_GROK_HOME="$TMP/grok-home" DELEGATION_GROK_BIN_STORE="$TMP/store" \
+  PATH="$TMP/nogrok:/usr/bin:/bin" "$ROOT/bin/delegation-grok" run --lane builder \
+  --allow-provisional --prompt-file "$TMP/prompt.txt" \
+  --output "$TMP/results/missing.txt" --workdir "$TMP/work" \
+  >/dev/null 2>"$TMP/missing.err" || rc=$?
+[ "$rc" = 69 ] || fail "missing CLI returned $rc"
+grep -q 'delegation-grok pin' "$TMP/missing.err" || fail "missing CLI did not name the remedy"
 
 printf 'Grok runner tests passed.\n'

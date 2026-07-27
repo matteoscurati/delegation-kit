@@ -93,7 +93,17 @@ The lead remains responsible for running tests and every command after review.
 Failures expose sanitized metadata by default, with raw debug artifacts only
 through explicit `--debug-dir`. No other Grok lane is exposed.
 
+Because the vendor CLI auto-updates and prunes its own download cache, the pin
+would otherwise expire on the vendor's schedule. `delegation-grok pin` archives
+the attested build into a private store (`$DATA_HOME/grok-cli/<version>/`) with
+a recorded SHA-256, and the runner resolves `DELEGATION_GROK_BIN`, then that
+store, then `grok` on PATH — so an ambient update is a non-event and never a
+reason to edit a gate. `install.sh` pins automatically when the attested build
+is still reachable. A digest mismatch fails closed rather than running
+unattested bytes; only re-evaluation changes `REQUIRED_GROK_VERSION`.
+
 ```sh
+delegation-grok pin
 delegation-grok check --json
 delegation-grok run --lane builder --allow-provisional \
   --effort auto --backend auto --prompt-file "$brief" \

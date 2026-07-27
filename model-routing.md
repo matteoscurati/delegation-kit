@@ -128,7 +128,9 @@ WebDev and OpenBench rows are contextual support. The owner promotion is
 explicit, and the local run proves only runtime, JSON extraction, scoped writes,
 and sandbox compatibility. Dispatch still requires `--allow-provisional`; the
 runner pins CLI `0.2.111`, isolates HOME, disables plugins/MCP/imported config,
-requires an attested custom sandbox, and caps turns and wall time.
+requires an attested custom sandbox, and caps turns and wall time. It resolves
+that CLI from a private archive rather than PATH, so a vendor auto-update never
+moves the evaluated tuple out from under the gate.
 
 ## Judgement and super-judgement
 
@@ -230,7 +232,8 @@ blocked candidate. Kimi K3 is provisional for `clerk`, `scout`, `builder`, and
 remain disabled. Provisional bridge runs require `--allow-provisional`.
 Grok 4.5 is provisional for `builder` and `frontend-builder` through Grok Build
 CLI at `high`; builder is explicit-only and frontend-builder is
-preferred-explicit. The runner pins CLI `0.2.111` and applies isolated,
-fail-closed runtime controls. No Grok reviewer, senior, or judgement lane exists.
+preferred-explicit. The runner pins CLI `0.2.111` — archived privately, so a
+vendor update cannot silently retire it — and applies isolated, fail-closed
+runtime controls. No Grok reviewer, senior, or judgement lane exists.
 Qwen3.8 Max Preview remains blocked for every normal lane until a controlled
 `--evaluation` run records lane-specific evidence and both gates are updated.

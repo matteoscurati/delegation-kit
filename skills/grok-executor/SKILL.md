@@ -33,6 +33,13 @@ successful enforcement before publishing output. Permission mode is `dontAsk`,
 with only file edits explicitly allowed; the terminal tool is not exposed. The
 lead runs all tests and commands after inspecting the diff.
 
+The pinned version is resolved from a private store, not from PATH, so a vendor
+auto-update never strands the lane and never justifies editing the pin. If a
+check reports a version mismatch or a missing CLI, run `delegation-grok pin`
+(add `--from <path>` to point at the attested build); a digest mismatch means
+the archived copy changed and must be re-pinned deliberately. Bumping
+`REQUIRED_GROK_VERSION` is a re-evaluation, never a workaround.
+
 Failures write only a sanitized `<output>.error.json`. Raw provider output and
 stderr are retained only when the caller explicitly supplies an existing private
 `--debug-dir`; those artifacts may contain sensitive prompt or model data.

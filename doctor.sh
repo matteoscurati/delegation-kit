@@ -329,9 +329,12 @@ elif have delegation-grok; then
     grok_selected="$(printf '%s' "$grok_check" | jq -r '.selected_backend')"
     grok_provisional="$(printf '%s' "$grok_check" | jq -r '.provisional_lanes | join(",")')"
     if [ "$grok_selected" = none ]; then
-      info "Grok Build runtime unavailable — optional lanes will not be selected"
+      info "Grok Build runtime unavailable: $(printf '%s' "$grok_check" | jq -r '.backends["grok-build"].reason')"
     else
-      ok "Grok Build backend available ($grok_selected)"
+      grok_cli_source="$(printf '%s' "$grok_check" | jq -r '.runtime_cli_source')"
+      ok "Grok Build backend available ($grok_selected; CLI resolved from $grok_cli_source)"
+      [ "$grok_cli_source" = pinned ] \
+        || info "the attested CLI is not archived — run 'delegation-grok pin' so a vendor update cannot strand this lane"
     fi
     [ -z "$grok_provisional" ] || info "Grok provisional lanes (explicit flag required): $grok_provisional"
   else
