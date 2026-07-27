@@ -63,7 +63,9 @@ Grok 4.5 is provisional for `builder` and `frontend-builder` at `high` through
 Grok Build CLI. Dispatch requires an explicit decision and
 `--allow-provisional`. The runner pins CLI `0.2.111`, model, and effort,
 extracts only `.text`, uses an isolated HOME plus the attested custom
-`delegation-kit` sandbox, and enforces turn and wall-clock limits. No other Grok
+`delegation-kit` sandbox, and enforces turn and wall-clock limits. That CLI is
+resolved from a private archive rather than PATH, so a vendor auto-update is
+never a reason to edit the pin — re-run `delegation-grok pin`. No other Grok
 lane is enabled.
 
 ## Sizing and escalation

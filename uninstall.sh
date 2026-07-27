@@ -47,9 +47,10 @@ strip_guarded "$CODEX_HOME/AGENTS.md"
 rm -f "$BIN_HOME/delegation-glm" "$BIN_HOME/delegation-gemini" "$BIN_HOME/delegation-kimi" "$BIN_HOME/delegation-qwen" "$BIN_HOME/delegation-grok" \
   "$BIN_HOME/delegation-evidence" "$BIN_HOME/delegation-epoch" "$BIN_HOME/delegation-route"
 # Everything else under $DATA_HOME is a byte-for-byte copy of a repo file that
-# re-running install.sh restores; the key is the only unrecoverable thing here,
-# and install.sh promises never to replace it without consent. Back it up rather
-# than destroy it, matching the *.delegation-kit.bak convention below.
+# re-running install.sh restores; the keys and the archived Grok CLI are the
+# unrecoverable things here — a superseded vendor build is no longer downloadable
+# once the vendor prunes it. Back them up rather than destroy them, matching the
+# *.delegation-kit.bak convention below.
 zai_key_backup=""
 qwen_key_backup=""
 if [ -f "$DATA_HOME/config/zai.env" ]; then
@@ -62,8 +63,16 @@ if [ -f "$DATA_HOME/config/qwen-token-plan.env" ]; then
   ( umask 077; cp "$DATA_HOME/config/qwen-token-plan.env" "$qwen_key_backup" )
   chmod 600 "$qwen_key_backup"
 fi
+grok_cli_backup=""
+if [ -d "$DATA_HOME/grok-cli" ]; then
+  grok_cli_backup="$DATA_HOME.grok-cli.bak"
+  rm -rf "$grok_cli_backup"
+  mv "$DATA_HOME/grok-cli" "$grok_cli_backup"
+fi
 rm -rf "$DATA_HOME"
 echo "  - removed optional GLM/Gemini/Kimi/Qwen/Grok bridges, central routing gates, evidence snapshot, and Epoch ZIP importer"
+[ -z "$grok_cli_backup" ] \
+  || echo "  - archived Grok Build CLI preserved at $grok_cli_backup — delete it yourself when done"
 [ -z "$zai_key_backup" ] \
   || echo "  - Z.AI API key preserved at $zai_key_backup (mode 600) — delete it yourself when done"
 [ -z "$qwen_key_backup" ] \

@@ -105,7 +105,9 @@ without memory, subagents, web, plugins, MCP, compatibility imports, or updates,
 and requires the custom `delegation-kit` sandbox to attest enforcement.
 Permission mode is `dontAsk`, with only file edits explicitly allowed; terminal
 execution is not exposed and the lead runs verification. Runs have 40-turn and
-15-minute limits. No other Grok lane
+15-minute limits. The pinned CLI is resolved from a private archive rather than
+PATH, so a vendor auto-update never strands the lane: re-run `delegation-grok
+pin`, never edit the pin to match whatever the vendor shipped. No other Grok lane
 is exposed, and failure never authorizes silent fallback.
 
 ### Evidence-backed qualification
