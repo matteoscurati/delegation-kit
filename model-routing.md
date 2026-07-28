@@ -28,7 +28,7 @@ bin/delegation-route resolve --lane judgement --json
 bin/delegation-route resolve --lane super-judgement --json
 ```
 
-The snapshot observed through 2026-07-25 uses Artificial Analysis Coding Agent
+The snapshot observed through 2026-07-28 uses Artificial Analysis Coding Agent
 Index v1.3 for end-to-end coding, Agent Arena for real-world reliability, Code
 Arena WebDev for frontend preference, SWE-PRBench/Martian for review, and
 CursorBench, FrontierCode, FrontierSWE, APEX-SWE, OpenBench, and Epoch's ZIP as
@@ -37,6 +37,7 @@ unrelated capabilities into subjective 1–10 scores.
 
 | current exact model + harness + effort | coding index | DeepSWE | Terminal-Bench | repo Q&A | API cost/task |
 |---|---:|---:|---:|---:|---:|
+| Claude Opus 5 + Claude Code, xhigh (lead) | 67 | 60% | 85% | 55% | $8.23 |
 | GPT-5.6 Sol + Codex, high | 64 | 65% | 83% | 45% | $4.14 |
 | Grok 4.5 + Grok Build, high | 64 | 60% | 85% | 48% | $2.59 |
 | Claude Opus 5 + Claude Code, high | 63 | 61% | 80% | 49% | $3.80 |
@@ -57,12 +58,21 @@ nearby variants and general coding scores for reviewer/judgement remain context.
 `delegation-route table` exposes both counts plus local sample confidence.
 
 The JSON now records current exact installed rows for Luna `low`, Terra
-`low`/`medium`, Sol `high`, Opus 5 `high`, Kimi K3 `max`, and Grok 4.5 `high`.
-The Opus row measures coding, not review precision/recall, so it remains
-insufficient to qualify senior or security work. Fable `xhigh` has exact-variant
-FrontierCode evidence but no judgement benchmark. Sonnet's new CursorBench rows
-use a different harness. GLM's public rows still do not match the production
-Claude→Z.AI bridge.
+`low`/`medium`, Sol `high`, Opus 5 `xhigh`/`high`, Kimi K3 `max`, and Grok 4.5
+`high`. The 2026-07-28 index adds the lead lane's own tuple: Opus 5 through
+Claude Code at `xhigh` enters at 67, jointly ahead of Codex Sol `max`, with the
+highest repo-Q&A score on the board (55%) at $8.23 per task. Opus 5 `max` is
+recorded alongside it at 66 as non-installed context. Those rows measure coding,
+not review precision/recall, so they remain insufficient to qualify senior or
+security work. Fable `xhigh` has exact-variant FrontierCode evidence but no
+judgement benchmark. Sonnet's CursorBench and WebDev rows use different
+harnesses. GLM's public rows still do not match the production Claude→Z.AI
+bridge.
+
+The reviewer lane still has zero qualifying rows. Martian's online tracker
+refreshed through 2026-07-28 (3,990 scored PRs), but it ranks review *products*
+— Greptile, Codex Connector, CodeRabbit, Claude — not a model at a named effort,
+so it cannot satisfy `review.precision_pct`/`review.recall_pct` for any lane.
 
 Evidence maps to lanes, not to one global ranking:
 
@@ -106,15 +116,19 @@ and `frontend-builder` use with `--allow-provisional`; `senior` is only a blocke
 candidate. The installed gate remains authoritative for the exact tuple.
 
 Qwen3.8 Max Preview is a blocked Token Plan candidate. The July 25 audit found
-no exact row in Artificial Analysis, Arena, WebDev, OpenBench, or Epoch's ZIP.
-The subscription and runner establish availability only; there is no exact
-public benchmark or local lane evaluation in this repository yet. Normal
-dispatch is therefore refused.
+no exact row in Artificial Analysis, Arena, WebDev, OpenBench, or Epoch's ZIP,
+and the July 28 re-check of Agent Arena (42 models) and WebDev (19 labs) still
+found none — both boards list Qwen3.7, not 3.8. The subscription and runner
+establish availability only; there is no exact public benchmark or local lane
+evaluation in this repository yet. Normal dispatch is therefore refused.
 
 Gemini 3.6 Flash is reachable through the authenticated Antigravity CLI. Its
-new public evidence consists of CursorBench scores at `medium` (51.2) and `high`
-(53.5), plus a preliminary WebDev result (1526 ±13). All are contextual because
-they use Cursor/Arena rather than the production `agy` harness. Only the exact
+public evidence consists of CursorBench scores at `medium` (51.2) and `high`
+(53.5), a preliminary WebDev result (1527 ±13), and — new on 2026-07-27 — a
+first Agent Arena row. That Arena row rests on 2,194 sessions, so its intervals
+swamp the estimates (net improvement 0.61% ±2.95%) and it moves nothing. All
+are contextual because they use Cursor/Arena rather than the production `agy`
+harness. Only the exact
 `gemini-3.6-flash-medium` scout tuple is provisional and requires
 `--allow-provisional`; high-effort editing lanes remain blocked pending scoped
 local evaluation. Runtime discovery is compatibility evidence, not qualification.

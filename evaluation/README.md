@@ -43,7 +43,7 @@ also be relevant to the lane. Nearby variants, different harnesses, and general
 coding evidence for review/judgement are context and are shown separately in the
 generated table.
 
-The snapshot observed through 2026-07-25 keeps historical rows only when no
+The snapshot observed through 2026-07-28 keeps historical rows only when no
 current equivalent exists. Current exact variants use the latest verified source;
 nearby variants, different harnesses, preliminary rows, and general-capability
 benchmarks remain separately labeled context.
@@ -53,30 +53,53 @@ benchmarks remain separately labeled context.
   retained only for historical variants that do not have a directly comparable
   current replacement.
 - [Artificial Analysis Coding Agent Index v1.3](https://artificialanalysis.ai/agents/coding-agents/),
-  observed 2026-07-25: 113 DeepSWE, 84 Terminal-Bench v2, and 124
-  SWE-Atlas-QnA tasks with three attempts. It supplies current exact rows for
-  Luna `low`, Terra `low`/`medium`, Sol `high`, Opus 5 `high`, Kimi K3 through
-  Kimi Code CLI `max`, and Grok 4.5 through Grok Build `high`.
-- [Arena Agent Arena](https://arena.ai/leaderboard/agent), dated 2026-07-21,
+  observed 2026-07-28: 113 DeepSWE, 84 Terminal-Bench v2, and 124
+  SWE-Atlas-QnA tasks with three attempts, now across 52 variants. It supplies
+  current exact rows for Luna `low`, Terra `low`/`medium`, Sol `high`, Opus 5
+  `xhigh`/`high`, Kimi K3 through Kimi Code CLI `max`, and Grok 4.5 through Grok
+  Build `high`. The 2026-07-28 observation adds Claude Code Opus 5 at `xhigh`
+  (index 67, joint first) and `max` (66), plus an Opus 4.8 `max` row re-scored
+  under v1.3 (55 → 61, driven by repo Q&A 30% → 47%); the older v1.2 row is kept
+  beside it rather than overwritten. Component scores come from the published
+  per-benchmark chart because the tabular export is paywalled, and per-task
+  token totals were left unrecorded for the new rows because the chart's token
+  metric could not be reconciled with the previously recorded figures.
+- [Arena Agent Arena](https://arena.ai/leaderboard/agent), dated 2026-07-27,
   with [causal-evaluation methodology](https://arena.ai/blog/agent-arena-methodology/):
-  1,242,857 real-world sessions covering confirmed success, user feedback, and
-  steerability. It still has no Opus 5, Gemini 3.6 Flash, or Qwen3.8 row.
+  1,385,187 real-world sessions across 42 models covering confirmed success,
+  user feedback, steerability, bash recovery, and tool hallucination. It still
+  has no Opus 5 or Qwen3.8 row. Gemini 3.6 Flash now appears but on only 2,194
+  sessions, so it is recorded as provisional. Estimates move between refreshes:
+  Kimi K3's praise-vs-complaint effect fell 20.30% → 16.22% while its
+  steerability rose 6.52% → 9.17% over six days, which is why the lane gate
+  reads the current row rather than a remembered number.
 - [Arena Code Arena WebDev](https://arena.ai/leaderboard/code/webdev?rankBy=labs),
-  dated 2026-07-24: 477,155 human-preference votes across 19 labs for
-  frontend/product output only. Kimi K3 and Gemini 3.6 Flash are preliminary.
+  dated 2026-07-27: 489,150 human-preference votes across 19 labs for
+  frontend/product output only. `claude-opus-5-max` enters first at 1725 but is
+  preliminary on 686 votes; `claude-opus-5-high` (1670) and `claude-sonnet-5-high`
+  (1545) are new and not preliminary. Kimi K3 and Gemini 3.6 Flash remain
+  preliminary.
 - [SWE-PRBench](https://arxiv.org/abs/2603.26130) and the continuously refreshed
   [Martian Code Review Bench](https://github.com/withmartian/code-review-benchmark)
-  as the required evidence family for reviewer lanes.
+  as the required evidence family for reviewer lanes. As of 2026-07-28 neither
+  yields a qualifying row: Martian's online tracker refreshed through July 28
+  (3,990 scored PRs) but ranks review products — Greptile 60.8 F1, ChatGPT Codex
+  Connector 59.3, Claude 55.3 (66.2% precision / 47.4% recall) — not a model at a
+  named effort, and its offline repository has not published new results since
+  2026-07-13. The `reviewer` lane therefore still shows zero rows.
 - The dated [Terminal-Bench 2.0](https://www.tbench.ai/leaderboard/terminal-bench/2.0?verified=true)
   snapshot and [SWE-bench-Live](https://swe-bench-live.github.io/) remain
   secondary context. Current Grok comparisons use Terminal-Bench 2.1 through
   their explicitly named source/harness rather than overwriting those rows.
-- [CursorBench 3.2](https://cursor.com/cursorbench), observed 2026-07-25,
-  for ambiguous multi-file understanding, planning, implementation, bugfinding,
-  and review tasks. Every row uses Cursor's harness; its Grok 4.5 row also carries
-  the publisher's possible training-contamination warning. It supplies the first
-  coding-context rows for Gemini 3.6 Flash `medium` and `high`, but not for the
-  production `agy` harness.
+- [CursorBench 3.2](https://cursor.com/cursorbench), observed 2026-07-25 and
+  re-verified unchanged on 2026-07-28, for ambiguous multi-file understanding,
+  planning, implementation, bugfinding, and review tasks. Every row uses Cursor's
+  harness; its Grok 4.5 row also carries the publisher's possible
+  training-contamination warning. It supplies the first coding-context rows for
+  Gemini 3.6 Flash `medium` and `high`, but not for the production `agy` harness.
+  The 2026-07-28 pass filled previously uncaptured rows rather than changing any
+  recorded value: Fable 5 `max` (70.5), Opus 5 `max` (70.0), and Opus 5 `xhigh`
+  (69.3).
 - [FrontierCode 1.1](https://cognition.com/frontiercode), with its
   [revision notes](https://cognition.com/blog/frontier-code-1.1), for
   maintainer-defined mergeability across correctness, tests, scope, style, and
@@ -84,7 +107,9 @@ benchmarks remain separately labeled context.
 - [FrontierSWE](https://www.frontierswe.com/) and
   [Mercor APEX-SWE](https://www.mercor.com/apex/) as additional builder-quality
   context. Their published runners are not silently treated as production
-  Claude→Z.AI, Grok Build, or Codex variants.
+  Claude→Z.AI, Grok Build, or Codex variants. FrontierSWE was re-verified
+  unchanged on 2026-07-28; APEX-SWE gained an Opus 5 `max` row (54.7% ±5.5),
+  statistically indistinguishable from Fable 5 `max` (54.8% ±6.0).
 - [OpenBench](https://github.com/minghinmatthewlam/openbench), plus its
   [Kimi K3](https://github.com/minghinmatthewlam/openbench/blob/main/docs/releases/2026-07-20-kimi-k3/index.html)
   and [GPT-5.6](https://github.com/minghinmatthewlam/openbench/blob/main/docs/releases/2026-07-21-gpt56/index.html)
@@ -163,10 +188,15 @@ before manually adding selected source/evidence objects to
 `config/model-evidence.json`; the importer has no gate or snapshot mutation
 path.
 
-The 2026-07-25 ZIP snapshot has SHA-256
-`72a03e2fb8f7e24aba2fafdb08558100e6131b70d67370246dd1bf22daf36cff`
+The 2026-07-28 ZIP snapshot has SHA-256
+`c8d42856b661b8d839b636c48766febc9bf56c9c0f1db68ad9bdf2b71e009164`
 and contains 74 benchmark CSVs, 5,671 rows, and 5,617 normalized advisory
-records. New relevant families include FrontierCode, FrontierSWE, APEX Agents,
+records. Epoch re-published the archive between July 25 and July 28: the hash
+changed from `72a03e2fb8f7e24aba2fafdb08558100e6131b70d67370246dd1bf22daf36cff`
+while the shape stayed identical. The recorded hash is descriptive provenance —
+`delegation-epoch` prints the hash of whatever it downloads and no check
+compares it against the snapshot, so a mismatch is a signal to re-read, not a
+failure. New relevant families include FrontierCode, FrontierSWE, APEX Agents,
 Blueprint-Bench 2, and Epoch Capabilities Index. Exact model-name records exist
 for Fable 5, Opus 5, Sonnet 5, GLM-5.2, all three GPT-5.6 tiers, Grok 4.5, and
 Kimi K3; Gemini 3.6 Flash and Qwen3.8 Max Preview have no exact model-name ZIP
