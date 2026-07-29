@@ -42,11 +42,11 @@ usage() {
   cat <<'EOF'
 Usage:
   delegation-glm check [--json]
-  delegation-glm run --lane <clerk|scout|builder|reviewer> \
+  delegation-glm run --lane <clerk|scout|builder|reviewer|policy-annotation> \
     [--effort <auto|high|max>] [--backend <auto|claude-zai>] \
     --prompt-file <path> --output <path> --workdir <path> \
     [--metrics <path>] [--max-cost-usd <amount>] [--debug-dir <path>] \
-    [--allow-provisional] [--evaluation]
+    [--allow-provisional] [--evaluation --evaluation-manifest <path>]
 
 Exit codes: 64 invalid input, 69 unavailable, 70 dispatch failure,
 75 temporary/rate-limit failure, 78 lane not qualified.
@@ -58,6 +58,37 @@ EOF
 
 die() { local code="$1"; shift; printf 'delegation-glm: %s\n' "$*" >&2; exit "$code"; }
 have() { command -v "$1" >/dev/null 2>&1; }
+
+sha256_file() {
+  if have shasum; then shasum -a 256 "$1" | awk '{print $1}'
+  elif have sha256sum; then sha256sum "$1" | awk '{print $1}'
+  else return 1; fi
+}
+
+evaluation_manifest() {
+  local manifest="$1" prompt_file="$2" effort="$3" manifest_hash prompt_hash source_head contract schema runner_hash
+  [ -f "$manifest" ] && [ ! -L "$manifest" ] || die 78 "evaluation manifest is missing or symlinked"
+  manifest_hash="$(sha256_file "$manifest")" || die 69 "sha256 tool is required for evaluation"
+  prompt_hash="$(sha256_file "$prompt_file")" || die 69 "sha256 tool is required for evaluation"
+  source_head="$(git -C "$ROOT" rev-parse HEAD 2>/dev/null)" || die 78 "runner source checkout is unavailable"
+  contract="$(jq -r '.contract_path // empty' "$manifest" 2>/dev/null)"; schema="$(jq -r '.output_schema_path // empty' "$manifest" 2>/dev/null)"
+  case "$contract" in /*|*..*) die 78 "evaluation contract_path must be root-relative";; esac; case "$schema" in /*|*..*) die 78 "evaluation output_schema_path must be root-relative";; esac
+  contract="$ROOT/$contract"; schema="$ROOT/$schema"; runner_hash="$(sha256_file "$SOURCE")" || die 69 "sha256 tool is required for evaluation"
+  [ -n "$contract" ] && [ -n "$schema" ] || die 78 "evaluation manifest requires contract_path and output_schema_path"
+  [ -f "$contract" ] && [ ! -L "$contract" ] && [ -f "$schema" ] && [ ! -L "$schema" ] || die 78 "evaluation contract or schema is missing or symlinked"
+  git -C "$ROOT" diff --quiet && git -C "$ROOT" diff --cached --quiet && [ -z "$(git -C "$ROOT" ls-files --others --exclude-standard)" ] || die 78 "runner source checkout is dirty"
+  jq -e --arg prompt_sha256 "$prompt_hash" --arg contract_sha256 "$(sha256_file "$contract")" --arg schema_sha256 "$(sha256_file "$schema")" --arg runner_sha256 "$runner_hash" --arg effort "$effort" '
+    (keys | sort) == ["backend","contract_path","contract_sha256","effort","lane","max_output_chars","model","output_schema_path","output_schema_sha256","profile","prompt_sha256","runner_sha256","runner_source_commit","schema","timeout_seconds"] and
+    .schema == "delegation_policy_annotation_evaluation_v1" and .profile == "glm-policy-annotation" and .lane == "policy-annotation" and .model == "glm-5.2" and .backend == "claude-zai" and .effort == $effort and .prompt_sha256 == $prompt_sha256 and .contract_sha256 == $contract_sha256 and .output_schema_sha256 == $schema_sha256 and
+    .runner_sha256 == $runner_sha256 and ([.prompt_sha256,.contract_sha256,.output_schema_sha256,.runner_sha256] | all(test("^[0-9a-f]{64}$"))) and (.runner_source_commit | test("^[0-9a-f]{40}$")) and
+    (.timeout_seconds | type == "number" and floor == . and . >= 1 and . <= 600) and (.max_output_chars | type == "number" and floor == . and . >= 1 and . <= 65536)
+  ' "$manifest" >/dev/null 2>&1 || die 78 "evaluation manifest is malformed or does not bind this exact run"
+  git -C "$ROOT" merge-base --is-ancestor "$(jq -r '.runner_source_commit' "$manifest")" "$source_head" || die 78 "evaluation manifest source commit is not an ancestor of this runner"
+  jq -e --arg hash "$manifest_hash" '.profiles | to_entries[] | select(.value.model == "glm-5.2" and .value.harness == "claude-zai") | .value.lanes["policy-annotation"].evaluation_manifest_sha256 | type == "array" and index($hash) != null' "$CENTRAL_GATES" >/dev/null 2>&1 || die 78 "evaluation manifest is not allowlisted by the central gate"
+  jq -e --arg hash "$manifest_hash" '.lanes["policy-annotation"].backends["claude-zai"].evaluation_manifest_sha256 | type == "array" and index($hash) != null' "$ROUTING_FILE" >/dev/null 2>&1 || die 78 "evaluation manifest is not allowlisted by the executable gate"
+  EVALUATION_TIMEOUT_SECONDS="$(jq -r '.timeout_seconds' "$manifest")"
+  EVALUATION_MAX_OUTPUT_CHARS="$(jq -r '.max_output_chars' "$manifest")"
+}
 
 host_status() {
   HOST_REASON=""
@@ -363,7 +394,7 @@ write_failure_diagnostic() {
 
 run_command() {
   local lane="" effort="auto" backend="auto" prompt_file="" output="" workdir="" metrics="" diagnostic=""
-  local debug_dir="" max_cost="2.00" evaluation=0 allow_provisional=0
+  local debug_dir="" max_cost="2.00" evaluation=0 evaluation_manifest_path="" allow_provisional=0
   while [ "$#" -gt 0 ]; do
     case "$1" in
       --lane) lane="${2:-}"; shift 2 ;;
@@ -377,14 +408,20 @@ run_command() {
       --debug-dir) debug_dir="${2:-}"; shift 2 ;;
       --allow-provisional) allow_provisional=1; shift ;;
       --evaluation) evaluation=1; shift ;;
+      --evaluation-manifest) evaluation_manifest_path="${2:-}"; shift 2 ;;
       -h|--help) usage; exit 0 ;;
       *) die 64 "unknown run argument: $1" ;;
     esac
   done
-  case "$lane" in clerk|scout|builder|reviewer) ;; *) die 64 "invalid lane: $lane" ;; esac
+  case "$lane" in clerk|scout|builder|reviewer|policy-annotation) ;; *) die 64 "invalid lane: $lane" ;; esac
   case "$effort" in auto|high|max) ;; *) die 64 "invalid effort: $effort" ;; esac
   case "$backend" in auto|claude-zai) ;; *) die 64 "invalid backend: $backend" ;; esac
   [ -f "$prompt_file" ] || die 64 "prompt file missing: $prompt_file"
+  if [ "$evaluation" = 1 ]; then
+    [ -n "$evaluation_manifest_path" ] || die 64 "--evaluation requires --evaluation-manifest"
+  else
+    [ -z "$evaluation_manifest_path" ] || die 64 "--evaluation-manifest requires --evaluation"
+  fi
   [ -d "$workdir" ] || die 64 "workdir missing: $workdir"
   [ -n "$output" ] || die 64 "--output is required"
   if [ -n "$debug_dir" ]; then
@@ -409,6 +446,14 @@ run_command() {
   [ "$normalized_metrics" != "$normalized_diagnostic" ] \
     || die 64 "metrics path collides with reserved diagnostic path: $diagnostic"
 
+  workdir="$(cd "$workdir" && pwd -P)"
+  if [ "$lane" = policy-annotation ]; then
+    case "$normalized_output" in "$workdir"/*) die 64 "policy-annotation output must be outside workdir" ;; esac
+    case "$normalized_metrics" in "$workdir"/*) die 64 "policy-annotation metrics must be outside workdir" ;; esac
+    case "$normalized_diagnostic" in "$workdir"/*) die 64 "policy-annotation diagnostic must be outside workdir" ;; esac
+    if [ -n "$debug_dir" ]; then case "$debug_dir" in "$workdir"|"$workdir"/*) die 64 "policy-annotation debug directory must be outside workdir" ;; esac; fi
+  fi
+
   backend="claude-zai"
   # Qualification before availability: "never approved" (78) is a permanent fact
   # and must not hide behind "runtime is down" (69), which the caller reads as
@@ -422,6 +467,10 @@ run_command() {
       die 78 "lane '$lane' backend '$backend' is provisional; pass --allow-provisional after an explicit routing decision"
     fi
   fi
+  if [ "$evaluation" = 1 ]; then
+    [ "$lane" = policy-annotation ] || die 78 "--evaluation permits policy-annotation candidate only"
+    [ "$(gate_status "$lane" "$backend")" = candidate ] || die 78 "policy-annotation is not a candidate in the central gate"
+  fi
   host_status || die 69 "$HOST_REASON"
   claude_zai_status || die 69 "$CLAUDE_ZAI_REASON"
   [ "$effort" != auto ] || effort="$(default_effort "$lane" "$backend")"
@@ -433,6 +482,10 @@ run_command() {
       || die 69 "qualified lane '$lane' has no pinned effort for backend '$backend'"
     [ "$effort" = "$expected_effort" ] \
       || die 78 "lane '$lane' backend '$backend' is qualified only at effort '$expected_effort'"
+  fi
+  if [ "$evaluation" = 1 ]; then
+    [ "$effort" = high ] || die 78 "policy-annotation is pinned only at effort 'high'"
+    evaluation_manifest "$evaluation_manifest_path" "$prompt_file" "$effort"
   fi
 
   local tmp events stderr_file rc=0 started
@@ -456,29 +509,63 @@ run_command() {
   local permission="plan"
   [ "$lane" != builder ] || permission="acceptEdits"
   mkdir -p "$tmp/claude-config"
+  local timeout_bin='' sandbox_profile=''
+  if [ "$evaluation" = 1 ]; then
+    [ "$(uname)" = Darwin ] && [ -x /usr/bin/sandbox-exec ] || die 69 "policy-annotation evaluation requires macOS sandbox-exec"
+    if have gtimeout; then timeout_bin="$(command -v gtimeout)"
+    elif have timeout; then timeout_bin="$(command -v timeout)"
+    else die 69 "policy-annotation evaluation requires gtimeout or timeout"; fi
+    sandbox_profile='(version 1)
+      (allow default)
+      (deny file-write* (require-not (subpath (param "SCRATCH"))))'
+  fi
   # Claude has no --cwd flag. Enter the delegated worktree explicitly so it
   # cannot inspect or edit the delegation-kit source checkout by accident.
   (
     cd "$workdir"
-    env -u ANTHROPIC_API_KEY -u CLAUDE_CODE_OAUTH_TOKEN -u ZAI_API_KEY \
-      -u ANTHROPIC_MODEL -u ANTHROPIC_CUSTOM_HEADERS \
-      -u CLAUDE_CODE_USE_BEDROCK -u CLAUDE_CODE_USE_VERTEX \
-      -u CLAUDE_CODE_USE_FOUNDRY \
-      ANTHROPIC_AUTH_TOKEN="$ZAI_API_KEY" \
-      ANTHROPIC_BASE_URL="https://api.z.ai/api/anthropic" \
-      ANTHROPIC_DEFAULT_OPUS_MODEL="glm-5.2" \
-      CLAUDE_CONFIG_DIR="$tmp/claude-config" \
-      CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1 API_TIMEOUT_MS=3000000 \
-      claude -p "$(<"$prompt_file")" --model opus --effort "$effort" \
-      --permission-mode "$permission" --setting-sources '' --strict-mcp-config \
-      --output-format stream-json --verbose --no-session-persistence \
-      --max-budget-usd "$max_cost"
+    if [ "$evaluation" = 1 ]; then
+      env -u ANTHROPIC_API_KEY -u CLAUDE_CODE_OAUTH_TOKEN -u ZAI_API_KEY \
+        -u ANTHROPIC_MODEL -u ANTHROPIC_CUSTOM_HEADERS \
+        -u CLAUDE_CODE_USE_BEDROCK -u CLAUDE_CODE_USE_VERTEX \
+        -u CLAUDE_CODE_USE_FOUNDRY \
+        ANTHROPIC_AUTH_TOKEN="$ZAI_API_KEY" \
+        ANTHROPIC_BASE_URL="https://api.z.ai/api/anthropic" \
+        ANTHROPIC_DEFAULT_OPUS_MODEL="glm-5.2" \
+        CLAUDE_CONFIG_DIR="$tmp/claude-config" \
+        CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1 API_TIMEOUT_MS=3000000 \
+        "$timeout_bin" "$EVALUATION_TIMEOUT_SECONDS" \
+        /usr/bin/sandbox-exec -D "SCRATCH=$tmp" -p "$sandbox_profile" \
+        claude -p "$(<"$prompt_file")" --model opus --effort "$effort" \
+        --permission-mode "$permission" --setting-sources '' --strict-mcp-config \
+        --output-format stream-json --verbose --no-session-persistence \
+        --max-budget-usd "$max_cost"
+    else
+      env -u ANTHROPIC_API_KEY -u CLAUDE_CODE_OAUTH_TOKEN -u ZAI_API_KEY \
+        -u ANTHROPIC_MODEL -u ANTHROPIC_CUSTOM_HEADERS \
+        -u CLAUDE_CODE_USE_BEDROCK -u CLAUDE_CODE_USE_VERTEX \
+        -u CLAUDE_CODE_USE_FOUNDRY \
+        ANTHROPIC_AUTH_TOKEN="$ZAI_API_KEY" \
+        ANTHROPIC_BASE_URL="https://api.z.ai/api/anthropic" \
+        ANTHROPIC_DEFAULT_OPUS_MODEL="glm-5.2" \
+        CLAUDE_CONFIG_DIR="$tmp/claude-config" \
+        CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1 API_TIMEOUT_MS=3000000 \
+        claude -p "$(<"$prompt_file")" --model opus --effort "$effort" \
+        --permission-mode "$permission" --setting-sources '' --strict-mcp-config \
+        --output-format stream-json --verbose --no-session-persistence \
+        --max-budget-usd "$max_cost"
+    fi
   ) >"$events" 2>"$stderr_file" || rc=$?
   if [ "$rc" -eq 0 ]; then
     if ! extract_claude "$events" "$RUN_OUTPUT_TMP" "$RUN_METRICS_TMP" \
         "$started" "$backend" "$effort" "$lane"; then
       phase="extract"
       reason="$EXTRACT_REASON"
+      final_rc=70
+    fi
+    if [ "$final_rc" -eq 0 ] && [ "$evaluation" = 1 ] &&
+        [ "$(wc -m <"$RUN_OUTPUT_TMP" | tr -d ' ')" -gt "$EVALUATION_MAX_OUTPUT_CHARS" ]; then
+      phase="extract"
+      reason="max_output_chars"
       final_rc=70
     fi
   else

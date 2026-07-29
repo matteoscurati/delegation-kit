@@ -51,6 +51,9 @@ temporary runtime failures, not quality evidence.
 Qwen3.8 Max Preview is a blocked candidate. Token Plan availability is only a
 runtime fact; it cannot enter a candidate set until exact local lane evidence
 promotes both the central and executable gates.
+Its `policy-annotation` entry, like the corresponding Kimi, GLM, and Grok
+entries, is an allowlisted evaluation-only candidate and not an operational
+route.
 
 Gemini 3.6 Flash is provisional only for `scout` at `medium` through `agy`.
 Builder and frontend-builder at `high` remain blocked; reviewer and judgement
@@ -67,6 +70,8 @@ effort, extracts only `.text`, uses an isolated HOME plus the attested custom
 resolved from an optional digest-checked private archive before PATH. Its
 observed version is provenance only; re-run `delegation-grok pin --force` to
 deliberately replace the archived bytes. No other Grok lane is enabled.
+The candidate/blocked `policy-annotation` exception is manifest-bound,
+read-only, and cannot widen those operational lanes.
 
 ## Sizing and escalation
 - **Size the reviewer to the work, not to a general leaderboard.** A diff the cheap

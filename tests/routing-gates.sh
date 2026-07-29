@@ -66,6 +66,29 @@ jq '.profiles["kimi-k3"].lanes.judgement.selection = "explicit-only"' \
 expect_failure 65 env DELEGATION_ROUTING_GATES_FILE="$TMP/bad-pair.json" \
   bin/delegation-route check --json
 
+# Evaluation manifest allowlists belong only to policy-annotation, contain
+# unique lowercase SHA-256 values, and remain central/executable-identical.
+jq '.profiles["kimi-k3"].lanes["policy-annotation"].evaluation_manifest_sha256 = ["NOT-A-SHA"]' \
+  config/routing-gates.json >"$TMP/bad-manifest-shape.json"
+expect_failure 65 env DELEGATION_ROUTING_GATES_FILE="$TMP/bad-manifest-shape.json" \
+  bin/delegation-route check --json
+jq '.profiles["kimi-k3"].lanes["policy-annotation"].evaluation_manifest_sha256 =
+      ["aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+       "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"]' \
+  config/routing-gates.json >"$TMP/duplicate-manifest.json"
+expect_failure 65 env DELEGATION_ROUTING_GATES_FILE="$TMP/duplicate-manifest.json" \
+  bin/delegation-route check --json
+jq '.profiles["kimi-k3"].lanes.scout.evaluation_manifest_sha256 =
+      ["aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"]' \
+  config/routing-gates.json >"$TMP/misplaced-manifest.json"
+expect_failure 65 env DELEGATION_ROUTING_GATES_FILE="$TMP/misplaced-manifest.json" \
+  bin/delegation-route check --json
+jq '.profiles["kimi-k3"].lanes["policy-annotation"].evaluation_manifest_sha256 =
+      ["aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"]' \
+  config/routing-gates.json >"$TMP/central-only-manifest.json"
+expect_failure 65 env DELEGATION_ROUTING_GATES_FILE="$TMP/central-only-manifest.json" \
+  bin/delegation-route check --json
+
 # An evidence row cannot be called exact when model+harness+effort differ.
 jq '.profiles["fable-judge"].lanes.judgement.exact_evidence_ids = ["aa-claude-fable-5-max"] |
     .profiles["fable-judge"].lanes.judgement.context_evidence_ids = []' \
@@ -115,12 +138,22 @@ jq '.lanes.clerk.backends["token-plan-openai"].status = "provisional" |
     .provisional_lanes = ["clerk"]' config/qwen3.8-max-preview-routing.json >"$TMP/bad-qwen.json"
 expect_failure 65 env DELEGATION_QWEN_ROUTING_FILE="$TMP/bad-qwen.json" \
   bin/delegation-route check --json
+jq '.lanes["policy-annotation"].backends["token-plan-openai"].evaluation_manifest_sha256 =
+      ["bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"]' \
+  config/qwen3.8-max-preview-routing.json >"$TMP/bad-qwen-manifest.json"
+expect_failure 65 env DELEGATION_QWEN_ROUTING_FILE="$TMP/bad-qwen-manifest.json" \
+  bin/delegation-route check --json
 
 # Kimi lane/effort drift is checked in both directions; CLI version is
 # deliberately runtime provenance, not a routing decision.
 jq '.lanes.scout.backends.native.effort = "high"' \
   config/kimi-k3-routing.json >"$TMP/bad-kimi.json"
 expect_failure 65 env DELEGATION_KIMI_ROUTING_FILE="$TMP/bad-kimi.json" \
+  bin/delegation-route check --json
+jq '.lanes["policy-annotation"].backends.native.evaluation_manifest_sha256 =
+      ["cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"]' \
+  config/kimi-k3-routing.json >"$TMP/bad-kimi-manifest.json"
+expect_failure 65 env DELEGATION_KIMI_ROUTING_FILE="$TMP/bad-kimi-manifest.json" \
   bin/delegation-route check --json
 
 # Gemini bridge drift is checked in both directions.
@@ -134,6 +167,18 @@ jq '.lanes.builder.backends["grok-build"].effort = "max"' \
   config/grok-4.5-routing.json >"$TMP/bad-grok.json"
 expect_failure 65 env DELEGATION_GROK_ROUTING_FILE="$TMP/bad-grok.json" \
   bin/delegation-route check --json
+jq '.lanes["policy-annotation"].backends["grok-build"].evaluation_manifest_sha256 =
+      ["dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"]' \
+  config/grok-4.5-routing.json >"$TMP/bad-grok-manifest.json"
+expect_failure 65 env DELEGATION_GROK_ROUTING_FILE="$TMP/bad-grok-manifest.json" \
+  bin/delegation-route check --json
+
+# GLM evaluation allowlist drift is checked independently from status drift.
+jq '.lanes["policy-annotation"].backends["claude-zai"].evaluation_manifest_sha256 =
+      ["eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"]' \
+  config/glm-5.2-routing.json >"$TMP/bad-glm-manifest.json"
+expect_failure 65 env DELEGATION_GLM_ROUTING_FILE="$TMP/bad-glm-manifest.json" \
+  bin/delegation-route check --json
 
 # Grok CLI compatibility policy is mirrored centrally without naming a version.
 jq '.runtime_cli_compatibility = "version-pinned"' \
@@ -144,7 +189,24 @@ expect_failure 65 env DELEGATION_GROK_ROUTING_FILE="$TMP/bad-grok-compatibility.
 # Disabled/candidate profiles never leak into explicit/fallback candidates.
 bin/delegation-route resolve --lane judgement --json >"$TMP/judgement.json"
 jq -e '([.explicit[].profile] | sort) == ["fable-judge","sol-judge"] and
-       ([.blocked[].profile] | index("kimi-k3") != null)' "$TMP/judgement.json" >/dev/null
+       ([.blocked[].profile] | index("kimi-k3") != null) and
+       ([.blocked[].profile] | index("qwen3.8-max-preview") != null)' "$TMP/judgement.json" >/dev/null
+pass=$((pass + 1))
+
+# Policy annotation is candidate/blocked only, including separate exact-variant
+# Opus and Sol-max profiles; it must never leak into an operational group.
+bin/delegation-route resolve --lane policy-annotation --json >"$TMP/policy-annotation.json"
+jq -e '
+  (.defaults | length) == 0 and (.fallbacks | length) == 0 and (.explicit | length) == 0 and
+  ([.blocked[].profile] | sort) ==
+    ["fable-policy-annotator","glm-policy-annotation","grok-build","kimi-k3",
+     "opus-policy-annotator","qwen3.8-max-preview","sol-max-policy-annotator"]
+' "$TMP/policy-annotation.json" >/dev/null
+jq -e '
+  .profiles["kimi-k3"].lanes.reviewer.status == "disabled" and
+  .profiles["kimi-k3"].lanes.judgement.status == "disabled" and
+  .profiles["qwen3.8-max-preview"].lanes.judgement.status == "disabled"
+' config/routing-gates.json >/dev/null
 pass=$((pass + 1))
 
 # The generated table exposes exact and contextual evidence separately.

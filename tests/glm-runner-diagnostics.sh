@@ -185,6 +185,82 @@ assert_failed_case auth_mixed authentication_failed dispatch 1
 run_case rate 75
 assert_failed_case rate rate_limited dispatch 1
 
+# Exercise the real manifest gate from a clean committed copy. Production
+# evaluation intentionally rejects this test's dirty source checkout.
+EVAL_ROOT="$TEST_TMP/eval-repo"
+cp -R "$ROOT/." "$EVAL_ROOT"
+rm -rf -- "$EVAL_ROOT/.git"
+rm -f -- "$EVAL_ROOT/.claude/settings.local.json"
+mkdir -p "$EVAL_ROOT/evaluation/test-fixtures"
+printf '%s\n' 'policy annotation contract fixture' \
+  >"$EVAL_ROOT/evaluation/test-fixtures/contract.txt"
+printf '%s\n' '{"type":"object","required":["annotation"]}' \
+  >"$EVAL_ROOT/evaluation/test-fixtures/output-schema.json"
+git -C "$EVAL_ROOT" init -q
+git -C "$EVAL_ROOT" config user.email test@example.invalid
+git -C "$EVAL_ROOT" config user.name delegation-runner-test
+git -C "$EVAL_ROOT" add -A
+git -C "$EVAL_ROOT" commit -qm 'evaluation fixture base'
+EVAL_BASE_COMMIT="$(git -C "$EVAL_ROOT" rev-parse HEAD)"
+sha256() { shasum -a 256 "$1" | awk '{print $1}'; }
+jq -n \
+  --arg prompt_sha256 "$(sha256 "$TEST_TMP/prompt")" \
+  --arg runner_sha256 "$(sha256 "$EVAL_ROOT/bin/delegation-glm")" \
+  --arg contract_sha256 "$(sha256 "$EVAL_ROOT/evaluation/test-fixtures/contract.txt")" \
+  --arg output_schema_sha256 "$(sha256 "$EVAL_ROOT/evaluation/test-fixtures/output-schema.json")" \
+  --arg source_commit "$EVAL_BASE_COMMIT" \
+  '{schema:"delegation_policy_annotation_evaluation_v1",profile:"glm-policy-annotation",lane:"policy-annotation",model:"glm-5.2",backend:"claude-zai",effort:"high",prompt_sha256:$prompt_sha256,runner_source_commit:$source_commit,runner_sha256:$runner_sha256,contract_path:"evaluation/test-fixtures/contract.txt",contract_sha256:$contract_sha256,output_schema_path:"evaluation/test-fixtures/output-schema.json",output_schema_sha256:$output_schema_sha256,timeout_seconds:60,max_output_chars:1024}' \
+  >"$TEST_TMP/glm-evaluation-manifest.json"
+GLM_MANIFEST_SHA="$(sha256 "$TEST_TMP/glm-evaluation-manifest.json")"
+jq --arg hash "$GLM_MANIFEST_SHA" '
+  .profiles["glm-policy-annotation"].lanes["policy-annotation"].evaluation_manifest_sha256 = [$hash]
+' "$EVAL_ROOT/config/routing-gates.json" >"$TEST_TMP/glm-central.json"
+mv "$TEST_TMP/glm-central.json" "$EVAL_ROOT/config/routing-gates.json"
+jq --arg hash "$GLM_MANIFEST_SHA" '
+  .lanes["policy-annotation"].backends["claude-zai"].evaluation_manifest_sha256 = [$hash]
+' "$EVAL_ROOT/config/glm-5.2-routing.json" >"$TEST_TMP/glm-routing.json"
+mv "$TEST_TMP/glm-routing.json" "$EVAL_ROOT/config/glm-5.2-routing.json"
+git -C "$EVAL_ROOT" add config/routing-gates.json config/glm-5.2-routing.json
+git -C "$EVAL_ROOT" commit -qm 'allowlist GLM evaluation fixture'
+
+PATH="$TEST_TMP/bin:$PATH" TMPDIR="$TEST_TMP/runtime" ZAI_API_KEY=fixture-key \
+  FAKE_CLAUDE_CASE=success "$EVAL_ROOT/bin/delegation-glm" run \
+  --lane policy-annotation --effort high --backend claude-zai --evaluation \
+  --evaluation-manifest "$TEST_TMP/glm-evaluation-manifest.json" \
+  --prompt-file "$TEST_TMP/prompt" --output "$TEST_TMP/results/policy-annotation.out" \
+  --workdir "$TEST_TMP/work"
+[ "$(cat "$TEST_TMP/results/policy-annotation.out")" = PONG ] \
+  || fail "policy-annotation output mismatch"
+assert_json "$TEST_TMP/results/policy-annotation.out.metrics.json" \
+  '.lane == "policy-annotation" and .model == "glm-5.2" and .effort == "high"'
+
+jq '.max_output_chars = 2' "$TEST_TMP/glm-evaluation-manifest.json" \
+  >"$TEST_TMP/glm-small-output-manifest.json"
+GLM_SMALL_SHA="$(sha256 "$TEST_TMP/glm-small-output-manifest.json")"
+jq --arg first "$GLM_MANIFEST_SHA" --arg second "$GLM_SMALL_SHA" '
+  .profiles["glm-policy-annotation"].lanes["policy-annotation"].evaluation_manifest_sha256 = [$first, $second]
+' "$EVAL_ROOT/config/routing-gates.json" >"$TEST_TMP/glm-central-small.json"
+mv "$TEST_TMP/glm-central-small.json" "$EVAL_ROOT/config/routing-gates.json"
+jq --arg first "$GLM_MANIFEST_SHA" --arg second "$GLM_SMALL_SHA" '
+  .lanes["policy-annotation"].backends["claude-zai"].evaluation_manifest_sha256 = [$first, $second]
+' "$EVAL_ROOT/config/glm-5.2-routing.json" >"$TEST_TMP/glm-routing-small.json"
+mv "$TEST_TMP/glm-routing-small.json" "$EVAL_ROOT/config/glm-5.2-routing.json"
+git -C "$EVAL_ROOT" add config/routing-gates.json config/glm-5.2-routing.json
+git -C "$EVAL_ROOT" commit -qm 'allowlist GLM output-limit fixture'
+rc=0
+PATH="$TEST_TMP/bin:$PATH" TMPDIR="$TEST_TMP/runtime" ZAI_API_KEY=fixture-key \
+  FAKE_CLAUDE_CASE=success "$EVAL_ROOT/bin/delegation-glm" run \
+  --lane policy-annotation --effort high --backend claude-zai --evaluation \
+  --evaluation-manifest "$TEST_TMP/glm-small-output-manifest.json" \
+  --prompt-file "$TEST_TMP/prompt" --output "$TEST_TMP/results/policy-too-large.out" \
+  --workdir "$TEST_TMP/work" >/dev/null 2>&1 || rc=$?
+[ "$rc" -eq 70 ] || fail "policy-annotation output limit returned $rc"
+[ ! -e "$TEST_TMP/results/policy-too-large.out" ] \
+  && [ ! -e "$TEST_TMP/results/policy-too-large.out.metrics.json" ] \
+  || fail "policy-annotation output limit published partial artifacts"
+assert_json "$TEST_TMP/results/policy-too-large.out.error.json" \
+  '.reason == "max_output_chars" and .phase == "extract"'
+
 mkdir "$TEST_TMP/output-dir" "$TEST_TMP/metrics-dir"
 rc=0
 PATH="$TEST_TMP/bin:$PATH" ZAI_API_KEY="fixture-key" FAKE_CLAUDE_CASE=success \

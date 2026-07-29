@@ -12,6 +12,9 @@ GLM-5.2 is an optional external executor, not a native Claude or Codex model.
 Before dispatch, run `delegation-glm check --json`. The current gate exposes
 `clerk` and `scout` only in `provisional_lanes`; use them only after an explicit
 decision and pass `--allow-provisional`. Builder is a blocked candidate.
+`policy-annotation` at `high` is candidate/blocked and may be used only by a
+pre-registered allowlisted evaluation manifest. It is read-only, cannot promote
+itself, and does not qualify the general judgement lane.
 
 The small local run is compatibility evidence, not enough for full qualification.
 Builder and reviewer are not dispatchable. The installed routing JSON remains
@@ -30,6 +33,8 @@ delegation-glm run --lane <clerk|scout> --effort auto --allow-provisional \
 needs a key: `ZAI_API_KEY` in the environment, else the 600-mode key the
 installer stored. Keep `--effort auto`; an explicit effort the gate did not pin
 is refused (78), and only an `--evaluation` run may measure a new combination.
+That flag is reserved for `policy-annotation` and requires
+`--evaluation-manifest`; never use it for ordinary work.
 Exit 69 means unavailable; exit 78 means the lane or effort did not pass
 evaluation. Exit 70 means dispatch or result extraction failed; exit 75 means a
 temporary provider or rate-limit failure. Every attempted dispatch failure writes

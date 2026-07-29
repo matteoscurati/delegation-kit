@@ -14,6 +14,9 @@ Before every dispatch, run `delegation-kimi check --json`. Require the native
 backend and the requested lane in `provisional_lanes`, then pass
 `--allow-provisional`. The gate permits `clerk`, `scout`, `builder`, and
 `frontend-builder`; senior is blocked, while reviewer and judgement are disabled.
+`policy-annotation` is candidate/blocked only for a manifest-bound evaluation
+at the exact Kimi K3/max tuple; it never creates an operational route or
+qualifies broad architecture/trade-off judgement.
 Provider quota exhaustion is exit 75 and never
 triggers a silent substitution.
 

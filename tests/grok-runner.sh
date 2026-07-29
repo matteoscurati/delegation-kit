@@ -50,15 +50,30 @@ esac
 args=" $* "
 for required in \
   '--model grok-4.5' '--reasoning-effort high' \
-  '--permission-mode dontAsk' '--sandbox delegation-kit' \
+  '--permission-mode dontAsk' \
   '--output-format json' '--no-memory' '--no-subagents' '--disable-web-search' \
   '--no-auto-update' '--max-turns 40' \
-  '--tools grep,read_file,search_replace,list_dir,todo_write' \
-  '--allow Edit(**)' \
   '--deny Edit(**/.grok/config.toml)' \
   '--deny Edit(**/.grok/sandbox.toml)' '--deny Edit(**/.grok/auth.json)'; do
   case "$args" in *" $required "*) ;; *) printf 'missing required argument: %s\n' "$required" >&2; exit 2 ;; esac
 done
+if [[ "$args" == *" --sandbox delegation-kit-read-only "* ]]; then
+  sandbox_profile=delegation-kit-read-only
+  grep -q '^read_only = true$' "$HOME/.grok/sandbox.toml" \
+    || { printf 'read-only sandbox profile is missing enforcement\n' >&2; exit 2; }
+  for required in '--tools grep,read_file,list_dir'; do
+    case "$args" in *" $required "*) ;; *) printf 'missing read-only argument: %s\n' "$required" >&2; exit 2 ;; esac
+  done
+  case "$args" in *' --allow Edit(**) '*) printf 'read-only invocation exposed Edit\n' >&2; exit 2 ;; esac
+else
+  sandbox_profile=delegation-kit
+  for required in \
+    '--sandbox delegation-kit' \
+    '--tools grep,read_file,search_replace,list_dir,todo_write' \
+    '--allow Edit(**)'; do
+    case "$args" in *" $required "*) ;; *) printf 'missing builder argument: %s\n' "$required" >&2; exit 2 ;; esac
+  done
+fi
 case "$args" in *" --help "*) exit 0 ;; esac
 case "${GROK_FAKE_MODE:-success}" in
   auth) printf 'raw secret login required status 401\n' >&2; exit 1 ;;
@@ -69,11 +84,13 @@ mkdir -p "$HOME/.grok"
 case "${GROK_FAKE_MODE:-success}" in
   sandbox_missing) ;;
   sandbox_unenforced)
-    printf '%s\n' '{"event_type":"ProfileApplied","profile":"delegation-kit","enforced":false}' \
+    jq -nc --arg profile "$sandbox_profile" \
+      '{event_type:"ProfileApplied",profile:$profile,enforced:false}' \
       >"$HOME/.grok/sandbox-events.jsonl"
     ;;
   *)
-    printf '%s\n' '{"event_type":"ProfileApplied","profile":"delegation-kit","enforced":true}' \
+    jq -nc --arg profile "$sandbox_profile" \
+      '{event_type:"ProfileApplied",profile:$profile,enforced:true}' \
       >"$HOME/.grok/sandbox-events.jsonl"
     ;;
 esac
@@ -85,8 +102,10 @@ stop_reason=EndTurn
 [ "${GROK_FAKE_MODE:-success}" != max_turns ] || stop_reason=MaxTurns
 [ "${GROK_FAKE_MODE:-success}" != cancelled ] || stop_reason=Cancelled
 [ "${GROK_FAKE_MODE:-success}" != unexpected_stop ] || stop_reason=Unknown
-jq -n --arg stop_reason "$stop_reason" '
-  {text:"PONG",thought:"SECRET_THOUGHT",stopReason:$stop_reason,num_turns:2,
+runtime_model=grok-4.5
+[ "${GROK_FAKE_MODE:-success}" != model_mismatch ] || runtime_model=grok-4.5-fallback
+jq -n --arg stop_reason "$stop_reason" --arg model "$runtime_model" '
+  {model:$model,text:"PONG",thought:"SECRET_THOUGHT",stopReason:$stop_reason,num_turns:2,
    usage:{input_tokens:100,output_tokens:20,reasoning_tokens:7,
      cache_read_input_tokens:30,total_tokens:157},
    total_cost_usd:0.02,
@@ -185,6 +204,75 @@ jq -e '
 run_grok run --lane frontend-builder --allow-provisional --prompt-file "$TMP/prompt.txt" \
   --output "$TMP/results/frontend.txt" --workdir "$TMP/work"
 [ "$(cat "$TMP/results/frontend.txt")" = PONG ] || fail "frontend lane failed"
+
+# Exercise the manifest gate, read-only tool surface, sandbox attestation, and
+# exact provider identity from a clean committed runner checkout.
+EVAL_ROOT="$TMP/eval-repo"
+cp -R "$ROOT/." "$EVAL_ROOT"
+rm -rf -- "$EVAL_ROOT/.git"
+rm -f -- "$EVAL_ROOT/.claude/settings.local.json"
+mkdir -p "$EVAL_ROOT/evaluation/test-fixtures"
+printf '%s\n' 'policy annotation contract fixture' \
+  >"$EVAL_ROOT/evaluation/test-fixtures/contract.txt"
+printf '%s\n' '{"type":"object","required":["annotation"]}' \
+  >"$EVAL_ROOT/evaluation/test-fixtures/output-schema.json"
+git -C "$EVAL_ROOT" init -q
+git -C "$EVAL_ROOT" config user.email test@example.invalid
+git -C "$EVAL_ROOT" config user.name delegation-runner-test
+git -C "$EVAL_ROOT" add -A
+git -C "$EVAL_ROOT" commit -qm 'evaluation fixture base'
+EVAL_BASE_COMMIT="$(git -C "$EVAL_ROOT" rev-parse HEAD)"
+sha256() { shasum -a 256 "$1" | awk '{print $1}'; }
+jq -n \
+  --arg prompt_sha256 "$(sha256 "$TMP/prompt.txt")" \
+  --arg runner_sha256 "$(sha256 "$EVAL_ROOT/bin/delegation-grok")" \
+  --arg contract_sha256 "$(sha256 "$EVAL_ROOT/evaluation/test-fixtures/contract.txt")" \
+  --arg output_schema_sha256 "$(sha256 "$EVAL_ROOT/evaluation/test-fixtures/output-schema.json")" \
+  --arg source_commit "$EVAL_BASE_COMMIT" \
+  '{schema:"delegation_policy_annotation_evaluation_v1",profile:"grok-build",lane:"policy-annotation",model:"grok-4.5",backend:"grok-build",effort:"high",prompt_sha256:$prompt_sha256,runner_source_commit:$source_commit,runner_sha256:$runner_sha256,contract_path:"evaluation/test-fixtures/contract.txt",contract_sha256:$contract_sha256,output_schema_path:"evaluation/test-fixtures/output-schema.json",output_schema_sha256:$output_schema_sha256,timeout_seconds:60,max_output_chars:1024}' \
+  >"$TMP/grok-evaluation-manifest.json"
+GROK_MANIFEST_SHA="$(sha256 "$TMP/grok-evaluation-manifest.json")"
+jq --arg hash "$GROK_MANIFEST_SHA" '
+  .profiles["grok-build"].lanes["policy-annotation"].evaluation_manifest_sha256 = [$hash]
+' "$EVAL_ROOT/config/routing-gates.json" >"$TMP/grok-central.json"
+mv "$TMP/grok-central.json" "$EVAL_ROOT/config/routing-gates.json"
+jq --arg hash "$GROK_MANIFEST_SHA" '
+  .lanes["policy-annotation"].backends["grok-build"].evaluation_manifest_sha256 = [$hash]
+' "$EVAL_ROOT/config/grok-4.5-routing.json" >"$TMP/grok-routing.json"
+mv "$TMP/grok-routing.json" "$EVAL_ROOT/config/grok-4.5-routing.json"
+git -C "$EVAL_ROOT" add config/routing-gates.json config/grok-4.5-routing.json
+git -C "$EVAL_ROOT" commit -qm 'allowlist Grok evaluation fixture'
+
+DELEGATION_GROK_HOME="$TMP/grok-home" \
+DELEGATION_GROK_BIN_STORE="$TMP/eval-store" \
+DELEGATION_GROK_BIN="$TMP/bin/grok" \
+PATH="$TMP/bin:$PATH" "$EVAL_ROOT/bin/delegation-grok" run \
+  --lane policy-annotation --effort high --backend grok-build --evaluation \
+  --evaluation-manifest "$TMP/grok-evaluation-manifest.json" \
+  --prompt-file "$TMP/prompt.txt" --output "$TMP/results/policy-annotation.txt" \
+  --workdir "$TMP/work"
+[ "$(cat "$TMP/results/policy-annotation.txt")" = PONG ] \
+  || fail "policy-annotation output mismatch"
+jq -e '
+  .lane == "policy-annotation" and .model == "grok-4.5" and
+  .effort == "high" and .sandbox == "delegation-kit-read-only"
+' "$TMP/results/policy-annotation.txt.metrics.json" >/dev/null \
+  || fail "policy-annotation metrics mismatch"
+
+rc=0
+DELEGATION_GROK_HOME="$TMP/grok-home" \
+DELEGATION_GROK_BIN_STORE="$TMP/eval-store" \
+DELEGATION_GROK_BIN="$TMP/bin/grok" \
+GROK_FAKE_MODE=model_mismatch PATH="$TMP/bin:$PATH" \
+  "$EVAL_ROOT/bin/delegation-grok" run \
+  --lane policy-annotation --effort high --backend grok-build --evaluation \
+  --evaluation-manifest "$TMP/grok-evaluation-manifest.json" \
+  --prompt-file "$TMP/prompt.txt" --output "$TMP/results/policy-identity.txt" \
+  --workdir "$TMP/work" >/dev/null 2>&1 || rc=$?
+[ "$rc" = 70 ] || fail "policy-annotation identity mismatch returned $rc"
+jq -e '.phase == "identity" and .reason == "provider_identity_not_attested"' \
+  "$TMP/results/policy-identity.txt.error.json" >/dev/null \
+  || fail "policy-annotation identity mismatch diagnostic"
 
 rc=0
 run_grok run --lane builder --allow-provisional --effort max --prompt-file "$TMP/prompt.txt" \

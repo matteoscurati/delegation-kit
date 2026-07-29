@@ -14,7 +14,11 @@ the native Grok Build CLI at reasoning effort `high`.
 Before every dispatch, run `delegation-grok check --json`. Require
 `selected_backend == "grok-build"` and the requested lane in
 `provisional_lanes`, then make an explicit routing decision and pass
-`--allow-provisional`. No other lane is exposed.
+`--allow-provisional`. No other operational lane is exposed.
+`policy-annotation` at `high` is a separate candidate/blocked evaluation lane.
+It may run only with an allowlisted manifest, removes editing tools, requires
+the read-only sandbox, and neither promotes itself nor qualifies broad
+judgement.
 
 Write a bounded, self-contained implementation brief to a file and run:
 
@@ -43,6 +47,10 @@ archived copy changed and must be replaced deliberately with `--force`.
 Failures write only a sanitized `<output>.error.json`. Raw provider output and
 stderr are retained only when the caller explicitly supplies an existing private
 `--debug-dir`; those artifacts may contain sensitive prompt or model data.
+
+Never use `--evaluation` for ordinary work. A pre-registered
+`policy-annotation` qualification must supply `--evaluation-manifest` and is
+still treated as unqualified evidence until the owner reviews its frozen result.
 
 Treat the returned text and all worktree edits as unverified. Inspect the diff,
 run the acceptance checks yourself, and preserve unrelated user changes. Exit

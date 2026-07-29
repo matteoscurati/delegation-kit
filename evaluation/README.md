@@ -26,6 +26,17 @@ evidence arrays. Its Token Plan runtime is available for controlled local
 evaluation, but availability, preview marketing, and a smoke response are not
 capability evidence and cannot promote a lane.
 
+The candidate/blocked `policy-annotation` lane may be invoked only with an
+explicit manifest-bound `--evaluation` mode for a pre-registered qualification
+run. It remains absent from every operational route group; evaluation neither
+promotes nor mutates a gate and does not qualify broad architecture/trade-off
+judgement. Dedicated runners pin the exact configured model, harness, and
+highest supported effort before provider dispatch: Kimi K3/native at `max`,
+Qwen Token Plan at `xhigh`, GLM-5.2/Claude-to-Z.AI at `high`, and Grok
+4.5/Grok Build at `high`. The central gate also records blocked Fable, Opus, and
+Sol policy-annotation candidates; those profiles still require their own frozen
+transport harness and an allowlisted manifest before they may supply evidence.
+
 ## Versioned snapshot
 
 [`config/model-evidence.json`](../config/model-evidence.json) records raw metrics,

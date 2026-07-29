@@ -65,7 +65,9 @@ background subshells:
   equally to operational workers, Senior, and Judgement.
   Gemini is provisional only for scout/medium. Grok 4.5 is provisional only for
   builder and frontend-builder at high. Qwen3.8 Max Preview remains blocked
-  entirely until an evaluated gate promotes it.
+  entirely until an evaluated gate promotes it. Manifest-bound
+  `policy-annotation` candidates are evaluation-only and never count as
+  operational routes.
 
 ## The loop
 

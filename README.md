@@ -52,7 +52,10 @@ The universal installer also adds `delegation-glm`, `delegation-gemini`, `delega
 central router `delegation-route` under
 `~/.local/bin`, with versioned gates under `~/.local/share/delegation-kit/`.
 GLM `clerk` and `scout` are provisional and require `--allow-provisional`;
-builder is a blocked candidate and reviewer is disabled. The runner refuses every
+builder is a blocked candidate and reviewer is disabled. A separate
+`policy-annotation` candidate at the highest supported bridge effort (`high`)
+can run only through an allowlisted read-only evaluation manifest and creates no
+operational route. The runner refuses every
 blocked lane and every effort the gate did not pin, and also refuses execution unless at least one of Claude Code or Codex is
 installed; it is an agent option, not a standalone GLM client. The installer asks
 for the Z.AI API key and stores it in `~/.local/share/delegation-kit/config/zai.env`
@@ -75,7 +78,9 @@ is carried across for OAuth, while all tool namespaces are explicitly denied.
 
 Kimi K3 is installed as a **provisional coding model**. Its gate permits explicit
 `clerk`, `scout`, `builder`, and `frontend-builder` runs at `max`; senior is a
-blocked candidate, and reviewer/judgement remain disabled. Provider quota exhaustion
+blocked candidate, reviewer/judgement remain disabled, and `policy-annotation`
+is candidate/blocked for manifest-bound evaluation only. It never creates an
+operational route or qualifies architecture/trade-off judgement. Provider quota exhaustion
 returns exit 75 without silently falling back or changing the quality
 qualification. Provisional runs require `--allow-provisional`; CLI
 availability or a provider model listing is not enough. CLI compatibility is
@@ -99,7 +104,10 @@ the permission mode is `dontAsk`, with only file edits explicitly allowed; the
 terminal tool is not exposed.
 The lead remains responsible for running tests and every command after review.
 Failures expose sanitized metadata by default, with raw debug artifacts only
-through explicit `--debug-dir`. No other Grok lane is exposed.
+through explicit `--debug-dir`. A separate `policy-annotation` candidate is
+available only to an allowlisted evaluation manifest at the same highest
+supported effort; it removes editing tools, requires the read-only sandbox, and
+never becomes an operational route merely by running.
 
 Because the vendor CLI auto-updates and prunes its own download cache,
 `delegation-grok pin` can archive the currently compatible build in
@@ -123,7 +131,8 @@ Qwen3.8 Max Preview is installed as a **blocked candidate**, pinned to the
 Qwen Cloud Token Plan OpenAI-compatible endpoint and `xhigh`. Its dedicated
 `sk-sp-` key is stored separately and never imported silently from another tool.
 Runtime availability is not qualification; `--evaluation` is reserved for a
-controlled local qualification run.
+manifest-bound controlled local qualification run at the exact pinned tuple; it
+never promotes or mutates a gate.
 
 The evidence-backed routing policy lives in [`model-routing.md`](./model-routing.md).
 Its raw, dated model+harness+effort snapshot is

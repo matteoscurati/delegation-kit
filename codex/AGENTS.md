@@ -22,6 +22,9 @@ gate lists `clerk` and `scout` in `provisional_lanes`; an explicit decision and
 backend, keyed by `ZAI_API_KEY` or the 600-mode key the installer stored. Prefer
 the incumbent for costly edits on the unmeasured builder lane. If the runtime or
 lane gate is absent, keep using the incumbent profile; never silently substitute.
+`policy-annotation` at `high` is a separate candidate/blocked lane available
+only through an allowlisted read-only evaluation manifest. It never adds an
+operational route or qualifies broad judgement.
 
 ## Optional Gemini 3.6 Flash executor
 
@@ -67,7 +70,10 @@ effort `max`, only with `--allow-provisional`. CLI compatibility is determined
 by capabilities, not by an exact version; the observed version is provenance
 only. Every lane uses an isolated minimal config, allowlisted environment,
 disabled terminal, and macOS write sandbox; builders are confined to their
-canonical worktree. Senior is blocked; reviewer and judgement remain disabled. Installed
+canonical worktree. Senior is blocked; reviewer and judgement remain disabled.
+`policy-annotation` is candidate/blocked only for a manifest-bound evaluation
+at the exact Kimi K3/max tuple; it never adds an operational route or qualifies
+broad judgement. Installed
 runtimes and visible model names are not qualification. If the exact gate is
 absent, keep the incumbent profile; never silently substitute another model,
 effort, or lane.
@@ -79,6 +85,9 @@ Qwen3.8 Max Preview is installed only through `qwen-executor` and
 at `xhigh`. Subscription access, a valid key, or a smoke test is not
 qualification. Every normal lane remains blocked until exact local evaluation
 promotes both routing gates. Never use `--evaluation` for ordinary work.
+The only evaluation-capable lane is manifest-bound `policy-annotation` at the
+exact Qwen/xhigh tuple; it cannot promote or mutate a gate or qualify broad
+judgement.
 
 ## Optional Grok 4.5 builder
 
@@ -96,6 +105,9 @@ provenance only. An optional digest-checked private archive preserves the
 selected bytes independently of PATH; use `delegation-grok pin --force` for
 deliberate replacement. No other Grok lane is enabled, and failure never
 triggers a silent substitution.
+`policy-annotation` at `high` is the sole evaluation-only exception: it is
+candidate/blocked, manifest-bound, removes editing tools, requires the
+read-only sandbox, and creates no operational route.
 
 ## Reaching Claude from Codex (cross-provider bridge)
 

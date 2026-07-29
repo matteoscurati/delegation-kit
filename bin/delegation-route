@@ -73,6 +73,19 @@ validate() {
       ($evidence[0].lane_evidence[evidence_lane($lane.key)].required_metrics // [])[] as $metric |
       select(has_metric($rows[$id].metrics; $metric) | not)] | length == 0) and
     ([.profiles[].lanes[] | ((.exact_evidence_ids + .context_evidence_ids) | length) == ((.exact_evidence_ids + .context_evidence_ids) | unique | length)] | all) and
+    ([.profiles | to_entries[] as $p | $p.value.lanes | to_entries[] |
+      select(.value.evaluation_manifest_sha256? != null) |
+      .key == "policy-annotation"] | all) and
+    ([.profiles | to_entries[] as $p | $p.value.lanes | to_entries[] |
+      select(.key == "policy-annotation") | .value |
+      (.evaluation_manifest_sha256 // null) as $hashes |
+      ($hashes | type) == "array" and
+      ($hashes | length) == ($hashes | unique | length) and
+      all($hashes[]; type == "string" and test("^[0-9a-f]{64}$")) and
+      (if .status == "candidate"
+       then .selection == "blocked"
+       else ($hashes | length) == 0
+       end)] | all) and
     ([.profiles[].lanes[] | select((.provider_fallback // null) != null) |
       .provider_fallback |
       .possible == true and
@@ -109,8 +122,8 @@ validate() {
   [ -r "$GROK_GATE" ] || die 66 "cannot read executable Grok gate $GROK_GATE"
   jq -e -n --slurpfile central "$GATES" --slurpfile bridge "$GLM_GATE" '
     [$central[0].profiles | to_entries[] | select(.value.model == "glm-5.2" and .value.harness == "claude-zai") as $p |
-     $p.value.lanes | to_entries[] | {key:.key,value:{status:.value.status,selection:.value.selection,effort:$p.value.effort}}] | from_entries as $expected |
-    [$bridge[0].lanes | to_entries[] | {key:.key,value:{status:.value.backends["claude-zai"].status,selection:.value.backends["claude-zai"].selection,effort:(.value.backends["claude-zai"].effort // .value.default_effort)}}] | from_entries as $actual |
+     $p.value.lanes | to_entries[] | {key:.key,value:{status:.value.status,selection:.value.selection,effort:$p.value.effort,evaluation_manifest_sha256:(.value.evaluation_manifest_sha256 // [])}}] | from_entries as $expected |
+    [$bridge[0].lanes | to_entries[] | {key:.key,value:{status:.value.backends["claude-zai"].status,selection:.value.backends["claude-zai"].selection,effort:(.value.backends["claude-zai"].effort // .value.default_effort),evaluation_manifest_sha256:(.value.backends["claude-zai"].evaluation_manifest_sha256 // [])}}] | from_entries as $actual |
     ($bridge[0].model == "glm-5.2") and (($expected | keys) == ($actual | keys)) and
     all($expected | keys[]; $expected[.] == $actual[.]) and
     (($expected | to_entries | map(select(.value.status == "qualified") | .key) | sort) == (($bridge[0].qualified_lanes // []) | sort)) and
@@ -119,8 +132,8 @@ validate() {
   ' >/dev/null || die 65 "central routing and GLM executable gate disagree"
   jq -e -n --slurpfile central "$GATES" --slurpfile bridge "$KIMI_GATE" '
     [$central[0].profiles | to_entries[] | select(.value.model == "kimi-k3" and .value.harness == "kimi-code-cli") as $p |
-     $p.value.lanes | to_entries[] | {key:.key,value:{status:.value.status,selection:.value.selection,effort:$p.value.effort}}] | from_entries as $expected |
-    [$bridge[0].lanes | to_entries[] | {key:.key,value:{status:.value.backends.native.status,selection:.value.backends.native.selection,effort:(.value.backends.native.effort // .value.default_effort)}}] | from_entries as $actual |
+     $p.value.lanes | to_entries[] | {key:.key,value:{status:.value.status,selection:.value.selection,effort:$p.value.effort,evaluation_manifest_sha256:(.value.evaluation_manifest_sha256 // [])}}] | from_entries as $expected |
+    [$bridge[0].lanes | to_entries[] | {key:.key,value:{status:.value.backends.native.status,selection:.value.backends.native.selection,effort:(.value.backends.native.effort // .value.default_effort),evaluation_manifest_sha256:(.value.backends.native.evaluation_manifest_sha256 // [])}}] | from_entries as $actual |
     ($bridge[0].model == "kimi-k3") and (($expected | keys) == ($actual | keys)) and
     all($expected | keys[]; $expected[.] == $actual[.]) and
     (($expected | to_entries | map(select(.value.status == "qualified") | .key) | sort) == (($bridge[0].qualified_lanes // []) | sort)) and
@@ -129,8 +142,8 @@ validate() {
   ' >/dev/null || die 65 "central routing and Kimi executable gate disagree"
   jq -e -n --slurpfile central "$GATES" --slurpfile bridge "$QWEN_GATE" '
     [$central[0].profiles | to_entries[] | select(.value.model == "qwen3.8-max-preview" and .value.harness == "token-plan-openai") as $p |
-     $p.value.lanes | to_entries[] | {key:.key,value:{status:.value.status,selection:.value.selection,effort:$p.value.effort}}] | from_entries as $expected |
-    [$bridge[0].lanes | to_entries[] | {key:.key,value:{status:.value.backends["token-plan-openai"].status,selection:.value.backends["token-plan-openai"].selection,effort:(.value.backends["token-plan-openai"].effort // .value.default_effort)}}] | from_entries as $actual |
+     $p.value.lanes | to_entries[] | {key:.key,value:{status:.value.status,selection:.value.selection,effort:$p.value.effort,evaluation_manifest_sha256:(.value.evaluation_manifest_sha256 // [])}}] | from_entries as $expected |
+    [$bridge[0].lanes | to_entries[] | {key:.key,value:{status:.value.backends["token-plan-openai"].status,selection:.value.backends["token-plan-openai"].selection,effort:(.value.backends["token-plan-openai"].effort // .value.default_effort),evaluation_manifest_sha256:(.value.backends["token-plan-openai"].evaluation_manifest_sha256 // [])}}] | from_entries as $actual |
     ($bridge[0].model == "qwen3.8-max-preview") and (($expected | keys) == ($actual | keys)) and
     all($expected | keys[]; $expected[.] == $actual[.]) and
     (($expected | to_entries | map(select(.value.status == "qualified") | .key) | sort) == (($bridge[0].qualified_lanes // []) | sort)) and
@@ -149,8 +162,8 @@ validate() {
   ' >/dev/null || die 65 "central routing and Gemini executable gate disagree"
   jq -e -n --slurpfile central "$GATES" --slurpfile bridge "$GROK_GATE" '
     [$central[0].profiles | to_entries[] | select(.value.model == "grok-4.5" and .value.harness == "grok-build-cli") as $p |
-     $p.value.lanes | to_entries[] | {key:.key,value:{status:.value.status,selection:.value.selection,effort:$p.value.effort}}] | from_entries as $expected |
-    [$bridge[0].lanes | to_entries[] | {key:.key,value:{status:.value.backends["grok-build"].status,selection:.value.backends["grok-build"].selection,effort:(.value.backends["grok-build"].effort // .value.default_effort)}}] | from_entries as $actual |
+     $p.value.lanes | to_entries[] | {key:.key,value:{status:.value.status,selection:.value.selection,effort:$p.value.effort,evaluation_manifest_sha256:(.value.evaluation_manifest_sha256 // [])}}] | from_entries as $expected |
+    [$bridge[0].lanes | to_entries[] | {key:.key,value:{status:.value.backends["grok-build"].status,selection:.value.backends["grok-build"].selection,effort:(.value.backends["grok-build"].effort // .value.default_effort),evaluation_manifest_sha256:(.value.backends["grok-build"].evaluation_manifest_sha256 // [])}}] | from_entries as $actual |
     ($bridge[0].model == "grok-4.5") and (($expected | keys) == ($actual | keys)) and
     ($central[0].profiles["grok-build"].runtime_cli_compatibility == $bridge[0].runtime_cli_compatibility) and
     all($expected | keys[]; $expected[.] == $actual[.]) and
