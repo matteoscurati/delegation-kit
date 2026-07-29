@@ -1,0 +1,102 @@
+{
+  "schema_version": "delegation_policy_annotation_qualification_result_v2",
+  "protocol_id": "policy-annotation-qualification-v2",
+  "status": "PANEL_NOT_FORMED_INSUFFICIENT_QUALIFIED_CANDIDATES",
+  "source_commit": "0c8e991817cebad347a86dcfef7fe882260cd182",
+  "contract_sha256": "492dc8dffb97f6d036da1988a7a127455bc6a8e4bb123c7a2b33900a0ac4fc79",
+  "packet_sha256": "cd171c4ead371333243bdf907f1b48afdaf03bb6d91befd5cfa16689a4da306e",
+  "prompt_sha256": "7226d51a701903e0d5ec99999f8880b269bfa902cbefe876d15e02adf5c1c645",
+  "hidden_construction_key_sha256": "12b00d3069335ea75064c9e529e15eb1f9af83a6298a4398c5f95df7cfb2dcd0",
+  "candidates": [
+    {
+      "profile": "fable-policy-annotator",
+      "requested_model": "claude-fable-5",
+      "effort": "xhigh",
+      "outcome": "VOID_GLOBAL_REFUSAL_AND_IDENTITY_MISMATCH",
+      "identity_exact": false,
+      "observed_models": [
+        "claude-haiku-4-5",
+        "claude-opus-5"
+      ],
+      "structured_records": 0,
+      "construction_matches": 0,
+      "provider_attempts": 1,
+      "pre_inference_schema_adapter_events": 1,
+      "post_observation_retries": 0,
+      "raw_envelope_sha256": "aecebe9cfc2e3f835fb5ae7a70bf3b9f86e10462bb73bd9db0ee93d5ace8863e"
+    },
+    {
+      "profile": "qwen3.8-max-preview",
+      "requested_model": "qwen3.8-max-preview",
+      "effort": "xhigh",
+      "outcome": "QUALIFIED",
+      "identity_exact": true,
+      "structured_records": 20,
+      "binary_records": 20,
+      "construction_matches": 20,
+      "post_observation_retries": 0,
+      "raw_output_sha256": "74d0f8df4b6ad81458ceb0c97b8f53276dd5bb5116c901e32e3056e205dc2046",
+      "metrics_sha256": "0e44c713474bfddaa66a5289c1749d1bfe9ee61152b8cbd596f6b2261134bc8b"
+    },
+    {
+      "profile": "grok-build",
+      "requested_model": "grok-4.5",
+      "effort": "high",
+      "outcome": "VOID_TRANSPORT_FAILURE",
+      "identity_exact": false,
+      "structured_records": 0,
+      "construction_matches": 0,
+      "post_observation_retries": 0,
+      "diagnostic_sha256": "d53be0c0a585c0ad981cedb1e40378b510827cf0b650ac8c6c173649241d6b23"
+    },
+    {
+      "profile": "glm-policy-annotation",
+      "requested_model": "glm-5.2",
+      "effort": "high",
+      "outcome": "VOID_TRANSPORT_FAILURE",
+      "identity_exact": false,
+      "structured_records": 0,
+      "construction_matches": 0,
+      "post_observation_retries": 0,
+      "diagnostic_sha256": "da93e9176c356cf907319b7b2da38812c253776b4aa11e709cb41518b15b6226"
+    },
+    {
+      "profile": "kimi-k3",
+      "requested_model": "kimi-code/k3",
+      "effort": "max",
+      "outcome": "VOID_AUTH_LOGIN_REQUIRED",
+      "identity_exact": false,
+      "structured_records": 0,
+      "construction_matches": 0,
+      "post_observation_retries": 0,
+      "stderr_sha256": "f44c6d9f196045710feb74ea70d5a6a4a09cd61b6298b7337ab9d4718b2e7fad"
+    },
+    {
+      "profile": "sol-max-policy-annotator",
+      "requested_model": "gpt-5.6-sol",
+      "effort": "max",
+      "outcome": "QUALIFIED",
+      "identity_exact": true,
+      "structured_records": 20,
+      "binary_records": 20,
+      "construction_matches": 20,
+      "post_observation_retries": 0,
+      "raw_output_sha256": "0fae32ed8990d021e306df393dfa553d559fde36bae5d29398225801ea704433"
+    }
+  ],
+  "panel": {
+    "qualified_candidates": [
+      "qwen3.8-max-preview",
+      "sol-max-policy-annotator"
+    ],
+    "qualified_count": 2,
+    "minimum_required": 3,
+    "formed": false,
+    "development_bank_annotation_authorized": false
+  },
+  "human_gold": false,
+  "training_authorized": false,
+  "promotion_evidence": false,
+  "promotion_authorized": false,
+  "deployment_authorized": false
+}
