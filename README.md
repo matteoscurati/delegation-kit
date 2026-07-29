@@ -78,14 +78,22 @@ Kimi K3 is installed as a **provisional coding model**. Its gate permits explici
 blocked candidate, and reviewer/judgement remain disabled. Provider quota exhaustion
 returns exit 75 without silently falling back or changing the quality
 qualification. Provisional runs require `--allow-provisional`; CLI
-availability or a provider model listing is not enough.
+availability or a provider model listing is not enough. CLI compatibility is
+determined from capabilities: structured output, the exact `kimi-code/k3`
+model, OAuth, and `max` as the supported/effective effort are required, while
+the observed version is provenance only. The runner imports
+only authentication into a minimal isolated HOME, scrubs the environment,
+disables terminal execution, and hides ambient HOME contents. macOS
+`sandbox-exec` limits read-only lanes to scratch writes and builder lanes to
+worktree-plus-scratch writes; every lane fails closed when that guard is
+unavailable.
 
 Grok 4.5 is installed as a **provisional builder** through Grok Build CLI.
 `builder` and `frontend-builder` are available only at effort `high`, after an
 explicit decision and `--allow-provisional`. The runner pins the model, extracts
-only the public `text` field from JSON output, pins CLI `0.2.111`, and caps runs
-at 40 turns and 15 minutes. An ephemeral HOME disables memory, subagents, web,
-plugins, MCP, compatibility imports, and automatic updates. The custom
+only the public `text` field from JSON output, capability-probes the resolved
+CLI, and caps runs at 40 turns and 15 minutes. An ephemeral HOME disables
+memory, subagents, web, plugins, MCP, compatibility imports, and automatic updates. The custom
 `delegation-kit` sandbox must attest OS enforcement before output is published;
 the permission mode is `dontAsk`, with only file edits explicitly allowed; the
 terminal tool is not exposed.
@@ -93,14 +101,15 @@ The lead remains responsible for running tests and every command after review.
 Failures expose sanitized metadata by default, with raw debug artifacts only
 through explicit `--debug-dir`. No other Grok lane is exposed.
 
-Because the vendor CLI auto-updates and prunes its own download cache, the pin
-would otherwise expire on the vendor's schedule. `delegation-grok pin` archives
-the attested build into a private store (`$DATA_HOME/grok-cli/<version>/`) with
-a recorded SHA-256, and the runner resolves `DELEGATION_GROK_BIN`, then that
-store, then `grok` on PATH — so an ambient update is a non-event and never a
-reason to edit a gate. `install.sh` pins automatically when the attested build
-is still reachable. A digest mismatch fails closed rather than running
-unattested bytes; only re-evaluation changes `REQUIRED_GROK_VERSION`.
+Because the vendor CLI auto-updates and prunes its own download cache,
+`delegation-grok pin` can archive the currently compatible build in
+`$DATA_HOME/grok-cli/current/` with a recorded SHA-256. The runner resolves
+`DELEGATION_GROK_BIN`, then that private archive, then `grok` on PATH. Any
+version is accepted when it exposes the required interface, authenticated
+`grok-4.5` inventory, isolation state, structured output, and sandbox
+attestation; the observed version is provenance only. `install.sh` archives the
+compatible build automatically when available. A digest mismatch fails closed
+rather than running changed bytes.
 
 ```sh
 delegation-grok pin
@@ -174,6 +183,7 @@ tests/routing-gates.sh
 tests/epoch-zip.sh
 tests/glm-runner-diagnostics.sh
 tests/gemini-runner-diagnostics.sh
+tests/kimi-runner.sh
 tests/grok-runner.sh
 tests/qwen-runner.sh
 git diff --check

@@ -116,6 +116,13 @@ jq '.lanes.clerk.backends["token-plan-openai"].status = "provisional" |
 expect_failure 65 env DELEGATION_QWEN_ROUTING_FILE="$TMP/bad-qwen.json" \
   bin/delegation-route check --json
 
+# Kimi lane/effort drift is checked in both directions; CLI version is
+# deliberately runtime provenance, not a routing decision.
+jq '.lanes.scout.backends.native.effort = "high"' \
+  config/kimi-k3-routing.json >"$TMP/bad-kimi.json"
+expect_failure 65 env DELEGATION_KIMI_ROUTING_FILE="$TMP/bad-kimi.json" \
+  bin/delegation-route check --json
+
 # Gemini bridge drift is checked in both directions.
 jq '.lanes.scout.backends.agy.effort = "high"' \
   config/gemini-3.6-flash-routing.json >"$TMP/bad-gemini.json"
@@ -126,6 +133,12 @@ expect_failure 65 env DELEGATION_GEMINI_ROUTING_FILE="$TMP/bad-gemini.json" \
 jq '.lanes.builder.backends["grok-build"].effort = "max"' \
   config/grok-4.5-routing.json >"$TMP/bad-grok.json"
 expect_failure 65 env DELEGATION_GROK_ROUTING_FILE="$TMP/bad-grok.json" \
+  bin/delegation-route check --json
+
+# Grok CLI compatibility policy is mirrored centrally without naming a version.
+jq '.runtime_cli_compatibility = "version-pinned"' \
+  config/grok-4.5-routing.json >"$TMP/bad-grok-compatibility.json"
+expect_failure 65 env DELEGATION_GROK_ROUTING_FILE="$TMP/bad-grok-compatibility.json" \
   bin/delegation-route check --json
 
 # Disabled/candidate profiles never leak into explicit/fallback candidates.

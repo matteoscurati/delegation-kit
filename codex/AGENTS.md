@@ -63,8 +63,11 @@ other; the lead keeps final authority. Never trigger the pair automatically.
 
 Kimi K3 is provisionally usable for `clerk`, `scout`, `builder`, and `frontend-builder`
 through the installed `kimi-executor` skill, using the native Kimi Code CLI at
-effort `max`, only with `--allow-provisional`. Senior is blocked; reviewer and
-judgement remain disabled. Installed
+effort `max`, only with `--allow-provisional`. CLI compatibility is determined
+by capabilities, not by an exact version; the observed version is provenance
+only. Every lane uses an isolated minimal config, allowlisted environment,
+disabled terminal, and macOS write sandbox; builders are confined to their
+canonical worktree. Senior is blocked; reviewer and judgement remain disabled. Installed
 runtimes and visible model names are not qualification. If the exact gate is
 absent, keep the incumbent profile; never silently substitute another model,
 effort, or lane.
@@ -82,15 +85,16 @@ promotes both routing gates. Never use `--evaluation` for ordinary work.
 Grok 4.5 is provisionally usable for `builder` and `frontend-builder` only
 through the installed `grok-executor` skill and `delegation-grok`, using Grok
 Build CLI at effort `high`. Require an explicit decision and
-`--allow-provisional`. The runner pins CLI `0.2.111`, model, and effort,
-extracts only `.text`, uses an ephemeral HOME without memory, subagents, web,
+`--allow-provisional`. The runner capability-probes the CLI, pins model and
+effort, extracts only `.text`, uses an ephemeral HOME without memory, subagents, web,
 plugins, MCP, compatibility imports, or updates, and requires the custom
 `delegation-kit` sandbox to attest enforcement. Permission mode is `dontAsk`,
 with only file edits explicitly allowed; terminal execution is not exposed and
-the lead runs verification. Runs have 40-turn and 15-minute limits. The pinned
-CLI is resolved from a private archive rather than PATH, so a vendor
-auto-update never strands the lane or justifies editing the pin; re-run
-`delegation-grok pin`. No other Grok lane is enabled, and failure never
+the lead runs verification. Runs have 40-turn and 15-minute limits. Any CLI
+version is accepted when those capabilities pass; the observed version is
+provenance only. An optional digest-checked private archive preserves the
+selected bytes independently of PATH; use `delegation-grok pin --force` for
+deliberate replacement. No other Grok lane is enabled, and failure never
 triggers a silent substitution.
 
 ## Reaching Claude from Codex (cross-provider bridge)
