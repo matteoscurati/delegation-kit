@@ -68,7 +68,9 @@
           "status": "candidate",
           "selection": "blocked",
           "effort": "high",
-          "evaluation_manifest_sha256": [],
+          "evaluation_manifest_sha256": [
+            "4adabaa2c6b4978b9dbfaa7088836805c738c28110a6309d0d05e2430b86eef7"
+          ],
           "legacy_local_result": null,
           "qualification_basis": "Evaluation-only policy annotation candidate. A manifest-bound run cannot promote or add an operational route."
         }

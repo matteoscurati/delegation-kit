@@ -89,7 +89,9 @@
           "status": "candidate",
           "selection": "blocked",
           "effort": "high",
-          "evaluation_manifest_sha256": [],
+          "evaluation_manifest_sha256": [
+            "e26ad93b5c06b92982f169e5e6236b42f47842bbbffa86c4fb3215541febc061"
+          ],
           "runtime_controls": {
             "sandbox": "delegation-kit-read-only",
             "permission_mode": "dontAsk",

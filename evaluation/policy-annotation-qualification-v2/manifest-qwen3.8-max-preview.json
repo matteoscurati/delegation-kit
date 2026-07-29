@@ -1,0 +1,17 @@
+{
+  "schema": "delegation_policy_annotation_evaluation_v1",
+  "profile": "qwen3.8-max-preview",
+  "lane": "policy-annotation",
+  "model": "qwen3.8-max-preview",
+  "backend": "token-plan-openai",
+  "effort": "xhigh",
+  "prompt_sha256": "7226d51a701903e0d5ec99999f8880b269bfa902cbefe876d15e02adf5c1c645",
+  "runner_source_commit": "eae5b512fd8e46b1e73a770f69fc9e1662202913",
+  "runner_sha256": "8dcc0d7e2eb4d9ecd996ee51edf768a6675abcc163470bf7801dcc225a6aee81",
+  "contract_path": "evaluation/policy-annotation-qualification-v2/contract.json",
+  "contract_sha256": "492dc8dffb97f6d036da1988a7a127455bc6a8e4bb123c7a2b33900a0ac4fc79",
+  "output_schema_path": "evaluation/policy-annotation-qualification-v2/output-schema.json",
+  "output_schema_sha256": "4a5050af9edd50748976c25b8ec8322392ecd1cb7a1bac5e90a282693e2c8046",
+  "timeout_seconds": 600,
+  "max_output_chars": 16384
+}
