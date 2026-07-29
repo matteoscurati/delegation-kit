@@ -198,7 +198,7 @@
       "model": "grok-4.5",
       "harness": "grok-build-cli",
       "effort": "high",
-      "runtime_cli_version": "0.2.111",
+      "runtime_cli_compatibility": "capability-probed",
       "runtime_controls": {
         "sandbox": "delegation-kit",
         "isolated_home": true,

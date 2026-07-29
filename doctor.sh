@@ -289,8 +289,26 @@ if ! have jq; then
   warn "jq not on PATH — delegation-kimi cannot run"
 elif have delegation-kimi; then
   kimi_check="$(delegation-kimi check --json 2>/dev/null || true)"
-  if [ -n "$kimi_check" ] && printf '%s' "$kimi_check" | jq -e '.model == "kimi-k3"' >/dev/null 2>&1; then
-    ok "delegation-kimi installed and pinned to kimi-k3"
+  if [ -n "$kimi_check" ] && printf '%s' "$kimi_check" | jq -e '
+      .model == "kimi-k3" and
+      (.selected_backend == "native" or .selected_backend == "none") and
+      (.backends.native.available == (.selected_backend == "native")) and
+      (if .selected_backend == "native"
+       then (.runtime_cli_version | type == "string" and length > 0)
+       else (.runtime_cli_version == null or
+             (.runtime_cli_version | type == "string" and length > 0))
+       end) and
+      .backends.native.sandbox == "macos-sandbox-exec" and
+      .backends.native.isolated_home == true and
+      .backends.native.environment_mode == "allowlist" and
+      .backends.native.ambient_home_read == false and
+      .backends.native.process_exec == false and
+      .backends.native.hooks == false and
+      .backends.native.services == false and
+      .backends.native.builder_write_scope == "workdir" and
+      .backends.native.read_only_write_scope == "scratch"
+    ' >/dev/null 2>&1; then
+    ok "delegation-kimi installed for kimi-k3/max with sandboxed runtime controls"
     kimi_selected="$(printf '%s' "$kimi_check" | jq -r '.selected_backend')"
     kimi_lanes="$(printf '%s' "$kimi_check" | jq -r '.qualified_lanes | join(",")')"
     kimi_provisional="$(printf '%s' "$kimi_check" | jq -r '.provisional_lanes | join(",")')"
@@ -302,7 +320,7 @@ elif have delegation-kimi; then
       || info "Kimi has no automatically qualified lanes"
     [ -z "$kimi_provisional" ] || info "Kimi provisional lanes (explicit flag required): $kimi_provisional"
   else
-    bad "delegation-kimi check failed or is not pinned to kimi-k3"
+    bad "delegation-kimi check failed or does not enforce the current Kimi sandbox contract"
   fi
 else
   warn "delegation-kimi not installed — re-run ./install.sh to install the gated candidate"
@@ -315,7 +333,9 @@ if ! have jq; then
 elif have delegation-grok; then
   grok_check="$(delegation-grok check --json 2>/dev/null || true)"
   if [ -n "$grok_check" ] && printf '%s' "$grok_check" | jq -e '
-      .model == "grok-4.5" and .runtime_cli_version == "0.2.111" and
+      .model == "grok-4.5" and
+      .runtime_cli_compatibility == "capability-probed" and
+      (.runtime_cli_version | type == "string" and length > 0) and
       .backends["grok-build"].sandbox == "delegation-kit" and
       .backends["grok-build"].permission_mode == "dontAsk" and
       .backends["grok-build"].isolated_home == true and
@@ -325,7 +345,7 @@ elif have delegation-grok; then
       .backends["grok-build"].max_turns == 40 and
       .backends["grok-build"].timeout_seconds == 900
     ' >/dev/null 2>&1; then
-    ok "delegation-grok installed and pinned to grok-4.5/high with isolated runtime controls"
+    ok "delegation-grok installed for grok-4.5/high with capability-probed runtime controls"
     grok_selected="$(printf '%s' "$grok_check" | jq -r '.selected_backend')"
     grok_provisional="$(printf '%s' "$grok_check" | jq -r '.provisional_lanes | join(",")')"
     if [ "$grok_selected" = none ]; then
@@ -334,11 +354,11 @@ elif have delegation-grok; then
       grok_cli_source="$(printf '%s' "$grok_check" | jq -r '.runtime_cli_source')"
       ok "Grok Build backend available ($grok_selected; CLI resolved from $grok_cli_source)"
       [ "$grok_cli_source" = pinned ] \
-        || info "the attested CLI is not archived — run 'delegation-grok pin' so a vendor update cannot strand this lane"
+        || info "the compatible CLI is not privately archived — run 'delegation-grok pin' to preserve the selected bytes"
     fi
     [ -z "$grok_provisional" ] || info "Grok provisional lanes (explicit flag required): $grok_provisional"
   else
-    bad "delegation-grok check failed or is not pinned to grok-4.5"
+    bad "delegation-grok check failed or is not capability-compatible with grok-4.5/high"
   fi
 else
   warn "delegation-grok not installed — re-run ./install.sh"

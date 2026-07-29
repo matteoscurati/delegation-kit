@@ -61,12 +61,12 @@ only macOS Keychain access for OAuth, and denies every tool namespace.
 
 Grok 4.5 is provisional for `builder` and `frontend-builder` at `high` through
 Grok Build CLI. Dispatch requires an explicit decision and
-`--allow-provisional`. The runner pins CLI `0.2.111`, model, and effort,
-extracts only `.text`, uses an isolated HOME plus the attested custom
+`--allow-provisional`. The runner capability-probes the CLI, pins model and
+effort, extracts only `.text`, uses an isolated HOME plus the attested custom
 `delegation-kit` sandbox, and enforces turn and wall-clock limits. That CLI is
-resolved from a private archive rather than PATH, so a vendor auto-update is
-never a reason to edit the pin — re-run `delegation-grok pin`. No other Grok
-lane is enabled.
+resolved from an optional digest-checked private archive before PATH. Its
+observed version is provenance only; re-run `delegation-grok pin --force` to
+deliberately replace the archived bytes. No other Grok lane is enabled.
 
 ## Sizing and escalation
 - **Size the reviewer to the work, not to a general leaderboard.** A diff the cheap

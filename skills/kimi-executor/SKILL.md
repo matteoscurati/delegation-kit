@@ -36,12 +36,20 @@ paths, symlinks, canonical path collisions, and unqualified effort overrides.
 There is no public evaluation bypass. `auto` and `native` both resolve to the
 native Kimi Code backend; there is no fallback to select.
 
-All lanes except `builder` and `frontend-builder` are read-only. Kimi Code 0.26 cannot combine
-headless prompt mode with `--plan` and bare prompt mode auto-approves writes, so
-the native backend runs with an isolated HOME/TMP and uses macOS `sandbox-exec`
-to deny every write outside runner-owned scratch space; it fails closed on
-platforms without that guard. The builder uses native prompt mode, which Kimi
-Code 0.26 runs with action approvals in headless mode.
+Every lane runs with a minimal isolated HOME/TMP that imports authentication but
+not ambient hooks, services, plugins, or configuration. The child environment is
+an allowlist, ambient HOME file contents are unreadable, and terminal execution
+is replaced by a no-op shell; the Kimi provider remains reachable for inference.
+CLI compatibility is determined from capabilities: the runtime must
+expose structured output, the exact `kimi-code/k3` model, OAuth credentials, and
+`max` as both supported and effective default effort. The observed CLI version
+is recorded only as provenance.
+
+`clerk` and `scout` are filesystem-read-only: macOS `sandbox-exec` permits writes
+only in runner-owned scratch. `builder` and `frontend-builder` may write only in
+the canonical worktree plus scratch. All lanes fail closed without the OS guard,
+and workdir cannot be `/` or the user's HOME. This is a filesystem and process
+boundary, not a claim that model output is trusted; inspect every result and diff.
 
 Exit 69 means the requested runtime/model/authentication is unavailable, exit
 70 means dispatch or output validation failed, exit 75 is temporary/rate-limit

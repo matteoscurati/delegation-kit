@@ -12,13 +12,18 @@ while [ -L "$SOURCE" ]; do
   [[ "$SOURCE" = /* ]] || SOURCE="$SOURCE_DIR/$SOURCE"
 done
 ROOT="$(cd "$(dirname "$SOURCE")/.." && pwd)"
-ROUTING_FILE="$ROOT/config/kimi-k3-routing.json"
+ROUTING_FILE="${DELEGATION_KIMI_ROUTING_FILE:-$ROOT/config/kimi-k3-routing.json}"
 CENTRAL_GATES="${DELEGATION_ROUTING_GATES_FILE:-$ROOT/config/routing-gates.json}"
 ROUTER="$ROOT/bin/delegation-route"
 KIMI_HOME="${KIMI_CODE_HOME:-$HOME/.kimi-code}"
 CREDENTIAL_FILE="$KIMI_HOME/credentials/kimi-code.json"
 NATIVE_MODEL="kimi-code/k3"
+NATIVE_EFFORT="max"
 EFFORTS='["max"]'
+NATIVE_BIN=""
+NATIVE_VERSION=""
+KIMI_PLATFORM=""
+KIMI_SANDBOX_BIN=""
 RUN_TMP=""
 
 usage() {
@@ -38,24 +43,39 @@ EOF
 die() { local code="$1"; shift; printf 'delegation-kimi: %s\n' "$*" >&2; exit "$code"; }
 have() { command -v "$1" >/dev/null 2>&1; }
 
+sandbox_status() {
+  KIMI_PLATFORM="${DELEGATION_KIMI_PLATFORM:-$(uname)}"
+  KIMI_SANDBOX_BIN="${DELEGATION_KIMI_SANDBOX_BIN:-/usr/bin/sandbox-exec}"
+  [ "$KIMI_PLATFORM" = Darwin ] \
+    || { NATIVE_REASON="native Kimi lanes require macOS sandbox-exec"; return 1; }
+  [ -x "$KIMI_SANDBOX_BIN" ] \
+    || { NATIVE_REASON="native Kimi lanes require executable sandbox-exec at $KIMI_SANDBOX_BIN"; return 1; }
+}
+
 native_status() {
   NATIVE_REASON=""
   have kimi || { NATIVE_REASON="kimi not on PATH"; return 1; }
+  sandbox_status || return 1
   local help providers providers_text
-  help="$(kimi --help 2>&1 || true)"
+  NATIVE_BIN="$(command -v kimi)"
+  NATIVE_VERSION="$("$NATIVE_BIN" --version 2>/dev/null | head -1 || true)"
+  NATIVE_VERSION="${NATIVE_VERSION:-unknown}"
+  help="$("$NATIVE_BIN" --help 2>&1 || true)"
   grep -q -- '--output-format' <<<"$help" \
     || { NATIVE_REASON="kimi lacks stream-json output"; return 1; }
-  providers="$(kimi provider list --json 2>/dev/null || true)"
+  providers="$("$NATIVE_BIN" provider list --json 2>/dev/null || true)"
   jq -e --arg model "$NATIVE_MODEL" '.models[$model] != null' <<<"$providers" >/dev/null 2>&1 \
     || { NATIVE_REASON="$NATIVE_MODEL is not configured"; return 1; }
-  # The field is camelCase and there is no default: a provider that does not
-  # attest max effort must fail the gate, not inherit an assumed one.
-  jq -e --arg model "$NATIVE_MODEL" '
+  # Kimi Code has no per-invocation effort flag. The provider must both support
+  # and default to the exact evaluated effort; the isolated runtime config below
+  # pins the same value so an ambient config change cannot weaken the run.
+  jq -e --arg model "$NATIVE_MODEL" --arg effort "$NATIVE_EFFORT" '
     .models[$model].model == "k3" and
-    ((.models[$model].supportEfforts // []) | index("max") != null)
+    ((.models[$model].supportEfforts // []) | index($effort) != null) and
+    .models[$model].defaultEffort == $effort
   ' <<<"$providers" >/dev/null 2>&1 \
-    || { NATIVE_REASON="$NATIVE_MODEL does not attest K3 max effort"; return 1; }
-  providers_text="$(kimi provider list 2>/dev/null || true)"
+    || { NATIVE_REASON="$NATIVE_MODEL does not attest K3 default effort $NATIVE_EFFORT"; return 1; }
+  providers_text="$("$NATIVE_BIN" provider list 2>/dev/null || true)"
   grep -Eq 'managed:kimi-code.*source=oauth' <<<"$providers_text" \
     || { NATIVE_REASON="$NATIVE_MODEL is not an OAuth-managed Kimi Code provider"; return 1; }
   # `source=oauth` above describes how the provider is configured; it prints
@@ -120,7 +140,9 @@ qualified_effort() {
 
 validate_gate_graph() {
   [ -x "$ROUTER" ] || return 1
-  DELEGATION_ROUTING_GATES_FILE="$CENTRAL_GATES" "$ROUTER" check --json >/dev/null 2>&1
+  DELEGATION_ROUTING_GATES_FILE="$CENTRAL_GATES" \
+    DELEGATION_KIMI_ROUTING_FILE="$ROUTING_FILE" \
+    "$ROUTER" check --json >/dev/null 2>&1
 }
 
 # A dead session is not a broken dispatch: it means the runtime is unavailable
@@ -157,13 +179,53 @@ temporary_failure() {
 }
 
 prepare_native_home() {
-  local scratch="$1" item source target
+  local scratch="$1" item source target source_path target_path
   source="$KIMI_HOME"
   target="$scratch/home/.kimi-code"
   mkdir -p "$target" "$scratch/home-tmp"
-  for item in config.toml credentials oauth device_id; do
-    [ ! -e "$source/$item" ] || cp -R "$source/$item" "$target/"
+  # Do not import the ambient config: it may contain hooks, plugins, services,
+  # or a weaker thinking effort. Keep only the authentication material and a
+  # minimal, capability-constrained provider/model definition.
+  for item in credentials/kimi-code.json oauth/kimi-code device_id; do
+    source_path="$source/$item"
+    target_path="$target/$item"
+    [ ! -e "$source_path" ] || {
+      [ -f "$source_path" ] && [ ! -L "$source_path" ] || return 1
+      mkdir -p "$(dirname "$target_path")"
+      cp "$source_path" "$target_path"
+    }
   done
+  cat >"$target/config.toml" <<'EOF'
+default_model = "kimi-code/k3"
+
+[loop_control]
+max_steps_per_turn = 100
+max_retries_per_step = 3
+max_ralph_iterations = 0
+reserved_context_size = 50000
+
+[thinking]
+enabled = true
+effort = "max"
+
+[providers."managed:kimi-code"]
+type = "kimi"
+api_key = ""
+base_url = "https://api.kimi.com/coding/v1"
+
+[providers."managed:kimi-code".oauth]
+storage = "file"
+key = "oauth/kimi-code"
+
+[models."kimi-code/k3"]
+provider = "managed:kimi-code"
+model = "k3"
+max_context_size = 1048576
+capabilities = [ "thinking", "always_thinking", "image_in", "video_in", "tool_use" ]
+display_name = "K3"
+support_efforts = [ "low", "high", "max" ]
+default_effort = "max"
+EOF
 }
 
 print_check() {
@@ -177,19 +239,25 @@ print_check() {
   if [ "$as_json" = 1 ]; then
     jq -n \
       --arg model "kimi-k3" --arg native_model "$NATIVE_MODEL" \
+      --arg cli_version "$NATIVE_VERSION" \
       --arg selected "$selected" --argjson efforts "$EFFORTS" --argjson lanes "$lanes" --argjson provisional "$provisional" \
       --argjson native "$native_ok" --arg native_reason "$NATIVE_REASON" \
       '{model:$model,models:{native:$native_model},efforts:$efforts,
+        runtime_cli_version:(if $cli_version == "" then null else $cli_version end),
         selected_backend:$selected,qualified_lanes:$lanes,provisional_lanes:$provisional,backends:{
-          native:{available:$native,reason:$native_reason,efforts:["max"]}}}'
+          native:{available:$native,reason:$native_reason,efforts:["max"],
+            sandbox:"macos-sandbox-exec",isolated_home:true,environment_mode:"allowlist",
+            ambient_home_read:false,process_exec:false,hooks:false,services:false,
+            builder_write_scope:"workdir",read_only_write_scope:"scratch"}}}'
   else
     printf 'Kimi K3: selected=%s qualified=%s provisional=%s\n' "$selected" "$lanes" "$provisional"
-    printf '  native: %s (%s; model=%s; effort=max)\n' "$native_ok" "$NATIVE_REASON" "$NATIVE_MODEL"
+    printf '  native: %s (%s; model=%s; effort=max; cli=%s)\n' \
+      "$native_ok" "$NATIVE_REASON" "$NATIVE_MODEL" "${NATIVE_VERSION:-unknown}"
   fi
 }
 
 extract_native() {
-  local events="$1" output="$2" metrics="$3" started="$4" effort="$5" lane="$6"
+  local events="$1" output="$2" metrics="$3" started="$4" effort="$5" lane="$6" write_scope="$7"
   jq -ers '
     [.[] | select(.role == "assistant") | .content |
       if type == "string" then .
@@ -200,8 +268,12 @@ extract_native() {
   ' "$events" >"$output" || return 1
   [ -s "$output" ] || return 1
   jq -n --arg model "$NATIVE_MODEL" --arg effort "$effort" --arg lane "$lane" \
+    --arg cli_version "$NATIVE_VERSION" --arg write_scope "$write_scope" \
     --argjson started "$started" '
-    {model:$model,backend:"native",effort:$effort,lane:$lane,
+    {model:$model,backend:"native",effort:$effort,lane:$lane,runtime_cli_version:$cli_version,
+     sandbox:"macos-sandbox-exec",isolated_home:true,environment_mode:"allowlist",
+     ambient_home_read:false,process_exec:false,hooks:false,services:false,
+     write_scope:$write_scope,
      started_at_epoch:$started,finished_at_epoch:now,usage_reported:false,
      tokens:{input:0,output:0,reasoning:0,cache_read:0,cache_write:0},
      provider_cost_usd:null}
@@ -246,6 +318,10 @@ run_command() {
   [ -n "$prompt" ] || die 64 "prompt must not be empty"
   [ -d "$workdir" ] || die 64 "workdir missing: $workdir"
   workdir="$(cd "$workdir" && pwd -P)"
+  [ "$workdir" != / ] || die 64 "workdir must not be the filesystem root"
+  local ambient_home
+  ambient_home="$(cd "${HOME:?HOME is required}" && pwd -P)"
+  [ "$workdir" != "$ambient_home" ] || die 64 "workdir must not be the user home"
   [ -n "$output" ] || die 64 "--output is required"
   have jq || die 69 "jq is required"
   [ -f "$ROUTING_FILE" ] || die 69 "routing file missing: $ROUTING_FILE"
@@ -312,6 +388,8 @@ run_command() {
   [ "$output" != "$metrics" ] || die 64 "output and metrics paths resolve to the same file"
   [ ! -L "$output" ] || die 64 "output must not be a symlink"
   [ ! -L "$metrics" ] || die 64 "metrics must not be a symlink"
+  [ ! -e "$output" ] || die 64 "output must not already exist"
+  [ ! -e "$metrics" ] || die 64 "metrics must not already exist"
   if [ "$lane" != builder ] && [ "$lane" != frontend-builder ]; then
     case "$output" in "$workdir"/*) die 64 "read-only lane output must be outside workdir" ;; esac
     case "$metrics" in "$workdir"/*) die 64 "read-only lane metrics must be outside workdir" ;; esac
@@ -328,31 +406,50 @@ run_command() {
   error_tmp="$tmp/error.txt"
   started="$(date +%s)"
 
+  # Every lane gets the same isolated configuration, scrubbed environment, and
+  # process boundary. Builders may write only inside the canonical worktree;
+  # read-only lanes may write only runner scratch. No imported hooks/services or
+  # child process execution is exposed. Network remains available to the Kimi
+  # provider process itself.
+  local sandbox_bin
+  sandbox_status || die 69 "$NATIVE_REASON"
+  sandbox_bin="$KIMI_SANDBOX_BIN"
+  local sandbox_profile write_scope
+  prepare_native_home "$tmp" || die 69 "could not prepare isolated Kimi home"
+  sandbox_profile='(version 1)
+    (allow default)
+    (deny process-exec
+      (require-all
+        (require-not (literal (param "KIMI_BIN")))
+        (require-not (literal "/usr/bin/true"))))
+    (deny file-read-data
+      (require-all
+        (subpath (param "REAL_HOME"))
+        (require-not (subpath (param "WORKDIR")))
+        (require-not (subpath (param "SCRATCH")))
+        (require-not (literal (param "KIMI_BIN")))))'
   if [ "$lane" = builder ] || [ "$lane" = frontend-builder ]; then
-    (cd "$workdir" && kimi --prompt "$prompt" --model "$NATIVE_MODEL" \
-      --output-format stream-json </dev/null) >"$events" 2>"$tmp/stderr" || rc=$?
+    write_scope="workdir"
+    sandbox_profile+=$'\n    (deny file-write* (require-all (require-not (subpath (param "SCRATCH"))) (require-not (subpath (param "WORKDIR")))))'
   else
-    # Kimi Code 0.26 needs a writable HOME for session bookkeeping. Give it
-    # an isolated copy of only the provider config/auth material, then deny
-    # every write outside this runner-owned scratch directory. This protects
-    # the worktree, routing gate, real HOME, sibling repos, and output paths.
-    if [ "$(uname)" != Darwin ] || ! have sandbox-exec; then
-      die 69 "native read-only lanes require macOS sandbox-exec"
-    fi
-    local sandbox_profile
-    prepare_native_home "$tmp" || die 69 "could not prepare isolated Kimi home"
-    sandbox_profile='(version 1) (allow default) (deny file-write* (require-not (subpath (param "SCRATCH"))))'
-    # KIMI_CODE_HOME must be unset for the child: kimi honours it over HOME, so an
-    # inherited one would send it back to the real store — outside SCRATCH, where
-    # the sandbox denies the writes it needs — ignoring the isolated copy we just
-    # prepared. Without HOME it falls back to $HOME/.kimi-code, which is the copy.
-    (cd "$workdir" && env -u KIMI_CODE_HOME HOME="$tmp/home" TMPDIR="$tmp/home-tmp" \
-      sandbox-exec -D "SCRATCH=$tmp" -p "$sandbox_profile" \
-      kimi --prompt "$prompt" --model "$NATIVE_MODEL" \
-      --output-format stream-json </dev/null) >"$events" 2>"$tmp/stderr" || rc=$?
+    write_scope="scratch"
+    sandbox_profile+=$'\n    (deny file-write* (require-not (subpath (param "SCRATCH"))))'
   fi
+  sandbox_profile+=$'\n'
+  (
+    cd "$workdir"
+    env -i \
+      PATH="/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin" \
+      HOME="$tmp/home" TMPDIR="$tmp/home-tmp" SHELL="/usr/bin/true" \
+      LANG="${LANG:-C}" NO_COLOR=1 \
+      "$sandbox_bin" -D "SCRATCH=$tmp" -D "WORKDIR=$workdir" \
+        -D "REAL_HOME=$ambient_home" -D "KIMI_BIN=$NATIVE_BIN" \
+        -p "$sandbox_profile" "$NATIVE_BIN" \
+        --prompt "$prompt" --model "$NATIVE_MODEL" \
+        --output-format stream-json </dev/null
+  ) >"$events" 2>"$tmp/stderr" || rc=$?
   if [ "$rc" -eq 0 ]; then
-    extract_native "$events" "$result_tmp" "$metrics_tmp" "$started" "$effort" "$lane" || rc=70
+    extract_native "$events" "$result_tmp" "$metrics_tmp" "$started" "$effort" "$lane" "$write_scope" || rc=70
   fi
 
   if [ "$rc" -ne 0 ]; then

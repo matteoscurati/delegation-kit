@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Run the pinned Grok 4.5 model through Grok Build CLI. Fails closed: only the
-# versioned builder lanes, exact model, effort, backend, and scoped workspace
+# Run the gated Grok 4.5 model through Grok Build CLI. Fails closed: only the
+# capability-compatible builder lanes, exact model, effort, backend, and scoped workspace
 # sandbox can dispatch.
 set -euo pipefail
 umask 077
@@ -20,7 +20,7 @@ RUNTIME_MODEL="grok-4.5"
 USAGE_MODEL="grok-4.5-build"
 BACKEND="grok-build"
 EFFORTS='["high"]'
-REQUIRED_GROK_VERSION="0.2.111"
+CLI_COMPATIBILITY="capability-probed"
 SANDBOX_PROFILE="delegation-kit"
 MAX_TURNS=40
 TIMEOUT_SECONDS="${DELEGATION_GROK_TIMEOUT_SECONDS:-900}"
@@ -28,6 +28,7 @@ SOURCE_GROK_HOME="${DELEGATION_GROK_HOME:-${HOME:?HOME is required}/.grok}"
 GROK_BIN_STORE="${DELEGATION_GROK_BIN_STORE:-${DELEGATION_DATA_HOME:-${XDG_DATA_HOME:-$HOME/.local/share}/delegation-kit}/grok-cli}"
 GROK_BIN=""
 GROK_BIN_SOURCE="none"
+GROK_CLI_VERSION="unknown"
 RUN_TMP=""
 
 cleanup() { [ -z "$RUN_TMP" ] || rm -rf -- "$RUN_TMP"; }
@@ -44,10 +45,10 @@ Usage:
     [--metrics <path>] [--debug-dir <existing-private-directory>] \
     [--allow-provisional]
 
-`pin` archives the attested CLI build into a private store so a vendor
-auto-update of the ambient CLI never disturbs the pinned lane. The runner
-resolves its binary in this order: DELEGATION_GROK_BIN, the pinned store,
-then `grok` on PATH. The exact version gate applies to whichever it resolves.
+`pin` archives a capability-compatible CLI build into a private store so a
+vendor auto-update of the ambient CLI never disturbs the selected lane. The
+runner resolves its binary in this order: DELEGATION_GROK_BIN, the private
+archive, then `grok` on PATH. CLI version is recorded as provenance only.
 
 Exit codes: 64 invalid input, 69 unavailable/authentication failure,
 70 dispatch/extract failure, 75 temporary/rate-limit failure,
@@ -58,8 +59,8 @@ EOF
 die() { local code="$1"; shift; printf 'delegation-grok: %s\n' "$*" >&2; exit "$code"; }
 have() { command -v "$1" >/dev/null 2>&1; }
 
-pinned_bin_path() { printf '%s/%s/grok' "$GROK_BIN_STORE" "$REQUIRED_GROK_VERSION"; }
-pinned_digest_path() { printf '%s/%s/grok.sha256' "$GROK_BIN_STORE" "$REQUIRED_GROK_VERSION"; }
+pinned_bin_path() { printf '%s/current/grok' "$GROK_BIN_STORE"; }
+pinned_digest_path() { printf '%s/current/grok.sha256' "$GROK_BIN_STORE"; }
 
 file_digest() {
   if have shasum; then shasum -a 256 "$1" 2>/dev/null | awk '{print $1}'
@@ -68,19 +69,59 @@ file_digest() {
   fi
 }
 
-# Probe with a scratch HOME so an older pinned build never touches the ambient
-# CLI state, and the ambient CLI never rewrites what we resolved.
-is_required_version() {
+observed_cli_version() {
   local bin="$1" probe_home="$2" version
-  version="$(HOME="$probe_home" "$bin" --version 2>&1 || true)"
-  grep -Eq "^grok ${REQUIRED_GROK_VERSION}([[:space:]]|$)" <<<"$version"
+  version="$(HOME="$probe_home" "$bin" --version 2>/dev/null | head -1 || true)"
+  if [[ "$version" =~ ^grok[[:space:]]+([^[:space:]]+) ]]; then
+    printf '%s\n' "${BASH_REMATCH[1]}"
+  elif [ -n "$version" ]; then
+    printf '%s\n' "$version"
+  else
+    printf 'unknown\n'
+  fi
 }
 
-# Resolution order: explicit override, pinned store, ambient PATH. The pinned
+supports_required_interface() {
+  local bin="$1" probe_home="$2" help inspect_help command_name
+  help="$(HOME="$probe_home" "$bin" --help 2>&1 || true)"
+  # Parse the complete dispatch surface under `--help`. This catches removed or
+  # renamed flags without starting a session, including hidden compatibility
+  # flags that may not be printed in the top-level help.
+  HOME="$probe_home" "$bin" \
+    --prompt-file /dev/null \
+    --model "$RUNTIME_MODEL" --reasoning-effort high \
+    --permission-mode dontAsk --sandbox "$SANDBOX_PROFILE" \
+    --output-format json --no-memory --no-subagents \
+    --disable-web-search --no-auto-update \
+    --tools 'grep,read_file,search_replace,list_dir,todo_write' \
+    --allow 'Edit(**)' --max-turns "$MAX_TURNS" \
+    --deny 'Edit(**/.grok/config.toml)' \
+    --deny 'Edit(**/.grok/sandbox.toml)' \
+    --deny 'Edit(**/.grok/auth.json)' \
+    --help >/dev/null 2>&1 || return 1
+  for command_name in models inspect; do
+    grep -Eq "^[[:space:]]+$command_name([[:space:]]|$)" <<<"$help" || return 1
+    HOME="$probe_home" "$bin" "$command_name" --help >/dev/null 2>&1 || return 1
+  done
+  inspect_help="$(HOME="$probe_home" "$bin" inspect --help 2>&1 || true)"
+  grep -q -- '--json' <<<"$inspect_help"
+}
+
+verify_archived_bin() {
+  local candidate="$1" digest_file expected actual
+  [ -x "$candidate" ] && [ ! -L "$candidate" ] || return 1
+  digest_file="$candidate.sha256"
+  [ -r "$digest_file" ] || return 1
+  expected="$(cut -d' ' -f1 <"$digest_file")"
+  actual="$(file_digest "$candidate")" || return 1
+  [ -n "$expected" ] && [ "$actual" = "$expected" ]
+}
+
+# Resolution order: explicit override, private archive, ambient PATH. The archive
 # store is what makes a vendor auto-update a non-event: it is a private copy
 # the updater cannot see, prune, or replace.
 resolve_grok_bin() {
-  local probe_home="$1" candidate="" pinned digest_file expected actual
+  local probe_home="$1" candidate="" pinned legacy
   GROK_BIN=""
   GROK_BIN_SOURCE="none"
   mkdir -p "$probe_home"
@@ -92,30 +133,44 @@ resolve_grok_bin() {
   else
     pinned="$(pinned_bin_path)"
     if [ -x "$pinned" ] && [ ! -L "$pinned" ]; then
-      digest_file="$(pinned_digest_path)"
-      [ -r "$digest_file" ] \
+      [ -r "$(pinned_digest_path)" ] \
         || { GROK_REASON="pinned Grok Build CLI has no recorded digest; re-run: delegation-grok pin --force"; return 1; }
-      expected="$(cut -d' ' -f1 <"$digest_file")"
-      actual="$(file_digest "$pinned")" \
+      file_digest "$pinned" >/dev/null \
         || { GROK_REASON="shasum or sha256sum is required to verify the pinned Grok Build CLI"; return 1; }
-      [ -n "$expected" ] && [ "$actual" = "$expected" ] \
+      verify_archived_bin "$pinned" \
         || { GROK_REASON="pinned Grok Build CLI digest mismatch; re-run: delegation-grok pin --force"; return 1; }
       candidate="$pinned"
       GROK_BIN_SOURCE="pinned"
-    elif have grok; then
-      candidate="$(command -v grok)"
-      GROK_BIN_SOURCE="path"
     else
-      GROK_REASON="no pinned Grok Build CLI $REQUIRED_GROK_VERSION and grok is not on PATH; run: delegation-grok pin"
-      return 1
+      # Pre-capability-gate releases stored archives under a version-named
+      # directory. Resolve any digest-valid, interface-compatible legacy copy
+      # when `current/` and PATH are absent; install.sh will then migrate it.
+      for legacy in "$GROK_BIN_STORE"/*/grok; do
+        [ "$legacy" != "$pinned" ] || continue
+        if verify_archived_bin "$legacy" &&
+          supports_required_interface "$legacy" "$probe_home"; then
+          candidate="$legacy"
+          GROK_BIN_SOURCE="legacy"
+          break
+        fi
+      done
+      if [ -z "$candidate" ] && have grok; then
+        candidate="$(command -v grok)"
+        GROK_BIN_SOURCE="path"
+      fi
+      if [ -z "$candidate" ]; then
+        GROK_REASON="no compatible archived Grok Build CLI and grok is not on PATH; run: delegation-grok pin"
+        return 1
+      fi
     fi
   fi
-  is_required_version "$candidate" "$probe_home" || {
-    GROK_REASON="Grok Build CLI version mismatch; require $REQUIRED_GROK_VERSION (resolved from $GROK_BIN_SOURCE: $candidate); run: delegation-grok pin"
+  supports_required_interface "$candidate" "$probe_home" || {
+    GROK_REASON="Grok Build CLI lacks the required interface (resolved from $GROK_BIN_SOURCE: $candidate)"
     GROK_BIN_SOURCE="none"
     return 1
   }
   GROK_BIN="$candidate"
+  GROK_CLI_VERSION="$(observed_cli_version "$candidate" "$probe_home")"
 }
 
 timeout_bin() {
@@ -202,14 +257,9 @@ runtime_status() {
   timeout_bin >/dev/null || { GROK_REASON="timeout or gtimeout is required"; return 1; }
   [[ "$TIMEOUT_SECONDS" =~ ^[1-9][0-9]*$ ]] \
     || { GROK_REASON="DELEGATION_GROK_TIMEOUT_SECONDS must be a positive integer"; return 1; }
-  local help models status_tmp
+  local models status_tmp
   status_tmp="$(mktemp -d "${TMPDIR:-/tmp}/delegation-grok-status.XXXXXX")"
   resolve_grok_bin "$status_tmp/probe" || { rm -rf -- "$status_tmp"; return 1; }
-  help="$(HOME="$status_tmp/probe" "$GROK_BIN" --help 2>&1 || true)"
-  for flag in --prompt-file --model --reasoning-effort --output-format --permission-mode --sandbox --no-memory --no-subagents --tools --max-turns; do
-    grep -q -- "$flag" <<<"$help" \
-      || { rm -rf -- "$status_tmp"; GROK_REASON="grok lacks required flag $flag"; return 1; }
-  done
   prepare_isolated_home "$status_tmp/home" || { rm -rf -- "$status_tmp"; return 1; }
   models="$(HOME="$status_tmp/home" "$GROK_BIN" models 2>&1)" \
     || { rm -rf -- "$status_tmp"; GROK_REASON="Grok Build model inventory unavailable; run: grok login"; return 1; }
@@ -262,12 +312,14 @@ print_check() {
       --arg usage_model "$USAGE_MODEL" --arg selected "$selected" \
       --argjson available "$available" --arg reason "$GROK_REASON" \
       --argjson efforts "$EFFORTS" --argjson lanes "$lanes" \
-      --argjson provisional "$provisional" --arg cli_version "$REQUIRED_GROK_VERSION" \
+      --argjson provisional "$provisional" --arg cli_version "$GROK_CLI_VERSION" \
+      --arg cli_compatibility "$CLI_COMPATIBILITY" \
       --arg cli_source "$GROK_BIN_SOURCE" --arg cli_path "$GROK_BIN" \
       --arg sandbox "$SANDBOX_PROFILE" --argjson max_turns "$MAX_TURNS" \
       --argjson timeout_seconds "$TIMEOUT_SECONDS" \
       '{model:$model,runtime_model:$runtime_model,usage_model:$usage_model,
-        runtime_cli_version:$cli_version,runtime_cli_source:$cli_source,
+        runtime_cli_version:$cli_version,runtime_cli_compatibility:$cli_compatibility,
+        runtime_cli_source:$cli_source,
         runtime_cli_path:(if $cli_path == "" then null else $cli_path end),
         efforts:$efforts,selected_backend:$selected,qualified_lanes:$lanes,
         provisional_lanes:$provisional,backends:{"grok-build":{
@@ -278,7 +330,7 @@ print_check() {
   else
     printf 'Grok 4.5: selected=%s qualified=%s provisional=%s\n' "$selected" "$lanes" "$provisional"
     printf '  grok-build: %s (%s; model=%s; cli=%s from %s; effort=high; sandbox=%s; max-turns=%s; timeout=%ss)\n' \
-      "$available" "$GROK_REASON" "$RUNTIME_MODEL" "$REQUIRED_GROK_VERSION" \
+      "$available" "$GROK_REASON" "$RUNTIME_MODEL" "$GROK_CLI_VERSION" \
       "$GROK_BIN_SOURCE" "$SANDBOX_PROFILE" "$MAX_TURNS" "$TIMEOUT_SECONDS"
   fi
 }
@@ -304,7 +356,8 @@ extract_result() {
     . as $r | ($r.modelUsage[$usage_model] // {}) as $u |
     {model:$model,runtime_model:$runtime_model,usage_model:$usage_model,
      backend:"grok-build",effort:"high",lane:$lane,
-     runtime_cli_version:$cli_version,runtime_cli_source:$cli_source,
+     runtime_cli_version:$cli_version,runtime_cli_compatibility:$cli_compatibility,
+     runtime_cli_source:$cli_source,
      sandbox:$sandbox,permission_mode:"dontAsk",
      isolated_home:true,plugins:false,mcp:false,
      terminal:false,
@@ -318,7 +371,8 @@ extract_result() {
        cache_read:($r.usage.cache_read_input_tokens // $u.cacheReadInputTokens // 0),
        total:($r.usage.total_tokens // 0)},
      provider_cost_usd:($r.total_cost_usd // $u.costUSD // null)}
-  ' --arg cli_version "$REQUIRED_GROK_VERSION" --arg cli_source "$GROK_BIN_SOURCE" \
+  ' --arg cli_version "$GROK_CLI_VERSION" --arg cli_compatibility "$CLI_COMPATIBILITY" \
+    --arg cli_source "$GROK_BIN_SOURCE" \
     --arg sandbox "$SANDBOX_PROFILE" \
     --argjson max_turns "$MAX_TURNS" --argjson timeout_seconds "$TIMEOUT_SECONDS" \
     "$response" >"$metrics"
@@ -329,13 +383,15 @@ write_diagnostic() {
   local response="$6" stderr_file="$7" debug_path="$8" finished
   finished="$(date +%s)"
   jq -n --arg model "$MODEL" --arg runtime_model "$RUNTIME_MODEL" \
-    --arg cli_version "$REQUIRED_GROK_VERSION" --arg lane "$lane" \
+    --arg cli_version "$GROK_CLI_VERSION" --arg lane "$lane" \
+    --arg cli_compatibility "$CLI_COMPATIBILITY" \
     --arg phase "$phase" --arg reason "$reason" --argjson rc "$rc" \
     --argjson started "$started" --argjson finished "$finished" \
     --argjson stdout_bytes "$(wc -c <"$response" | tr -d ' ')" \
     --argjson stderr_bytes "$(wc -c <"$stderr_file" | tr -d ' ')" \
     --arg debug_path "$debug_path" '
     {model:$model,runtime_model:$runtime_model,runtime_cli_version:$cli_version,
+     runtime_cli_compatibility:$cli_compatibility,
      backend:"grok-build",effort:"high",lane:$lane,phase:$phase,reason:$reason,
      cli_exit_code:$rc,started_at_epoch:$started,finished_at_epoch:$finished,
      duration_seconds:($finished-$started),
@@ -482,7 +538,7 @@ run_command() {
   fi
 }
 
-# Archive the attested build into a private store. A vendor auto-update
+# Archive a capability-compatible build into a private store. A vendor auto-update
 # replaces the ambient CLI and prunes its own download cache; the store is the
 # copy that survives, so an update never becomes a routing-gate edit.
 pin_command() {
@@ -496,7 +552,7 @@ pin_command() {
     esac
   done
   have shasum || have sha256sum || die 69 "shasum or sha256sum is required"
-  local candidates=() candidate found="" target digest_file digest existing probe
+  local candidates=() candidate found="" target digest_file digest existing probe found_version
   if [ -n "$from" ]; then
     [ -f "$from" ] && [ -x "$from" ] || die 64 "--from is not an executable file: $from"
     candidates=("$from")
@@ -506,14 +562,20 @@ pin_command() {
     for candidate in "$SOURCE_GROK_HOME"/downloads/*; do
       [ -f "$candidate" ] && [ -x "$candidate" ] && candidates+=("$candidate")
     done
+    for candidate in "$GROK_BIN_STORE"/*/grok; do
+      [ "$candidate" = "$(pinned_bin_path)" ] || {
+        verify_archived_bin "$candidate" && candidates+=("$candidate")
+      }
+    done
   fi
   RUN_TMP="$(mktemp -d "${TMPDIR:-/tmp}/delegation-grok-pin.XXXXXX")"
   probe="$RUN_TMP/probe"
   mkdir -p "$probe"
   for candidate in ${candidates[@]+"${candidates[@]}"}; do
-    if is_required_version "$candidate" "$probe"; then found="$candidate"; break; fi
+    if supports_required_interface "$candidate" "$probe"; then found="$candidate"; break; fi
   done
-  [ -n "$found" ] || die 69 "no Grok Build CLI $REQUIRED_GROK_VERSION found in --from, DELEGATION_GROK_BIN, PATH, or $SOURCE_GROK_HOME/downloads; install that exact build or pass --from <path>"
+  [ -n "$found" ] || die 69 "no capability-compatible Grok Build CLI found in --from, DELEGATION_GROK_BIN, PATH, or $SOURCE_GROK_HOME/downloads"
+  found_version="$(observed_cli_version "$found" "$probe")"
 
   target="$(pinned_bin_path)"
   digest_file="$(pinned_digest_path)"
@@ -521,7 +583,7 @@ pin_command() {
   if [ -e "$target" ] || [ -L "$target" ]; then
     existing="$(file_digest "$target" 2>/dev/null || true)"
     if [ "$existing" = "$digest" ] && [ -r "$digest_file" ]; then
-      printf 'delegation-grok: already pinned %s at %s\n' "$REQUIRED_GROK_VERSION" "$target"
+      printf 'delegation-grok: compatible CLI already archived (%s) at %s\n' "$found_version" "$target"
       return 0
     fi
     [ "$force" = 1 ] || die 64 "a different build is already pinned at $target; pass --force to replace it"
@@ -533,12 +595,12 @@ pin_command() {
   digest="$(file_digest "$target")" || { rm -f "$target"; die 70 "could not hash the archived copy"; }
   printf '%s  grok\n' "$digest" >"$digest_file"
   chmod 400 "$digest_file"
-  is_required_version "$target" "$probe" || {
+  supports_required_interface "$target" "$probe" || {
     rm -f "$target" "$digest_file"
-    die 70 "the archived copy did not report $REQUIRED_GROK_VERSION"
+    die 70 "the archived copy does not expose the required interface"
   }
-  printf 'delegation-grok: pinned Grok Build CLI %s\n  from: %s\n  to:   %s\n  sha256: %s\n' \
-    "$REQUIRED_GROK_VERSION" "$found" "$target" "$digest"
+  printf 'delegation-grok: archived compatible Grok Build CLI %s\n  from: %s\n  to:   %s\n  sha256: %s\n' \
+    "$found_version" "$found" "$target" "$digest"
 }
 
 case "${1:-}" in

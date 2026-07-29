@@ -13,7 +13,7 @@ ROOT="$(cd "$(dirname "$SOURCE")/.." && pwd)"
 GATES="${DELEGATION_ROUTING_GATES_FILE:-$ROOT/config/routing-gates.json}"
 EVIDENCE="${DELEGATION_EVIDENCE_FILE:-$ROOT/config/model-evidence.json}"
 GLM_GATE="${DELEGATION_GLM_ROUTING_FILE:-$ROOT/config/glm-5.2-routing.json}"
-KIMI_GATE="$ROOT/config/kimi-k3-routing.json"
+KIMI_GATE="${DELEGATION_KIMI_ROUTING_FILE:-$ROOT/config/kimi-k3-routing.json}"
 QWEN_GATE="${DELEGATION_QWEN_ROUTING_FILE:-$ROOT/config/qwen3.8-max-preview-routing.json}"
 GEMINI_GATE="${DELEGATION_GEMINI_ROUTING_FILE:-$ROOT/config/gemini-3.6-flash-routing.json}"
 GROK_GATE="${DELEGATION_GROK_ROUTING_FILE:-$ROOT/config/grok-4.5-routing.json}"
@@ -152,6 +152,7 @@ validate() {
      $p.value.lanes | to_entries[] | {key:.key,value:{status:.value.status,selection:.value.selection,effort:$p.value.effort}}] | from_entries as $expected |
     [$bridge[0].lanes | to_entries[] | {key:.key,value:{status:.value.backends["grok-build"].status,selection:.value.backends["grok-build"].selection,effort:(.value.backends["grok-build"].effort // .value.default_effort)}}] | from_entries as $actual |
     ($bridge[0].model == "grok-4.5") and (($expected | keys) == ($actual | keys)) and
+    ($central[0].profiles["grok-build"].runtime_cli_compatibility == $bridge[0].runtime_cli_compatibility) and
     all($expected | keys[]; $expected[.] == $actual[.]) and
     (($expected | to_entries | map(select(.value.status == "qualified") | .key) | sort) == (($bridge[0].qualified_lanes // []) | sort)) and
     (($expected | to_entries | map(select(.value.status == "provisional") | .key) | sort) == (($bridge[0].provisional_lanes // []) | sort)) and

@@ -25,20 +25,20 @@ delegation-grok run \
   --output "$result" --metrics "$metrics" --workdir "$repo"
 ```
 
-The runner pins Grok Build CLI `0.2.111`, `grok-4.5`, effort `high`, JSON output,
-40 turns, and a 15-minute wall timeout. It uses an ephemeral HOME, disables
-memory, subagents, web tools, plugins, MCP, compatibility imports, and automatic
-updates, and requires the custom OS-enforced `delegation-kit` sandbox to attest
+The runner capability-probes Grok Build CLI and pins `grok-4.5`, effort `high`,
+JSON output, 40 turns, and a 15-minute wall timeout. It uses an ephemeral HOME,
+disables memory, subagents, web tools, plugins, MCP, compatibility imports, and
+automatic updates, and requires the custom OS-enforced `delegation-kit` sandbox to attest
 successful enforcement before publishing output. Permission mode is `dontAsk`,
 with only file edits explicitly allowed; the terminal tool is not exposed. The
 lead runs all tests and commands after inspecting the diff.
 
-The pinned version is resolved from a private store, not from PATH, so a vendor
-auto-update never strands the lane and never justifies editing the pin. If a
-check reports a version mismatch or a missing CLI, run `delegation-grok pin`
-(add `--from <path>` to point at the attested build); a digest mismatch means
-the archived copy changed and must be re-pinned deliberately. Bumping
-`REQUIRED_GROK_VERSION` is a re-evaluation, never a workaround.
+Any CLI version is accepted when it exposes the required flags, authenticated
+`grok-4.5` inventory, isolation state, structured output, and sandbox
+attestation. The observed version is provenance only. `delegation-grok pin`
+optionally preserves the currently compatible bytes in a private store with a
+digest (add `--from <path>` to choose the binary); a digest mismatch means the
+archived copy changed and must be replaced deliberately with `--force`.
 
 Failures write only a sanitized `<output>.error.json`. Raw provider output and
 stderr are retained only when the caller explicitly supplies an existing private

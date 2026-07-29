@@ -127,12 +127,12 @@ chmod 755 "$DATA_HOME/bin/delegation-grok"
 ln -sfn "$DATA_HOME/bin/delegation-grok" "$BIN_HOME/delegation-grok"
 echo "Grok bridge -> $BIN_HOME/delegation-grok (provisional builder gate: $DATA_HOME/config/grok-4.5-routing.json)"
 # A vendor auto-update replaces the ambient Grok CLI and prunes its own download
-# cache. Archive the attested build now, while it is still reachable, so a later
-# update is never a reason to touch the pin.
+# cache. Archive the currently compatible build so the selected bytes remain
+# available independently of PATH.
 if grok_pin_out="$(DELEGATION_DATA_HOME="$DATA_HOME" "$DATA_HOME/bin/delegation-grok" pin 2>&1)"; then
   printf '  + %s\n' "$(printf '%s\n' "$grok_pin_out" | head -1)"
 else
-  echo "  ! attested Grok Build CLI not archived — run 'delegation-grok pin --from <path>' while that exact build is still installed"
+  echo "  ! compatible Grok Build CLI not archived — run 'delegation-grok pin --from <path>'"
 fi
 
 # Qwen Token Plan credentials are isolated from DashScope and from ai-consultants.
