@@ -31,15 +31,16 @@ usage() {
   cat <<'EOF'
 Usage:
   delegation-qwen check [--json]
-  delegation-qwen run --lane <clerk|scout|reviewer|senior|judgement> \
+  delegation-qwen run --lane <clerk|scout|reviewer|senior|judgement|policy-annotation> \
     [--effort <auto|none|minimal|low|medium|high|xhigh|max>] \
     [--backend <auto|token-plan-openai>] --prompt-file <path> \
     --output <path> --workdir <path> [--metrics <path>] \
-    [--debug-dir <path>] [--evaluation]
+    [--debug-dir <path>] [--evaluation --evaluation-manifest <path>]
 
 Normal dispatch is refused while lanes are candidate/disabled. --evaluation is
-reserved for controlled qualification runs, never promotes a gate, and cannot
-dispatch a disabled lane.
+reserved for allowlisted controlled qualification runs of candidate lanes, never
+promotes or mutates a gate, and adds no operational route. Policy-annotation
+does not qualify broad architecture/trade-off judgement.
 
 Exit codes: 64 invalid input, 69 unavailable/authentication failure,
 70 dispatch/extract failure, 75 temporary/rate-limit failure, 78 routing gate
@@ -92,6 +93,42 @@ lane_effort() { jq -r '.profiles["qwen3.8-max-preview"].effort // empty' "$CENTR
 qualified_lanes() { jq -c '[.profiles["qwen3.8-max-preview"].lanes | to_entries[] | select(.value.status == "qualified") | .key] | sort' "$CENTRAL_GATES"; }
 provisional_lanes() { jq -c '[.profiles["qwen3.8-max-preview"].lanes | to_entries[] | select(.value.status == "provisional") | .key] | sort' "$CENTRAL_GATES"; }
 candidate_lanes() { jq -c '[.profiles["qwen3.8-max-preview"].lanes | to_entries[] | select(.value.status == "candidate") | .key] | sort' "$CENTRAL_GATES"; }
+
+sha256_file() {
+  if have shasum; then shasum -a 256 "$1" | awk '{print $1}';
+  elif have sha256sum; then sha256sum "$1" | awk '{print $1}';
+  else return 1; fi
+}
+
+evaluation_manifest() {
+  local manifest="$1" lane="$2" prompt_file="$3" expected_effort="$4" hash expected_hash source_head
+  [ -f "$manifest" ] && [ ! -L "$manifest" ] || die 78 "evaluation manifest is missing or symlinked"
+  hash="$(sha256_file "$manifest")" || die 69 "sha256 tool is required for evaluation"
+  expected_hash="$(sha256_file "$prompt_file")" || die 69 "sha256 tool is required for evaluation"
+  source_head="$(git -C "$ROOT" rev-parse HEAD 2>/dev/null)" || die 78 "runner source checkout is unavailable"
+  git -C "$ROOT" diff --quiet && git -C "$ROOT" diff --cached --quiet &&
+    [ -z "$(git -C "$ROOT" ls-files --others --exclude-standard)" ] || die 78 "runner source checkout is dirty"
+  jq -e --arg lane "$lane" --arg model "$MODEL" --arg effort "$expected_effort" \
+    --arg prompt_sha256 "$expected_hash" --arg source_head "$source_head" '
+      (keys | sort) == ["backend","contract_sha256","effort","lane","max_output_chars","model","output_schema_sha256","profile","prompt_sha256","runner_source_commit","schema","timeout_seconds"] and
+      .schema == "delegation_policy_annotation_evaluation_v1" and
+      .profile == "qwen3.8-max-preview" and .lane == $lane and .model == $model and
+      .backend == "token-plan-openai" and .effort == $effort and .prompt_sha256 == $prompt_sha256 and
+      .runner_source_commit == $source_head and
+      ([.prompt_sha256,.output_schema_sha256,.contract_sha256] | all(test("^[0-9a-f]{64}$"))) and
+      (.runner_source_commit | test("^[0-9a-f]{40}$")) and
+      (.timeout_seconds | type == "number" and floor == . and . >= 1 and . <= 600) and
+      (.max_output_chars | type == "number" and floor == . and . >= 1 and . <= 65536)
+    ' "$manifest" >/dev/null 2>&1 || die 78 "evaluation manifest is malformed or does not bind this exact run"
+  jq -e --arg lane "$lane" --arg hash "$hash" '
+    .profiles["qwen3.8-max-preview"].lanes[$lane].evaluation_manifest_sha256 | type == "array" and index($hash) != null
+  ' "$CENTRAL_GATES" >/dev/null 2>&1 || die 78 "evaluation manifest is not allowlisted by the central gate"
+  jq -e --arg lane "$lane" --arg hash "$hash" '
+    .lanes[$lane].backends["token-plan-openai"].evaluation_manifest_sha256 | type == "array" and index($hash) != null
+  ' "$ROUTING_FILE" >/dev/null 2>&1 || die 78 "evaluation manifest is not allowlisted by the executable gate"
+  EVALUATION_TIMEOUT_SECONDS="$(jq -r '.timeout_seconds' "$manifest")"
+  EVALUATION_MAX_OUTPUT_CHARS="$(jq -r '.max_output_chars' "$manifest")"
+}
 
 DEBUG_RUN_DIR=""
 preserve_debug() {
@@ -148,7 +185,7 @@ print_check() {
 }
 
 run_command() {
-  local lane="" effort=auto backend=auto prompt_file="" output="" workdir="" metrics="" debug_dir="" evaluation=0
+  local lane="" effort=auto backend=auto prompt_file="" output="" workdir="" metrics="" debug_dir="" evaluation=0 evaluation_manifest_path=""
   while [ "$#" -gt 0 ]; do
     case "$1" in
       --lane) lane="${2:-}"; shift 2 ;; --effort) effort="${2:-}"; shift 2 ;;
@@ -156,13 +193,19 @@ run_command() {
       --output) output="${2:-}"; shift 2 ;; --workdir) workdir="${2:-}"; shift 2 ;;
       --metrics) metrics="${2:-}"; shift 2 ;; --debug-dir) debug_dir="${2:-}"; shift 2 ;;
       --evaluation) evaluation=1; shift ;;
+      --evaluation-manifest) evaluation_manifest_path="${2:-}"; shift 2 ;;
       -h|--help) usage; exit 0 ;; *) die 64 "unknown run argument: $1" ;;
     esac
   done
-  case "$lane" in clerk|scout|reviewer|senior|judgement) ;; *) die 64 "invalid lane: $lane" ;; esac
+  case "$lane" in clerk|scout|reviewer|senior|judgement|policy-annotation) ;; *) die 64 "invalid lane: $lane" ;; esac
   case "$effort" in auto|none|minimal|low|medium|high|xhigh|max) ;; *) die 64 "invalid effort: $effort" ;; esac
   case "$backend" in auto|token-plan-openai) ;; *) die 64 "invalid backend: $backend" ;; esac
   [ -f "$prompt_file" ] || die 64 "prompt file missing: $prompt_file"
+  if [ "$evaluation" = 1 ]; then
+    [ -n "$evaluation_manifest_path" ] || die 64 "--evaluation requires --evaluation-manifest"
+  else
+    [ -z "$evaluation_manifest_path" ] || die 64 "--evaluation-manifest requires --evaluation"
+  fi
   [ -d "$workdir" ] || die 64 "workdir missing: $workdir"
   [ -n "$output" ] || die 64 "--output is required"
   [ -z "$debug_dir" ] || {
@@ -175,11 +218,14 @@ run_command() {
   if [ "$evaluation" = 0 ]; then
     case "$status" in qualified) ;; provisional) die 78 "lane '$lane' is provisional but this candidate runner requires an explicit future policy update" ;; *) die 78 "lane '$lane' has non-dispatchable status '$status'" ;; esac
   else
-    [ "$status" != disabled ] || die 78 "lane '$lane' is disabled even for evaluation"
+    [ "$status" = candidate ] || die 78 "lane '$lane' has status '$status'; --evaluation permits candidate lanes only"
   fi
   [ "$effort" != auto ] || effort="$(lane_effort)"
-  if [ "$evaluation" = 0 ] && [ "$effort" != "$(lane_effort)" ]; then die 78 "lane '$lane' is qualified only at effort '$(lane_effort)'"; fi
+  if [ "$effort" != "$(lane_effort)" ]; then die 78 "lane '$lane' is pinned only at effort '$(lane_effort)'"; fi
   [ "$effort" != none ] || die 64 "qwen3.8-max-preview requires thinking; effort 'none' is not supported"
+  if [ "$evaluation" = 1 ]; then
+    evaluation_manifest "$evaluation_manifest_path" "$lane" "$prompt_file" "$effort"
+  fi
   runtime_status || die 69 "$QWEN_REASON"
 
   metrics="${metrics:-$output.metrics.json}"
@@ -215,7 +261,7 @@ run_command() {
   case "$metrics" in "$workdir"/*) die 64 "read-only lane metrics must be outside workdir" ;; esac
   case "$diagnostic" in "$workdir"/*) die 64 "read-only lane diagnostic must be outside workdir" ;; esac
 
-  local tmp body response stderr_file http_code started curl_rc=0 curl_config
+  local tmp body response stderr_file http_code started curl_rc=0 curl_config provider_model=""
   local phase="" reason="" final_rc=0
   tmp="$(mktemp -d "${TMPDIR:-/tmp}/delegation-qwen.XXXXXX")"
   RUN_TMP="$tmp"
@@ -231,8 +277,10 @@ run_command() {
   # this transient curl config mode 600, and the EXIT trap removes it.
   printf 'header = "Authorization: Bearer %s"\nheader = "Content-Type: application/json"\n' \
     "$QWEN_TOKEN_PLAN_API_KEY" >"$curl_config"
+  local max_time=600
+  [ "$evaluation" = 0 ] || max_time="$EVALUATION_TIMEOUT_SECONDS"
   http_code="$(curl --config "$curl_config" -sS -o "$response" -w '%{http_code}' \
-    --connect-timeout 20 --max-time 600 --data-binary "@$body" "$API_URL" 2>"$stderr_file")" || curl_rc=$?
+    --connect-timeout 20 --max-time "$max_time" --data-binary "@$body" "$API_URL" 2>"$stderr_file")" || curl_rc=$?
   if [ "$curl_rc" -ne 0 ]; then
     http_code=000; phase=dispatch; reason=transport_failure; final_rc=75
   else
@@ -244,12 +292,18 @@ run_command() {
       *) phase=dispatch; reason=provider_error; final_rc=70 ;;
     esac
   fi
+  if [ "$final_rc" -eq 0 ] && ! provider_model="$(jq -er '.model | select(type == "string" and . == "qwen3.8-max-preview")' "$response")"; then
+    phase=extract; reason=provider_identity_mismatch; final_rc=70
+  fi
   if [ "$final_rc" -eq 0 ] && ! jq -er \
     '.choices[0].message.content | select(type == "string" and length > 0)' \
     "$response" >"$RUN_OUTPUT_TMP"; then
     phase=extract; reason=invalid_or_empty_response; final_rc=70
   fi
-  if [ "$final_rc" -eq 0 ] && ! jq -n --arg model "$MODEL" --arg effort "$effort" \
+  if [ "$final_rc" -eq 0 ] && [ "$evaluation" = 1 ] && [ "$(wc -m <"$RUN_OUTPUT_TMP" | tr -d ' ')" -gt "$EVALUATION_MAX_OUTPUT_CHARS" ]; then
+    phase=extract; reason=output_limit_exceeded; final_rc=70
+  fi
+  if [ "$final_rc" -eq 0 ] && ! jq -n --arg model "$provider_model" --arg effort "$effort" \
     --arg lane "$lane" --argjson started "$started" \
     --argjson input "$(jq '.usage.prompt_tokens // 0' "$response")" \
     --argjson output_tokens "$(jq '.usage.completion_tokens // 0' "$response")" \

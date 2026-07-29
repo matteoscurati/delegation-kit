@@ -11,8 +11,9 @@ a Token Plan subscription, and a successful smoke test do not qualify a lane.
 Run `delegation-qwen check --json` before considering it. Normal dispatch is
 allowed only after both `routing-gates.json` and the executable Qwen gate promote
 the exact lane at the pinned effort. Never use `--evaluation` for ordinary work;
-that flag exists only for a controlled local evaluation harness and does not
-change either gate.
+that flag exists only for manifest-bound `policy-annotation` evaluation at the
+exact Qwen/xhigh tuple. It does not change either gate, add an operational
+route, or qualify broad architecture/trade-off judgement.
 
 The backend is pinned to `qwen3.8-max-preview` through the Token Plan
 OpenAI-compatible endpoint. There is no provider, model, or effort fallback.

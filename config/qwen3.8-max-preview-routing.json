@@ -12,6 +12,7 @@
     "scout": {"default_effort": "xhigh", "backends": {"token-plan-openai": {"qualified": false, "status": "candidate", "selection": "blocked", "effort": "xhigh"}}},
     "reviewer": {"default_effort": "xhigh", "backends": {"token-plan-openai": {"qualified": false, "status": "candidate", "selection": "blocked", "effort": "xhigh"}}},
     "senior": {"default_effort": "xhigh", "backends": {"token-plan-openai": {"qualified": false, "status": "candidate", "selection": "blocked", "effort": "xhigh"}}},
-    "judgement": {"default_effort": "xhigh", "backends": {"token-plan-openai": {"qualified": false, "status": "disabled", "selection": "blocked", "effort": "xhigh"}}}
+    "judgement": {"default_effort": "xhigh", "backends": {"token-plan-openai": {"qualified": false, "status": "disabled", "selection": "blocked", "effort": "xhigh"}}},
+    "policy-annotation": {"default_effort": "xhigh", "backends": {"token-plan-openai": {"qualified": false, "status": "candidate", "selection": "blocked", "effort": "xhigh", "evaluation_manifest_sha256": []}}}
   }
 }

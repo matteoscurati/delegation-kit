@@ -25,6 +25,10 @@
       "model": "gpt-5.6-sol", "harness": "codex", "effort": "high",
       "lanes": {"judgement": {"status": "manual-qualified", "selection": "explicit-only", "exact_evidence_ids": [], "context_evidence_ids": ["aa-codex-gpt-5.6-sol-high", "arena-agent-gpt-5.6-sol-xhigh"], "evidence_gap": "Judgement is manual-only; the Agent Arena row also differs in harness and effort.", "qualification_basis": "Owner decision: technical feasibility, repository fit, failure modes, and verifiability."}}
     },
+    "sol-max-policy-annotator": {
+      "model": "gpt-5.6-sol", "harness": "codex", "effort": "max",
+      "lanes": {"policy-annotation": {"status": "candidate", "selection": "blocked", "exact_evidence_ids": [], "context_evidence_ids": [], "evidence_gap": "No frozen local policy-annotation result exists for the max-effort Codex variant."}}
+    },
     "sonnet-clerk": {
       "model": "claude-sonnet-5", "harness": "claude-code", "effort": "low",
       "lanes": {"clerk": {"status": "provisional", "selection": "fallback", "exact_evidence_ids": [], "context_evidence_ids": [], "evidence_gap": "No current exact Claude Code low row.", "fallback": "luna-clerk"}}
@@ -82,6 +86,10 @@
         }
       }
     },
+    "opus-policy-annotator": {
+      "model": "claude-opus-5", "harness": "claude-code", "effort": "xhigh",
+      "lanes": {"policy-annotation": {"status": "candidate", "selection": "blocked", "exact_evidence_ids": [], "context_evidence_ids": [], "evidence_gap": "No frozen local policy-annotation result exists for the xhigh Claude Code variant."}}
+    },
     "fable-judge": {
       "model": "claude-fable-5", "harness": "claude-code", "effort": "xhigh",
       "lanes": {"judgement": {"status": "manual-qualified", "selection": "explicit-only", "exact_evidence_ids": [], "context_evidence_ids": ["aa-claude-fable-5-max", "arena-agent-fable-5-high"], "evidence_gap": "Published max/high variants are context, not the installed xhigh profile.", "qualification_basis": "Owner decision: architecture, trade-offs, synthesis, and final verdict."}}
@@ -111,6 +119,7 @@
         "frontend-builder": {"status": "provisional", "selection": "preferred-explicit", "exact_evidence_ids": [], "context_evidence_ids": ["webdev-kimi-k3", "aa-kimi-code-kimi-k3"], "local_evaluation": {"run_id": "2026-07-16-kimi-k3", "task_count": null, "repeats": null, "confidence": "low", "limitations": "No frontend-specific local pack; provider quota truncated the general run."}, "evidence_gap": "WebDev uses a different harness/default effort; coding evidence is supporting only.", "fallback": "sonnet-builder"},
         "senior": {"status": "candidate", "selection": "blocked", "exact_evidence_ids": [], "context_evidence_ids": ["arena-agent-kimi-k3"], "evidence_gap": "Steerability evidence is insufficient for promotion."},
         "judgement": {"status": "disabled", "selection": "blocked", "exact_evidence_ids": [], "context_evidence_ids": []},
+        "policy-annotation": {"status": "candidate", "selection": "blocked", "exact_evidence_ids": [], "context_evidence_ids": [], "evaluation_manifest_sha256": [], "evidence_gap": "No frozen local policy-annotation result exists."},
         "reviewer": {"status": "disabled", "selection": "blocked", "exact_evidence_ids": [], "context_evidence_ids": [], "evidence_gap": "No exact review precision/recall row."}
       }
     },
@@ -248,7 +257,8 @@
         "scout": {"status": "candidate", "selection": "blocked", "exact_evidence_ids": [], "context_evidence_ids": [], "evidence_gap": "No exact public benchmark or local repository-navigation evaluation.", "fallback": "terra-scout"},
         "reviewer": {"status": "candidate", "selection": "blocked", "exact_evidence_ids": [], "context_evidence_ids": [], "evidence_gap": "No exact review precision/recall evaluation."},
         "senior": {"status": "candidate", "selection": "blocked", "exact_evidence_ids": [], "context_evidence_ids": [], "evidence_gap": "No exact high-risk judgement or steerability evaluation."},
-        "judgement": {"status": "disabled", "selection": "blocked", "exact_evidence_ids": [], "context_evidence_ids": [], "evidence_gap": "Preview marketing claims and runtime access cannot qualify judgement."}
+        "judgement": {"status": "disabled", "selection": "blocked", "exact_evidence_ids": [], "context_evidence_ids": [], "evidence_gap": "Preview marketing claims and runtime access cannot qualify judgement."},
+        "policy-annotation": {"status": "candidate", "selection": "blocked", "exact_evidence_ids": [], "context_evidence_ids": [], "evaluation_manifest_sha256": [], "evidence_gap": "No frozen local policy-annotation result exists."}
       }
     }
   },

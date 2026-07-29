@@ -75,7 +75,9 @@ is carried across for OAuth, while all tool namespaces are explicitly denied.
 
 Kimi K3 is installed as a **provisional coding model**. Its gate permits explicit
 `clerk`, `scout`, `builder`, and `frontend-builder` runs at `max`; senior is a
-blocked candidate, and reviewer/judgement remain disabled. Provider quota exhaustion
+blocked candidate, reviewer/judgement remain disabled, and `policy-annotation`
+is candidate/blocked for manifest-bound evaluation only. It never creates an
+operational route or qualifies architecture/trade-off judgement. Provider quota exhaustion
 returns exit 75 without silently falling back or changing the quality
 qualification. Provisional runs require `--allow-provisional`; CLI
 availability or a provider model listing is not enough. CLI compatibility is
@@ -123,7 +125,8 @@ Qwen3.8 Max Preview is installed as a **blocked candidate**, pinned to the
 Qwen Cloud Token Plan OpenAI-compatible endpoint and `xhigh`. Its dedicated
 `sk-sp-` key is stored separately and never imported silently from another tool.
 Runtime availability is not qualification; `--evaluation` is reserved for a
-controlled local qualification run.
+manifest-bound controlled local qualification run at the exact pinned tuple; it
+never promotes or mutates a gate.
 
 The evidence-backed routing policy lives in [`model-routing.md`](./model-routing.md).
 Its raw, dated model+harness+effort snapshot is

@@ -144,7 +144,22 @@ expect_failure 65 env DELEGATION_GROK_ROUTING_FILE="$TMP/bad-grok-compatibility.
 # Disabled/candidate profiles never leak into explicit/fallback candidates.
 bin/delegation-route resolve --lane judgement --json >"$TMP/judgement.json"
 jq -e '([.explicit[].profile] | sort) == ["fable-judge","sol-judge"] and
-       ([.blocked[].profile] | index("kimi-k3") != null)' "$TMP/judgement.json" >/dev/null
+       ([.blocked[].profile] | index("kimi-k3") != null) and
+       ([.blocked[].profile] | index("qwen3.8-max-preview") != null)' "$TMP/judgement.json" >/dev/null
+pass=$((pass + 1))
+
+# Policy annotation is candidate/blocked only, including separate exact-variant
+# Opus and Sol-max profiles; it must never leak into an operational group.
+bin/delegation-route resolve --lane policy-annotation --json >"$TMP/policy-annotation.json"
+jq -e '
+  (.defaults | length) == 0 and (.fallbacks | length) == 0 and (.explicit | length) == 0 and
+  ([.blocked[].profile] | sort) == ["kimi-k3","opus-policy-annotator","qwen3.8-max-preview","sol-max-policy-annotator"]
+' "$TMP/policy-annotation.json" >/dev/null
+jq -e '
+  .profiles["kimi-k3"].lanes.reviewer.status == "disabled" and
+  .profiles["kimi-k3"].lanes.judgement.status == "disabled" and
+  .profiles["qwen3.8-max-preview"].lanes.judgement.status == "disabled"
+' config/routing-gates.json >/dev/null
 pass=$((pass + 1))
 
 # The generated table exposes exact and contextual evidence separately.

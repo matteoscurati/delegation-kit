@@ -67,7 +67,10 @@ effort `max`, only with `--allow-provisional`. CLI compatibility is determined
 by capabilities, not by an exact version; the observed version is provenance
 only. Every lane uses an isolated minimal config, allowlisted environment,
 disabled terminal, and macOS write sandbox; builders are confined to their
-canonical worktree. Senior is blocked; reviewer and judgement remain disabled. Installed
+canonical worktree. Senior is blocked; reviewer and judgement remain disabled.
+`policy-annotation` is candidate/blocked only for a manifest-bound evaluation
+at the exact Kimi K3/max tuple; it never adds an operational route or qualifies
+broad judgement. Installed
 runtimes and visible model names are not qualification. If the exact gate is
 absent, keep the incumbent profile; never silently substitute another model,
 effort, or lane.
@@ -79,6 +82,9 @@ Qwen3.8 Max Preview is installed only through `qwen-executor` and
 at `xhigh`. Subscription access, a valid key, or a smoke test is not
 qualification. Every normal lane remains blocked until exact local evaluation
 promotes both routing gates. Never use `--evaluation` for ordinary work.
+The only evaluation-capable lane is manifest-bound `policy-annotation` at the
+exact Qwen/xhigh tuple; it cannot promote or mutate a gate or qualify broad
+judgement.
 
 ## Optional Grok 4.5 builder
 

@@ -86,7 +86,9 @@ exact version; the observed version is provenance only. Every lane uses an
 isolated minimal config, allowlisted environment, disabled terminal, and macOS
 write sandbox; builders
 are confined to their canonical worktree. Senior is blocked, and
-reviewer/judgement remain disabled.
+reviewer/judgement remain disabled. `policy-annotation` is candidate/blocked
+only for a manifest-bound evaluation at the exact Kimi K3/max tuple; it never
+adds an operational route or qualifies broad judgement.
 Require an explicit decision and `--allow-provisional` before dispatch.
 Kimi K3 is not scored or qualified merely because a CLI can reach it. If the gate
 or runtime is absent, keep the incumbent; never silently substitute a model,
@@ -99,6 +101,9 @@ Qwen3.8 Max Preview is installed only through `qwen-executor` and
 at `xhigh`. Subscription access, a valid key, or a smoke test is not
 qualification. Every normal lane remains blocked until exact local evaluation
 promotes both routing gates. Never use `--evaluation` for ordinary work.
+The only evaluation-capable lane is manifest-bound `policy-annotation` at the
+exact Qwen/xhigh tuple; it cannot promote or mutate a gate or qualify broad
+judgement.
 
 ### Optional Grok 4.5 builder
 

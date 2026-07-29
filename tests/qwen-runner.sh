@@ -21,23 +21,23 @@ done
 [ -n "$output" ] || exit 90
 case "${FAKE_QWEN_CASE:-success}" in
   success)
-    printf '%s\n' '{"choices":[{"message":{"content":"PONG"}}],"usage":{"prompt_tokens":7,"completion_tokens":3}}' >"$output"
+    printf '%s\n' '{"model":"qwen3.8-max-preview","choices":[{"message":{"content":"PONG"}}],"usage":{"prompt_tokens":7,"completion_tokens":3}}' >"$output"
     printf '200'
     ;;
   auth)
-    printf '%s\n' '{"error":{"message":"SECRET_PROVIDER_RESPONSE"}}' >"$output"
+    printf '%s\n' '{"model":"qwen3.8-max-preview","error":{"message":"SECRET_PROVIDER_RESPONSE"}}' >"$output"
     printf '401'
     ;;
   rate)
-    printf '%s\n' '{"error":{"message":"SECRET_PROVIDER_RESPONSE"}}' >"$output"
+    printf '%s\n' '{"model":"qwen3.8-max-preview","error":{"message":"SECRET_PROVIDER_RESPONSE"}}' >"$output"
     printf '429'
     ;;
   server)
-    printf '%s\n' '{"error":{"message":"SECRET_PROVIDER_RESPONSE"}}' >"$output"
+    printf '%s\n' '{"model":"qwen3.8-max-preview","error":{"message":"SECRET_PROVIDER_RESPONSE"}}' >"$output"
     printf '503'
     ;;
   provider)
-    printf '%s\n' '{"error":{"message":"SECRET_PROVIDER_RESPONSE"}}' >"$output"
+    printf '%s\n' '{"model":"qwen3.8-max-preview","error":{"message":"SECRET_PROVIDER_RESPONSE"}}' >"$output"
     printf '400'
     ;;
   malformed)
@@ -45,7 +45,7 @@ case "${FAKE_QWEN_CASE:-success}" in
     printf '200'
     ;;
   empty)
-    printf '%s\n' '{"choices":[{"message":{"content":""}}]}' >"$output"
+    printf '%s\n' '{"model":"qwen3.8-max-preview","choices":[{"message":{"content":""}}]}' >"$output"
     printf '200'
     ;;
   transport)

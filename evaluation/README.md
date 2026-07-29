@@ -26,6 +26,14 @@ evidence arrays. Its Token Plan runtime is available for controlled local
 evaluation, but availability, preview marketing, and a smoke response are not
 capability evidence and cannot promote a lane.
 
+The candidate/blocked `policy-annotation` lane may be invoked only with the
+runner's explicit manifest-bound `--evaluation` mode for a pre-registered
+qualification run. It remains absent from every operational route group;
+evaluation neither promotes nor mutates a gate and does not qualify broad
+architecture/trade-off judgement. The runner pins the exact configured model,
+harness, and effort before provider dispatch (Kimi K3/native at `max`; Qwen
+Token Plan at `xhigh`).
+
 ## Versioned snapshot
 
 [`config/model-evidence.json`](../config/model-evidence.json) records raw metrics,

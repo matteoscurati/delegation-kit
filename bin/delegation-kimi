@@ -30,10 +30,15 @@ usage() {
   cat <<'EOF'
 Usage:
   delegation-kimi check [--json]
-  delegation-kimi run --lane <clerk|scout|builder|frontend-builder|reviewer|senior|judgement> \
-    [--effort <auto|max>] [--backend <auto|native>] \
+  delegation-kimi run --lane <clerk|scout|builder|frontend-builder|reviewer|senior|judgement|policy-annotation> \
+    [--effort <auto|low|high|max>] [--backend <auto|native>] \
     (--prompt-file <path> | --prompt <text>) --output <path> --workdir <path> \
-    [--metrics <path>] [--allow-provisional]
+    [--metrics <path>] [--allow-provisional] [--evaluation --evaluation-manifest <path>]
+
+`--evaluation` permits only allowlisted candidate lanes for a controlled
+qualification run. It never promotes or mutates a gate, adds no operational
+route, and does not imply `--allow-provisional`. Policy-annotation is not the
+broad architecture/trade-off judgement lane.
 
 Exit codes: 64 invalid input, 69 unavailable, 70 dispatch failure,
 75 temporary/rate-limit failure, 78 lane not qualified.
@@ -115,9 +120,11 @@ gate_status() {
 }
 
 is_allowed() {
-  local lane="$1" backend="$2" allow_provisional="$3" status
+  local lane="$1" backend="$2" allow_provisional="$3" evaluation="$4" status
   status="$(gate_status "$lane" "$backend")"
-  [ "$status" = qualified ] || { [ "$status" = provisional ] && [ "$allow_provisional" = 1 ]; }
+  [ "$status" = qualified ] ||
+    { [ "$status" = provisional ] && [ "$allow_provisional" = 1 ]; } ||
+    { [ "$status" = candidate ] && [ "$evaluation" = 1 ]; }
 }
 
 preferred_backends() {
@@ -143,6 +150,42 @@ validate_gate_graph() {
   DELEGATION_ROUTING_GATES_FILE="$CENTRAL_GATES" \
     DELEGATION_KIMI_ROUTING_FILE="$ROUTING_FILE" \
     "$ROUTER" check --json >/dev/null 2>&1
+}
+
+sha256_file() {
+  if have shasum; then shasum -a 256 "$1" | awk '{print $1}';
+  elif have sha256sum; then sha256sum "$1" | awk '{print $1}';
+  else return 1; fi
+}
+
+evaluation_manifest() {
+  local manifest="$1" lane="$2" prompt_file="$3" expected_effort="$4" hash expected_hash source_head
+  [ -f "$manifest" ] && [ ! -L "$manifest" ] || die 78 "evaluation manifest is missing or symlinked"
+  hash="$(sha256_file "$manifest")" || die 69 "sha256 tool is required for evaluation"
+  expected_hash="$(sha256_file "$prompt_file")" || die 69 "sha256 tool is required for evaluation"
+  source_head="$(git -C "$ROOT" rev-parse HEAD 2>/dev/null)" || die 78 "runner source checkout is unavailable"
+  git -C "$ROOT" diff --quiet && git -C "$ROOT" diff --cached --quiet &&
+    [ -z "$(git -C "$ROOT" ls-files --others --exclude-standard)" ] || die 78 "runner source checkout is dirty"
+  jq -e --arg lane "$lane" --arg model "$NATIVE_MODEL" --arg effort "$expected_effort" \
+    --arg prompt_sha256 "$expected_hash" --arg source_head "$source_head" '
+      (keys | sort) == ["backend","contract_sha256","effort","lane","max_output_chars","model","output_schema_sha256","profile","prompt_sha256","runner_source_commit","schema","timeout_seconds"] and
+      .schema == "delegation_policy_annotation_evaluation_v1" and
+      .profile == "kimi-k3" and .lane == $lane and .model == $model and
+      .backend == "native" and .effort == $effort and .prompt_sha256 == $prompt_sha256 and
+      .runner_source_commit == $source_head and
+      ([.prompt_sha256,.output_schema_sha256,.contract_sha256] | all(test("^[0-9a-f]{64}$"))) and
+      (.runner_source_commit | test("^[0-9a-f]{40}$")) and
+      (.timeout_seconds | type == "number" and floor == . and . >= 1 and . <= 600) and
+      (.max_output_chars | type == "number" and floor == . and . >= 1 and . <= 65536)
+    ' "$manifest" >/dev/null 2>&1 || die 78 "evaluation manifest is malformed or does not bind this exact run"
+  jq -e --arg lane "$lane" --arg hash "$hash" '
+    .profiles["kimi-k3"].lanes[$lane].evaluation_manifest_sha256 | type == "array" and index($hash) != null
+  ' "$CENTRAL_GATES" >/dev/null 2>&1 || die 78 "evaluation manifest is not allowlisted by the central gate"
+  jq -e --arg lane "$lane" --arg hash "$hash" '
+    .lanes[$lane].backends.native.evaluation_manifest_sha256 | type == "array" and index($hash) != null
+  ' "$ROUTING_FILE" >/dev/null 2>&1 || die 78 "evaluation manifest is not allowlisted by the executable gate"
+  EVALUATION_TIMEOUT_SECONDS="$(jq -r '.timeout_seconds' "$manifest")"
+  EVALUATION_MAX_OUTPUT_CHARS="$(jq -r '.max_output_chars' "$manifest")"
 }
 
 # A dead session is not a broken dispatch: it means the runtime is unavailable
@@ -288,8 +331,8 @@ backend_available() {
 }
 
 run_command() {
-  local lane="" effort="auto" backend="auto" prompt_file="" prompt="" output="" workdir="" metrics=""
-  local prompt_source="" backend_checked=0 expected_effort="" allow_provisional=0
+  local lane="" effort="auto" backend="auto" prompt_file="" prompt="" output="" workdir="" metrics="" evaluation_manifest_path=""
+  local prompt_source="" backend_checked=0 expected_effort="" allow_provisional=0 evaluation=0
   while [ "$#" -gt 0 ]; do
     case "$1" in
       --lane) lane="${2:-}"; shift 2 ;;
@@ -301,12 +344,14 @@ run_command() {
       --workdir) workdir="${2:-}"; shift 2 ;;
       --metrics) metrics="${2:-}"; shift 2 ;;
       --allow-provisional) allow_provisional=1; shift ;;
+      --evaluation) evaluation=1; shift ;;
+      --evaluation-manifest) evaluation_manifest_path="${2:-}"; shift 2 ;;
       -h|--help) usage; exit 0 ;;
       *) die 64 "unknown run argument: $1" ;;
     esac
   done
-  case "$lane" in clerk|scout|builder|frontend-builder|reviewer|senior|judgement) ;; *) die 64 "invalid lane: $lane" ;; esac
-  case "$effort" in auto|max) ;; *) die 64 "invalid effort: $effort" ;; esac
+  case "$lane" in clerk|scout|builder|frontend-builder|reviewer|senior|judgement|policy-annotation) ;; *) die 64 "invalid lane: $lane" ;; esac
+  case "$effort" in auto|low|high|max) ;; *) die 64 "invalid effort: $effort" ;; esac
   case "$backend" in auto|native) ;; *) die 64 "invalid backend: $backend" ;; esac
   [ -z "$prompt_file" ] || [ -z "$prompt_source" ] || die 64 "use only one of --prompt-file or --prompt"
   if [ -n "$prompt_file" ]; then
@@ -316,6 +361,12 @@ run_command() {
   fi
   [ -n "$prompt_source" ] || die 64 "--prompt-file or --prompt is required"
   [ -n "$prompt" ] || die 64 "prompt must not be empty"
+  if [ "$evaluation" = 1 ]; then
+    [ -n "$evaluation_manifest_path" ] || die 64 "--evaluation requires --evaluation-manifest"
+    [ -n "$prompt_file" ] || die 64 "--evaluation requires --prompt-file to bind its raw hash"
+  else
+    [ -z "$evaluation_manifest_path" ] || die 64 "--evaluation-manifest requires --evaluation"
+  fi
   [ -d "$workdir" ] || die 64 "workdir missing: $workdir"
   workdir="$(cd "$workdir" && pwd -P)"
   [ "$workdir" != / ] || die 64 "workdir must not be the filesystem root"
@@ -333,9 +384,9 @@ run_command() {
     backend=""
     while IFS= read -r candidate; do
       case "$candidate" in native) ;; *) continue ;; esac
-      is_allowed "$lane" "$candidate" "$allow_provisional" || continue
+      is_allowed "$lane" "$candidate" "$allow_provisional" "$evaluation" || continue
       qualified_seen=1
-      if backend_available "$candidate"; then
+      if [ "$evaluation" = 1 ] || backend_available "$candidate"; then
         backend="$candidate"; backend_checked=1; break
       fi
     done < <(preferred_backends "$lane")
@@ -346,19 +397,23 @@ run_command() {
       # lifetimes.
       [ "$qualified_seen" = 0 ] || die 69 "$NATIVE_REASON"
       status="$(gate_status "$lane" native)"
-      if [ "$status" != provisional ]; then
-        die 78 "lane '$lane' has non-dispatchable status '$status'"
-      else
+      if [ "$status" = provisional ]; then
         die 78 "lane '$lane' is provisional; pass --allow-provisional after an explicit routing decision"
+      elif [ "$status" = candidate ]; then
+        die 78 "lane '$lane' is candidate; pass --evaluation only for a controlled qualification run"
+      else
+        die 78 "lane '$lane' has non-dispatchable status '$status'"
       fi
     fi
   else
-    if ! is_allowed "$lane" "$backend" "$allow_provisional"; then
+    if ! is_allowed "$lane" "$backend" "$allow_provisional" "$evaluation"; then
       status="$(gate_status "$lane" "$backend")"
-      if [ "$status" != provisional ]; then
-        die 78 "lane '$lane' backend '$backend' has non-dispatchable status '$status'"
-      else
+      if [ "$status" = provisional ]; then
         die 78 "lane '$lane' backend '$backend' is provisional; pass --allow-provisional after an explicit routing decision"
+      elif [ "$status" = candidate ]; then
+        die 78 "lane '$lane' backend '$backend' is candidate; pass --evaluation only for a controlled qualification run"
+      else
+        die 78 "lane '$lane' backend '$backend' has non-dispatchable status '$status'"
       fi
     fi
   fi
@@ -368,10 +423,13 @@ run_command() {
     || die 69 "qualified lane '$lane' has no pinned effort for backend '$backend'"
   [ "$effort" = "$expected_effort" ] \
     || die 78 "lane '$lane' backend '$backend' is qualified only at effort '$expected_effort'"
+  if [ "$evaluation" = 1 ]; then
+    evaluation_manifest "$evaluation_manifest_path" "$lane" "$prompt_file" "$expected_effort"
+  fi
   if [ "$backend" = native ] && [ "$effort" != max ]; then
     die 64 "native backend supports only max effort"
   fi
-  if [ "$backend_checked" -eq 0 ]; then
+  if [ "$backend_checked" -eq 0 ] || [ "$evaluation" = 1 ]; then
     backend_available "$backend" || die 69 "$NATIVE_REASON"
   fi
 
@@ -411,9 +469,16 @@ run_command() {
   # read-only lanes may write only runner scratch. No imported hooks/services or
   # child process execution is exposed. Network remains available to the Kimi
   # provider process itself.
-  local sandbox_bin
+  local sandbox_bin timeout_bin=""
+  local -a timeout_command=()
   sandbox_status || die 69 "$NATIVE_REASON"
   sandbox_bin="$KIMI_SANDBOX_BIN"
+  if [ "$evaluation" = 1 ]; then
+    if have gtimeout; then timeout_bin="$(command -v gtimeout)"
+    elif have timeout; then timeout_bin="$(command -v timeout)"
+    else die 69 "evaluation requires gtimeout or timeout to enforce its manifest limit"; fi
+    timeout_command=("$timeout_bin" "$EVALUATION_TIMEOUT_SECONDS")
+  fi
   local sandbox_profile write_scope
   prepare_native_home "$tmp" || die 69 "could not prepare isolated Kimi home"
   sandbox_profile='(version 1)
@@ -442,7 +507,7 @@ run_command() {
       PATH="/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin" \
       HOME="$tmp/home" TMPDIR="$tmp/home-tmp" SHELL="/usr/bin/true" \
       LANG="${LANG:-C}" NO_COLOR=1 \
-      "$sandbox_bin" -D "SCRATCH=$tmp" -D "WORKDIR=$workdir" \
+      "${timeout_command[@]}" "$sandbox_bin" -D "SCRATCH=$tmp" -D "WORKDIR=$workdir" \
         -D "REAL_HOME=$ambient_home" -D "KIMI_BIN=$NATIVE_BIN" \
         -p "$sandbox_profile" "$NATIVE_BIN" \
         --prompt "$prompt" --model "$NATIVE_MODEL" \
@@ -450,6 +515,9 @@ run_command() {
   ) >"$events" 2>"$tmp/stderr" || rc=$?
   if [ "$rc" -eq 0 ]; then
     extract_native "$events" "$result_tmp" "$metrics_tmp" "$started" "$effort" "$lane" "$write_scope" || rc=70
+  fi
+  if [ "$rc" -eq 0 ] && [ "$evaluation" = 1 ] && [ "$(wc -m <"$result_tmp" | tr -d ' ')" -gt "$EVALUATION_MAX_OUTPUT_CHARS" ]; then
+    rc=70
   fi
 
   if [ "$rc" -ne 0 ]; then
