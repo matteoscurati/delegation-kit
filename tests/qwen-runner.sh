@@ -1,11 +1,27 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+SOURCE_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 TMP="$(mktemp -d "${TMPDIR:-/tmp}/delegation-qwen-test.XXXXXX")"
 trap 'rm -rf -- "$TMP"' EXIT
 mkdir -p "$TMP/bin" "$TMP/work" "$TMP/results" "$TMP/runtime" "$TMP/debug"
 printf 'Respond with PONG.\n' >"$TMP/prompt"
+
+# Evaluation rejects a dirty runner checkout.  Exercise it in a throwaway,
+# committed copy of the current tree, never by weakening that production check.
+ROOT="$TMP/repo"
+cp -R "$SOURCE_ROOT/." "$ROOT"
+rm -rf -- "$ROOT/.git"
+rm -f -- "$ROOT/.claude/settings.local.json"
+mkdir -p "$ROOT/evaluation/test-fixtures"
+printf '%s\n' 'policy annotation contract fixture' >"$ROOT/evaluation/test-fixtures/contract.txt"
+printf '%s\n' '{"type":"object","required":["annotation"]}' >"$ROOT/evaluation/test-fixtures/output-schema.json"
+git -C "$ROOT" init -q
+git -C "$ROOT" config user.email test@example.invalid
+git -C "$ROOT" config user.name delegation-runner-test
+git -C "$ROOT" add -A
+git -C "$ROOT" commit -qm 'evaluation fixture base'
+BASE_COMMIT="$(git -C "$ROOT" rev-parse HEAD)"
 
 cat >"$TMP/bin/curl" <<'EOF'
 #!/usr/bin/env bash
@@ -48,6 +64,10 @@ case "${FAKE_QWEN_CASE:-success}" in
     printf '%s\n' '{"model":"qwen3.8-max-preview","choices":[{"message":{"content":""}}]}' >"$output"
     printf '200'
     ;;
+  identity)
+    printf '%s\n' '{"model":"qwen3.8-max-preview-fallback","choices":[{"message":{"content":"PONG"}}]}' >"$output"
+    printf '200'
+    ;;
   transport)
     printf 'SECRET_CURL_STDERR\n' >&2
     exit 7
@@ -61,6 +81,30 @@ chmod +x "$TMP/bin/curl"
 
 fail() { printf 'FAIL: %s\n' "$*" >&2; exit 1; }
 json() { jq -e "$2" "$1" >/dev/null || fail "$1 did not satisfy $2"; }
+sha256() { shasum -a 256 "$1" | awk '{print $1}'; }
+
+write_manifest() {
+  jq -n \
+    --arg prompt_sha256 "$(sha256 "$TMP/prompt")" \
+    --arg runner_sha256 "$(sha256 "$ROOT/bin/delegation-qwen")" \
+    --arg contract_sha256 "$(sha256 "$ROOT/evaluation/test-fixtures/contract.txt")" \
+    --arg output_schema_sha256 "$(sha256 "$ROOT/evaluation/test-fixtures/output-schema.json")" \
+    --arg source_commit "$BASE_COMMIT" \
+    '{schema:"delegation_policy_annotation_evaluation_v1",profile:"qwen3.8-max-preview",lane:"policy-annotation",model:"qwen3.8-max-preview",backend:"token-plan-openai",effort:"xhigh",prompt_sha256:$prompt_sha256,runner_source_commit:$source_commit,runner_sha256:$runner_sha256,contract_path:"evaluation/test-fixtures/contract.txt",contract_sha256:$contract_sha256,output_schema_path:"evaluation/test-fixtures/output-schema.json",output_schema_sha256:$output_schema_sha256,timeout_seconds:60,max_output_chars:1024}' \
+    >"$TMP/manifest.json"
+}
+write_manifest
+MANIFEST_SHA="$(sha256 "$TMP/manifest.json")"
+jq --arg hash "$MANIFEST_SHA" '
+  .profiles["qwen3.8-max-preview"].lanes["policy-annotation"].evaluation_manifest_sha256 = [$hash]
+' "$ROOT/config/routing-gates.json" >"$TMP/gates.json"
+mv "$TMP/gates.json" "$ROOT/config/routing-gates.json"
+jq --arg hash "$MANIFEST_SHA" '
+  .lanes["policy-annotation"].backends["token-plan-openai"].evaluation_manifest_sha256 = [$hash]
+' "$ROOT/config/qwen3.8-max-preview-routing.json" >"$TMP/qwen-routing.json"
+mv "$TMP/qwen-routing.json" "$ROOT/config/qwen3.8-max-preview-routing.json"
+git -C "$ROOT" add config/routing-gates.json config/qwen3.8-max-preview-routing.json
+git -C "$ROOT" commit -qm 'allowlist evaluation fixture'
 
 run_case() {
   local name="$1" expected="$2"
@@ -68,8 +112,9 @@ run_case() {
   local rc=0
   PATH="$TMP/bin:$PATH" TMPDIR="$TMP/runtime" \
     QWEN_TOKEN_PLAN_API_KEY=sk-sp-test FAKE_QWEN_CASE="$name" \
-    "$ROOT/bin/delegation-qwen" run --lane clerk --effort auto \
+    "$ROOT/bin/delegation-qwen" run --lane policy-annotation --effort auto \
     --backend token-plan-openai --evaluation --prompt-file "$TMP/prompt" \
+    --evaluation-manifest "$TMP/manifest.json" \
     --output "$TMP/results/$name.out" --workdir "$TMP/work" "$@" \
     >"$TMP/results/$name.stdout" 2>"$TMP/results/$name.stderr" || rc=$?
   [ "$rc" = "$expected" ] || fail "$name returned $rc, expected $expected"
@@ -85,7 +130,7 @@ json "$TMP/check.json" \
 rc=0
 PATH="/usr/bin:/bin" QWEN_TOKEN_PLAN_API_KEY='' \
   "$ROOT/bin/delegation-qwen" run --lane judgement --evaluation \
-  --prompt-file "$TMP/prompt" --output "$TMP/results/judgement.out" \
+  --evaluation-manifest "$TMP/missing-manifest.json" --prompt-file "$TMP/prompt" --output "$TMP/results/judgement.out" \
   --workdir "$TMP/work" >/dev/null 2>&1 || rc=$?
 [ "$rc" = 78 ] || fail "disabled judgement evaluation returned $rc"
 
@@ -101,8 +146,9 @@ for spec in \
   'rate 75 rate_limited dispatch 429' \
   'server 75 provider_temporary_failure dispatch 503' \
   'provider 70 provider_error dispatch 400' \
-  'malformed 70 invalid_or_empty_response extract 200' \
+  'malformed 70 provider_identity_mismatch extract 200' \
   'empty 70 invalid_or_empty_response extract 200' \
+  'identity 70 provider_identity_mismatch extract 200' \
   'transport 75 transport_failure dispatch 000'
 do
   read -r name expected reason phase http_code <<EOF
@@ -140,7 +186,8 @@ done
 printf 'existing\n' >"$TMP/results/existing.out"
 rc=0
 PATH="$TMP/bin:$PATH" QWEN_TOKEN_PLAN_API_KEY=sk-sp-test \
-  "$ROOT/bin/delegation-qwen" run --lane clerk --evaluation \
+  "$ROOT/bin/delegation-qwen" run --lane policy-annotation --evaluation \
+  --evaluation-manifest "$TMP/manifest.json" \
   --prompt-file "$TMP/prompt" --output "$TMP/results/existing.out" \
   --workdir "$TMP/work" >/dev/null 2>&1 || rc=$?
 [ "$rc" = 64 ] || fail 'existing output accepted'
@@ -149,7 +196,8 @@ PATH="$TMP/bin:$PATH" QWEN_TOKEN_PLAN_API_KEY=sk-sp-test \
 ln -s "$TMP/results/existing.out" "$TMP/results/symlink.out.error.json"
 rc=0
 PATH="$TMP/bin:$PATH" QWEN_TOKEN_PLAN_API_KEY=sk-sp-test \
-  "$ROOT/bin/delegation-qwen" run --lane clerk --evaluation \
+  "$ROOT/bin/delegation-qwen" run --lane policy-annotation --evaluation \
+  --evaluation-manifest "$TMP/manifest.json" \
   --prompt-file "$TMP/prompt" --output "$TMP/results/symlink.out" \
   --workdir "$TMP/work" >/dev/null 2>&1 || rc=$?
 [ "$rc" = 64 ] || fail 'symlink diagnostic accepted'
@@ -158,7 +206,8 @@ PATH="$TMP/bin:$PATH" QWEN_TOKEN_PLAN_API_KEY=sk-sp-test \
 mkdir "$TMP/work/debug"
 rc=0
 PATH="$TMP/bin:$PATH" QWEN_TOKEN_PLAN_API_KEY=sk-sp-test \
-  "$ROOT/bin/delegation-qwen" run --lane clerk --evaluation \
+  "$ROOT/bin/delegation-qwen" run --lane policy-annotation --evaluation \
+  --evaluation-manifest "$TMP/manifest.json" \
   --prompt-file "$TMP/prompt" --output "$TMP/results/worktree-debug.out" \
   --workdir "$TMP/work" --debug-dir "$TMP/work/debug" >/dev/null 2>&1 || rc=$?
 [ "$rc" = 64 ] || fail 'debug directory inside read-only workdir accepted'

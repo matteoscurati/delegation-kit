@@ -101,25 +101,43 @@ sha256_file() {
 }
 
 evaluation_manifest() {
-  local manifest="$1" lane="$2" prompt_file="$3" expected_effort="$4" hash expected_hash source_head
+  local manifest="$1" lane="$2" prompt_file="$3" expected_effort="$4"
+  local hash expected_hash source_head runner_hash contract_path output_schema_path contract_hash output_schema_hash
   [ -f "$manifest" ] && [ ! -L "$manifest" ] || die 78 "evaluation manifest is missing or symlinked"
   hash="$(sha256_file "$manifest")" || die 69 "sha256 tool is required for evaluation"
   expected_hash="$(sha256_file "$prompt_file")" || die 69 "sha256 tool is required for evaluation"
   source_head="$(git -C "$ROOT" rev-parse HEAD 2>/dev/null)" || die 78 "runner source checkout is unavailable"
+  runner_hash="$(sha256_file "$SOURCE")" || die 69 "sha256 tool is required for evaluation"
   git -C "$ROOT" diff --quiet && git -C "$ROOT" diff --cached --quiet &&
     [ -z "$(git -C "$ROOT" ls-files --others --exclude-standard)" ] || die 78 "runner source checkout is dirty"
   jq -e --arg lane "$lane" --arg model "$MODEL" --arg effort "$expected_effort" \
-    --arg prompt_sha256 "$expected_hash" --arg source_head "$source_head" '
-      (keys | sort) == ["backend","contract_sha256","effort","lane","max_output_chars","model","output_schema_sha256","profile","prompt_sha256","runner_source_commit","schema","timeout_seconds"] and
+    --arg prompt_sha256 "$expected_hash" --arg runner_sha256 "$runner_hash" '
+      (keys | sort) == ["backend","contract_path","contract_sha256","effort","lane","max_output_chars","model","output_schema_path","output_schema_sha256","profile","prompt_sha256","runner_sha256","runner_source_commit","schema","timeout_seconds"] and
       .schema == "delegation_policy_annotation_evaluation_v1" and
       .profile == "qwen3.8-max-preview" and .lane == $lane and .model == $model and
       .backend == "token-plan-openai" and .effort == $effort and .prompt_sha256 == $prompt_sha256 and
-      .runner_source_commit == $source_head and
-      ([.prompt_sha256,.output_schema_sha256,.contract_sha256] | all(test("^[0-9a-f]{64}$"))) and
+      .runner_sha256 == $runner_sha256 and
+      ([.prompt_sha256,.output_schema_sha256,.contract_sha256,.runner_sha256] | all(test("^[0-9a-f]{64}$"))) and
       (.runner_source_commit | test("^[0-9a-f]{40}$")) and
+      (.contract_path | type == "string" and test("^(?!/)(?!.*(^|/)\\.\\.(/|$)).+")) and
+      (.output_schema_path | type == "string" and test("^(?!/)(?!.*(^|/)\\.\\.(/|$)).+")) and
       (.timeout_seconds | type == "number" and floor == . and . >= 1 and . <= 600) and
       (.max_output_chars | type == "number" and floor == . and . >= 1 and . <= 65536)
     ' "$manifest" >/dev/null 2>&1 || die 78 "evaluation manifest is malformed or does not bind this exact run"
+  git -C "$ROOT" merge-base --is-ancestor "$(jq -r '.runner_source_commit' "$manifest")" "$source_head" \
+    || die 78 "evaluation manifest source commit is not an ancestor of this runner checkout"
+  contract_path="$(jq -r '.contract_path' "$manifest")"
+  output_schema_path="$(jq -r '.output_schema_path' "$manifest")"
+  [ -f "$ROOT/$contract_path" ] && [ ! -L "$ROOT/$contract_path" ] \
+    || die 78 "evaluation contract path is missing or symlinked"
+  [ -f "$ROOT/$output_schema_path" ] && [ ! -L "$ROOT/$output_schema_path" ] \
+    || die 78 "evaluation output schema path is missing or symlinked"
+  contract_hash="$(sha256_file "$ROOT/$contract_path")" || die 69 "sha256 tool is required for evaluation"
+  output_schema_hash="$(sha256_file "$ROOT/$output_schema_path")" || die 69 "sha256 tool is required for evaluation"
+  [ "$contract_hash" = "$(jq -r '.contract_sha256' "$manifest")" ] \
+    || die 78 "evaluation contract hash does not match its bound path"
+  [ "$output_schema_hash" = "$(jq -r '.output_schema_sha256' "$manifest")" ] \
+    || die 78 "evaluation output schema hash does not match its bound path"
   jq -e --arg lane "$lane" --arg hash "$hash" '
     .profiles["qwen3.8-max-preview"].lanes[$lane].evaluation_manifest_sha256 | type == "array" and index($hash) != null
   ' "$CENTRAL_GATES" >/dev/null 2>&1 || die 78 "evaluation manifest is not allowlisted by the central gate"

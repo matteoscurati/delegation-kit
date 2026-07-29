@@ -62,6 +62,9 @@ backend, keyed by `ZAI_API_KEY` or the 600-mode key the installer stored. All
 provisional lanes route at `high`, and an effort the gate did not pin is refused.
 Builder is a blocked candidate and reviewer remains disabled.
 Never silently substitute another model or promote an unevaluated lane.
+`policy-annotation` at `high` is a separate candidate/blocked lane that may run
+only with an allowlisted read-only evaluation manifest. It never widens the
+operational gate or qualifies broad judgement.
 
 ### Optional Gemini 3.6 Flash executor
 
@@ -121,6 +124,9 @@ observed version is provenance only. An optional digest-checked private archive
 preserves the selected bytes independently of PATH; use
 `delegation-grok pin --force` for deliberate replacement. No other Grok lane is exposed, and failure
 never authorizes silent fallback.
+`policy-annotation` at `high` is the only evaluation-only exception: it is
+candidate/blocked, requires an allowlisted manifest and the read-only sandbox,
+and cannot create an operational route.
 
 ### Evidence-backed qualification
 

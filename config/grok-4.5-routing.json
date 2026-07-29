@@ -77,6 +77,29 @@
           }
         }
       }
+    },
+    "policy-annotation": {
+      "default_effort": "high",
+      "preferred_backends": [
+        "grok-build"
+      ],
+      "backends": {
+        "grok-build": {
+          "qualified": false,
+          "status": "candidate",
+          "selection": "blocked",
+          "effort": "high",
+          "evaluation_manifest_sha256": [],
+          "runtime_controls": {
+            "sandbox": "delegation-kit-read-only",
+            "permission_mode": "dontAsk",
+            "tools": ["grep", "read_file", "list_dir"],
+            "terminal": false
+          },
+          "legacy_local_result": null,
+          "qualification_basis": "Evaluation-only policy annotation candidate. A manifest-bound run cannot promote or add an operational route."
+        }
+      }
     }
   }
 }

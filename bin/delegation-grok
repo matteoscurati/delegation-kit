@@ -39,11 +39,11 @@ usage() {
 Usage:
   delegation-grok check [--json]
   delegation-grok pin [--from <path>] [--force]
-  delegation-grok run --lane <builder|frontend-builder> \
+  delegation-grok run --lane <builder|frontend-builder|policy-annotation> \
     [--effort <auto|high>] [--backend <auto|grok-build>] \
     --prompt-file <path> --output <path> --workdir <path> \
     [--metrics <path>] [--debug-dir <existing-private-directory>] \
-    [--allow-provisional]
+    [--allow-provisional] [--evaluation --evaluation-manifest <path>]
 
 `pin` archives a capability-compatible CLI build into a private store so a
 vendor auto-update of the ambient CLI never disturbs the selected lane. The
@@ -58,6 +58,27 @@ EOF
 
 die() { local code="$1"; shift; printf 'delegation-grok: %s\n' "$*" >&2; exit "$code"; }
 have() { command -v "$1" >/dev/null 2>&1; }
+
+evaluation_manifest() {
+  local manifest="$1" prompt_file="$2" manifest_hash prompt_hash source_head contract schema runner_hash
+  [ -f "$manifest" ] && [ ! -L "$manifest" ] || die 78 "evaluation manifest is missing or symlinked"
+  manifest_hash="$(file_digest "$manifest")" || die 69 "sha256 tool is required for evaluation"
+  prompt_hash="$(file_digest "$prompt_file")" || die 69 "sha256 tool is required for evaluation"
+  source_head="$(git -C "$ROOT" rev-parse HEAD 2>/dev/null)" || die 78 "runner source checkout is unavailable"
+  contract="$(jq -r '.contract_path // empty' "$manifest" 2>/dev/null)"; schema="$(jq -r '.output_schema_path // empty' "$manifest" 2>/dev/null)"; case "$contract" in /*|*..*) die 78 "evaluation contract_path must be root-relative";; esac; case "$schema" in /*|*..*) die 78 "evaluation output_schema_path must be root-relative";; esac; contract="$ROOT/$contract"; schema="$ROOT/$schema"; runner_hash="$(file_digest "$SOURCE")" || die 69 "sha256 tool is required for evaluation"
+  [ -n "$contract" ] && [ -n "$schema" ] && [ -f "$contract" ] && [ ! -L "$contract" ] && [ -f "$schema" ] && [ ! -L "$schema" ] || die 78 "evaluation contract or schema is missing or symlinked"
+  git -C "$ROOT" diff --quiet && git -C "$ROOT" diff --cached --quiet && [ -z "$(git -C "$ROOT" ls-files --others --exclude-standard)" ] || die 78 "runner source checkout is dirty"
+  jq -e --arg prompt_sha256 "$prompt_hash" --arg contract_sha256 "$(file_digest "$contract")" --arg schema_sha256 "$(file_digest "$schema")" --arg runner_sha256 "$runner_hash" '
+    (keys | sort) == ["backend","contract_path","contract_sha256","effort","lane","max_output_chars","model","output_schema_path","output_schema_sha256","profile","prompt_sha256","runner_sha256","runner_source_commit","schema","timeout_seconds"] and
+    .schema == "delegation_policy_annotation_evaluation_v1" and .profile == "grok-build" and .lane == "policy-annotation" and .model == "grok-4.5" and .backend == "grok-build" and .effort == "high" and .prompt_sha256 == $prompt_sha256 and .contract_sha256 == $contract_sha256 and .output_schema_sha256 == $schema_sha256 and
+    .runner_sha256 == $runner_sha256 and ([.prompt_sha256,.contract_sha256,.output_schema_sha256,.runner_sha256] | all(test("^[0-9a-f]{64}$"))) and (.runner_source_commit | test("^[0-9a-f]{40}$")) and
+    (.timeout_seconds | type == "number" and floor == . and . >= 1 and . <= 600) and (.max_output_chars | type == "number" and floor == . and . >= 1 and . <= 65536)
+  ' "$manifest" >/dev/null 2>&1 || die 78 "evaluation manifest is malformed or does not bind this exact run"
+  git -C "$ROOT" merge-base --is-ancestor "$(jq -r '.runner_source_commit' "$manifest")" "$source_head" || die 78 "evaluation manifest source commit is not an ancestor of this runner"
+  jq -e --arg hash "$manifest_hash" '.profiles["grok-build"].lanes["policy-annotation"].evaluation_manifest_sha256 | type == "array" and index($hash) != null' "$CENTRAL_GATES" >/dev/null 2>&1 || die 78 "evaluation manifest is not allowlisted by the central gate"
+  jq -e --arg hash "$manifest_hash" '.lanes["policy-annotation"].backends["grok-build"].evaluation_manifest_sha256 | type == "array" and index($hash) != null' "$ROUTING_FILE" >/dev/null 2>&1 || die 78 "evaluation manifest is not allowlisted by the executable gate"
+  EVALUATION_TIMEOUT_SECONDS="$(jq -r '.timeout_seconds' "$manifest")"; EVALUATION_MAX_OUTPUT_CHARS="$(jq -r '.max_output_chars' "$manifest")"
+}
 
 pinned_bin_path() { printf '%s/current/grok' "$GROK_BIN_STORE"; }
 pinned_digest_path() { printf '%s/current/grok.sha256' "$GROK_BIN_STORE"; }
@@ -222,6 +243,11 @@ EOF
 [profiles.delegation-kit]
 extends = "strict"
 restrict_network = true
+
+[profiles.delegation-kit-read-only]
+extends = "strict"
+restrict_network = true
+read_only = true
 EOF
   chmod 600 "$config_path" "$sandbox_path"
 }
@@ -345,6 +371,7 @@ temporary_failure() {
 
 extract_result() {
   local response="$1" output="$2" metrics="$3" started="$4" lane="$5"
+  local sandbox="$6" timeout_seconds="$7"
   jq -e --arg usage_model "$USAGE_MODEL" '
     (.text | type == "string" and length > 0) and
     (.stopReason == "EndTurn" or .stopReason == "end_turn") and
@@ -373,8 +400,8 @@ extract_result() {
      provider_cost_usd:($r.total_cost_usd // $u.costUSD // null)}
   ' --arg cli_version "$GROK_CLI_VERSION" --arg cli_compatibility "$CLI_COMPATIBILITY" \
     --arg cli_source "$GROK_BIN_SOURCE" \
-    --arg sandbox "$SANDBOX_PROFILE" \
-    --argjson max_turns "$MAX_TURNS" --argjson timeout_seconds "$TIMEOUT_SECONDS" \
+    --arg sandbox "$sandbox" \
+    --argjson max_turns "$MAX_TURNS" --argjson timeout_seconds "$timeout_seconds" \
     "$response" >"$metrics"
 }
 
@@ -411,8 +438,8 @@ preserve_debug() {
 }
 
 run_command() {
-  local lane="" effort="auto" backend="auto" prompt_file="" output="" workdir="" metrics="" debug_dir=""
-  local allow_provisional=0
+  local lane="" effort="auto" backend="auto" prompt_file="" output="" workdir="" metrics="" debug_dir="" evaluation_manifest_path=""
+  local allow_provisional=0 evaluation=0
   while [ "$#" -gt 0 ]; do
     case "$1" in
       --lane) lane="${2:-}"; shift 2 ;;
@@ -424,15 +451,18 @@ run_command() {
       --metrics) metrics="${2:-}"; shift 2 ;;
       --debug-dir) debug_dir="${2:-}"; shift 2 ;;
       --allow-provisional) allow_provisional=1; shift ;;
+      --evaluation) evaluation=1; shift ;;
+      --evaluation-manifest) evaluation_manifest_path="${2:-}"; shift 2 ;;
       -h|--help) usage; exit 0 ;;
       *) die 64 "unknown run argument: $1" ;;
     esac
   done
-  case "$lane" in builder|frontend-builder) ;; *) die 64 "invalid lane: $lane" ;; esac
+  case "$lane" in builder|frontend-builder|policy-annotation) ;; *) die 64 "invalid lane: $lane" ;; esac
   case "$effort" in auto|high) ;; *) die 64 "invalid effort: $effort" ;; esac
   case "$backend" in auto|grok-build) ;; *) die 64 "invalid backend: $backend" ;; esac
   [ -f "$prompt_file" ] || die 64 "prompt file missing: $prompt_file"
   [ -s "$prompt_file" ] || die 64 "prompt file must not be empty"
+  if [ "$evaluation" = 1 ]; then [ -n "$evaluation_manifest_path" ] || die 64 "--evaluation requires --evaluation-manifest"; else [ -z "$evaluation_manifest_path" ] || die 64 "--evaluation-manifest requires --evaluation"; fi
   [ -d "$workdir" ] || die 64 "workdir missing: $workdir"
   [ -z "$debug_dir" ] || [ -d "$debug_dir" ] || die 64 "debug directory missing: $debug_dir"
   [ -n "$output" ] || die 64 "--output is required"
@@ -440,16 +470,20 @@ run_command() {
   [ -r "$ROUTING_FILE" ] || die 69 "routing file missing: $ROUTING_FILE"
   jq -e . "$ROUTING_FILE" >/dev/null 2>&1 || die 69 "routing file is invalid JSON"
   validate_gate_graph || die 78 "central and executable routing gates are missing, invalid, or inconsistent"
-  is_allowed "$lane" "$allow_provisional" || {
+  if [ "$evaluation" = 0 ]; then is_allowed "$lane" "$allow_provisional" || {
     status="$(gate_status "$lane")"
     if [ "$status" != provisional ]; then
       die 78 "lane '$lane' has non-dispatchable status '$status'"
     else
       die 78 "lane '$lane' is provisional; pass --allow-provisional after an explicit routing decision"
     fi
-  }
+  }; else
+    [ "$lane" = policy-annotation ] || die 78 "--evaluation permits policy-annotation candidate only"
+    [ "$(gate_status "$lane")" = candidate ] || die 78 "policy-annotation is not a candidate in the central gate"
+  fi
   [ "$effort" != auto ] || effort="$(default_effort)"
   [ "$effort" = high ] || die 78 "lane '$lane' is qualified only at effort 'high'"
+  [ "$evaluation" = 0 ] || evaluation_manifest "$evaluation_manifest_path" "$prompt_file"
   runtime_status || die 69 "$GROK_REASON"
 
   workdir="$(cd "$workdir" && pwd -P)"
@@ -467,6 +501,12 @@ run_command() {
   [ ! -e "$output" ] && [ ! -L "$output" ] || die 64 "output already exists or is a symlink"
   [ ! -e "$metrics" ] && [ ! -L "$metrics" ] || die 64 "metrics already exists or is a symlink"
   [ ! -e "$diagnostic" ] && [ ! -L "$diagnostic" ] || die 64 "diagnostic already exists or is a symlink"
+  if [ "$lane" = policy-annotation ]; then
+    case "$output" in "$workdir"/*) die 64 "policy-annotation output must be outside workdir" ;; esac
+    case "$metrics" in "$workdir"/*) die 64 "policy-annotation metrics must be outside workdir" ;; esac
+    case "$diagnostic" in "$workdir"/*) die 64 "policy-annotation diagnostic must be outside workdir" ;; esac
+    if [ -n "$debug_dir" ]; then case "$debug_dir" in "$workdir"|"$workdir"/*) die 64 "policy-annotation debug directory must be outside workdir" ;; esac; fi
+  fi
 
   local response result_tmp metrics_tmp stderr_file rc=0 started timer reason phase
   local DEBUG_PATH=""
@@ -478,17 +518,24 @@ run_command() {
   inspect_isolation "$RUN_TMP/home" "$RUN_TMP/inspect.json" "$workdir" || die 69 "$GROK_REASON"
   timer="$(timeout_bin)" || die 69 "timeout or gtimeout is required"
   started="$(date +%s)"
-  (cd "$workdir" && HOME="$RUN_TMP/home" "$timer" -k 10 "$TIMEOUT_SECONDS" \
-    "$GROK_BIN" --prompt-file "$RUN_TMP/prompt.txt" \
+  local execution_timeout="$TIMEOUT_SECONDS"
+  [ "$evaluation" = 0 ] || execution_timeout="$EVALUATION_TIMEOUT_SECONDS"
+  local execution_tools='grep,read_file,search_replace,list_dir,todo_write'
+  [ "$lane" != policy-annotation ] || execution_tools='grep,read_file,list_dir'
+  local execution_sandbox="$SANDBOX_PROFILE"
+  [ "$lane" != policy-annotation ] || execution_sandbox="delegation-kit-read-only"
+  local -a grok_command=("$GROK_BIN" --prompt-file "$RUN_TMP/prompt.txt" \
     --model "$RUNTIME_MODEL" --reasoning-effort high \
-    --permission-mode dontAsk --sandbox "$SANDBOX_PROFILE" \
+    --permission-mode dontAsk --sandbox "$execution_sandbox" \
     --output-format json --no-memory --no-subagents --disable-web-search --no-auto-update \
-    --tools 'grep,read_file,search_replace,list_dir,todo_write' \
-    --allow 'Edit(**)' \
+    --tools "$execution_tools")
+  [ "$lane" = policy-annotation ] || grok_command+=(--allow 'Edit(**)')
+  grok_command+=(
     --max-turns "$MAX_TURNS" \
     --deny 'Edit(**/.grok/config.toml)' \
     --deny 'Edit(**/.grok/sandbox.toml)' \
-    --deny 'Edit(**/.grok/auth.json)') \
+    --deny 'Edit(**/.grok/auth.json)')
+  (cd "$workdir" && HOME="$RUN_TMP/home" "$timer" -k 10 "$execution_timeout" "${grok_command[@]}") \
     >"$response" 2>"$stderr_file" || rc=$?
   if [ "$rc" -ne 0 ]; then
     phase="dispatch"; reason="dispatch_failed"
@@ -504,7 +551,7 @@ run_command() {
       *) die 70 "Grok Build dispatch failed (exit $rc); sanitized diagnostic: $diagnostic" ;;
     esac
   fi
-  jq -e --arg profile "$SANDBOX_PROFILE" '
+  jq -e --arg profile "$execution_sandbox" '
     select(.event_type == "ProfileApplied" and .profile == $profile and .enforced == true)
   ' "$RUN_TMP/home/.grok/sandbox-events.jsonl" >/dev/null 2>&1 || {
     preserve_debug "$debug_dir" "$response" "$stderr_file"
@@ -512,6 +559,13 @@ run_command() {
       "$response" "$stderr_file" "$DEBUG_PATH"
     die 70 "Grok Build sandbox enforcement was not attested; sanitized diagnostic: $diagnostic"
   }
+  if [ "$evaluation" = 1 ]; then
+    jq -e --arg model "$RUNTIME_MODEL" '.model == $model' "$response" >/dev/null 2>&1 || {
+      preserve_debug "$debug_dir" "$response" "$stderr_file"
+      write_diagnostic "$diagnostic" "identity" "provider_identity_not_attested" 0 "$started" "$response" "$stderr_file" "$DEBUG_PATH"
+      die 70 "Grok Build did not attest exact provider model identity; sanitized diagnostic: $diagnostic"
+    }
+  fi
   if jq -e '.stopReason == "MaxTurns" or .stopReason == "max_turns"' "$response" >/dev/null 2>&1; then
     preserve_debug "$debug_dir" "$response" "$stderr_file"
     write_diagnostic "$diagnostic" "extract" "max_turns" 0 "$started" \
@@ -525,12 +579,18 @@ run_command() {
     die 70 "Grok Build cancelled before completing the task; sanitized diagnostic: $diagnostic"
   fi
   extract_result "$response" "$result_tmp" "$metrics_tmp" "$started" "$lane" \
+    "$execution_sandbox" "$execution_timeout" \
     || {
       preserve_debug "$debug_dir" "$response" "$stderr_file"
       write_diagnostic "$diagnostic" "extract" "malformed_or_mismatched_output" 0 "$started" \
         "$response" "$stderr_file" "$DEBUG_PATH"
       die 70 "Grok Build returned malformed, empty, or mismatched output; sanitized diagnostic: $diagnostic"
     }
+  if [ "$evaluation" = 1 ] && [ "$(wc -m <"$result_tmp" | tr -d ' ')" -gt "$EVALUATION_MAX_OUTPUT_CHARS" ]; then
+    preserve_debug "$debug_dir" "$response" "$stderr_file"
+    write_diagnostic "$diagnostic" "extract" "max_output_chars" 0 "$started" "$response" "$stderr_file" "$DEBUG_PATH"
+    die 70 "Grok Build exceeded the manifest output limit; sanitized diagnostic: $diagnostic"
+  fi
   mv "$metrics_tmp" "$metrics" || die 70 "could not finalize metrics"
   if ! mv "$result_tmp" "$output"; then
     rm -f -- "$metrics"

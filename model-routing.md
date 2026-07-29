@@ -104,11 +104,11 @@ Effort levels each model exposes (Claude `effort:` / Codex `model_reasoning_effo
 | gpt-5.6-luna | low · medium · high |
 | sonnet-5 | low · medium · high |
 | gpt-5.5 | low · medium · high |
-| glm-5.2 | high · max |
+| glm-5.2 | high (installed bridge maximum) · max (provider capability only) |
 | kimi-k3 | max |
 | gemini-3.6-flash | medium (scout provisional) · high (editing candidate) |
 | qwen3.8-max-preview | xhigh (candidate; evaluation only) |
-| grok-4.5 | high (builder and frontend-builder provisional) |
+| grok-4.5 | high (builder/frontend-builder provisional; policy annotation evaluation-only) |
 
 Kimi K3 is provisional: the 2026-07-16 run was truncated by provider quota. Its
 valid subset and exact public rows support controlled `clerk`, `scout`, `builder`,
@@ -145,6 +145,9 @@ runner capability-probes the CLI, isolates HOME, disables plugins/MCP/imported
 config, requires an attested custom sandbox, and caps turns and wall time. The
 observed version is provenance only; an optional digest-checked private archive
 preserves the exact user-selected bytes independently of PATH.
+The separate `policy-annotation` candidate uses that same highest supported
+effort only through an allowlisted read-only evaluation manifest. It is absent
+from all operational route groups and cannot qualify judgement automatically.
 
 ## Judgement and super-judgement
 

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+SOURCE_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 TMP="$(mktemp -d "${TMPDIR:-/tmp}/delegation-kimi-test.XXXXXX")"
 TMP="$(cd "$TMP" && pwd -P)"
 cleanup() {
@@ -20,6 +20,23 @@ printf '%s\n' '{"access_token":"test-token","refresh_token":""}' \
 printf '%s\n' 'ambient secret' >"$TMP/ambient-home/secret.txt"
 printf '%s\n' 'Respond with PONG.' >"$TMP/prompt"
 printf '%s\n' 'before' >"$TMP/work/value.txt"
+
+# The production runner must reject a dirty evaluation checkout.  Build a
+# separate committed repository fixture so positive evaluation coverage never
+# relaxes that protection in the real worktree.
+ROOT="$TMP/repo"
+cp -R "$SOURCE_ROOT/." "$ROOT"
+rm -rf -- "$ROOT/.git"
+rm -f -- "$ROOT/.claude/settings.local.json"
+mkdir -p "$ROOT/evaluation/test-fixtures"
+printf '%s\n' 'policy annotation contract fixture' >"$ROOT/evaluation/test-fixtures/contract.txt"
+printf '%s\n' '{"type":"object","required":["annotation"]}' >"$ROOT/evaluation/test-fixtures/output-schema.json"
+git -C "$ROOT" init -q
+git -C "$ROOT" config user.email test@example.invalid
+git -C "$ROOT" config user.name delegation-runner-test
+git -C "$ROOT" add -A
+git -C "$ROOT" commit -qm 'evaluation fixture base'
+BASE_COMMIT="$(git -C "$ROOT" rev-parse HEAD)"
 
 fail() { printf 'Kimi runner test failed: %s\n' "$*" >&2; exit 1; }
 
@@ -50,6 +67,14 @@ grep -q '^SCRATCH=' "$root/sandbox-defines.txt"
 grep -q '^WORKDIR=' "$root/sandbox-defines.txt"
 grep -q '^REAL_HOME=' "$root/sandbox-defines.txt"
 grep -q '^KIMI_BIN=' "$root/sandbox-defines.txt"
+exec "$@"
+EOF
+
+cat >"$TMP/bin/gtimeout" <<'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+seconds="${1:-}"; shift
+case " $* " in *' TIMEOUT_EVALUATION '*) exit 124 ;; esac
 exec "$@"
 EOF
 
@@ -109,7 +134,31 @@ case "$prompt" in
 esac
 jq -nc '{role:"assistant",content:"PONG"}'
 EOF
-chmod 755 "$TMP/bin/uname" "$TMP/bin/sandbox-exec" "$TMP/bin/kimi"
+chmod 755 "$TMP/bin/uname" "$TMP/bin/sandbox-exec" "$TMP/bin/gtimeout" "$TMP/bin/kimi"
+
+sha256() { shasum -a 256 "$1" | awk '{print $1}'; }
+write_manifest() {
+  jq -n \
+    --arg prompt_sha256 "$(sha256 "$TMP/prompt")" \
+    --arg runner_sha256 "$(sha256 "$ROOT/bin/delegation-kimi")" \
+    --arg contract_sha256 "$(sha256 "$ROOT/evaluation/test-fixtures/contract.txt")" \
+    --arg output_schema_sha256 "$(sha256 "$ROOT/evaluation/test-fixtures/output-schema.json")" \
+    --arg source_commit "$BASE_COMMIT" \
+    '{schema:"delegation_policy_annotation_evaluation_v1",profile:"kimi-k3",lane:"policy-annotation",model:"kimi-code/k3",backend:"native",effort:"max",prompt_sha256:$prompt_sha256,runner_source_commit:$source_commit,runner_sha256:$runner_sha256,contract_path:"evaluation/test-fixtures/contract.txt",contract_sha256:$contract_sha256,output_schema_path:"evaluation/test-fixtures/output-schema.json",output_schema_sha256:$output_schema_sha256,timeout_seconds:60,max_output_chars:1024}' \
+    >"$TMP/manifest.json"
+}
+write_manifest
+MANIFEST_SHA="$(sha256 "$TMP/manifest.json")"
+jq --arg hash "$MANIFEST_SHA" '
+  .profiles["kimi-k3"].lanes["policy-annotation"].evaluation_manifest_sha256 = [$hash]
+' "$ROOT/config/routing-gates.json" >"$TMP/gates.json"
+mv "$TMP/gates.json" "$ROOT/config/routing-gates.json"
+jq --arg hash "$MANIFEST_SHA" '
+  .lanes["policy-annotation"].backends.native.evaluation_manifest_sha256 = [$hash]
+' "$ROOT/config/kimi-k3-routing.json" >"$TMP/kimi-routing.json"
+mv "$TMP/kimi-routing.json" "$ROOT/config/kimi-k3-routing.json"
+git -C "$ROOT" add config/routing-gates.json config/kimi-k3-routing.json
+git -C "$ROOT" commit -qm 'allowlist evaluation fixture'
 
 run_kimi() {
   HOME="$TMP/ambient-home" KIMI_CODE_HOME="$TMP/kimi-home" \
@@ -157,6 +206,58 @@ run_kimi run --lane scout --prompt-file "$TMP/prompt" \
   --output "$TMP/results/refused.txt" --workdir "$TMP/work" \
   >/dev/null 2>&1 || rc=$?
 [ "$rc" = 78 ] || fail "provisional run without explicit flag returned $rc"
+
+# Evaluation is a manifest-bound candidate-only harness, never an alternate
+# spelling of a provisional production dispatch.
+rc=0
+run_kimi run --lane scout --allow-provisional --evaluation \
+  --evaluation-manifest "$TMP/missing-manifest.json" --prompt-file "$TMP/prompt" \
+  --output "$TMP/results/mutually-exclusive.txt" --workdir "$TMP/work" \
+  >/dev/null 2>&1 || rc=$?
+[ "$rc" = 64 ] || fail "evaluation plus allow-provisional returned $rc"
+
+# Disabled lanes fail before manifest or runtime inspection.
+rc=0
+PATH="/usr/bin:/bin" KIMI_CODE_HOME="$TMP/missing-kimi-home" \
+  "$ROOT/bin/delegation-kimi" run --lane judgement --evaluation \
+  --evaluation-manifest "$TMP/missing-manifest.json" --prompt-file "$TMP/prompt" \
+  --output "$TMP/results/judgement.txt" --workdir "$TMP/work" \
+  >/dev/null 2>&1 || rc=$?
+[ "$rc" = 78 ] || fail "disabled judgement evaluation returned $rc"
+
+run_kimi run --lane policy-annotation --evaluation \
+  --evaluation-manifest "$TMP/manifest.json" --prompt-file "$TMP/prompt" \
+  --output "$TMP/results/evaluation.txt" --workdir "$TMP/work"
+[ "$(cat "$TMP/results/evaluation.txt")" = PONG ] || fail "evaluation output mismatch"
+jq -e '.lane == "policy-annotation" and .effort == "max"' \
+  "$TMP/results/evaluation.txt.metrics.json" >/dev/null || fail "evaluation metrics mismatch"
+
+printf '%s\n' 'TIMEOUT_EVALUATION' >"$TMP/timeout-prompt"
+cp "$TMP/manifest.json" "$TMP/timeout-manifest.json"
+jq --arg prompt_sha256 "$(sha256 "$TMP/timeout-prompt")" '.prompt_sha256 = $prompt_sha256' \
+  "$TMP/timeout-manifest.json" >"$TMP/timeout-manifest.next"
+mv "$TMP/timeout-manifest.next" "$TMP/timeout-manifest.json"
+TIMEOUT_MANIFEST_SHA="$(sha256 "$TMP/timeout-manifest.json")"
+jq --arg first "$MANIFEST_SHA" --arg second "$TIMEOUT_MANIFEST_SHA" '
+  .profiles["kimi-k3"].lanes["policy-annotation"].evaluation_manifest_sha256 = [$first, $second]
+' "$ROOT/config/routing-gates.json" >"$TMP/gates-timeout.json"
+mv "$TMP/gates-timeout.json" "$ROOT/config/routing-gates.json"
+jq --arg first "$MANIFEST_SHA" --arg second "$TIMEOUT_MANIFEST_SHA" '
+  .lanes["policy-annotation"].backends.native.evaluation_manifest_sha256 = [$first, $second]
+' "$ROOT/config/kimi-k3-routing.json" >"$TMP/kimi-routing-timeout.json"
+mv "$TMP/kimi-routing-timeout.json" "$ROOT/config/kimi-k3-routing.json"
+git -C "$ROOT" add config/routing-gates.json config/kimi-k3-routing.json
+git -C "$ROOT" commit -qm 'allowlist timeout fixture'
+rc=0
+run_kimi run --lane policy-annotation --evaluation \
+  --evaluation-manifest "$TMP/timeout-manifest.json" --prompt-file "$TMP/timeout-prompt" \
+  --output "$TMP/results/timeout.txt" --workdir "$TMP/work" \
+  >/dev/null 2>&1 || rc=$?
+[ "$rc" = 70 ] || fail "evaluation timeout returned $rc"
+[ ! -e "$TMP/results/timeout.txt" ] && [ ! -e "$TMP/results/timeout.txt.metrics.json" ] \
+  || fail "evaluation timeout published output or metrics"
+grep -qx 'evaluation_timeout' "$TMP/results/timeout.txt.stderr" \
+  || fail "evaluation timeout was not classified"
 
 run_kimi run --lane scout --allow-provisional --prompt-file "$TMP/prompt" \
   --output "$TMP/results/scout.txt" --workdir "$TMP/work"

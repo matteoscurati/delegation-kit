@@ -22,6 +22,9 @@ gate lists `clerk` and `scout` in `provisional_lanes`; an explicit decision and
 backend, keyed by `ZAI_API_KEY` or the 600-mode key the installer stored. Prefer
 the incumbent for costly edits on the unmeasured builder lane. If the runtime or
 lane gate is absent, keep using the incumbent profile; never silently substitute.
+`policy-annotation` at `high` is a separate candidate/blocked lane available
+only through an allowlisted read-only evaluation manifest. It never adds an
+operational route or qualifies broad judgement.
 
 ## Optional Gemini 3.6 Flash executor
 
@@ -102,6 +105,9 @@ provenance only. An optional digest-checked private archive preserves the
 selected bytes independently of PATH; use `delegation-grok pin --force` for
 deliberate replacement. No other Grok lane is enabled, and failure never
 triggers a silent substitution.
+`policy-annotation` at `high` is the sole evaluation-only exception: it is
+candidate/blocked, manifest-bound, removes editing tools, requires the
+read-only sandbox, and creates no operational route.
 
 ## Reaching Claude from Codex (cross-provider bridge)
 

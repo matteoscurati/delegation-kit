@@ -27,7 +27,7 @@
     },
     "sol-max-policy-annotator": {
       "model": "gpt-5.6-sol", "harness": "codex", "effort": "max",
-      "lanes": {"policy-annotation": {"status": "candidate", "selection": "blocked", "exact_evidence_ids": [], "context_evidence_ids": [], "evidence_gap": "No frozen local policy-annotation result exists for the max-effort Codex variant."}}
+      "lanes": {"policy-annotation": {"status": "candidate", "selection": "blocked", "exact_evidence_ids": [], "context_evidence_ids": [], "evaluation_manifest_sha256": [], "evidence_gap": "No frozen local policy-annotation result exists for the max-effort Codex variant."}}
     },
     "sonnet-clerk": {
       "model": "claude-sonnet-5", "harness": "claude-code", "effort": "low",
@@ -88,11 +88,15 @@
     },
     "opus-policy-annotator": {
       "model": "claude-opus-5", "harness": "claude-code", "effort": "xhigh",
-      "lanes": {"policy-annotation": {"status": "candidate", "selection": "blocked", "exact_evidence_ids": [], "context_evidence_ids": [], "evidence_gap": "No frozen local policy-annotation result exists for the xhigh Claude Code variant."}}
+      "lanes": {"policy-annotation": {"status": "candidate", "selection": "blocked", "exact_evidence_ids": [], "context_evidence_ids": [], "evaluation_manifest_sha256": [], "evidence_gap": "No frozen local policy-annotation result exists for the xhigh Claude Code variant."}}
     },
     "fable-judge": {
       "model": "claude-fable-5", "harness": "claude-code", "effort": "xhigh",
       "lanes": {"judgement": {"status": "manual-qualified", "selection": "explicit-only", "exact_evidence_ids": [], "context_evidence_ids": ["aa-claude-fable-5-max", "arena-agent-fable-5-high"], "evidence_gap": "Published max/high variants are context, not the installed xhigh profile.", "qualification_basis": "Owner decision: architecture, trade-offs, synthesis, and final verdict."}}
+    },
+    "fable-policy-annotator": {
+      "model": "claude-fable-5", "harness": "claude-code", "effort": "xhigh",
+      "lanes": {"policy-annotation": {"status": "candidate", "selection": "blocked", "exact_evidence_ids": [], "context_evidence_ids": [], "evaluation_manifest_sha256": [], "evidence_gap": "The frozen v1 transport failed; no fresh held-out policy-annotation result exists for the xhigh Claude Code variant."}}
     },
     "glm-clerk": {
       "model": "glm-5.2", "harness": "claude-zai", "effort": "high",
@@ -109,6 +113,10 @@
     "glm-reviewer": {
       "model": "glm-5.2", "harness": "claude-zai", "effort": "high",
       "lanes": {"reviewer": {"status": "disabled", "selection": "blocked", "exact_evidence_ids": [], "context_evidence_ids": [], "evidence_gap": "No exact review precision/recall row."}}
+    },
+    "glm-policy-annotation": {
+      "model": "glm-5.2", "harness": "claude-zai", "effort": "high",
+      "lanes": {"policy-annotation": {"status": "candidate", "selection": "blocked", "exact_evidence_ids": [], "context_evidence_ids": [], "evaluation_manifest_sha256": [], "evidence_gap": "No frozen local policy-annotation result exists for the highest supported claude-zai effort."}}
     },
     "kimi-k3": {
       "model": "kimi-k3", "harness": "kimi-code-cli", "effort": "max",
@@ -247,6 +255,14 @@
           },
           "evidence_gap": "WebDev uses a different harness and reported-default effort; frontend promotion is an explicit owner decision.",
           "fallback": "sonnet-builder"
+        },
+        "policy-annotation": {
+          "status": "candidate",
+          "selection": "blocked",
+          "exact_evidence_ids": [],
+          "context_evidence_ids": [],
+          "evaluation_manifest_sha256": [],
+          "evidence_gap": "No frozen local policy-annotation result exists for Grok Build at its highest supported effort."
         }
       }
     },

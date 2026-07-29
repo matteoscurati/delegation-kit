@@ -52,7 +52,10 @@ The universal installer also adds `delegation-glm`, `delegation-gemini`, `delega
 central router `delegation-route` under
 `~/.local/bin`, with versioned gates under `~/.local/share/delegation-kit/`.
 GLM `clerk` and `scout` are provisional and require `--allow-provisional`;
-builder is a blocked candidate and reviewer is disabled. The runner refuses every
+builder is a blocked candidate and reviewer is disabled. A separate
+`policy-annotation` candidate at the highest supported bridge effort (`high`)
+can run only through an allowlisted read-only evaluation manifest and creates no
+operational route. The runner refuses every
 blocked lane and every effort the gate did not pin, and also refuses execution unless at least one of Claude Code or Codex is
 installed; it is an agent option, not a standalone GLM client. The installer asks
 for the Z.AI API key and stores it in `~/.local/share/delegation-kit/config/zai.env`
@@ -101,7 +104,10 @@ the permission mode is `dontAsk`, with only file edits explicitly allowed; the
 terminal tool is not exposed.
 The lead remains responsible for running tests and every command after review.
 Failures expose sanitized metadata by default, with raw debug artifacts only
-through explicit `--debug-dir`. No other Grok lane is exposed.
+through explicit `--debug-dir`. A separate `policy-annotation` candidate is
+available only to an allowlisted evaluation manifest at the same highest
+supported effort; it removes editing tools, requires the read-only sandbox, and
+never becomes an operational route merely by running.
 
 Because the vendor CLI auto-updates and prunes its own download cache,
 `delegation-grok pin` can archive the currently compatible build in
