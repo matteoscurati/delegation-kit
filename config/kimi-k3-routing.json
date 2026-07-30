@@ -37,7 +37,7 @@
     },
     "policy-annotation": {
       "default_effort": "max", "preferred_backends": ["native"],
-      "backends": {"native": {"qualified": false, "status": "candidate", "selection": "blocked", "effort": "max", "evaluation_manifest_sha256": ["1ad132e3396b8b0f951c121af661e998c27c836e2d43a49c2a8c5f02b39d59c0", "455ab490c9d2386d4a2367395674bce41217016953e3f4f8608330f3397499dd"], "legacy_local_result": null}}
+      "backends": {"native": {"qualified": false, "status": "candidate", "selection": "blocked", "effort": "max", "evaluation_manifest_sha256": ["1ad132e3396b8b0f951c121af661e998c27c836e2d43a49c2a8c5f02b39d59c0", "49970b7eed76090c9fc34e921fd86788829f7f44c3a26b7937b56addeb1ac77e"], "legacy_local_result": null}}
     },
     "senior": {
       "default_effort": "max", "preferred_backends": ["native"],
