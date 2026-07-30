@@ -59,8 +59,10 @@ for required in \
 done
 if [[ "$args" == *" --sandbox delegation-kit-read-only "* ]]; then
   sandbox_profile=delegation-kit-read-only
-  grep -q '^read_only = true$' "$HOME/.grok/sandbox.toml" \
+  grep -q '^extends = "read-only"$' "$HOME/.grok/sandbox.toml" \
     || { printf 'read-only sandbox profile is missing enforcement\n' >&2; exit 2; }
+  ! grep -q '^read_only = true$' "$HOME/.grok/sandbox.toml" \
+    || { printf 'read-only sandbox profile uses unsupported boolean syntax\n' >&2; exit 2; }
   for required in '--tools grep,read_file,list_dir'; do
     case "$args" in *" $required "*) ;; *) printf 'missing read-only argument: %s\n' "$required" >&2; exit 2 ;; esac
   done
@@ -102,14 +104,14 @@ stop_reason=EndTurn
 [ "${GROK_FAKE_MODE:-success}" != max_turns ] || stop_reason=MaxTurns
 [ "${GROK_FAKE_MODE:-success}" != cancelled ] || stop_reason=Cancelled
 [ "${GROK_FAKE_MODE:-success}" != unexpected_stop ] || stop_reason=Unknown
-runtime_model=grok-4.5
-[ "${GROK_FAKE_MODE:-success}" != model_mismatch ] || runtime_model=grok-4.5-fallback
-jq -n --arg stop_reason "$stop_reason" --arg model "$runtime_model" '
-  {model:$model,text:"PONG",thought:"SECRET_THOUGHT",stopReason:$stop_reason,num_turns:2,
+usage_model=grok-4.5-build
+[ "${GROK_FAKE_MODE:-success}" != model_mismatch ] || usage_model=grok-4.5-fallback-build
+jq -n --arg stop_reason "$stop_reason" --arg usage_model "$usage_model" '
+  {text:"PONG",thought:"SECRET_THOUGHT",stopReason:$stop_reason,num_turns:2,
    usage:{input_tokens:100,output_tokens:20,reasoning_tokens:7,
      cache_read_input_tokens:30,total_tokens:157},
    total_cost_usd:0.02,
-   modelUsage:{"grok-4.5-build":{inputTokens:100,outputTokens:20,
+   modelUsage:{($usage_model):{inputTokens:100,outputTokens:20,
      cacheReadInputTokens:30,modelCalls:1,costUSD:0.02}}}
 '
 EOF
