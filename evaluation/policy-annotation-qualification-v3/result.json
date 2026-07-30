@@ -1,8 +1,8 @@
 {
   "schema_version": "delegation_policy_annotation_qualification_result_v3",
   "protocol_id": "policy-annotation-qualification-v3",
-  "status": "PANEL_FORMED_KIMI_PREINFERENCE_AUTH_PENDING",
-  "source_commit": "2d366e631171580b2ef16330572e4d4c074ebba3",
+  "status": "PANEL_FORMED_V3_COMPLETE",
+  "source_commit": "f55aeeb1b91fa9f5b5de8061acabeb4d74c26a49",
   "contract_sha256": "32d5d255e0700507e6f39be3277d670aa042c51737f61e7b98803239fad1c3c1",
   "packet_sha256": "aaa77980d4058faf6963f7470051b910d1f2b98a44bc75f67cadc6c3d116cb65",
   "prompt_sha256": "bd77e97239609253fc2fbf29856c8b285ee17e3569c43896e091a1ff64b0340d",
@@ -58,24 +58,28 @@
     {
       "profile": "kimi-k3",
       "requested_model": "kimi-code/k3",
+      "observed_model": "kimi-code/k3",
       "effort": "max",
-      "outcome": "NOT_DISPATCHED_AUTH_PREFLIGHT_FAILED",
-      "identity_exact": false,
-      "structured_records": 0,
-      "construction_matches": 0,
-      "provider_attempts": 0,
+      "outcome": "QUALIFIED",
+      "identity_exact": true,
+      "structured_records": 20,
+      "binary_records": 20,
+      "construction_matches": 20,
+      "provider_attempts": 1,
       "post_observation_retries": 0,
-      "failure_detail": "The non-evaluative scout preflight failed before inference with auth.login_required. The v3 prompt has not been dispatched to Kimi.",
-      "preflight_stderr_sha256": "0b42c9f1e0f34d4bca7a1b43e120eae7f87708e75a21f45b62d2fb66cc9840d9"
+      "raw_output_sha256": "e1ac01cb1640c2c117b16c5d5a1df777de73f5386706cd10ab526b45c5f2a8dc",
+      "metrics_sha256": "71633ccefed61bc125ee8dc883b1867dd27b2b8b9922fdf06b329e838ba7c2bf",
+      "provider_cost_usd": null
     }
   ],
   "panel": {
     "qualified_candidates": [
       "qwen3.8-max-preview",
       "sol-max-policy-annotator",
-      "grok-build"
+      "grok-build",
+      "kimi-k3"
     ],
-    "qualified_count": 3,
+    "qualified_count": 4,
     "minimum_required": 3,
     "formed": true,
     "development_bank_annotation_authorized": true,
