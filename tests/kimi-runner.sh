@@ -94,7 +94,12 @@ case "${1:-}" in
   provider)
     [ "${2:-}" = list ] || exit 64
     if [ "${3:-}" = --json ]; then
-      jq -n --arg effort "${KIMI_FAKE_DEFAULT_EFFORT:-max}" '
+      effort="${KIMI_FAKE_DEFAULT_EFFORT:-max}"
+      if [ "${KIMI_FAKE_IGNORE_ISOLATED_EFFORT:-0}" != 1 ] &&
+          grep -Fq 'default_effort = "max"' "$HOME/.kimi-code/config.toml" 2>/dev/null; then
+        effort=max
+      fi
+      jq -n --arg effort "$effort" '
         {models:{"kimi-code/k3":{
           provider:"managed:kimi-code",model:"k3",
           supportEfforts:["low","high","max"],defaultEffort:$effort}}}
@@ -286,11 +291,20 @@ jq -e '.runtime_cli_version == "user-build-b"' \
   "$TMP/results/alternate-version.txt.metrics.json" >/dev/null \
   || fail "alternate CLI version was not recorded as provenance"
 
-rc=0
+# Ambient user preference may be high; the runner must attest and use max from
+# its isolated config instead of treating the ambient default as qualification.
 KIMI_FAKE_DEFAULT_EFFORT=high run_kimi run --lane scout --allow-provisional \
+  --prompt-file "$TMP/prompt" --output "$TMP/results/ambient-high.txt" \
+  --workdir "$TMP/work"
+jq -e '.effort == "max"' "$TMP/results/ambient-high.txt.metrics.json" >/dev/null \
+  || fail "isolated max effort was weakened by ambient high preference"
+
+rc=0
+KIMI_FAKE_DEFAULT_EFFORT=high KIMI_FAKE_IGNORE_ISOLATED_EFFORT=1 \
+  run_kimi run --lane scout --allow-provisional \
   --prompt-file "$TMP/prompt" --output "$TMP/results/effort.txt" \
   --workdir "$TMP/work" >/dev/null 2>&1 || rc=$?
-[ "$rc" = 69 ] || fail "default-effort mismatch returned $rc"
+[ "$rc" = 69 ] || fail "isolated default-effort mismatch returned $rc"
 
 printf '%s\n' existing >"$TMP/results/existing.txt"
 rc=0

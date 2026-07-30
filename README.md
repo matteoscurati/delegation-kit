@@ -9,14 +9,15 @@ It ships as a **reference implementation**: the author's concrete models
 external-evidence snapshot, and fail-closed local gates. Swap the models for your own tiers with
 [`ADAPTING.md`](./ADAPTING.md) — the *structure* is the transferable part.
 
-## Current release: 0.5.0
+## Current release: 0.6.0
 
-Version 0.5.0 replaces the senior, taste, material-review, and security profile
-with exact `claude-opus-5` at `high` effort. The routing gate records the local
-runtime smokes and exposes Anthropic's documented, provider-controlled fallback
-to Opus 4.8 for flagged cyber requests, so callers do not mistake the requested
-model for a guaranteed runtime identity. The doctor now validates both model and
-effort on the active profile.
+Version 0.6.0 adds manifest-bound policy-annotation qualification, refreshes the
+external model evidence, and hardens every optional CLI bridge around exact
+runtime capabilities. Grok Build can now run from a digest-pinned private binary
+with an attested read-only sandbox; Kimi checks its effective `max` effort inside
+the same isolated HOME used for dispatch. Provider failures retain sanitized
+diagnostics by default and preserve raw evidence only through explicit private
+debug paths.
 
 ## What it installs
 

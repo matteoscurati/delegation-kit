@@ -61,14 +61,26 @@ native_status() {
   NATIVE_REASON=""
   have kimi || { NATIVE_REASON="kimi not on PATH"; return 1; }
   sandbox_status || return 1
-  local help providers providers_text
+  local help providers providers_text status_tmp
   NATIVE_BIN="$(command -v kimi)"
   NATIVE_VERSION="$("$NATIVE_BIN" --version 2>/dev/null | head -1 || true)"
   NATIVE_VERSION="${NATIVE_VERSION:-unknown}"
   help="$("$NATIVE_BIN" --help 2>&1 || true)"
   grep -q -- '--output-format' <<<"$help" \
     || { NATIVE_REASON="kimi lacks stream-json output"; return 1; }
-  providers="$("$NATIVE_BIN" provider list --json 2>/dev/null || true)"
+  # Probe the exact minimal HOME used for dispatch. The ambient Kimi default is
+  # user preference and may legitimately differ from the evaluated max effort;
+  # only the isolated config's effective default is relevant to this runner.
+  status_tmp="$(mktemp -d "${TMPDIR:-/tmp}/delegation-kimi-status.XXXXXX")" \
+    || { NATIVE_REASON="could not create isolated Kimi status directory"; return 1; }
+  if ! prepare_native_home "$status_tmp"; then
+    rm -rf -- "$status_tmp"
+    NATIVE_REASON="could not prepare isolated Kimi status home"
+    return 1
+  fi
+  providers="$(HOME="$status_tmp/home" "$NATIVE_BIN" provider list --json 2>/dev/null || true)"
+  providers_text="$(HOME="$status_tmp/home" "$NATIVE_BIN" provider list 2>/dev/null || true)"
+  rm -rf -- "$status_tmp"
   jq -e --arg model "$NATIVE_MODEL" '.models[$model] != null' <<<"$providers" >/dev/null 2>&1 \
     || { NATIVE_REASON="$NATIVE_MODEL is not configured"; return 1; }
   # Kimi Code has no per-invocation effort flag. The provider must both support
@@ -80,7 +92,6 @@ native_status() {
     .models[$model].defaultEffort == $effort
   ' <<<"$providers" >/dev/null 2>&1 \
     || { NATIVE_REASON="$NATIVE_MODEL does not attest K3 default effort $NATIVE_EFFORT"; return 1; }
-  providers_text="$("$NATIVE_BIN" provider list 2>/dev/null || true)"
   grep -Eq 'managed:kimi-code.*source=oauth' <<<"$providers_text" \
     || { NATIVE_REASON="$NATIVE_MODEL is not an OAuth-managed Kimi Code provider"; return 1; }
   # `source=oauth` above describes how the provider is configured; it prints

@@ -245,9 +245,8 @@ extends = "strict"
 restrict_network = true
 
 [profiles.delegation-kit-read-only]
-extends = "strict"
+extends = "read-only"
 restrict_network = true
-read_only = true
 EOF
   chmod 600 "$config_path" "$sandbox_path"
 }
@@ -560,7 +559,11 @@ run_command() {
     die 70 "Grok Build sandbox enforcement was not attested; sanitized diagnostic: $diagnostic"
   }
   if [ "$evaluation" = 1 ]; then
-    jq -e --arg model "$RUNTIME_MODEL" '.model == $model' "$response" >/dev/null 2>&1 || {
+    # Grok Build 0.2.114 does not emit a top-level `.model`; its structured
+    # response identifies the selected provider route through modelUsage.
+    jq -e --arg usage_model "$USAGE_MODEL" '
+      .modelUsage[$usage_model] | type == "object"
+    ' "$response" >/dev/null 2>&1 || {
       preserve_debug "$debug_dir" "$response" "$stderr_file"
       write_diagnostic "$diagnostic" "identity" "provider_identity_not_attested" 0 "$started" "$response" "$stderr_file" "$DEBUG_PATH"
       die 70 "Grok Build did not attest exact provider model identity; sanitized diagnostic: $diagnostic"
