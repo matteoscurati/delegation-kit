@@ -283,6 +283,98 @@ PATH="$TMP/bin:$PATH" QWEN_TOKEN_PLAN_API_KEY=sk-sp-test \
   --workdir "$TMP/work" --debug-dir "$TMP/work/debug" >/dev/null 2>&1 || rc=$?
 [ "$rc" = 64 ] || fail 'debug directory inside read-only workdir accepted'
 
+# ---- evaluation preflight: full validation, no provider dispatch, no artifacts ----
+rc=0
+PATH="$TMP/bin:$PATH" TMPDIR="$TMP/runtime" QWEN_TOKEN_PLAN_API_KEY=sk-sp-test \
+  FAKE_QWEN_CASE=success FAKE_QWEN_REQUEST_CAPTURE="$TMP/results/preflight.request.json" \
+  "$ROOT/bin/delegation-qwen" run --lane policy-annotation --effort auto \
+  --backend token-plan-openai --evaluation --evaluation-manifest "$TMP/manifest.json" \
+  --preflight-only --prompt-file "$TMP/prompt" \
+  --output "$TMP/results/preflight.out" --workdir "$TMP/work" \
+  >"$TMP/results/preflight.stdout" 2>"$TMP/results/preflight.stderr" || rc=$?
+[ "$rc" = 0 ] || fail "preflight returned $rc"
+[ ! -s "$TMP/results/preflight.stderr" ] || fail 'preflight wrote to stderr'
+jq -e --arg manifest_sha "$MANIFEST_SHA" \
+  --arg prompt_sha "$(sha256 "$TMP/prompt")" \
+  --arg source_commit "$(git -C "$ROOT" rev-parse HEAD)" \
+  --arg runner_sha "$(sha256 "$ROOT/bin/delegation-qwen")" \
+  --arg contract_sha "$(sha256 "$ROOT/evaluation/test-fixtures/contract.txt")" \
+  --arg output_schema_sha "$(sha256 "$ROOT/evaluation/test-fixtures/output-schema.json")" \
+  '(keys | sort) ==
+     ["backend","contract_sha256","effort","evaluation_manifest_sha256","lane",
+      "model","output_schema_sha256","post_observation_retries","profile",
+      "prompt_sha256","provider_attempts","provider_dispatch_started",
+      "runner_sha256","runner_source_commit","schema_version","status"] and
+   .schema_version == "delegation_policy_annotation_preflight_receipt_v1" and
+   .status == "READY_NO_PROVIDER_CALL" and
+   .profile == "qwen3.8-max-preview" and .model == "qwen3.8-max-preview" and
+   .backend == "token-plan-openai" and .effort == "xhigh" and
+   .lane == "policy-annotation" and
+   .evaluation_manifest_sha256 == $manifest_sha and
+   .prompt_sha256 == $prompt_sha and
+   .runner_source_commit == $source_commit and
+   .runner_sha256 == $runner_sha and
+   .contract_sha256 == $contract_sha and
+   .output_schema_sha256 == $output_schema_sha and
+   .provider_dispatch_started == false and
+   .provider_attempts == 0 and .post_observation_retries == 0' \
+  "$TMP/results/preflight.stdout" >/dev/null || fail 'preflight receipt mismatch'
+[ ! -e "$TMP/results/preflight.request.json" ] || fail 'preflight dispatched to the provider'
+[ ! -e "$TMP/results/preflight.out" ] && [ ! -e "$TMP/results/preflight.out.metrics.json" ] &&
+  [ ! -e "$TMP/results/preflight.out.error.json" ] && [ ! -e "$TMP/results/preflight.out.commit.json" ] \
+  || fail 'preflight created a caller-visible artifact'
+
+# --preflight-only is rejected for ordinary (non-evaluation) runs.
+rc=0
+PATH="$TMP/bin:$PATH" QWEN_TOKEN_PLAN_API_KEY=sk-sp-test \
+  "$ROOT/bin/delegation-qwen" run --lane policy-annotation --preflight-only \
+  --prompt-file "$TMP/prompt" --output "$TMP/results/preflight-ordinary.out" \
+  --workdir "$TMP/work" >/dev/null 2>&1 || rc=$?
+[ "$rc" = 64 ] || fail "--preflight-only without --evaluation returned $rc"
+[ ! -e "$TMP/results/preflight-ordinary.out" ] || fail 'rejected preflight created output'
+
+# Manifest validation failures stay failures before provider use.
+rc=0
+PATH="$TMP/bin:$PATH" QWEN_TOKEN_PLAN_API_KEY=sk-sp-test \
+  FAKE_QWEN_CASE=success FAKE_QWEN_REQUEST_CAPTURE="$TMP/results/preflight-missing.request.json" \
+  "$ROOT/bin/delegation-qwen" run --lane policy-annotation --evaluation \
+  --evaluation-manifest "$TMP/missing-manifest.json" --preflight-only \
+  --prompt-file "$TMP/prompt" --output "$TMP/results/preflight-missing.out" \
+  --workdir "$TMP/work" >/dev/null 2>&1 || rc=$?
+[ "$rc" = 78 ] || fail "preflight with missing manifest returned $rc"
+[ ! -e "$TMP/results/preflight-missing.request.json" ] \
+  || fail 'provider invoked despite manifest failure'
+[ ! -e "$TMP/results/preflight-missing.out" ] || fail 'manifest failure created output'
+
+# Regression: a frozen Dipylon manifest pinned timeout_seconds=900 while the
+# runner accepts at most 600. Preflight must reject it before any dispatch.
+jq '.timeout_seconds = 900' "$TMP/manifest.json" >"$TMP/manifest-timeout900.json"
+TIMEOUT900_MANIFEST_SHA="$(sha256 "$TMP/manifest-timeout900.json")"
+jq --arg hash "$TIMEOUT900_MANIFEST_SHA" '
+  .profiles["qwen3.8-max-preview"].lanes["policy-annotation"].evaluation_manifest_sha256 += [$hash]
+' "$ROOT/config/routing-gates.json" >"$TMP/gates.json"
+mv "$TMP/gates.json" "$ROOT/config/routing-gates.json"
+jq --arg hash "$TIMEOUT900_MANIFEST_SHA" '
+  .lanes["policy-annotation"].backends["token-plan-openai"].evaluation_manifest_sha256 += [$hash]
+' "$ROOT/config/qwen3.8-max-preview-routing.json" >"$TMP/qwen-routing.json"
+mv "$TMP/qwen-routing.json" "$ROOT/config/qwen3.8-max-preview-routing.json"
+git -C "$ROOT" add config/routing-gates.json config/qwen3.8-max-preview-routing.json
+git -C "$ROOT" commit -qm 'allowlist out-of-bounds timeout fixture'
+rc=0
+PATH="$TMP/bin:$PATH" TMPDIR="$TMP/runtime" QWEN_TOKEN_PLAN_API_KEY=sk-sp-test \
+  FAKE_QWEN_CASE=success FAKE_QWEN_REQUEST_CAPTURE="$TMP/results/preflight-900.request.json" \
+  "$ROOT/bin/delegation-qwen" run --lane policy-annotation --effort auto \
+  --backend token-plan-openai --evaluation --evaluation-manifest "$TMP/manifest-timeout900.json" \
+  --preflight-only --prompt-file "$TMP/prompt" \
+  --output "$TMP/results/preflight-900.out" --workdir "$TMP/work" \
+  >"$TMP/results/preflight-900.stdout" 2>"$TMP/results/preflight-900.stderr" || rc=$?
+[ "$rc" = 78 ] || fail "timeout_seconds=900 preflight returned $rc"
+[ ! -e "$TMP/results/preflight-900.request.json" ] \
+  || fail 'out-of-bounds manifest reached the provider'
+[ ! -e "$TMP/results/preflight-900.out" ] && [ ! -e "$TMP/results/preflight-900.out.metrics.json" ] &&
+  [ ! -e "$TMP/results/preflight-900.out.error.json" ] && [ ! -e "$TMP/results/preflight-900.out.commit.json" ] \
+  || fail 'out-of-bounds manifest left artifacts'
+
 # Flip the throwaway lane to qualified in BOTH gates so ordinary (non-evaluation)
 # dispatch can be exercised; the production gates stay candidate and untouched.
 jq '.profiles["qwen3.8-max-preview"].lanes["policy-annotation"].status = "qualified" |

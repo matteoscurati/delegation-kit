@@ -338,6 +338,70 @@ jq -e --arg output_sha "$(sha256 "$TMP/results/evaluation.txt")" \
   "$TMP/results/evaluation.txt.commit.json" >/dev/null \
   || fail "evaluation publication commit mismatch"
 
+# ---- evaluation preflight: full validation, no provider dispatch, no artifacts ----
+rc=0
+run_kimi run --lane policy-annotation --evaluation \
+  --evaluation-manifest "$TMP/manifest.json" --preflight-only \
+  --prompt-file "$TMP/prompt" --output "$TMP/results/preflight.txt" \
+  --workdir "$TMP/work" >"$TMP/results/preflight.stdout" \
+  2>"$TMP/results/preflight.stderr" || rc=$?
+[ "$rc" = 0 ] || fail "preflight returned $rc"
+[ ! -s "$TMP/results/preflight.stderr" ] || fail "preflight wrote to stderr"
+jq -e --arg manifest_sha "$MANIFEST_SHA" \
+  --arg prompt_sha "$(sha256 "$TMP/prompt")" \
+  --arg source_commit "$(git -C "$ROOT" rev-parse HEAD)" \
+  --arg runner_sha "$(sha256 "$ROOT/bin/delegation-kimi")" \
+  --arg contract_sha "$(sha256 "$ROOT/evaluation/test-fixtures/contract.txt")" \
+  --arg output_schema_sha "$(sha256 "$ROOT/evaluation/test-fixtures/output-schema.json")" \
+  '(keys | sort) ==
+     ["backend","contract_sha256","effort","evaluation_manifest_sha256","lane",
+      "model","output_schema_sha256","post_observation_retries","profile",
+      "prompt_sha256","provider_attempts","provider_dispatch_started",
+      "runner_sha256","runner_source_commit","schema_version","status"] and
+   .schema_version == "delegation_policy_annotation_preflight_receipt_v1" and
+   .status == "READY_NO_PROVIDER_CALL" and
+   .profile == "kimi-k3" and .model == "kimi-code/k3" and
+   .backend == "native" and .effort == "max" and
+   .lane == "policy-annotation" and
+   .evaluation_manifest_sha256 == $manifest_sha and
+   .prompt_sha256 == $prompt_sha and
+   .runner_source_commit == $source_commit and
+   .runner_sha256 == $runner_sha and
+   .contract_sha256 == $contract_sha and
+   .output_schema_sha256 == $output_schema_sha and
+   .provider_dispatch_started == false and
+   .provider_attempts == 0 and .post_observation_retries == 0' \
+  "$TMP/results/preflight.stdout" >/dev/null || fail "preflight receipt mismatch"
+# Any dispatch would have run the fake CLI and published PONG plus artifacts.
+[ ! -e "$TMP/results/preflight.txt" ] &&
+  [ ! -e "$TMP/results/preflight.txt.metrics.json" ] &&
+  [ ! -e "$TMP/results/preflight.txt.commit.json" ] &&
+  [ ! -e "$TMP/results/preflight.txt.stderr" ] \
+  || fail "preflight created a caller-visible artifact"
+! grep -q PONG "$TMP/results/preflight.stdout" || fail "preflight ran the provider CLI"
+[ ! -e "$TMP/kimi-home/.delegation-kit-oauth.lock" ] &&
+  [ ! -L "$TMP/kimi-home/.delegation-kit-oauth.lock" ] \
+  || fail "preflight touched the OAuth lock"
+
+# --preflight-only is rejected for ordinary (non-evaluation) runs.
+rc=0
+run_kimi run --lane scout --allow-provisional --preflight-only \
+  --prompt-file "$TMP/prompt" --output "$TMP/results/preflight-ordinary.txt" \
+  --workdir "$TMP/work" >/dev/null 2>&1 || rc=$?
+[ "$rc" = 64 ] || fail "--preflight-only without --evaluation returned $rc"
+[ ! -e "$TMP/results/preflight-ordinary.txt" ] || fail "rejected preflight created output"
+
+# Manifest validation failures stay failures before provider use.
+rc=0
+run_kimi run --lane policy-annotation --evaluation \
+  --evaluation-manifest "$TMP/missing-manifest.json" --preflight-only \
+  --prompt-file "$TMP/prompt" --output "$TMP/results/preflight-missing.txt" \
+  --workdir "$TMP/work" >/dev/null 2>&1 || rc=$?
+[ "$rc" = 78 ] || fail "preflight with missing manifest returned $rc"
+[ ! -e "$TMP/results/preflight-missing.txt" ] &&
+  [ ! -e "$TMP/results/preflight-missing.txt.stderr" ] \
+  || fail "manifest failure created artifacts"
+
 rc=0
 run_kimi run --lane policy-annotation --evaluation \
   --evaluation-manifest "$TMP/manifest.json" --prompt-file "$TMP/prompt" \
