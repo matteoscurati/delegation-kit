@@ -78,6 +78,11 @@ evaluation_manifest() {
   jq -e --arg hash "$manifest_hash" '.profiles["grok-build"].lanes["policy-annotation"].evaluation_manifest_sha256 | type == "array" and index($hash) != null' "$CENTRAL_GATES" >/dev/null 2>&1 || die 78 "evaluation manifest is not allowlisted by the central gate"
   jq -e --arg hash "$manifest_hash" '.lanes["policy-annotation"].backends["grok-build"].evaluation_manifest_sha256 | type == "array" and index($hash) != null' "$ROUTING_FILE" >/dev/null 2>&1 || die 78 "evaluation manifest is not allowlisted by the executable gate"
   EVALUATION_TIMEOUT_SECONDS="$(jq -r '.timeout_seconds' "$manifest")"; EVALUATION_MAX_OUTPUT_CHARS="$(jq -r '.max_output_chars' "$manifest")"
+  # Bound values the run receipt republishes; recomputed locally, never caller input.
+  EVALUATION_MANIFEST_SHA256="$manifest_hash"
+  EVALUATION_PROMPT_SHA256="$prompt_hash"
+  EVALUATION_RUNNER_SOURCE_COMMIT="$source_head"
+  EVALUATION_RUNNER_SHA256="$runner_hash"
 }
 
 pinned_bin_path() { printf '%s/current/grok' "$GROK_BIN_STORE"; }
@@ -482,12 +487,15 @@ run_command() {
   fi
   [ "$effort" != auto ] || effort="$(default_effort)"
   [ "$effort" = high ] || die 78 "lane '$lane' is qualified only at effort 'high'"
-  [ "$evaluation" = 0 ] || evaluation_manifest "$evaluation_manifest_path" "$prompt_file"
+  RUN_TMP="$(mktemp -d "${TMPDIR:-/tmp}/delegation-grok.XXXXXX")"
+  cp -- "$prompt_file" "$RUN_TMP/prompt.txt" \
+    || die 70 "could not snapshot prompt into runner-owned storage"
+  [ "$evaluation" = 0 ] || evaluation_manifest "$evaluation_manifest_path" "$RUN_TMP/prompt.txt"
   runtime_status || die 69 "$GROK_REASON"
 
   workdir="$(cd "$workdir" && pwd -P)"
   metrics="${metrics:-$output.metrics.json}"
-  local output_parent metrics_parent output_name metrics_name diagnostic
+  local output_parent metrics_parent output_name metrics_name diagnostic commit
   output_parent="$(dirname "$output")"; metrics_parent="$(dirname "$metrics")"
   output_name="$(basename "$output")"; metrics_name="$(basename "$metrics")"
   [ -d "$output_parent" ] || die 64 "output parent directory must already exist: $output_parent"
@@ -496,10 +504,19 @@ run_command() {
   metrics="$(cd "$metrics_parent" && pwd -P)/$metrics_name"
   [ -z "$debug_dir" ] || debug_dir="$(cd "$debug_dir" && pwd -P)"
   diagnostic="$output.error.json"
+  commit="$output.commit.json"
   [ "$output" != "$metrics" ] || die 64 "output and metrics paths resolve to the same file"
+  if [ "$evaluation" = 1 ]; then
+    [ "$metrics" != "$commit" ] && [ "$diagnostic" != "$commit" ] \
+      || die 64 "metrics or diagnostic path collides with evaluation commit marker"
+  fi
   [ ! -e "$output" ] && [ ! -L "$output" ] || die 64 "output already exists or is a symlink"
   [ ! -e "$metrics" ] && [ ! -L "$metrics" ] || die 64 "metrics already exists or is a symlink"
   [ ! -e "$diagnostic" ] && [ ! -L "$diagnostic" ] || die 64 "diagnostic already exists or is a symlink"
+  if [ "$evaluation" = 1 ]; then
+    [ ! -e "$commit" ] && [ ! -L "$commit" ] \
+      || die 64 "evaluation commit marker already exists or is a symlink"
+  fi
   if [ "$lane" = policy-annotation ]; then
     case "$output" in "$workdir"/*) die 64 "policy-annotation output must be outside workdir" ;; esac
     case "$metrics" in "$workdir"/*) die 64 "policy-annotation metrics must be outside workdir" ;; esac
@@ -509,10 +526,8 @@ run_command() {
 
   local response result_tmp metrics_tmp stderr_file rc=0 started timer reason phase
   local DEBUG_PATH=""
-  RUN_TMP="$(mktemp -d "${TMPDIR:-/tmp}/delegation-grok.XXXXXX")"
   response="$RUN_TMP/response.json"; result_tmp="$RUN_TMP/result.txt"
   metrics_tmp="$RUN_TMP/metrics.json"; stderr_file="$RUN_TMP/stderr.txt"
-  cp "$prompt_file" "$RUN_TMP/prompt.txt"
   prepare_isolated_home "$RUN_TMP/home" || die 69 "$GROK_REASON"
   inspect_isolation "$RUN_TMP/home" "$RUN_TMP/inspect.json" "$workdir" || die 69 "$GROK_REASON"
   timer="$(timeout_bin)" || die 69 "timeout or gtimeout is required"
@@ -594,10 +609,65 @@ run_command() {
     write_diagnostic "$diagnostic" "extract" "max_output_chars" 0 "$started" "$response" "$stderr_file" "$DEBUG_PATH"
     die 70 "Grok Build exceeded the manifest output limit; sanitized diagnostic: $diagnostic"
   fi
-  mv "$metrics_tmp" "$metrics" || die 70 "could not finalize metrics"
+  # A successful evaluation publishes its attempt receipt or publishes nothing.
+  # Every field is recomputed here from local state the manifest already bound;
+  # nothing is accepted from the caller.
+  if [ "$evaluation" = 1 ]; then
+    local raw_output_sha256=""
+    raw_output_sha256="$(file_digest "$result_tmp")" || raw_output_sha256=""
+    if [ -z "$raw_output_sha256" ] || [ -z "${EVALUATION_MANIFEST_SHA256:-}" ] ||
+       [ -z "${EVALUATION_PROMPT_SHA256:-}" ] || [ -z "${EVALUATION_RUNNER_SOURCE_COMMIT:-}" ] ||
+       [ -z "${EVALUATION_RUNNER_SHA256:-}" ]; then
+      preserve_debug "$debug_dir" "$response" "$stderr_file"
+      write_diagnostic "$diagnostic" "extract" "receipt_uncomputable" 0 "$started" "$response" "$stderr_file" "$DEBUG_PATH"
+      die 70 "Grok Build evaluation receipt could not be computed; sanitized diagnostic: $diagnostic"
+    fi
+    if ! jq --arg manifest_sha256 "$EVALUATION_MANIFEST_SHA256" \
+        --arg prompt_sha256 "$EVALUATION_PROMPT_SHA256" \
+        --arg source_commit "$EVALUATION_RUNNER_SOURCE_COMMIT" \
+        --arg runner_sha256 "$EVALUATION_RUNNER_SHA256" \
+        --arg raw_output_sha256 "$raw_output_sha256" \
+        '.evaluation_receipt = {
+          schema_version:"delegation_policy_annotation_attempt_receipt_v1",
+          evaluation_manifest_sha256:$manifest_sha256,
+          prompt_sha256:$prompt_sha256,
+          runner_source_commit:$source_commit,
+          runner_sha256:$runner_sha256,
+          raw_output_sha256:$raw_output_sha256,
+          provider_attempts:1,
+          post_observation_retries:0}' "$metrics_tmp" >"$RUN_TMP/metrics.receipt.json" ||
+       ! mv "$RUN_TMP/metrics.receipt.json" "$metrics_tmp"; then
+      rm -f -- "$RUN_TMP/metrics.receipt.json"
+      preserve_debug "$debug_dir" "$response" "$stderr_file"
+      write_diagnostic "$diagnostic" "extract" "receipt_merge_failed" 0 "$started" "$response" "$stderr_file" "$DEBUG_PATH"
+      die 70 "Grok Build evaluation receipt could not be merged; sanitized diagnostic: $diagnostic"
+    fi
+  fi
+  local commit_tmp="$RUN_TMP/publication.commit.json" metrics_sha256=""
+  if [ "$evaluation" = 1 ]; then
+    raw_output_sha256="$(file_digest "$result_tmp")" || raw_output_sha256=""
+    metrics_sha256="$(file_digest "$metrics_tmp")" || metrics_sha256=""
+    if [ -z "$raw_output_sha256" ] || [ -z "$metrics_sha256" ] ||
+       ! jq -n --arg raw_output_sha256 "$raw_output_sha256" \
+         --arg metrics_sha256 "$metrics_sha256" \
+         --arg manifest_sha256 "$EVALUATION_MANIFEST_SHA256" \
+         '{schema_version:"delegation_policy_annotation_publication_commit_v1",
+           raw_output_sha256:$raw_output_sha256,metrics_sha256:$metrics_sha256,
+           evaluation_manifest_sha256:$manifest_sha256}' >"$commit_tmp"; then
+      die 70 "could not stage evaluation publication commit"
+    fi
+  fi
   if ! mv "$result_tmp" "$output"; then
-    rm -f -- "$metrics"
+    rm -f -- "$output"
     die 70 "could not finalize output"
+  fi
+  if ! mv "$metrics_tmp" "$metrics"; then
+    rm -f -- "$output" "$metrics"
+    die 70 "could not finalize metrics"
+  fi
+  if [ "$evaluation" = 1 ] && ! mv "$commit_tmp" "$commit"; then
+    rm -f -- "$output" "$metrics" "$commit"
+    die 70 "could not finalize evaluation publication commit"
   fi
 }
 

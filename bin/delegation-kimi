@@ -275,6 +275,11 @@ evaluation_manifest() {
   ' "$ROUTING_FILE" >/dev/null 2>&1 || die 78 "evaluation manifest is not allowlisted by the executable gate"
   EVALUATION_TIMEOUT_SECONDS="$(jq -r '.timeout_seconds' "$manifest")"
   EVALUATION_MAX_OUTPUT_CHARS="$(jq -r '.max_output_chars' "$manifest")"
+  # Bound values the run receipt republishes; recomputed locally, never caller input.
+  EVALUATION_MANIFEST_SHA256="$hash"
+  EVALUATION_PROMPT_SHA256="$expected_hash"
+  EVALUATION_RUNNER_SOURCE_COMMIT="$source_head"
+  EVALUATION_RUNNER_SHA256="$runner_hash"
 }
 
 # A dead session is not a broken dispatch: it means the runtime is unavailable
@@ -515,8 +520,18 @@ run_command() {
     || die 69 "qualified lane '$lane' has no pinned effort for backend '$backend'"
   [ "$effort" = "$expected_effort" ] \
     || die 78 "lane '$lane' backend '$backend' is qualified only at effort '$expected_effort'"
+  local tmp dispatch_prompt_file="$prompt_file"
+  tmp="$(mktemp -d "${TMPDIR:-/tmp}/delegation-kimi.XXXXXX")"
+  tmp="$(cd "$tmp" && pwd -P)"
+  RUN_TMP="$tmp"
+  trap cleanup_run EXIT
   if [ "$evaluation" = 1 ]; then
-    evaluation_manifest "$evaluation_manifest_path" "$lane" "$prompt_file" "$expected_effort"
+    dispatch_prompt_file="$tmp/prompt.snapshot"
+    cp -- "$prompt_file" "$dispatch_prompt_file" \
+      || die 70 "could not snapshot evaluation prompt"
+    prompt="$(cat "$dispatch_prompt_file"; printf x)"
+    prompt="${prompt%x}"
+    evaluation_manifest "$evaluation_manifest_path" "$lane" "$dispatch_prompt_file" "$expected_effort"
   fi
   if [ "$backend" = native ] && [ "$effort" != max ]; then
     die 64 "native backend supports only max effort"
@@ -526,7 +541,7 @@ run_command() {
   fi
 
   metrics="${metrics:-$output.metrics.json}"
-  local output_parent metrics_parent output_name metrics_name
+  local output_parent metrics_parent output_name metrics_name commit
   output_parent="$(dirname "$output")"; output_name="$(basename "$output")"
   metrics_parent="$(dirname "$metrics")"; metrics_name="$(basename "$metrics")"
   case "$output_name" in .|..) die 64 "invalid output filename" ;; esac
@@ -535,21 +550,26 @@ run_command() {
   [ -d "$metrics_parent" ] || die 64 "metrics parent directory must already exist: $metrics_parent"
   output="$(cd "$output_parent" && pwd -P)/$output_name"
   metrics="$(cd "$metrics_parent" && pwd -P)/$metrics_name"
+  commit="$output.commit.json"
   [ "$output" != "$metrics" ] || die 64 "output and metrics paths resolve to the same file"
+  if [ "$evaluation" = 1 ]; then
+    [ "$metrics" != "$commit" ] \
+      || die 64 "metrics path collides with evaluation commit marker"
+  fi
   [ ! -L "$output" ] || die 64 "output must not be a symlink"
   [ ! -L "$metrics" ] || die 64 "metrics must not be a symlink"
   [ ! -e "$output" ] || die 64 "output must not already exist"
   [ ! -e "$metrics" ] || die 64 "metrics must not already exist"
+  if [ "$evaluation" = 1 ]; then
+    [ ! -L "$commit" ] || die 64 "evaluation commit marker must not be a symlink"
+    [ ! -e "$commit" ] || die 64 "evaluation commit marker must not already exist"
+  fi
   if [ "$lane" != builder ] && [ "$lane" != frontend-builder ]; then
     case "$output" in "$workdir"/*) die 64 "read-only lane output must be outside workdir" ;; esac
     case "$metrics" in "$workdir"/*) die 64 "read-only lane metrics must be outside workdir" ;; esac
   fi
 
-  local tmp events rc=0 started result_tmp metrics_tmp error_tmp
-  tmp="$(mktemp -d "${TMPDIR:-/tmp}/delegation-kimi.XXXXXX")"
-  tmp="$(cd "$tmp" && pwd -P)"
-  RUN_TMP="$tmp"
-  trap cleanup_run EXIT
+  local events rc=0 started result_tmp metrics_tmp error_tmp
   events="$tmp/events.jsonl"
   result_tmp="$tmp/result.txt"
   metrics_tmp="$tmp/metrics.json"
@@ -646,6 +666,35 @@ run_command() {
   if [ "$rc" -eq 0 ] && [ "$evaluation" = 1 ] && [ "$(wc -m <"$result_tmp" | tr -d ' ')" -gt "$EVALUATION_MAX_OUTPUT_CHARS" ]; then
     rc=70
   fi
+  # A successful evaluation publishes its attempt receipt or publishes nothing.
+  # Every field is recomputed here from local state the manifest already bound;
+  # nothing is accepted from the caller.
+  if [ "$rc" -eq 0 ] && [ "$evaluation" = 1 ]; then
+    local raw_output_sha256=""
+    raw_output_sha256="$(sha256_file "$result_tmp")" || raw_output_sha256=""
+    if [ -z "$raw_output_sha256" ] || [ -z "${EVALUATION_MANIFEST_SHA256:-}" ] ||
+       [ -z "${EVALUATION_PROMPT_SHA256:-}" ] || [ -z "${EVALUATION_RUNNER_SOURCE_COMMIT:-}" ] ||
+       [ -z "${EVALUATION_RUNNER_SHA256:-}" ]; then
+      rc=70
+    elif ! jq --arg manifest_sha256 "$EVALUATION_MANIFEST_SHA256" \
+        --arg prompt_sha256 "$EVALUATION_PROMPT_SHA256" \
+        --arg source_commit "$EVALUATION_RUNNER_SOURCE_COMMIT" \
+        --arg runner_sha256 "$EVALUATION_RUNNER_SHA256" \
+        --arg raw_output_sha256 "$raw_output_sha256" \
+        '.evaluation_receipt = {
+          schema_version:"delegation_policy_annotation_attempt_receipt_v1",
+          evaluation_manifest_sha256:$manifest_sha256,
+          prompt_sha256:$prompt_sha256,
+          runner_source_commit:$source_commit,
+          runner_sha256:$runner_sha256,
+          raw_output_sha256:$raw_output_sha256,
+          provider_attempts:1,
+          post_observation_retries:0}' "$metrics_tmp" >"$tmp/metrics.receipt.json" ||
+       ! mv -f "$tmp/metrics.receipt.json" "$metrics_tmp"; then
+      rm -f -- "$tmp/metrics.receipt.json"
+      rc=70
+    fi
+  fi
 
   if [ "$rc" -ne 0 ]; then
     if [ "$evaluation" = 1 ] && { [ "$rc" -eq 124 ] || [ "$rc" -eq 137 ]; }; then
@@ -660,8 +709,32 @@ run_command() {
     temporary_failure "$events" "$tmp/stderr" && exit 75
     exit 70
   fi
-  mv -f "$result_tmp" "$output" || die 70 "could not finalize output"
-  mv -f "$metrics_tmp" "$metrics" || die 70 "could not finalize metrics"
+  local commit_tmp="$tmp/publication.commit.json" metrics_sha256=""
+  if [ "$evaluation" = 1 ]; then
+    raw_output_sha256="$(sha256_file "$result_tmp")" || raw_output_sha256=""
+    metrics_sha256="$(sha256_file "$metrics_tmp")" || metrics_sha256=""
+    if [ -z "$raw_output_sha256" ] || [ -z "$metrics_sha256" ] ||
+       ! jq -n --arg raw_output_sha256 "$raw_output_sha256" \
+         --arg metrics_sha256 "$metrics_sha256" \
+         --arg manifest_sha256 "$EVALUATION_MANIFEST_SHA256" \
+         '{schema_version:"delegation_policy_annotation_publication_commit_v1",
+           raw_output_sha256:$raw_output_sha256,metrics_sha256:$metrics_sha256,
+           evaluation_manifest_sha256:$manifest_sha256}' >"$commit_tmp"; then
+      die 70 "could not stage evaluation publication commit"
+    fi
+  fi
+  if ! mv -f "$result_tmp" "$output"; then
+    rm -f -- "$output"
+    die 70 "could not finalize output"
+  fi
+  if ! mv -f "$metrics_tmp" "$metrics"; then
+    rm -f -- "$output" "$metrics"
+    die 70 "could not finalize metrics"
+  fi
+  if [ "$evaluation" = 1 ] && ! mv -f "$commit_tmp" "$commit"; then
+    rm -f -- "$output" "$metrics" "$commit"
+    die 70 "could not finalize evaluation publication commit"
+  fi
 }
 
 case "${1:-}" in
