@@ -202,6 +202,11 @@ jq -e '
   .permission_mode == "dontAsk" and .max_turns == 40 and
   .timeout_seconds == 900 and .isolated_home == true
 ' "$TMP/results/builder.txt.metrics.json" >/dev/null || fail "metrics mismatch"
+# Ordinary (non-evaluation) runs never claim the evaluation receipt.
+jq -e 'has("evaluation_receipt") | not' "$TMP/results/builder.txt.metrics.json" >/dev/null \
+  || fail "non-evaluation run claimed an evaluation receipt"
+[ ! -e "$TMP/results/builder.txt.commit.json" ] \
+  || fail "non-evaluation run wrote an evaluation commit marker"
 
 run_grok run --lane frontend-builder --allow-provisional --prompt-file "$TMP/prompt.txt" \
   --output "$TMP/results/frontend.txt" --workdir "$TMP/work"
@@ -244,6 +249,7 @@ jq --arg hash "$GROK_MANIFEST_SHA" '
 mv "$TMP/grok-routing.json" "$EVAL_ROOT/config/grok-4.5-routing.json"
 git -C "$EVAL_ROOT" add config/routing-gates.json config/grok-4.5-routing.json
 git -C "$EVAL_ROOT" commit -qm 'allowlist Grok evaluation fixture'
+EVAL_HEAD="$(git -C "$EVAL_ROOT" rev-parse HEAD)"
 
 DELEGATION_GROK_HOME="$TMP/grok-home" \
 DELEGATION_GROK_BIN_STORE="$TMP/eval-store" \
@@ -261,6 +267,84 @@ jq -e '
 ' "$TMP/results/policy-annotation.txt.metrics.json" >/dev/null \
   || fail "policy-annotation metrics mismatch"
 
+# A successful policy-annotation evaluation publishes the runner-emitted
+# receipt with exactly the bound fields, recomputed here independently.
+jq -e --arg manifest_sha "$GROK_MANIFEST_SHA" \
+  --arg prompt_sha "$(sha256 "$TMP/prompt.txt")" \
+  --arg source_commit "$EVAL_HEAD" \
+  --arg runner_sha "$(sha256 "$EVAL_ROOT/bin/delegation-grok")" \
+  --arg output_sha "$(sha256 "$TMP/results/policy-annotation.txt")" \
+  '(.evaluation_receipt | keys | sort) ==
+     ["evaluation_manifest_sha256","post_observation_retries","prompt_sha256",
+      "provider_attempts","raw_output_sha256","runner_sha256",
+      "runner_source_commit","schema_version"] and
+   .evaluation_receipt.schema_version == "delegation_policy_annotation_attempt_receipt_v1" and
+   .evaluation_receipt.evaluation_manifest_sha256 == $manifest_sha and
+   .evaluation_receipt.prompt_sha256 == $prompt_sha and
+   .evaluation_receipt.runner_source_commit == $source_commit and
+   .evaluation_receipt.runner_sha256 == $runner_sha and
+   .evaluation_receipt.raw_output_sha256 == $output_sha and
+   .evaluation_receipt.provider_attempts == 1 and
+   .evaluation_receipt.post_observation_retries == 0' \
+  "$TMP/results/policy-annotation.txt.metrics.json" >/dev/null \
+  || fail "evaluation receipt mismatch"
+jq -e --arg output_sha "$(sha256 "$TMP/results/policy-annotation.txt")" \
+  --arg metrics_sha "$(sha256 "$TMP/results/policy-annotation.txt.metrics.json")" \
+  --arg manifest_sha "$GROK_MANIFEST_SHA" \
+  '(keys | sort) == ["evaluation_manifest_sha256","metrics_sha256",
+    "raw_output_sha256","schema_version"] and
+   .schema_version == "delegation_policy_annotation_publication_commit_v1" and
+   .raw_output_sha256 == $output_sha and .metrics_sha256 == $metrics_sha and
+   .evaluation_manifest_sha256 == $manifest_sha' \
+  "$TMP/results/policy-annotation.txt.commit.json" >/dev/null \
+  || fail "evaluation publication commit mismatch"
+
+rc=0
+DELEGATION_GROK_HOME="$TMP/grok-home" \
+DELEGATION_GROK_BIN_STORE="$TMP/eval-store" DELEGATION_GROK_BIN="$TMP/bin/grok" \
+PATH="$TMP/bin:$PATH" "$EVAL_ROOT/bin/delegation-grok" run \
+  --lane policy-annotation --effort high --backend grok-build --evaluation \
+  --evaluation-manifest "$TMP/grok-evaluation-manifest.json" \
+  --prompt-file "$TMP/prompt.txt" --output "$TMP/results/grok-collision.txt" \
+  --metrics "$TMP/results/grok-collision.txt.commit.json" --workdir "$TMP/work" \
+  >/dev/null 2>&1 || rc=$?
+[ "$rc" = 64 ] || fail "metrics/commit collision returned $rc"
+[ ! -e "$TMP/results/grok-collision.txt" ] \
+  && [ ! -e "$TMP/results/grok-collision.txt.commit.json" ] \
+  || fail "metrics/commit collision published artifacts"
+
+mkdir -p "$TMP/mv-fail"
+cat >"$TMP/mv-fail/mv" <<'EOF'
+#!/usr/bin/env bash
+target="${@: -1}"
+if [ "$target" = "${FAIL_MV_TARGET:-}" ]; then
+  printf 'partial\n' >"$target"
+  exit 1
+fi
+exec /bin/mv "$@"
+EOF
+chmod 755 "$TMP/mv-fail/mv"
+for phase in output metrics commit; do
+  out="$TMP/results/grok-publish-$phase.txt"
+  case "$phase" in
+    output) target="$out" ;;
+    metrics) target="$out.metrics.json" ;;
+    commit) target="$out.commit.json" ;;
+  esac
+  target="$(cd "$(dirname "$target")" && pwd -P)/$(basename "$target")"
+  rc=0
+  FAIL_MV_TARGET="$target" DELEGATION_GROK_HOME="$TMP/grok-home" \
+  DELEGATION_GROK_BIN_STORE="$TMP/eval-store" DELEGATION_GROK_BIN="$TMP/bin/grok" \
+  PATH="$TMP/mv-fail:$TMP/bin:$PATH" "$EVAL_ROOT/bin/delegation-grok" run \
+    --lane policy-annotation --effort high --backend grok-build --evaluation \
+    --evaluation-manifest "$TMP/grok-evaluation-manifest.json" \
+    --prompt-file "$TMP/prompt.txt" --output "$out" --workdir "$TMP/work" \
+    >/dev/null 2>&1 || rc=$?
+  [ "$rc" = 70 ] || fail "$phase publication failure returned $rc"
+  [ ! -e "$out" ] && [ ! -e "$out.metrics.json" ] && [ ! -e "$out.commit.json" ] \
+    || fail "$phase publication failure left a published member"
+done
+
 rc=0
 DELEGATION_GROK_HOME="$TMP/grok-home" \
 DELEGATION_GROK_BIN_STORE="$TMP/eval-store" \
@@ -275,6 +359,34 @@ GROK_FAKE_MODE=model_mismatch PATH="$TMP/bin:$PATH" \
 jq -e '.phase == "identity" and .reason == "provider_identity_not_attested"' \
   "$TMP/results/policy-identity.txt.error.json" >/dev/null \
   || fail "policy-annotation identity mismatch diagnostic"
+
+# A receipt that cannot be merged fails closed: exit 70, no output, no metrics.
+# The shim refuses only the runner's receipt-merge jq invocation and delegates
+# every other jq call to the real binary.
+mkdir -p "$TMP/bin-receipt-fail"
+cat >"$TMP/bin-receipt-fail/jq" <<EOF
+#!/usr/bin/env bash
+case " \$* " in *evaluation_receipt*) exit 1 ;; esac
+exec "$(command -v jq)" "\$@"
+EOF
+chmod 755 "$TMP/bin-receipt-fail/jq"
+rc=0
+DELEGATION_GROK_HOME="$TMP/grok-home" \
+DELEGATION_GROK_BIN_STORE="$TMP/eval-store" \
+DELEGATION_GROK_BIN="$TMP/bin/grok" \
+PATH="$TMP/bin-receipt-fail:$TMP/bin:$PATH" \
+  "$EVAL_ROOT/bin/delegation-grok" run \
+  --lane policy-annotation --effort high --backend grok-build --evaluation \
+  --evaluation-manifest "$TMP/grok-evaluation-manifest.json" \
+  --prompt-file "$TMP/prompt.txt" --output "$TMP/results/policy-receipt-fail.txt" \
+  --workdir "$TMP/work" >/dev/null 2>&1 || rc=$?
+[ "$rc" = 70 ] || fail "receipt merge failure returned $rc"
+[ ! -e "$TMP/results/policy-receipt-fail.txt" ] || fail "receipt failure published output"
+[ ! -e "$TMP/results/policy-receipt-fail.txt.metrics.json" ] \
+  || fail "receipt failure published metrics"
+jq -e '.phase == "extract" and .reason == "receipt_merge_failed"' \
+  "$TMP/results/policy-receipt-fail.txt.error.json" >/dev/null \
+  || fail "receipt failure diagnostic mismatch"
 
 rc=0
 run_grok run --lane builder --allow-provisional --effort max --prompt-file "$TMP/prompt.txt" \

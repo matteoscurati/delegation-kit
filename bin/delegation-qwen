@@ -19,11 +19,12 @@ KEY_FILE="${DELEGATION_QWEN_KEY_FILE:-$ROOT/config/qwen-token-plan.env}"
 MODEL="qwen3.8-max-preview"
 BACKEND="token-plan-openai"
 API_URL="https://token-plan.ap-southeast-1.maas.aliyuncs.com/compatible-mode/v1/chat/completions"
-RUN_TMP="" RUN_OUTPUT_TMP="" RUN_METRICS_TMP=""
+RUN_TMP="" RUN_OUTPUT_TMP="" RUN_METRICS_TMP="" RUN_COMMIT_TMP=""
 
 cleanup_run() {
   [ -z "$RUN_OUTPUT_TMP" ] || rm -f -- "$RUN_OUTPUT_TMP"
   [ -z "$RUN_METRICS_TMP" ] || rm -f -- "$RUN_METRICS_TMP"
+  [ -z "$RUN_COMMIT_TMP" ] || rm -f -- "$RUN_COMMIT_TMP"
   [ -z "$RUN_TMP" ] || rm -rf -- "$RUN_TMP"
 }
 
@@ -146,6 +147,11 @@ evaluation_manifest() {
   ' "$ROUTING_FILE" >/dev/null 2>&1 || die 78 "evaluation manifest is not allowlisted by the executable gate"
   EVALUATION_TIMEOUT_SECONDS="$(jq -r '.timeout_seconds' "$manifest")"
   EVALUATION_MAX_OUTPUT_CHARS="$(jq -r '.max_output_chars' "$manifest")"
+  # Bound values the run receipt republishes; recomputed locally, never caller input.
+  EVALUATION_MANIFEST_SHA256="$hash"
+  EVALUATION_PROMPT_SHA256="$expected_hash"
+  EVALUATION_RUNNER_SOURCE_COMMIT="$source_head"
+  EVALUATION_RUNNER_SHA256="$runner_hash"
 }
 
 DEBUG_RUN_DIR=""
@@ -241,13 +247,19 @@ run_command() {
   [ "$effort" != auto ] || effort="$(lane_effort)"
   if [ "$effort" != "$(lane_effort)" ]; then die 78 "lane '$lane' is pinned only at effort '$(lane_effort)'"; fi
   [ "$effort" != none ] || die 64 "qwen3.8-max-preview requires thinking; effort 'none' is not supported"
+  local tmp dispatch_prompt="$prompt_file"
+  tmp="$(mktemp -d "${TMPDIR:-/tmp}/delegation-qwen.XXXXXX")"
+  RUN_TMP="$tmp"
+  trap cleanup_run EXIT
   if [ "$evaluation" = 1 ]; then
-    evaluation_manifest "$evaluation_manifest_path" "$lane" "$prompt_file" "$effort"
+    dispatch_prompt="$tmp/prompt.snapshot"
+    cp -- "$prompt_file" "$dispatch_prompt" || die 70 "could not snapshot evaluation prompt"
+    evaluation_manifest "$evaluation_manifest_path" "$lane" "$dispatch_prompt" "$effort"
   fi
   runtime_status || die 69 "$QWEN_REASON"
 
   metrics="${metrics:-$output.metrics.json}"
-  local diagnostic="$output.error.json"
+  local diagnostic="$output.error.json" commit="$output.commit.json"
   local output_parent metrics_parent diagnostic_parent output_name metrics_name diagnostic_name
   output_parent="$(dirname "$output")"; output_name="$(basename "$output")"
   metrics_parent="$(dirname "$metrics")"; metrics_name="$(basename "$metrics")"
@@ -258,39 +270,53 @@ run_command() {
   output="$(cd "$output_parent" && pwd -P)/$output_name"
   metrics="$(cd "$metrics_parent" && pwd -P)/$metrics_name"
   diagnostic="$(cd "$diagnostic_parent" && pwd -P)/$diagnostic_name"
+  commit="$output.commit.json"
   workdir="$(cd "$workdir" && pwd -P)"
   if [ -n "$debug_dir" ]; then
     case "$debug_dir" in
       "$workdir"|"$workdir"/*) die 64 "read-only lane debug directory must be outside workdir" ;;
     esac
   fi
-  [ ! -e "$output" ] && [ ! -e "$metrics" ] && [ ! -e "$diagnostic" ] \
-    || die 64 "output, metrics, and diagnostic paths must not already exist"
-  [ ! -L "$output" ] && [ ! -L "$metrics" ] && [ ! -L "$diagnostic" ] \
-    || die 64 "output, metrics, and diagnostic paths must not be symlinks"
-  local norm_output norm_metrics norm_diagnostic
+  if [ -e "$output" ] || [ -e "$metrics" ] || [ -e "$diagnostic" ] ||
+     { [ "$evaluation" = 1 ] && [ -e "$commit" ]; }; then
+    die 64 "output, metrics, diagnostic, and commit paths must not already exist"
+  fi
+  if [ -L "$output" ] || [ -L "$metrics" ] || [ -L "$diagnostic" ] ||
+     { [ "$evaluation" = 1 ] && [ -L "$commit" ]; }; then
+    die 64 "output, metrics, diagnostic, and commit paths must not be symlinks"
+  fi
+  local norm_output norm_metrics norm_diagnostic norm_commit
   norm_output="$(normalized_destination "$output")"
   norm_metrics="$(normalized_destination "$metrics")"
   norm_diagnostic="$(normalized_destination "$diagnostic")"
+  norm_commit="$(normalized_destination "$commit")"
   [ "$norm_output" != "$norm_metrics" ] || die 64 "output and metrics paths resolve to the same file"
   [ "$norm_output" != "$norm_diagnostic" ] && [ "$norm_metrics" != "$norm_diagnostic" ] \
     || die 64 "path collides with reserved diagnostic path"
+  if [ "$evaluation" = 1 ]; then
+    [ "$norm_commit" != "$norm_output" ] && [ "$norm_commit" != "$norm_metrics" ] \
+      && [ "$norm_commit" != "$norm_diagnostic" ] || die 64 "commit path collision"
+  fi
   case "$output" in "$workdir"/*) die 64 "read-only lane output must be outside workdir" ;; esac
   case "$metrics" in "$workdir"/*) die 64 "read-only lane metrics must be outside workdir" ;; esac
   case "$diagnostic" in "$workdir"/*) die 64 "read-only lane diagnostic must be outside workdir" ;; esac
 
-  local tmp body response stderr_file http_code started curl_rc=0 curl_config provider_model=""
+  local body response stderr_file http_code started curl_rc=0 curl_config provider_model=""
   local phase="" reason="" final_rc=0
-  tmp="$(mktemp -d "${TMPDIR:-/tmp}/delegation-qwen.XXXXXX")"
-  RUN_TMP="$tmp"
-  trap cleanup_run EXIT
   body="$tmp/request.json"; response="$tmp/response.json"; stderr_file="$tmp/stderr"
   curl_config="$tmp/curl.conf"; started="$(date +%s)"
   : >"$response"; : >"$stderr_file"
   RUN_OUTPUT_TMP="$(mktemp "$output_parent/.$output_name.XXXXXX")"
   RUN_METRICS_TMP="$(mktemp "$metrics_parent/.$metrics_name.XXXXXX")"
-  jq -n --arg model "$MODEL" --rawfile prompt "$prompt_file" --arg effort "$effort" \
-    '{model:$model,messages:[{role:"user",content:$prompt}],max_tokens:4096,reasoning_effort:$effort}' >"$body"
+  if [ "$evaluation" = 1 ]; then
+    RUN_COMMIT_TMP="$(mktemp "$output_parent/.$output_name.commit.XXXXXX")"
+  fi
+  local max_tokens=4096
+  # Evaluation runs annotate whole policy documents; 4096 truncated them.
+  [ "$evaluation" = 0 ] || max_tokens=16384
+  jq -n --arg model "$MODEL" --rawfile prompt "$dispatch_prompt" --arg effort "$effort" \
+    --argjson max_tokens "$max_tokens" \
+    '{model:$model,messages:[{role:"user",content:$prompt}],max_tokens:$max_tokens,reasoning_effort:$effort}' >"$body"
   # Keep the bearer token out of the process argv. The runner-wide umask makes
   # this transient curl config mode 600, and the EXIT trap removes it.
   printf 'header = "Authorization: Bearer %s"\nheader = "Content-Type: application/json"\n' \
@@ -321,26 +347,74 @@ run_command() {
   if [ "$final_rc" -eq 0 ] && [ "$evaluation" = 1 ] && [ "$(wc -m <"$RUN_OUTPUT_TMP" | tr -d ' ')" -gt "$EVALUATION_MAX_OUTPUT_CHARS" ]; then
     phase=extract; reason=output_limit_exceeded; final_rc=70
   fi
+  # A successful evaluation publishes its attempt receipt or publishes nothing.
+  # Every field is recomputed here from local state the manifest already bound;
+  # nothing is accepted from the caller.
+  local raw_output_sha256=""
+  if [ "$final_rc" -eq 0 ] && [ "$evaluation" = 1 ]; then
+    raw_output_sha256="$(sha256_file "$RUN_OUTPUT_TMP")" || raw_output_sha256=""
+    if [ -z "$raw_output_sha256" ] || [ -z "${EVALUATION_MANIFEST_SHA256:-}" ] ||
+       [ -z "${EVALUATION_PROMPT_SHA256:-}" ] || [ -z "${EVALUATION_RUNNER_SOURCE_COMMIT:-}" ] ||
+       [ -z "${EVALUATION_RUNNER_SHA256:-}" ]; then
+      phase=extract; reason=receipt_uncomputable; final_rc=70
+    fi
+  fi
   if [ "$final_rc" -eq 0 ] && ! jq -n --arg model "$provider_model" --arg effort "$effort" \
     --arg lane "$lane" --argjson started "$started" \
     --argjson input "$(jq '.usage.prompt_tokens // 0' "$response")" \
     --argjson output_tokens "$(jq '.usage.completion_tokens // 0' "$response")" \
+    --argjson evaluation "$evaluation" \
+    --arg manifest_sha256 "${EVALUATION_MANIFEST_SHA256:-}" \
+    --arg prompt_sha256 "${EVALUATION_PROMPT_SHA256:-}" \
+    --arg source_commit "${EVALUATION_RUNNER_SOURCE_COMMIT:-}" \
+    --arg runner_sha256 "${EVALUATION_RUNNER_SHA256:-}" \
+    --arg raw_output_sha256 "$raw_output_sha256" \
     '{model:$model,backend:"token-plan-openai",effort:$effort,lane:$lane,
       started_at_epoch:$started,finished_at_epoch:now,billing:"credits",
       provider_cost_usd:null,tokens:{input:$input,output:$output_tokens,
-      reasoning:0,cache_read:0,cache_write:0}}' >"$RUN_METRICS_TMP"; then
+      reasoning:0,cache_read:0,cache_write:0}} +
+    (if $evaluation == 1 then {evaluation_receipt:{
+      schema_version:"delegation_policy_annotation_attempt_receipt_v1",
+      evaluation_manifest_sha256:$manifest_sha256,
+      prompt_sha256:$prompt_sha256,
+      runner_source_commit:$source_commit,
+      runner_sha256:$runner_sha256,
+      raw_output_sha256:$raw_output_sha256,
+      provider_attempts:1,
+      post_observation_retries:0}} else {} end)' >"$RUN_METRICS_TMP"; then
     phase=extract; reason=metrics_write_failed; final_rc=70
   fi
+  if [ "$final_rc" -eq 0 ] && [ "$evaluation" = 1 ]; then
+    metrics_sha256="$(sha256_file "$RUN_METRICS_TMP")" || metrics_sha256=""
+    if [ -z "$metrics_sha256" ] || ! jq -n \
+      --arg raw_output_sha256 "$raw_output_sha256" \
+      --arg metrics_sha256 "$metrics_sha256" \
+      --arg manifest_sha256 "$EVALUATION_MANIFEST_SHA256" \
+      '{schema_version:"delegation_policy_annotation_publication_commit_v1",
+        raw_output_sha256:$raw_output_sha256,metrics_sha256:$metrics_sha256,
+        evaluation_manifest_sha256:$manifest_sha256}' >"$RUN_COMMIT_TMP"; then
+      phase=extract; reason=commit_marker_write_failed; final_rc=70
+    fi
+  fi
   if [ "$final_rc" -eq 0 ]; then
-    if ! mv "$RUN_METRICS_TMP" "$metrics"; then
-      phase=publish; reason=metrics_publish_failed; final_rc=70
+    if ! mv "$RUN_OUTPUT_TMP" "$output"; then
+      rm -f -- "$output"
+      phase=publish; reason=output_publish_failed; final_rc=70
     else
-      RUN_METRICS_TMP=""
-      if ! mv "$RUN_OUTPUT_TMP" "$output"; then
-        rm -f -- "$metrics"
-        phase=publish; reason=output_publish_failed; final_rc=70
+      RUN_OUTPUT_TMP=""
+      if ! mv "$RUN_METRICS_TMP" "$metrics"; then
+        rm -f -- "$output" "$metrics"
+        phase=publish; reason=metrics_publish_failed; final_rc=70
       else
-        RUN_OUTPUT_TMP=""
+        RUN_METRICS_TMP=""
+        if [ "$evaluation" = 1 ]; then
+          if ! mv "$RUN_COMMIT_TMP" "$commit"; then
+            rm -f -- "$output" "$metrics" "$commit"
+            phase=publish; reason=commit_publish_failed; final_rc=70
+          else
+            RUN_COMMIT_TMP=""
+          fi
+        fi
       fi
     fi
   fi

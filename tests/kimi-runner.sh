@@ -103,7 +103,7 @@ cat >"$TMP/bin/gtimeout" <<'EOF'
 #!/usr/bin/env bash
 set -euo pipefail
 seconds="${1:-}"; shift
-case " $* " in *' TIMEOUT_EVALUATION '*) exit 124 ;; esac
+case "$*" in *TIMEOUT_EVALUATION*) exit 124 ;; esac
 exec "$@"
 EOF
 
@@ -298,12 +298,111 @@ PATH="/usr/bin:/bin" KIMI_CODE_HOME="$TMP/missing-kimi-home" \
   >/dev/null 2>&1 || rc=$?
 [ "$rc" = 78 ] || fail "disabled judgement evaluation returned $rc"
 
+EVAL_HEAD="$(git -C "$ROOT" rev-parse HEAD)"
 run_kimi run --lane policy-annotation --evaluation \
   --evaluation-manifest "$TMP/manifest.json" --prompt-file "$TMP/prompt" \
   --output "$TMP/results/evaluation.txt" --workdir "$TMP/work"
 [ "$(cat "$TMP/results/evaluation.txt")" = PONG ] || fail "evaluation output mismatch"
 jq -e '.lane == "policy-annotation" and .effort == "max"' \
   "$TMP/results/evaluation.txt.metrics.json" >/dev/null || fail "evaluation metrics mismatch"
+
+# A successful policy-annotation evaluation publishes the runner-emitted
+# receipt with exactly the bound fields, recomputed here independently.
+jq -e --arg manifest_sha "$MANIFEST_SHA" \
+  --arg prompt_sha "$(sha256 "$TMP/prompt")" \
+  --arg source_commit "$EVAL_HEAD" \
+  --arg runner_sha "$(sha256 "$ROOT/bin/delegation-kimi")" \
+  --arg output_sha "$(sha256 "$TMP/results/evaluation.txt")" \
+  '(.evaluation_receipt | keys | sort) ==
+     ["evaluation_manifest_sha256","post_observation_retries","prompt_sha256",
+      "provider_attempts","raw_output_sha256","runner_sha256",
+      "runner_source_commit","schema_version"] and
+   .evaluation_receipt.schema_version == "delegation_policy_annotation_attempt_receipt_v1" and
+   .evaluation_receipt.evaluation_manifest_sha256 == $manifest_sha and
+   .evaluation_receipt.prompt_sha256 == $prompt_sha and
+   .evaluation_receipt.runner_source_commit == $source_commit and
+   .evaluation_receipt.runner_sha256 == $runner_sha and
+   .evaluation_receipt.raw_output_sha256 == $output_sha and
+   .evaluation_receipt.provider_attempts == 1 and
+   .evaluation_receipt.post_observation_retries == 0' \
+  "$TMP/results/evaluation.txt.metrics.json" >/dev/null \
+  || fail "evaluation receipt mismatch"
+jq -e --arg output_sha "$(sha256 "$TMP/results/evaluation.txt")" \
+  --arg metrics_sha "$(sha256 "$TMP/results/evaluation.txt.metrics.json")" \
+  --arg manifest_sha "$MANIFEST_SHA" \
+  '(keys | sort) == ["evaluation_manifest_sha256","metrics_sha256",
+    "raw_output_sha256","schema_version"] and
+   .schema_version == "delegation_policy_annotation_publication_commit_v1" and
+   .raw_output_sha256 == $output_sha and .metrics_sha256 == $metrics_sha and
+   .evaluation_manifest_sha256 == $manifest_sha' \
+  "$TMP/results/evaluation.txt.commit.json" >/dev/null \
+  || fail "evaluation publication commit mismatch"
+
+rc=0
+run_kimi run --lane policy-annotation --evaluation \
+  --evaluation-manifest "$TMP/manifest.json" --prompt-file "$TMP/prompt" \
+  --output "$TMP/results/kimi-collision.txt" \
+  --metrics "$TMP/results/kimi-collision.txt.commit.json" --workdir "$TMP/work" \
+  >/dev/null 2>&1 || rc=$?
+[ "$rc" = 64 ] || fail "metrics/commit collision returned $rc"
+[ ! -e "$TMP/results/kimi-collision.txt" ] \
+  && [ ! -e "$TMP/results/kimi-collision.txt.commit.json" ] \
+  || fail "metrics/commit collision published artifacts"
+
+mkdir -p "$TMP/mv-fail"
+cat >"$TMP/mv-fail/mv" <<'EOF'
+#!/usr/bin/env bash
+target="${@: -1}"
+if [ "$target" = "${FAIL_MV_TARGET:-}" ]; then
+  printf 'partial\n' >"$target"
+  exit 1
+fi
+exec /bin/mv "$@"
+EOF
+chmod 755 "$TMP/mv-fail/mv"
+for phase in output metrics commit; do
+  out="$TMP/results/kimi-publish-$phase.txt"
+  case "$phase" in
+    output) target="$out" ;;
+    metrics) target="$out.metrics.json" ;;
+    commit) target="$out.commit.json" ;;
+  esac
+  target="$(cd "$(dirname "$target")" && pwd -P)/$(basename "$target")"
+  rc=0
+  FAIL_MV_TARGET="$target" PATH="$TMP/mv-fail:$PATH" \
+    run_kimi run --lane policy-annotation --evaluation \
+    --evaluation-manifest "$TMP/manifest.json" --prompt-file "$TMP/prompt" \
+    --output "$out" --workdir "$TMP/work" >/dev/null 2>&1 || rc=$?
+  [ "$rc" = 70 ] || fail "$phase publication failure returned $rc"
+  [ ! -e "$out" ] && [ ! -e "$out.metrics.json" ] && [ ! -e "$out.commit.json" ] \
+    || fail "$phase publication failure left a published member"
+done
+
+# A receipt that cannot be merged fails closed: exit 70, no output, no metrics.
+# The shim refuses only the runner's receipt-merge jq invocation and delegates
+# every other jq call to the real binary.
+mkdir -p "$TMP/bin-receipt-fail"
+cat >"$TMP/bin-receipt-fail/jq" <<EOF
+#!/usr/bin/env bash
+case " \$* " in *evaluation_receipt*) exit 1 ;; esac
+exec "$(command -v jq)" "\$@"
+EOF
+chmod 755 "$TMP/bin-receipt-fail/jq"
+rc=0
+HOME="$TMP/ambient-home" KIMI_CODE_HOME="$TMP/kimi-home" \
+  TMPDIR="$TMP/runtime" PATH="$TMP/bin-receipt-fail:$TMP/bin:$PATH" \
+  DELEGATION_KIMI_PLATFORM=Darwin \
+  DELEGATION_KIMI_SANDBOX_BIN="$TMP/bin/sandbox-exec" \
+  DELEGATION_KIMI_SHLOCK_BIN="$TMP/bin/shlock" \
+  LEAK_ME=secret ZAI_API_KEY=secret \
+  "$ROOT/bin/delegation-kimi" run --lane policy-annotation --evaluation \
+  --evaluation-manifest "$TMP/manifest.json" --prompt-file "$TMP/prompt" \
+  --output "$TMP/results/receipt-fail.txt" --workdir "$TMP/work" \
+  >/dev/null 2>&1 || rc=$?
+[ "$rc" = 70 ] || fail "receipt merge failure returned $rc"
+[ ! -e "$TMP/results/receipt-fail.txt" ] || fail "receipt failure published output"
+[ ! -e "$TMP/results/receipt-fail.txt.metrics.json" ] \
+  || fail "receipt failure published metrics"
 
 printf '%s\n' 'TIMEOUT_EVALUATION' >"$TMP/timeout-prompt"
 cp "$TMP/manifest.json" "$TMP/timeout-manifest.json"
@@ -341,6 +440,11 @@ jq -e '
   .sandbox == "macos-sandbox-exec" and .process_exec == false and
   .oauth_refresh_persistence == "serialized-atomic-sync"
 ' "$TMP/results/scout.txt.metrics.json" >/dev/null || fail "scout metrics mismatch"
+# Ordinary (non-evaluation) runs never claim the evaluation receipt.
+jq -e 'has("evaluation_receipt") | not' "$TMP/results/scout.txt.metrics.json" >/dev/null \
+  || fail "non-evaluation run claimed an evaluation receipt"
+[ ! -e "$TMP/results/scout.txt.commit.json" ] \
+  || fail "non-evaluation run wrote an evaluation commit marker"
 
 # Kimi rotates its refresh token inside the isolated HOME. The parent runner
 # must copy the validated result back atomically so the next invocation starts
