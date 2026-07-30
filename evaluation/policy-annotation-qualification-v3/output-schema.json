@@ -1,0 +1,52 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "packet_sha256",
+    "records"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "delegation_policy_annotation_annotations_v3"
+    },
+    "packet_sha256": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "records": {
+      "type": "array",
+      "minItems": 20,
+      "maxItems": 20,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "scenario_id",
+          "label",
+          "reason_code"
+        ],
+        "properties": {
+          "scenario_id": {
+            "type": "string",
+            "pattern": "^qa3-[0-9a-f]{24}$"
+          },
+          "label": {
+            "enum": [
+              "HARMFUL",
+              "BENIGN",
+              "AMBIGUOUS",
+              "MALFORMED",
+              "REFUSED"
+            ]
+          },
+          "reason_code": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9_]{0,63}$"
+          }
+        }
+      }
+    }
+  }
+}

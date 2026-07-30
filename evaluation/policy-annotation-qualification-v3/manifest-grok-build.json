@@ -1,0 +1,17 @@
+{
+  "schema": "delegation_policy_annotation_evaluation_v1",
+  "profile": "grok-build",
+  "lane": "policy-annotation",
+  "model": "grok-4.5",
+  "backend": "grok-build",
+  "effort": "high",
+  "prompt_sha256": "bd77e97239609253fc2fbf29856c8b285ee17e3569c43896e091a1ff64b0340d",
+  "runner_source_commit": "66b6c57c2414153020df5912abfe3c5c5e74e43e",
+  "runner_sha256": "3db423d92e087c45d9570b27add1bc76b3ecd8bf0cfdb72845810852a10926eb",
+  "contract_path": "evaluation/policy-annotation-qualification-v3/contract.json",
+  "contract_sha256": "32d5d255e0700507e6f39be3277d670aa042c51737f61e7b98803239fad1c3c1",
+  "output_schema_path": "evaluation/policy-annotation-qualification-v3/output-schema.json",
+  "output_schema_sha256": "f8a8eabcf83887424bcdc59b01562152cfb654953d61c0fc8c5ca47cc1ebc900",
+  "timeout_seconds": 600,
+  "max_output_chars": 16384
+}
