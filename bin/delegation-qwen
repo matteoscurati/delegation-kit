@@ -36,12 +36,17 @@ Usage:
     [--effort <auto|none|minimal|low|medium|high|xhigh|max>] \
     [--backend <auto|token-plan-openai>] --prompt-file <path> \
     --output <path> --workdir <path> [--metrics <path>] \
-    [--debug-dir <path>] [--evaluation --evaluation-manifest <path>]
+    [--debug-dir <path>] [--evaluation --evaluation-manifest <path>] \
+    [--preflight-only]
 
 Normal dispatch is refused while lanes are candidate/disabled. --evaluation is
 reserved for allowlisted controlled qualification runs of candidate lanes, never
 promotes or mutates a gate, and adds no operational route. Policy-annotation
-does not qualify broad architecture/trade-off judgement.
+does not qualify broad architecture/trade-off judgement. --preflight-only is
+valid only with --evaluation and --evaluation-manifest: it traverses the same
+pre-provider validation path as the real evaluation run, prints a
+delegation_policy_annotation_preflight_receipt_v1 receipt on stdout, and exits
+zero before provider dispatch and before any caller-visible artifact exists.
 
 Exit codes: 64 invalid input, 69 unavailable/authentication failure,
 70 dispatch/extract failure, 75 temporary/rate-limit failure, 78 routing gate
@@ -152,6 +157,29 @@ evaluation_manifest() {
   EVALUATION_PROMPT_SHA256="$expected_hash"
   EVALUATION_RUNNER_SOURCE_COMMIT="$source_head"
   EVALUATION_RUNNER_SHA256="$runner_hash"
+  EVALUATION_CONTRACT_SHA256="$contract_hash"
+  EVALUATION_OUTPUT_SCHEMA_SHA256="$output_schema_hash"
+}
+
+# Success stdout for --preflight-only: exactly one JSON object, every value
+# recomputed by the validation path above, never taken from caller input.
+print_preflight_receipt() {
+  local lane="$1" effort="$2"
+  jq -n --arg profile "qwen3.8-max-preview" --arg model "$MODEL" --arg backend "$BACKEND" \
+    --arg effort "$effort" --arg lane "$lane" \
+    --arg manifest_sha256 "$EVALUATION_MANIFEST_SHA256" \
+    --arg prompt_sha256 "$EVALUATION_PROMPT_SHA256" \
+    --arg source_commit "$EVALUATION_RUNNER_SOURCE_COMMIT" \
+    --arg runner_sha256 "$EVALUATION_RUNNER_SHA256" \
+    --arg contract_sha256 "$EVALUATION_CONTRACT_SHA256" \
+    --arg output_schema_sha256 "$EVALUATION_OUTPUT_SCHEMA_SHA256" \
+    '{schema_version:"delegation_policy_annotation_preflight_receipt_v1",
+      status:"READY_NO_PROVIDER_CALL",
+      profile:$profile,model:$model,backend:$backend,effort:$effort,lane:$lane,
+      evaluation_manifest_sha256:$manifest_sha256,prompt_sha256:$prompt_sha256,
+      runner_source_commit:$source_commit,runner_sha256:$runner_sha256,
+      contract_sha256:$contract_sha256,output_schema_sha256:$output_schema_sha256,
+      provider_dispatch_started:false,provider_attempts:0,post_observation_retries:0}'
 }
 
 DEBUG_RUN_DIR=""
@@ -209,7 +237,7 @@ print_check() {
 }
 
 run_command() {
-  local lane="" effort=auto backend=auto prompt_file="" output="" workdir="" metrics="" debug_dir="" evaluation=0 evaluation_manifest_path=""
+  local lane="" effort=auto backend=auto prompt_file="" output="" workdir="" metrics="" debug_dir="" evaluation=0 evaluation_manifest_path="" preflight_only=0
   while [ "$#" -gt 0 ]; do
     case "$1" in
       --lane) lane="${2:-}"; shift 2 ;; --effort) effort="${2:-}"; shift 2 ;;
@@ -218,6 +246,7 @@ run_command() {
       --metrics) metrics="${2:-}"; shift 2 ;; --debug-dir) debug_dir="${2:-}"; shift 2 ;;
       --evaluation) evaluation=1; shift ;;
       --evaluation-manifest) evaluation_manifest_path="${2:-}"; shift 2 ;;
+      --preflight-only) preflight_only=1; shift ;;
       -h|--help) usage; exit 0 ;; *) die 64 "unknown run argument: $1" ;;
     esac
   done
@@ -230,6 +259,8 @@ run_command() {
   else
     [ -z "$evaluation_manifest_path" ] || die 64 "--evaluation-manifest requires --evaluation"
   fi
+  [ "$preflight_only" = 0 ] || [ "$evaluation" = 1 ] \
+    || die 64 "--preflight-only requires --evaluation and --evaluation-manifest"
   [ -d "$workdir" ] || die 64 "workdir missing: $workdir"
   [ -n "$output" ] || die 64 "--output is required"
   [ -z "$debug_dir" ] || {
@@ -300,6 +331,14 @@ run_command() {
   case "$output" in "$workdir"/*) die 64 "read-only lane output must be outside workdir" ;; esac
   case "$metrics" in "$workdir"/*) die 64 "read-only lane metrics must be outside workdir" ;; esac
   case "$diagnostic" in "$workdir"/*) die 64 "read-only lane diagnostic must be outside workdir" ;; esac
+
+  # Preflight ends here: every pre-provider check the real evaluation run makes
+  # has passed, and nothing caller-visible has been created. Exit before the
+  # request body, curl config, and staged temp files below exist.
+  if [ "$preflight_only" = 1 ]; then
+    print_preflight_receipt "$lane" "$effort" || die 70 "could not emit preflight receipt"
+    exit 0
+  fi
 
   local body response stderr_file http_code started curl_rc=0 curl_config provider_model=""
   local phase="" reason="" final_rc=0

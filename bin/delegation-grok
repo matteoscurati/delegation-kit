@@ -43,12 +43,18 @@ Usage:
     [--effort <auto|high>] [--backend <auto|grok-build>] \
     --prompt-file <path> --output <path> --workdir <path> \
     [--metrics <path>] [--debug-dir <existing-private-directory>] \
-    [--allow-provisional] [--evaluation --evaluation-manifest <path>]
+    [--allow-provisional] [--evaluation --evaluation-manifest <path>] \
+    [--preflight-only]
 
 `pin` archives a capability-compatible CLI build into a private store so a
 vendor auto-update of the ambient CLI never disturbs the selected lane. The
 runner resolves its binary in this order: DELEGATION_GROK_BIN, the private
 archive, then `grok` on PATH. CLI version is recorded as provenance only.
+--preflight-only is valid only with --evaluation and --evaluation-manifest: it
+traverses the same pre-provider validation path as the real evaluation run,
+prints a delegation_policy_annotation_preflight_receipt_v1 receipt on stdout,
+and exits zero before provider dispatch and before any caller-visible artifact
+exists.
 
 Exit codes: 64 invalid input, 69 unavailable/authentication failure,
 70 dispatch/extract failure, 75 temporary/rate-limit failure,
@@ -60,7 +66,7 @@ die() { local code="$1"; shift; printf 'delegation-grok: %s\n' "$*" >&2; exit "$
 have() { command -v "$1" >/dev/null 2>&1; }
 
 evaluation_manifest() {
-  local manifest="$1" prompt_file="$2" manifest_hash prompt_hash source_head contract schema runner_hash
+  local manifest="$1" prompt_file="$2" manifest_hash prompt_hash source_head contract schema runner_hash contract_hash schema_hash
   [ -f "$manifest" ] && [ ! -L "$manifest" ] || die 78 "evaluation manifest is missing or symlinked"
   manifest_hash="$(file_digest "$manifest")" || die 69 "sha256 tool is required for evaluation"
   prompt_hash="$(file_digest "$prompt_file")" || die 69 "sha256 tool is required for evaluation"
@@ -68,7 +74,9 @@ evaluation_manifest() {
   contract="$(jq -r '.contract_path // empty' "$manifest" 2>/dev/null)"; schema="$(jq -r '.output_schema_path // empty' "$manifest" 2>/dev/null)"; case "$contract" in /*|*..*) die 78 "evaluation contract_path must be root-relative";; esac; case "$schema" in /*|*..*) die 78 "evaluation output_schema_path must be root-relative";; esac; contract="$ROOT/$contract"; schema="$ROOT/$schema"; runner_hash="$(file_digest "$SOURCE")" || die 69 "sha256 tool is required for evaluation"
   [ -n "$contract" ] && [ -n "$schema" ] && [ -f "$contract" ] && [ ! -L "$contract" ] && [ -f "$schema" ] && [ ! -L "$schema" ] || die 78 "evaluation contract or schema is missing or symlinked"
   git -C "$ROOT" diff --quiet && git -C "$ROOT" diff --cached --quiet && [ -z "$(git -C "$ROOT" ls-files --others --exclude-standard)" ] || die 78 "runner source checkout is dirty"
-  jq -e --arg prompt_sha256 "$prompt_hash" --arg contract_sha256 "$(file_digest "$contract")" --arg schema_sha256 "$(file_digest "$schema")" --arg runner_sha256 "$runner_hash" '
+  contract_hash="$(file_digest "$contract")" || die 69 "sha256 tool is required for evaluation"
+  schema_hash="$(file_digest "$schema")" || die 69 "sha256 tool is required for evaluation"
+  jq -e --arg prompt_sha256 "$prompt_hash" --arg contract_sha256 "$contract_hash" --arg schema_sha256 "$schema_hash" --arg runner_sha256 "$runner_hash" '
     (keys | sort) == ["backend","contract_path","contract_sha256","effort","lane","max_output_chars","model","output_schema_path","output_schema_sha256","profile","prompt_sha256","runner_sha256","runner_source_commit","schema","timeout_seconds"] and
     .schema == "delegation_policy_annotation_evaluation_v1" and .profile == "grok-build" and .lane == "policy-annotation" and .model == "grok-4.5" and .backend == "grok-build" and .effort == "high" and .prompt_sha256 == $prompt_sha256 and .contract_sha256 == $contract_sha256 and .output_schema_sha256 == $schema_sha256 and
     .runner_sha256 == $runner_sha256 and ([.prompt_sha256,.contract_sha256,.output_schema_sha256,.runner_sha256] | all(test("^[0-9a-f]{64}$"))) and (.runner_source_commit | test("^[0-9a-f]{40}$")) and
@@ -83,6 +91,29 @@ evaluation_manifest() {
   EVALUATION_PROMPT_SHA256="$prompt_hash"
   EVALUATION_RUNNER_SOURCE_COMMIT="$source_head"
   EVALUATION_RUNNER_SHA256="$runner_hash"
+  EVALUATION_CONTRACT_SHA256="$contract_hash"
+  EVALUATION_OUTPUT_SCHEMA_SHA256="$schema_hash"
+}
+
+# Success stdout for --preflight-only: exactly one JSON object, every value
+# recomputed by the validation path above, never taken from caller input.
+print_preflight_receipt() {
+  local lane="$1" effort="$2"
+  jq -n --arg profile "grok-build" --arg model "$MODEL" --arg backend "$BACKEND" \
+    --arg effort "$effort" --arg lane "$lane" \
+    --arg manifest_sha256 "$EVALUATION_MANIFEST_SHA256" \
+    --arg prompt_sha256 "$EVALUATION_PROMPT_SHA256" \
+    --arg source_commit "$EVALUATION_RUNNER_SOURCE_COMMIT" \
+    --arg runner_sha256 "$EVALUATION_RUNNER_SHA256" \
+    --arg contract_sha256 "$EVALUATION_CONTRACT_SHA256" \
+    --arg output_schema_sha256 "$EVALUATION_OUTPUT_SCHEMA_SHA256" \
+    '{schema_version:"delegation_policy_annotation_preflight_receipt_v1",
+      status:"READY_NO_PROVIDER_CALL",
+      profile:$profile,model:$model,backend:$backend,effort:$effort,lane:$lane,
+      evaluation_manifest_sha256:$manifest_sha256,prompt_sha256:$prompt_sha256,
+      runner_source_commit:$source_commit,runner_sha256:$runner_sha256,
+      contract_sha256:$contract_sha256,output_schema_sha256:$output_schema_sha256,
+      provider_dispatch_started:false,provider_attempts:0,post_observation_retries:0}'
 }
 
 pinned_bin_path() { printf '%s/current/grok' "$GROK_BIN_STORE"; }
@@ -443,7 +474,7 @@ preserve_debug() {
 
 run_command() {
   local lane="" effort="auto" backend="auto" prompt_file="" output="" workdir="" metrics="" debug_dir="" evaluation_manifest_path=""
-  local allow_provisional=0 evaluation=0
+  local allow_provisional=0 evaluation=0 preflight_only=0
   while [ "$#" -gt 0 ]; do
     case "$1" in
       --lane) lane="${2:-}"; shift 2 ;;
@@ -457,6 +488,7 @@ run_command() {
       --allow-provisional) allow_provisional=1; shift ;;
       --evaluation) evaluation=1; shift ;;
       --evaluation-manifest) evaluation_manifest_path="${2:-}"; shift 2 ;;
+      --preflight-only) preflight_only=1; shift ;;
       -h|--help) usage; exit 0 ;;
       *) die 64 "unknown run argument: $1" ;;
     esac
@@ -467,6 +499,7 @@ run_command() {
   [ -f "$prompt_file" ] || die 64 "prompt file missing: $prompt_file"
   [ -s "$prompt_file" ] || die 64 "prompt file must not be empty"
   if [ "$evaluation" = 1 ]; then [ -n "$evaluation_manifest_path" ] || die 64 "--evaluation requires --evaluation-manifest"; else [ -z "$evaluation_manifest_path" ] || die 64 "--evaluation-manifest requires --evaluation"; fi
+  [ "$preflight_only" = 0 ] || [ "$evaluation" = 1 ] || die 64 "--preflight-only requires --evaluation and --evaluation-manifest"
   [ -d "$workdir" ] || die 64 "workdir missing: $workdir"
   [ -z "$debug_dir" ] || [ -d "$debug_dir" ] || die 64 "debug directory missing: $debug_dir"
   [ -n "$output" ] || die 64 "--output is required"
@@ -524,12 +557,26 @@ run_command() {
     if [ -n "$debug_dir" ]; then case "$debug_dir" in "$workdir"|"$workdir"/*) die 64 "policy-annotation debug directory must be outside workdir" ;; esac; fi
   fi
 
+  # Isolation attestation is workdir-bound: project configuration under the
+  # workdir can enable surfaces the isolated home alone forbids. Prepare and
+  # inspect it here, before any receipt, so an evaluation preflight traverses
+  # exactly the same isolation path as the real dispatch, which reuses this
+  # prepared state below instead of repeating it.
+  prepare_isolated_home "$RUN_TMP/home" || die 69 "$GROK_REASON"
+  inspect_isolation "$RUN_TMP/home" "$RUN_TMP/inspect.json" "$workdir" || die 69 "$GROK_REASON"
+
+  # Preflight ends here: every pre-provider check the real evaluation run makes
+  # has passed, and nothing caller-visible has been created. Exit before
+  # sandbox attestation and CLI invocation below.
+  if [ "$preflight_only" = 1 ]; then
+    print_preflight_receipt "$lane" "$effort" || die 70 "could not emit preflight receipt"
+    exit 0
+  fi
+
   local response result_tmp metrics_tmp stderr_file rc=0 started timer reason phase
   local DEBUG_PATH=""
   response="$RUN_TMP/response.json"; result_tmp="$RUN_TMP/result.txt"
   metrics_tmp="$RUN_TMP/metrics.json"; stderr_file="$RUN_TMP/stderr.txt"
-  prepare_isolated_home "$RUN_TMP/home" || die 69 "$GROK_REASON"
-  inspect_isolation "$RUN_TMP/home" "$RUN_TMP/inspect.json" "$workdir" || die 69 "$GROK_REASON"
   timer="$(timeout_bin)" || die 69 "timeout or gtimeout is required"
   started="$(date +%s)"
   local execution_timeout="$TIMEOUT_SECONDS"
