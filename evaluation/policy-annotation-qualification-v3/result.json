@@ -1,0 +1,89 @@
+{
+  "schema_version": "delegation_policy_annotation_qualification_result_v3",
+  "protocol_id": "policy-annotation-qualification-v3",
+  "status": "PANEL_FORMED_KIMI_PREINFERENCE_AUTH_PENDING",
+  "source_commit": "2d366e631171580b2ef16330572e4d4c074ebba3",
+  "contract_sha256": "32d5d255e0700507e6f39be3277d670aa042c51737f61e7b98803239fad1c3c1",
+  "packet_sha256": "aaa77980d4058faf6963f7470051b910d1f2b98a44bc75f67cadc6c3d116cb65",
+  "prompt_sha256": "bd77e97239609253fc2fbf29856c8b285ee17e3569c43896e091a1ff64b0340d",
+  "hidden_construction_key_sha256": "d4bbfa874d207d8fe0f75d49fc1e4722cb7759d92a766c527baed4c7ed097664",
+  "carry_forward_qualifications": [
+    {
+      "profile": "qwen3.8-max-preview",
+      "source_protocol_id": "policy-annotation-qualification-v2",
+      "outcome": "QUALIFIED"
+    },
+    {
+      "profile": "sol-max-policy-annotator",
+      "source_protocol_id": "policy-annotation-qualification-v2",
+      "outcome": "QUALIFIED"
+    }
+  ],
+  "candidates": [
+    {
+      "profile": "grok-build",
+      "requested_model": "grok-4.5",
+      "observed_model": "grok-4.5",
+      "usage_model": "grok-4.5-build",
+      "effort": "high",
+      "outcome": "QUALIFIED",
+      "identity_exact": true,
+      "structured_records": 20,
+      "binary_records": 20,
+      "construction_matches": 20,
+      "provider_attempts": 1,
+      "post_observation_retries": 0,
+      "raw_output_sha256": "3a67a4f01ec24ead789fae8a5292390062df6d5cb4e95b545514f0d2cd18b501",
+      "metrics_sha256": "8fab47492a3fd3e899e479cc4787686a58b0c0699aa5fa880233c360feecca8a",
+      "provider_cost_usd": 0.0192912
+    },
+    {
+      "profile": "glm-policy-annotation",
+      "requested_model": "glm-5.2",
+      "observed_model": "glm-5.2",
+      "effort": "high",
+      "outcome": "VOID_OUTPUT_PROTOCOL_VIOLATION_AND_REPOSITORY_CONTEXT_CONTAMINATION",
+      "identity_exact": true,
+      "structured_records": 0,
+      "embedded_records": 20,
+      "embedded_binary_records": 20,
+      "embedded_construction_matches": 20,
+      "provider_attempts": 1,
+      "post_observation_retries": 0,
+      "failure_detail": "The output contained prose before the JSON and referred to a repository plan file, violating the exact-output and no-repository-context contract.",
+      "raw_output_sha256": "075ef2d9c2aca79856417b350aa782349cf9908a1ba229705557b9a58317f612",
+      "metrics_sha256": "d3ff9c2651c3c8117e6feeac2677044ca0fe0af9eabd28696093e3c4049978b1",
+      "provider_cost_usd": 0.27041000000000004
+    },
+    {
+      "profile": "kimi-k3",
+      "requested_model": "kimi-code/k3",
+      "effort": "max",
+      "outcome": "NOT_DISPATCHED_AUTH_PREFLIGHT_FAILED",
+      "identity_exact": false,
+      "structured_records": 0,
+      "construction_matches": 0,
+      "provider_attempts": 0,
+      "post_observation_retries": 0,
+      "failure_detail": "The non-evaluative scout preflight failed before inference with auth.login_required. The v3 prompt has not been dispatched to Kimi.",
+      "preflight_stderr_sha256": "0b42c9f1e0f34d4bca7a1b43e120eae7f87708e75a21f45b62d2fb66cc9840d9"
+    }
+  ],
+  "panel": {
+    "qualified_candidates": [
+      "qwen3.8-max-preview",
+      "sol-max-policy-annotator",
+      "grok-build"
+    ],
+    "qualified_count": 3,
+    "minimum_required": 3,
+    "formed": true,
+    "development_bank_annotation_authorized": true,
+    "development_bank_annotation_started": false
+  },
+  "human_gold": false,
+  "training_authorized": false,
+  "promotion_evidence": false,
+  "promotion_authorized": false,
+  "deployment_authorized": false
+}
