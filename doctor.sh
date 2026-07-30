@@ -10,7 +10,8 @@
 #   --ping-glm does a separate paid GLM-5.2 ping, but only for a qualified lane.
 #   --ping-kimi does a separate Kimi K3 ping, but only for a qualified lane.
 #   --ping-grok does a paid Grok 4.5 ping through its provisional builder gate.
-# Env overrides (for testing): CLAUDE_HOME (default ~/.claude), CODEX_HOME (~/.codex)
+# Env overrides (for testing): CLAUDE_HOME (default ~/.claude), CODEX_HOME (~/.codex),
+#   DELEGATION_DATA_HOME (~/.local/share/delegation-kit)
 set -uo pipefail
 shopt -s nullglob   # unmatched globs vanish instead of staying literal
 # CONVENTION — never test a search as `find … | grep -q` under `pipefail`: grep -q exits
@@ -22,6 +23,7 @@ shopt -s nullglob   # unmatched globs vanish instead of staying literal
 KIT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 CLAUDE_HOME="${CLAUDE_HOME:-$HOME/.claude}"
 CODEX_HOME="${CODEX_HOME:-$HOME/.codex}"
+DATA_HOME="${DELEGATION_DATA_HOME:-$HOME/.local/share/delegation-kit}"
 BEGIN="<!-- >>> delegation-kit >>> -->"
 DO_PING=0
 DO_GLM_PING=0
@@ -231,6 +233,73 @@ elif have delegation-route; then
   fi
 else
   warn "delegation-route not installed — re-run ./install.sh"
+fi
+
+# ---- installed exact evaluation pack (Dipylon AI jury v2) ----
+# Static check: the installed runners resolve contract_path/output_schema_path
+# relative to $DATA_HOME, so the installed pack must mirror the source pack
+# exactly — same six regular non-symlink JSON files, byte-for-byte. Missing,
+# extra, symlinked, or divergent members are FAIL, not WARN.
+hdr "Dipylon AI jury v2 evaluation pack"
+pack_src="$KIT/evaluation/dipylon-ai-jury-v2"
+pack_dest="$DATA_HOME/evaluation/dipylon-ai-jury-v2"
+# NUL-delimited enumeration throughout: a filename may embed a newline, and
+# line-splitting find output would read one such entry as two apparent names —
+# which could let an extra destination entry escape the membership check below.
+# find's exit status is captured via a mktemp listing file: a plain process
+# substitution discards it, and an unreadable directory (find exit 1) would
+# otherwise enumerate as an empty — and therefore innocent — set.
+pack_src_listing="$(mktemp "${TMPDIR:-/tmp}/delegation-doctor-pack-src.XXXXXX")"
+pack_src_enum=0
+find "$pack_src" -maxdepth 1 -type f -name '*.json' -print0 >"$pack_src_listing" 2>/dev/null || pack_src_enum=$?
+pack_src_files=()
+while IFS= read -r -d '' pack_file; do
+  pack_src_files+=("$pack_file")
+done <"$pack_src_listing"
+rm -f "$pack_src_listing"
+if [ "$pack_src_enum" -ne 0 ]; then
+  bad "cannot enumerate source pack $pack_src (find exit $pack_src_enum) — is this the kit root?"
+elif [ "${#pack_src_files[@]}" != 6 ]; then
+  bad "source pack $pack_src has ${#pack_src_files[@]} regular JSON files, expected 6 — is this the kit root?"
+elif [ -L "$pack_dest" ] || [ ! -d "$pack_dest" ]; then
+  bad "evaluation pack not installed at $pack_dest — re-run ./install.sh"
+else
+  pack_bad=0
+  pack_src_names=()
+  for pack_file in "${pack_src_files[@]}"; do
+    pack_name="$(basename "$pack_file")"
+    pack_src_names+=("$pack_name")
+    if [ -L "$pack_dest/$pack_name" ]; then
+      bad "pack member $pack_name is a symlink — re-run ./install.sh"; pack_bad=1
+    elif [ ! -f "$pack_dest/$pack_name" ]; then
+      bad "pack member $pack_name is missing — re-run ./install.sh"; pack_bad=1
+    elif ! cmp -s "$pack_file" "$pack_dest/$pack_name"; then
+      bad "pack member $pack_name diverges from the source — re-run ./install.sh"; pack_bad=1
+    fi
+  done
+  # Same status capture for the destination: with an execute-only (chmod 111)
+  # pack directory the member files still compare fine above, but find exits 1
+  # on Permission denied — trusting that partial set would let extras pass.
+  pack_dest_listing="$(mktemp "${TMPDIR:-/tmp}/delegation-doctor-pack-dest.XXXXXX")"
+  pack_dest_enum=0
+  find "$pack_dest" -mindepth 1 -maxdepth 1 -print0 >"$pack_dest_listing" 2>/dev/null || pack_dest_enum=$?
+  if [ "$pack_dest_enum" -ne 0 ]; then
+    rm -f "$pack_dest_listing"
+    bad "cannot enumerate installed pack at $pack_dest (find exit $pack_dest_enum) — re-run ./install.sh"; pack_bad=1
+  else
+    while IFS= read -r -d '' pack_entry; do
+      pack_name="$(basename "$pack_entry")"
+      pack_known=0
+      for pack_src_name in "${pack_src_names[@]}"; do
+        [ "$pack_name" = "$pack_src_name" ] && { pack_known=1; break; }
+      done
+      if [ "$pack_known" = 0 ]; then
+        bad "unexpected entry in installed pack: $pack_name — re-run ./install.sh"; pack_bad=1
+      fi
+    done <"$pack_dest_listing"
+    rm -f "$pack_dest_listing"
+  fi
+  [ "$pack_bad" = 0 ] && ok "evaluation pack installed: 6/6 regular JSON files byte-identical to the source"
 fi
 
 # ---- optional GLM-5.2 external executor ----
