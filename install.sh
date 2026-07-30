@@ -193,6 +193,65 @@ chmod 755 "$DATA_HOME/bin/delegation-route"
 ln -sfn "$DATA_HOME/bin/delegation-route" "$BIN_HOME/delegation-route"
 echo "Routing gates -> $BIN_HOME/delegation-route (decisions: $DATA_HOME/config/routing-gates.json)"
 
+# Exact Dipylon AI jury v2 evaluation pack. The installed runners resolve each
+# manifest's contract_path and output_schema_path relative to $DATA_HOME, so the
+# pack must live under $DATA_HOME/evaluation or manifest validation fails. Stage
+# a complete sibling directory, then swap it in: only this exact directory is
+# replaced — nothing else under $DATA_HOME/evaluation is touched — so a stale
+# extra file in the destination cannot survive, and a failed swap restores the
+# previous tree. POSIX rename(2) cannot replace a non-empty directory, so this
+# move-aside-then-move is NOT an atomic exchange; a concurrent reader can
+# briefly observe the pack missing, which the runners already treat as a closed
+# failure.
+EVAL_PACK_SRC="$KIT/evaluation/dipylon-ai-jury-v2"
+EVAL_PACK_DEST="$DATA_HOME/evaluation/dipylon-ai-jury-v2"
+mkdir -p "$DATA_HOME/evaluation"
+# NUL-delimited enumeration: a JSON filename containing a newline would be
+# mis-counted (and mis-copied) by line-splitting find output. Copy order is
+# irrelevant, so no sort is needed. find's exit status is captured via a mktemp
+# listing file — a process substitution would discard it, and a partially
+# enumerated source must abort the install, not silently copy a short set.
+eval_pack_listing="$(mktemp "${TMPDIR:-/tmp}/delegation-kit-pack-src.XXXXXX")"
+eval_pack_enum=0
+find "$EVAL_PACK_SRC" -maxdepth 1 -type f -name '*.json' -print0 >"$eval_pack_listing" || eval_pack_enum=$?
+eval_pack_files=()
+while IFS= read -r -d '' eval_file; do
+  eval_pack_files+=("$eval_file")
+done <"$eval_pack_listing"
+rm -f "$eval_pack_listing"
+if [ "$eval_pack_enum" -ne 0 ]; then
+  echo "error: cannot enumerate $EVAL_PACK_SRC (find exit $eval_pack_enum)" >&2
+  exit 1
+fi
+if [ "${#eval_pack_files[@]}" -ne 6 ]; then
+  echo "error: expected exactly 6 regular JSON files in $EVAL_PACK_SRC, found ${#eval_pack_files[@]}" >&2
+  exit 1
+fi
+eval_stage="$(mktemp -d "$DATA_HOME/evaluation/.dipylon-ai-jury-v2.stage.XXXXXX")"
+cp "${eval_pack_files[@]}" "$eval_stage/"
+eval_old=""
+if [ -e "$EVAL_PACK_DEST" ] || [ -L "$EVAL_PACK_DEST" ]; then
+  eval_old="$(mktemp -d "$DATA_HOME/evaluation/.dipylon-ai-jury-v2.prev.XXXXXX")"
+  rmdir "$eval_old"   # claim the unique name for the move-aside
+  if ! mv "$EVAL_PACK_DEST" "$eval_old"; then
+    rm -rf "$eval_stage"
+    echo "error: cannot move existing $EVAL_PACK_DEST aside — pack left untouched" >&2
+    exit 1
+  fi
+fi
+if ! mv "$eval_stage" "$EVAL_PACK_DEST"; then
+  if [ -n "$eval_old" ]; then
+    mv "$eval_old" "$EVAL_PACK_DEST"
+    echo "error: failed to install the evaluation pack — previous tree restored" >&2
+  else
+    rm -rf "$eval_stage"
+    echo "error: failed to install the evaluation pack" >&2
+  fi
+  exit 1
+fi
+[ -z "$eval_old" ] || rm -rf "$eval_old"
+echo "Dipylon AI jury v2 evaluation pack -> $EVAL_PACK_DEST (${#eval_pack_files[@]} exact JSON files)"
+
 if [ "$do_claude" = 1 ]; then
   echo "Claude Code -> $CLAUDE_HOME"
   mkdir -p "$CLAUDE_HOME/agents" "$CLAUDE_HOME/skills"
