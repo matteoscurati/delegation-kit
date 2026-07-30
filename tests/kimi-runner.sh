@@ -17,6 +17,7 @@ mkdir -p \
   "$TMP/kimi-home/credentials" "$TMP/ambient-home"
 printf '%s\n' '{"access_token":"test-token","refresh_token":""}' \
   >"$TMP/kimi-home/credentials/kimi-code.json"
+chmod 600 "$TMP/kimi-home/credentials/kimi-code.json"
 printf '%s\n' 'ambient secret' >"$TMP/ambient-home/secret.txt"
 printf '%s\n' 'Respond with PONG.' >"$TMP/prompt"
 printf '%s\n' 'before' >"$TMP/work/value.txt"
@@ -68,6 +69,34 @@ grep -q '^WORKDIR=' "$root/sandbox-defines.txt"
 grep -q '^REAL_HOME=' "$root/sandbox-defines.txt"
 grep -q '^KIMI_BIN=' "$root/sandbox-defines.txt"
 exec "$@"
+EOF
+
+cat >"$TMP/bin/shlock" <<'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+lock_file=""
+owner_pid=""
+while [ "$#" -gt 0 ]; do
+  case "$1" in
+    -f) lock_file="${2:-}"; shift 2 ;;
+    -p) owner_pid="${2:-}"; shift 2 ;;
+    *) exit 64 ;;
+  esac
+done
+[ -n "$lock_file" ] && [ -n "$owner_pid" ] || exit 64
+[ ! -L "$lock_file" ] || exit 1
+if [ -e "$lock_file" ]; then
+  current="$(<"$lock_file")"
+  case "$current" in
+    ""|*[!0-9]*) exit 1 ;;
+  esac
+  kill -0 "$current" 2>/dev/null && exit 1
+  rm -f -- "$lock_file"
+fi
+candidate="$lock_file.$$.candidate"
+trap 'rm -f -- "$candidate"' EXIT
+printf '%s\n' "$owner_pid" >"$candidate"
+ln "$candidate" "$lock_file" 2>/dev/null
 EOF
 
 cat >"$TMP/bin/gtimeout" <<'EOF'
@@ -136,12 +165,40 @@ while [ "$#" -gt 0 ]; do
 done
 case "$prompt" in
   *WRITE_BUILDER*) printf 'after\n' >"$PWD/value.txt" ;;
+  *ROTATE_OAUTH*)
+    jq -n '{access_token:"rotated-access",refresh_token:"rotated-refresh",expires_at:4102444800}' \
+      >"$HOME/.kimi-code/credentials/kimi-code.json"
+    ;;
+  *REQUIRE_ROTATED_OAUTH*)
+    jq -e '
+      .access_token == "rotated-access" and .refresh_token == "rotated-refresh"
+    ' "$HOME/.kimi-code/credentials/kimi-code.json" >/dev/null \
+      || { printf 'rotated OAuth credential missing\n' >&2; exit 99; }
+    ;;
+  *CONCURRENT_LOGIN*)
+    jq -n '{access_token:"external-access",refresh_token:"external-refresh",expires_at:4102444800}' \
+      >"$root/kimi-home/credentials/kimi-code.json"
+    jq -n '{access_token:"isolated-access",refresh_token:"isolated-refresh",expires_at:4102444800}' \
+      >"$HOME/.kimi-code/credentials/kimi-code.json"
+    ;;
+  *CORRUPT_OAUTH*)
+    printf '%s\n' '{}' >"$HOME/.kimi-code/credentials/kimi-code.json"
+    ;;
+  *ACCESS_ONLY_OAUTH*)
+    jq -n '{access_token:"short-lived-access",refresh_token:"",expires_at:4102444800}' \
+      >"$HOME/.kimi-code/credentials/kimi-code.json"
+    ;;
 esac
 jq -nc '{role:"assistant",content:"PONG"}'
 EOF
-chmod 755 "$TMP/bin/uname" "$TMP/bin/sandbox-exec" "$TMP/bin/gtimeout" "$TMP/bin/kimi"
+chmod 755 \
+  "$TMP/bin/uname" "$TMP/bin/sandbox-exec" "$TMP/bin/shlock" \
+  "$TMP/bin/gtimeout" "$TMP/bin/kimi"
 
 sha256() { shasum -a 256 "$1" | awk '{print $1}'; }
+file_mode() {
+  stat -f '%Lp' "$1" 2>/dev/null || stat -c '%a' "$1"
+}
 write_manifest() {
   jq -n \
     --arg prompt_sha256 "$(sha256 "$TMP/prompt")" \
@@ -170,6 +227,7 @@ run_kimi() {
     TMPDIR="$TMP/runtime" PATH="$TMP/bin:$PATH" \
     DELEGATION_KIMI_PLATFORM="${DELEGATION_KIMI_PLATFORM:-Darwin}" \
     DELEGATION_KIMI_SANDBOX_BIN="${DELEGATION_KIMI_SANDBOX_BIN:-$TMP/bin/sandbox-exec}" \
+    DELEGATION_KIMI_SHLOCK_BIN="${DELEGATION_KIMI_SHLOCK_BIN:-$TMP/bin/shlock}" \
     LEAK_ME=secret ZAI_API_KEY=secret \
     "$ROOT/bin/delegation-kimi" "$@"
 }
@@ -185,6 +243,7 @@ jq -e '
   .backends.native.process_exec == false and
   .backends.native.hooks == false and
   .backends.native.services == false and
+  .backends.native.oauth_refresh_persistence == "serialized-atomic-sync" and
   .backends.native.builder_write_scope == "workdir" and
   .backends.native.read_only_write_scope == "scratch"
 ' "$TMP/check.json" >/dev/null || fail "check contract mismatch"
@@ -205,6 +264,15 @@ jq -e '
   (.backends.native.reason | test("require executable sandbox-exec"))
 ' "$TMP/check-missing-sandbox.json" >/dev/null \
   || fail "missing sandbox executable was reported as available"
+
+DELEGATION_KIMI_SHLOCK_BIN="$TMP/bin/missing-shlock" \
+  run_kimi check --json >"$TMP/check-missing-shlock.json"
+jq -e '
+  .selected_backend == "none" and
+  .backends.native.available == false and
+  (.backends.native.reason | test("require executable shlock"))
+' "$TMP/check-missing-shlock.json" >/dev/null \
+  || fail "missing shlock was reported as available"
 
 rc=0
 run_kimi run --lane scout --prompt-file "$TMP/prompt" \
@@ -270,8 +338,97 @@ run_kimi run --lane scout --allow-provisional --prompt-file "$TMP/prompt" \
 jq -e '
   .runtime_cli_version == "user-build-a" and .effort == "max" and
   .lane == "scout" and .write_scope == "scratch" and
-  .sandbox == "macos-sandbox-exec" and .process_exec == false
+  .sandbox == "macos-sandbox-exec" and .process_exec == false and
+  .oauth_refresh_persistence == "serialized-atomic-sync"
 ' "$TMP/results/scout.txt.metrics.json" >/dev/null || fail "scout metrics mismatch"
+
+# Kimi rotates its refresh token inside the isolated HOME. The parent runner
+# must copy the validated result back atomically so the next invocation starts
+# from the new token instead of forcing another login.
+printf '%s\n' 'ROTATE_OAUTH' >"$TMP/rotate-oauth-prompt"
+run_kimi run --lane scout --allow-provisional \
+  --prompt-file "$TMP/rotate-oauth-prompt" \
+  --output "$TMP/results/rotate-oauth.txt" --workdir "$TMP/work"
+jq -e '
+  .access_token == "rotated-access" and .refresh_token == "rotated-refresh"
+' "$TMP/kimi-home/credentials/kimi-code.json" >/dev/null \
+  || fail "rotated OAuth credential was not persisted"
+[ "$(file_mode "$TMP/kimi-home/credentials/kimi-code.json")" = 600 ] \
+  || fail "persisted OAuth credential mode is not 600"
+[ ! -e "$TMP/kimi-home/.delegation-kit-oauth.lock" ] &&
+  [ ! -L "$TMP/kimi-home/.delegation-kit-oauth.lock" ] \
+  || fail "OAuth lock survived a successful run"
+
+printf '%s\n' 'REQUIRE_ROTATED_OAUTH' >"$TMP/require-rotated-oauth-prompt"
+run_kimi run --lane scout --allow-provisional \
+  --prompt-file "$TMP/require-rotated-oauth-prompt" \
+  --output "$TMP/results/require-rotated-oauth.txt" --workdir "$TMP/work"
+[ "$(cat "$TMP/results/require-rotated-oauth.txt")" = PONG ] \
+  || fail "the next run did not receive the rotated OAuth credential"
+
+# A concurrent ambient `kimi login` is authoritative. Even if the isolated
+# process also rotates its copy, optimistic concurrency must preserve the
+# externally replaced credential.
+printf '%s\n' 'CONCURRENT_LOGIN' >"$TMP/concurrent-login-prompt"
+rc=0
+run_kimi run --lane scout --allow-provisional \
+  --prompt-file "$TMP/concurrent-login-prompt" \
+  --output "$TMP/results/concurrent-login.txt" --workdir "$TMP/work" \
+  >/dev/null 2>&1 || rc=$?
+[ "$rc" = 75 ] || fail "concurrent external login returned $rc"
+[ ! -e "$TMP/results/concurrent-login.txt" ] \
+  || fail "concurrent external login published output"
+jq -e '
+  .access_token == "external-access" and .refresh_token == "external-refresh"
+' "$TMP/kimi-home/credentials/kimi-code.json" >/dev/null \
+  || fail "isolated OAuth sync overwrote a concurrent login"
+
+# Never publish output or replace the ambient credential when the isolated CLI
+# leaves malformed OAuth state behind.
+cp "$TMP/kimi-home/credentials/kimi-code.json" "$TMP/oauth-before-corruption.json"
+printf '%s\n' 'CORRUPT_OAUTH' >"$TMP/corrupt-oauth-prompt"
+rc=0
+run_kimi run --lane scout --allow-provisional \
+  --prompt-file "$TMP/corrupt-oauth-prompt" \
+  --output "$TMP/results/corrupt-oauth.txt" --workdir "$TMP/work" \
+  >/dev/null 2>&1 || rc=$?
+[ "$rc" = 70 ] || fail "malformed refreshed OAuth credential returned $rc"
+[ ! -e "$TMP/results/corrupt-oauth.txt" ] \
+  || fail "malformed OAuth state published output"
+cmp -s "$TMP/oauth-before-corruption.json" "$TMP/kimi-home/credentials/kimi-code.json" \
+  || fail "malformed OAuth state replaced the ambient credential"
+[ ! -e "$TMP/kimi-home/.delegation-kit-oauth.lock" ] &&
+  [ ! -L "$TMP/kimi-home/.delegation-kit-oauth.lock" ] \
+  || fail "OAuth lock survived a failed run"
+
+# A changed access token without a refresh token is also invalid persistence:
+# accepting it would merely postpone the next forced login by a few minutes.
+printf '%s\n' 'ACCESS_ONLY_OAUTH' >"$TMP/access-only-oauth-prompt"
+rc=0
+run_kimi run --lane scout --allow-provisional \
+  --prompt-file "$TMP/access-only-oauth-prompt" \
+  --output "$TMP/results/access-only-oauth.txt" --workdir "$TMP/work" \
+  >/dev/null 2>&1 || rc=$?
+[ "$rc" = 70 ] || fail "access-only refreshed OAuth credential returned $rc"
+cmp -s "$TMP/oauth-before-corruption.json" "$TMP/kimi-home/credentials/kimi-code.json" \
+  || fail "access-only OAuth state replaced the ambient credential"
+
+# Active refresh owners fail temporarily instead of racing token rotation.
+printf '%s\n' "$$" >"$TMP/kimi-home/.delegation-kit-oauth.lock"
+rc=0
+run_kimi run --lane scout --allow-provisional --prompt-file "$TMP/prompt" \
+  --output "$TMP/results/active-lock.txt" --workdir "$TMP/work" \
+  >/dev/null 2>&1 || rc=$?
+[ "$rc" = 75 ] || fail "active OAuth lock returned $rc"
+rm -f -- "$TMP/kimi-home/.delegation-kit-oauth.lock"
+
+# A lock whose owner no longer exists is recovered automatically.
+printf '%s\n' '2147483647' >"$TMP/kimi-home/.delegation-kit-oauth.lock"
+run_kimi run --lane scout --allow-provisional --prompt-file "$TMP/prompt" \
+  --output "$TMP/results/stale-lock.txt" --workdir "$TMP/work"
+[ ! -e "$TMP/kimi-home/.delegation-kit-oauth.lock" ] &&
+  [ ! -L "$TMP/kimi-home/.delegation-kit-oauth.lock" ] \
+  || fail "stale OAuth lock was not recovered"
 
 printf '%s\n' 'WRITE_BUILDER' >"$TMP/builder-prompt"
 run_kimi run --lane builder --allow-provisional --prompt-file "$TMP/builder-prompt" \
