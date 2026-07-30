@@ -24,7 +24,11 @@ NATIVE_BIN=""
 NATIVE_VERSION=""
 KIMI_PLATFORM=""
 KIMI_SANDBOX_BIN=""
+KIMI_SHLOCK_BIN=""
 RUN_TMP=""
+OAUTH_LOCK_PATH=""
+OAUTH_LOCK_HELD=0
+OAUTH_BASELINE_HASH=""
 
 usage() {
   cat <<'EOF'
@@ -48,13 +52,38 @@ EOF
 die() { local code="$1"; shift; printf 'delegation-kimi: %s\n' "$*" >&2; exit "$code"; }
 have() { command -v "$1" >/dev/null 2>&1; }
 
+release_oauth_lock() {
+  local owner_pid=""
+  [ "$OAUTH_LOCK_HELD" -eq 1 ] || return 0
+  if [ -f "$OAUTH_LOCK_PATH" ] && [ ! -L "$OAUTH_LOCK_PATH" ]; then
+    owner_pid="$(<"$OAUTH_LOCK_PATH")"
+    [ "$owner_pid" != "$$" ] || rm -f -- "$OAUTH_LOCK_PATH"
+  fi
+  OAUTH_LOCK_HELD=0
+}
+
+cleanup_run() {
+  release_oauth_lock
+  [ -z "$RUN_TMP" ] || rm -rf -- "$RUN_TMP"
+}
+
+acquire_oauth_lock() {
+  OAUTH_LOCK_PATH="$KIMI_HOME/.delegation-kit-oauth.lock"
+  [ ! -L "$OAUTH_LOCK_PATH" ] || return 1
+  "$KIMI_SHLOCK_BIN" -p "$$" -f "$OAUTH_LOCK_PATH" >/dev/null 2>&1 || return 2
+  OAUTH_LOCK_HELD=1
+}
+
 sandbox_status() {
   KIMI_PLATFORM="${DELEGATION_KIMI_PLATFORM:-$(uname)}"
   KIMI_SANDBOX_BIN="${DELEGATION_KIMI_SANDBOX_BIN:-/usr/bin/sandbox-exec}"
+  KIMI_SHLOCK_BIN="${DELEGATION_KIMI_SHLOCK_BIN:-/usr/bin/shlock}"
   [ "$KIMI_PLATFORM" = Darwin ] \
     || { NATIVE_REASON="native Kimi lanes require macOS sandbox-exec"; return 1; }
   [ -x "$KIMI_SANDBOX_BIN" ] \
     || { NATIVE_REASON="native Kimi lanes require executable sandbox-exec at $KIMI_SANDBOX_BIN"; return 1; }
+  [ -x "$KIMI_SHLOCK_BIN" ] \
+    || { NATIVE_REASON="native Kimi lanes require executable shlock at $KIMI_SHLOCK_BIN"; return 1; }
 }
 
 native_status() {
@@ -167,6 +196,37 @@ sha256_file() {
   if have shasum; then shasum -a 256 "$1" | awk '{print $1}';
   elif have sha256sum; then sha256sum "$1" | awk '{print $1}';
   else return 1; fi
+}
+
+sync_native_credentials() {
+  local scratch_credential="$1/home/.kimi-code/credentials/kimi-code.json"
+  local scratch_hash current_hash target_dir candidate
+  [ -f "$scratch_credential" ] && [ ! -L "$scratch_credential" ] || return 1
+  scratch_hash="$(sha256_file "$scratch_credential")" || return 1
+  [ "$scratch_hash" != "$OAUTH_BASELINE_HASH" ] || return 0
+  jq -e '
+    type == "object" and
+    ((.access_token // "") | type == "string" and length > 0) and
+    ((.refresh_token // "") | type == "string" and length > 0)
+  ' "$scratch_credential" >/dev/null 2>&1 || return 1
+
+  # A normal `kimi login` or another non-delegation client may have replaced
+  # the ambient credential while this run was active. Refuse to publish this
+  # run instead of knowingly overwriting that newer external state. Callers
+  # must not run login concurrently: no lock can coordinate a client that does
+  # not participate in this runner's locking protocol.
+  if [ ! -f "$CREDENTIAL_FILE" ] || [ -L "$CREDENTIAL_FILE" ]; then
+    return 2
+  fi
+  current_hash="$(sha256_file "$CREDENTIAL_FILE")" || return 1
+  [ "$current_hash" = "$OAUTH_BASELINE_HASH" ] || return 2
+
+  target_dir="$(dirname "$CREDENTIAL_FILE")"
+  candidate="$(mktemp "$target_dir/.kimi-code.json.delegation-kimi.XXXXXX")" || return 1
+  if ! cp "$scratch_credential" "$candidate" || ! chmod 600 "$candidate" || ! mv -f "$candidate" "$CREDENTIAL_FILE"; then
+    rm -f -- "$candidate"
+    return 1
+  fi
 }
 
 evaluation_manifest() {
@@ -320,6 +380,7 @@ print_check() {
           native:{available:$native,reason:$native_reason,efforts:["max"],
             sandbox:"macos-sandbox-exec",isolated_home:true,environment_mode:"allowlist",
             ambient_home_read:false,process_exec:false,hooks:false,services:false,
+            oauth_refresh_persistence:"serialized-atomic-sync",
             builder_write_scope:"workdir",read_only_write_scope:"scratch"}}}'
   else
     printf 'Kimi K3: selected=%s qualified=%s provisional=%s\n' "$selected" "$lanes" "$provisional"
@@ -345,6 +406,7 @@ extract_native() {
     {model:$model,backend:"native",effort:$effort,lane:$lane,runtime_cli_version:$cli_version,
      sandbox:"macos-sandbox-exec",isolated_home:true,environment_mode:"allowlist",
      ambient_home_read:false,process_exec:false,hooks:false,services:false,
+     oauth_refresh_persistence:"serialized-atomic-sync",
      write_scope:$write_scope,
      started_at_epoch:$started,finished_at_epoch:now,usage_reported:false,
      tokens:{input:0,output:0,reasoning:0,cache_read:0,cache_write:0},
@@ -487,7 +549,7 @@ run_command() {
   tmp="$(mktemp -d "${TMPDIR:-/tmp}/delegation-kimi.XXXXXX")"
   tmp="$(cd "$tmp" && pwd -P)"
   RUN_TMP="$tmp"
-  trap 'rm -rf -- "$RUN_TMP"' EXIT
+  trap cleanup_run EXIT
   events="$tmp/events.jsonl"
   result_tmp="$tmp/result.txt"
   metrics_tmp="$tmp/metrics.json"
@@ -508,7 +570,20 @@ run_command() {
     else die 69 "evaluation requires gtimeout or timeout to enforce its manifest limit"; fi
   fi
   local sandbox_profile write_scope
+  local lock_rc=0 sync_rc=0 ambient_credential_hash=""
+  acquire_oauth_lock || lock_rc=$?
+  if [ "$lock_rc" -eq 2 ]; then
+    die 75 "another Kimi invocation is using the OAuth refresh session; retry after it finishes"
+  elif [ "$lock_rc" -ne 0 ]; then
+    die 69 "could not secure the Kimi OAuth credential for isolated dispatch"
+  fi
   prepare_native_home "$tmp" || die 69 "could not prepare isolated Kimi home"
+  OAUTH_BASELINE_HASH="$(sha256_file "$tmp/home/.kimi-code/credentials/kimi-code.json")" \
+    || die 69 "could not fingerprint the isolated Kimi OAuth credential"
+  ambient_credential_hash="$(sha256_file "$CREDENTIAL_FILE")" \
+    || die 69 "could not fingerprint the ambient Kimi OAuth credential"
+  [ "$OAUTH_BASELINE_HASH" = "$ambient_credential_hash" ] \
+    || die 75 "Kimi OAuth credentials changed while isolated dispatch was being prepared; retry"
   sandbox_profile='(version 1)
     (allow default)
     (deny process-exec
@@ -555,6 +630,15 @@ run_command() {
         --prompt "$prompt" --model "$NATIVE_MODEL" \
         --output-format stream-json </dev/null
     ) >"$events" 2>"$tmp/stderr" || rc=$?
+  fi
+  sync_native_credentials "$tmp" || sync_rc=$?
+  release_oauth_lock
+  if [ "$sync_rc" -eq 2 ]; then
+    printf '%s\n' 'Kimi OAuth persistence is temporarily unavailable because credentials changed outside the runner' >>"$tmp/stderr"
+    rc=75
+  elif [ "$sync_rc" -ne 0 ]; then
+    printf '%s\n' 'could not safely persist refreshed Kimi OAuth credentials' >>"$tmp/stderr"
+    rc=70
   fi
   if [ "$rc" -eq 0 ]; then
     extract_native "$events" "$result_tmp" "$metrics_tmp" "$started" "$effort" "$lane" "$write_scope" || rc=70

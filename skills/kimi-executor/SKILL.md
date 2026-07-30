@@ -43,6 +43,13 @@ Every lane runs with a minimal isolated HOME/TMP that imports authentication but
 not ambient hooks, services, plugins, or configuration. The child environment is
 an allowlist, ambient HOME file contents are unreadable, and terminal execution
 is replaced by a no-op shell; the Kimi provider remains reachable for inference.
+Because Kimi may rotate OAuth refresh tokens, native dispatches serialize access
+to the credential snapshot. After the child exits, the parent validates and
+atomically persists a changed `credentials/kimi-code.json`; it does not expose
+the ambient file to the model process. Do not run `kimi login` concurrently
+with dispatch. If the parent observes an external credential replacement, it
+refuses to overwrite it and returns exit 75; callers should retry after login
+finishes.
 CLI compatibility is determined from capabilities: the runtime must
 expose structured output, the exact `kimi-code/k3` model, OAuth credentials, and
 `max` as both supported and effective default effort. The observed CLI version

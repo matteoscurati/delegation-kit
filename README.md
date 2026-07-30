@@ -89,7 +89,13 @@ determined from capabilities: structured output, the exact `kimi-code/k3`
 model, OAuth, and `max` as the supported/effective effort are required, while
 the observed version is provenance only. The runner imports
 only authentication into a minimal isolated HOME, scrubs the environment,
-disables terminal execution, and hides ambient HOME contents. macOS
+disables terminal execution, and hides ambient HOME contents. Native invocations
+are serialized around OAuth refresh: after the isolated CLI rotates a token, the
+parent validates and atomically syncs only `credentials/kimi-code.json` back to
+the user-managed Kimi store. Runner invocations use an atomic process lock to
+avoid refresh-token rotation races. Do not run an external `kimi login`
+concurrently; if the parent observes such a credential change, it refuses to
+overwrite it and returns a temporary failure. macOS
 `sandbox-exec` limits read-only lanes to scratch writes and builder lanes to
 worktree-plus-scratch writes; every lane fails closed when that guard is
 unavailable.
