@@ -1,0 +1,17 @@
+{
+  "schema": "delegation_policy_annotation_evaluation_v1",
+  "profile": "kimi-k3",
+  "lane": "policy-annotation",
+  "model": "kimi-code/k3",
+  "backend": "native",
+  "effort": "max",
+  "prompt_sha256": "bd77e97239609253fc2fbf29856c8b285ee17e3569c43896e091a1ff64b0340d",
+  "runner_source_commit": "20262e858204f946fb4f0415216adcf8e7677d5b",
+  "runner_sha256": "17cbfc1c70060c73df899f515efac628c287a1d0b93934b4caf030c87b6a2d84",
+  "contract_path": "evaluation/policy-annotation-qualification-v3/contract.json",
+  "contract_sha256": "32d5d255e0700507e6f39be3277d670aa042c51737f61e7b98803239fad1c3c1",
+  "output_schema_path": "evaluation/policy-annotation-qualification-v3/output-schema.json",
+  "output_schema_sha256": "f8a8eabcf83887424bcdc59b01562152cfb654953d61c0fc8c5ca47cc1ebc900",
+  "timeout_seconds": 600,
+  "max_output_chars": 16384
+}

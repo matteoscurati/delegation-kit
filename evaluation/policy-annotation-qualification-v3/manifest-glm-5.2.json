@@ -1,0 +1,17 @@
+{
+  "schema": "delegation_policy_annotation_evaluation_v1",
+  "profile": "glm-policy-annotation",
+  "lane": "policy-annotation",
+  "model": "glm-5.2",
+  "backend": "claude-zai",
+  "effort": "high",
+  "prompt_sha256": "bd77e97239609253fc2fbf29856c8b285ee17e3569c43896e091a1ff64b0340d",
+  "runner_source_commit": "66b6c57c2414153020df5912abfe3c5c5e74e43e",
+  "runner_sha256": "2fefb0eadc14554e4827e3bc21d64bf9a7a13e0bbc02bc15fd6f2df7e27931b4",
+  "contract_path": "evaluation/policy-annotation-qualification-v3/contract.json",
+  "contract_sha256": "32d5d255e0700507e6f39be3277d670aa042c51737f61e7b98803239fad1c3c1",
+  "output_schema_path": "evaluation/policy-annotation-qualification-v3/output-schema.json",
+  "output_schema_sha256": "f8a8eabcf83887424bcdc59b01562152cfb654953d61c0fc8c5ca47cc1ebc900",
+  "timeout_seconds": 600,
+  "max_output_chars": 16384
+}
