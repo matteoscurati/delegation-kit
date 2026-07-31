@@ -48,8 +48,40 @@ jq -e --arg q "$qwen_v3" --arg g "$grok_v3" --arg k "$kimi_v3" --arg s "$sol_v3"
 jq -e --arg q "$qwen_v3" '(.lanes["policy-annotation"].backends["token-plan-openai"].evaluation_manifest_sha256 | index($q))' config/qwen3.8-max-preview-routing.json >/dev/null
 jq -e --arg g "$grok_v3" '(.lanes["policy-annotation"].backends["grok-build"].evaluation_manifest_sha256 | index($g))' config/grok-4.5-routing.json >/dev/null
 jq -e --arg k "$kimi_v3" '(.lanes["policy-annotation"].backends.native.evaluation_manifest_sha256 | index($k))' config/kimi-k3-routing.json >/dev/null
-grep -Fq 'EVAL_V3_PACK_SRC="$KIT/evaluation/dipylon-ai-jury-v3"' install.sh
-grep -Fq 'expected exactly 6 regular JSON files in $EVAL_V3_PACK_SRC' install.sh
+grep -Fq "EVAL_V3_PACK_SRC=\"\$KIT/evaluation/dipylon-ai-jury-v3\"" install.sh
+grep -Fq "expected exactly 6 regular JSON files in \$EVAL_V3_PACK_SRC" install.sh
+pass=$((pass + 1))
+
+# The v4 pack is a separate frozen, evaluation-only successor to v3. Its raw
+# canonical assets and four manifest hashes must remain bound to blocked lanes.
+[ "$(find evaluation/dipylon-ai-jury-v4 -maxdepth 1 -type f -name '*.json' | wc -l | tr -d ' ')" = 6 ]
+for pack_file in evaluation/dipylon-ai-jury-v4/{contract.json,output-schema.json,manifest-qwen3.8-max-preview.json,manifest-sol-max.json,manifest-grok-4.5.json,manifest-kimi-k3.json}; do
+  [ -f "$pack_file" ] && [ ! -L "$pack_file" ]
+done
+[ "$(shasum -a 256 evaluation/dipylon-ai-jury-v4/contract.json | awk '{print $1}')" = "3f08a7d417f0e76c55a68b138808d47ad438e4c917ecdc62877dd7fd91dcf64b" ]
+[ "$(shasum -a 256 evaluation/dipylon-ai-jury-v4/output-schema.json | awk '{print $1}')" = "12aec803f1949dd39b91712843ad20949bf60ec1d4bb1d68c8e3d2f02b05877a" ]
+qwen_v4="4c28aa4fbf488d77cf80aeb2dd00652a356439bf9f9008b98490bd37d97674da"
+sol_v4="7f274ac025066d40d6f2aac3dfbdc24fc4508c76067c72fe9f276530f58fa407"
+grok_v4="fe7a2ab7575fe2a88f12d1e118e5bde26f6e85807d8baf39da18897055d60836"
+kimi_v4="03eecda56793c82f8f1b2f86be9cf55010c594bb342fbe26e798f6ea2b5378b8"
+[ "$(shasum -a 256 evaluation/dipylon-ai-jury-v4/manifest-qwen3.8-max-preview.json | awk '{print $1}')" = "$qwen_v4" ]
+[ "$(shasum -a 256 evaluation/dipylon-ai-jury-v4/manifest-sol-max.json | awk '{print $1}')" = "$sol_v4" ]
+[ "$(shasum -a 256 evaluation/dipylon-ai-jury-v4/manifest-grok-4.5.json | awk '{print $1}')" = "$grok_v4" ]
+[ "$(shasum -a 256 evaluation/dipylon-ai-jury-v4/manifest-kimi-k3.json | awk '{print $1}')" = "$kimi_v4" ]
+for manifest in evaluation/dipylon-ai-jury-v4/manifest-*.json; do
+  jq -e '.lane == "policy-annotation" and .timeout_seconds == 600 and .max_output_chars == 65536 and .contract_path == "evaluation/dipylon-ai-jury-v4/contract.json" and .contract_sha256 == "3f08a7d417f0e76c55a68b138808d47ad438e4c917ecdc62877dd7fd91dcf64b" and .output_schema_path == "evaluation/dipylon-ai-jury-v4/output-schema.json" and .output_schema_sha256 == "12aec803f1949dd39b91712843ad20949bf60ec1d4bb1d68c8e3d2f02b05877a"' "$manifest" >/dev/null
+done
+jq -e --arg q "$qwen_v4" --arg g "$grok_v4" --arg k "$kimi_v4" --arg s "$sol_v4" '
+  (.profiles["qwen3.8-max-preview"].lanes["policy-annotation"] | .status == "candidate" and .selection == "blocked" and (.evaluation_manifest_sha256 | index($q))) and
+  (.profiles["grok-build"].lanes["policy-annotation"] | .status == "candidate" and .selection == "blocked" and (.evaluation_manifest_sha256 | index($g))) and
+  (.profiles["kimi-k3"].lanes["policy-annotation"] | .status == "candidate" and .selection == "blocked" and (.evaluation_manifest_sha256 | index($k))) and
+  (.profiles["sol-max-policy-annotator"].lanes["policy-annotation"] | .status == "candidate" and .selection == "blocked" and (.evaluation_manifest_sha256 | index($s)))
+' config/routing-gates.json >/dev/null
+jq -e --argjson central "$(jq -c '.profiles["qwen3.8-max-preview"].lanes["policy-annotation"].evaluation_manifest_sha256' config/routing-gates.json)" '.lanes["policy-annotation"].backends["token-plan-openai"].evaluation_manifest_sha256 == $central' config/qwen3.8-max-preview-routing.json >/dev/null
+jq -e --argjson central "$(jq -c '.profiles["grok-build"].lanes["policy-annotation"].evaluation_manifest_sha256' config/routing-gates.json)" '.lanes["policy-annotation"].backends["grok-build"].evaluation_manifest_sha256 == $central' config/grok-4.5-routing.json >/dev/null
+jq -e --argjson central "$(jq -c '.profiles["kimi-k3"].lanes["policy-annotation"].evaluation_manifest_sha256' config/routing-gates.json)" '.lanes["policy-annotation"].backends.native.evaluation_manifest_sha256 == $central' config/kimi-k3-routing.json >/dev/null
+grep -Fq "EVAL_V4_PACK_SRC=\"\$KIT/evaluation/dipylon-ai-jury-v4\"" install.sh
+grep -Fq "expected exactly 6 regular JSON files in \$EVAL_V4_PACK_SRC" install.sh
 pass=$((pass + 1))
 
 # The senior/taste/security profile is pinned to the exact current Opus model.
