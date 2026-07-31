@@ -25,6 +25,13 @@ expect_failure() {
 
 cd "$ROOT"
 expect_success bin/delegation-route check --json
+bin/delegation-glm check --json >"$TMP/glm-check.json"
+jq -e '
+  .qualified_lanes == ["clerk","scout"] and
+  .provisional_lanes == ["builder"] and
+  .efforts == ["high"]
+' "$TMP/glm-check.json" >/dev/null
+pass=$((pass + 1))
 
 # The repository owns reusable qualification assets only. Downstream-project
 # packs stay in their owning repository, and every central allowlist hash must
@@ -101,10 +108,15 @@ jq '.profiles["kimi-k3"].lanes.scout.evaluation_manifest_sha256 =
 expect_failure 65 env DELEGATION_ROUTING_GATES_FILE="$TMP/misplaced-manifest.json" \
   bin/delegation-route check --json
 jq '.profiles["glm-scout"].lanes.scout.evaluation_manifest_sha256 =
-      ["aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"]' \
+      ["aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"] |
+    .profiles["glm-scout"].lanes.scout.status = "provisional"' \
   config/routing-gates.json >"$TMP/glm-lane-central.json"
 jq '.lanes.scout.backends["claude-zai"].evaluation_manifest_sha256 =
-      ["aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"]' \
+      ["aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"] |
+    .lanes.scout.backends["claude-zai"].status = "provisional" |
+    .lanes.scout.backends["claude-zai"].qualified = false |
+    .qualified_lanes = ["clerk"] |
+    .provisional_lanes = ["scout","builder"]' \
   config/glm-5.2-routing.json >"$TMP/glm-lane-executable.json"
 env DELEGATION_ROUTING_GATES_FILE="$TMP/glm-lane-central.json" \
   DELEGATION_GLM_ROUTING_FILE="$TMP/glm-lane-executable.json" \

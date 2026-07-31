@@ -40,8 +40,9 @@ same graph directly and refuse drift.
 
 An optional external candidate such as GLM-5.2 earns one of these lanes only
 after its versioned evaluation gate allows that exact role. GLM clerk/scout are
-provisional and require `--allow-provisional`; builder is a blocked candidate and
-reviewer is disabled. An installed CLI or visible model name is not qualification.
+qualified explicit-only; builder is provisional explicit-only and requires
+`--allow-provisional`; reviewer is disabled. An installed CLI or visible model
+name is not qualification.
 
 Kimi K3 is provisional for `clerk`, `scout`, `builder`, and `frontend-builder` at
 `max`; senior is a blocked candidate, while reviewer and judgement are disabled.
