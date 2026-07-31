@@ -127,7 +127,7 @@ evaluation_manifest() {
       (.runner_source_commit | test("^[0-9a-f]{40}$")) and
       (.contract_path | type == "string" and test("^(?!/)(?!.*(^|/)\\.\\.(/|$)).+")) and
       (.output_schema_path | type == "string" and test("^(?!/)(?!.*(^|/)\\.\\.(/|$)).+")) and
-      (.timeout_seconds | type == "number" and floor == . and . >= 1 and . <= 600) and
+      (.timeout_seconds | type == "number" and floor == . and . >= 1 and . <= 900) and
       (.max_output_chars | type == "number" and floor == . and . >= 1 and . <= 65536)
     ' "$manifest" >/dev/null 2>&1 || die 78 "evaluation manifest is malformed or does not bind this exact run"
   git -C "$ROOT" merge-base --is-ancestor "$(jq -r '.runner_source_commit' "$manifest")" "$source_head" \
@@ -366,6 +366,9 @@ run_command() {
     --connect-timeout 20 --max-time "$max_time" --data-binary "@$body" "$API_URL" 2>"$stderr_file")" || curl_rc=$?
   if [ "$curl_rc" -ne 0 ]; then
     http_code=000; phase=dispatch; reason=transport_failure; final_rc=75
+    # curl exit 28 is the --max-time deadline; report it distinctly so a bound
+    # timeout is not collapsed into a generic transport failure.
+    [ "$curl_rc" -ne 28 ] || reason=deadline_exceeded
   else
     case "$http_code" in
       200) ;;

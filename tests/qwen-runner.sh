@@ -77,6 +77,10 @@ case "${FAKE_QWEN_CASE:-success}" in
     printf 'SECRET_CURL_STDERR\n' >&2
     exit 7
     ;;
+  timeout)
+    printf 'SECRET_CURL_STDERR\n' >&2
+    exit 28
+    ;;
   *)
     exit 64
     ;;
@@ -220,7 +224,8 @@ for spec in \
   'malformed 70 provider_identity_mismatch extract 200' \
   'empty 70 invalid_or_empty_response extract 200' \
   'identity 70 provider_identity_mismatch extract 200' \
-  'transport 75 transport_failure dispatch 000'
+  'transport 75 transport_failure dispatch 000' \
+  'timeout 75 deadline_exceeded dispatch 000'
 do
   read -r name expected reason phase http_code <<EOF
 $spec
@@ -235,6 +240,7 @@ EOF
     || fail "$name diagnostic leaked raw provider data"
   [ ! -e "$TMP/results/$name.out" ] || fail "$name left partial output"
   [ ! -e "$TMP/results/$name.out.metrics.json" ] || fail "$name left partial metrics"
+  [ ! -e "$TMP/results/$name.out.commit.json" ] || fail "$name left publication commit"
   [ ! -e "$TMP/results/$name.out.stderr" ] || fail "$name left legacy raw stderr"
 done
 
@@ -346,8 +352,9 @@ PATH="$TMP/bin:$PATH" QWEN_TOKEN_PLAN_API_KEY=sk-sp-test \
   || fail 'provider invoked despite manifest failure'
 [ ! -e "$TMP/results/preflight-missing.out" ] || fail 'manifest failure created output'
 
-# Regression: a frozen Dipylon manifest pinned timeout_seconds=900 while the
-# runner accepts at most 600. Preflight must reject it before any dispatch.
+# Regression: a frozen Dipylon manifest pinned timeout_seconds=900. The
+# manifest ceiling is exactly 900, so preflight must accept the allowlisted
+# manifest and still stop before any provider dispatch or artifact.
 jq '.timeout_seconds = 900' "$TMP/manifest.json" >"$TMP/manifest-timeout900.json"
 TIMEOUT900_MANIFEST_SHA="$(sha256 "$TMP/manifest-timeout900.json")"
 jq --arg hash "$TIMEOUT900_MANIFEST_SHA" '
@@ -359,7 +366,7 @@ jq --arg hash "$TIMEOUT900_MANIFEST_SHA" '
 ' "$ROOT/config/qwen3.8-max-preview-routing.json" >"$TMP/qwen-routing.json"
 mv "$TMP/qwen-routing.json" "$ROOT/config/qwen3.8-max-preview-routing.json"
 git -C "$ROOT" add config/routing-gates.json config/qwen3.8-max-preview-routing.json
-git -C "$ROOT" commit -qm 'allowlist out-of-bounds timeout fixture'
+git -C "$ROOT" commit -qm 'allowlist ceiling timeout fixture'
 rc=0
 PATH="$TMP/bin:$PATH" TMPDIR="$TMP/runtime" QWEN_TOKEN_PLAN_API_KEY=sk-sp-test \
   FAKE_QWEN_CASE=success FAKE_QWEN_REQUEST_CAPTURE="$TMP/results/preflight-900.request.json" \
@@ -368,11 +375,49 @@ PATH="$TMP/bin:$PATH" TMPDIR="$TMP/runtime" QWEN_TOKEN_PLAN_API_KEY=sk-sp-test \
   --preflight-only --prompt-file "$TMP/prompt" \
   --output "$TMP/results/preflight-900.out" --workdir "$TMP/work" \
   >"$TMP/results/preflight-900.stdout" 2>"$TMP/results/preflight-900.stderr" || rc=$?
-[ "$rc" = 78 ] || fail "timeout_seconds=900 preflight returned $rc"
+[ "$rc" = 0 ] || fail "timeout_seconds=900 preflight returned $rc"
+[ ! -s "$TMP/results/preflight-900.stderr" ] || fail 'timeout 900 preflight wrote to stderr'
+jq -e --arg manifest_sha "$TIMEOUT900_MANIFEST_SHA" \
+  '.schema_version == "delegation_policy_annotation_preflight_receipt_v1" and
+   .status == "READY_NO_PROVIDER_CALL" and
+   .evaluation_manifest_sha256 == $manifest_sha and
+   .provider_dispatch_started == false and
+   .provider_attempts == 0 and .post_observation_retries == 0' \
+  "$TMP/results/preflight-900.stdout" >/dev/null \
+  || fail 'timeout 900 preflight receipt mismatch'
 [ ! -e "$TMP/results/preflight-900.request.json" ] \
-  || fail 'out-of-bounds manifest reached the provider'
+  || fail 'ceiling manifest dispatched to the provider'
 [ ! -e "$TMP/results/preflight-900.out" ] && [ ! -e "$TMP/results/preflight-900.out.metrics.json" ] &&
   [ ! -e "$TMP/results/preflight-900.out.error.json" ] && [ ! -e "$TMP/results/preflight-900.out.commit.json" ] \
+  || fail 'ceiling manifest preflight left artifacts'
+
+# timeout_seconds=901 exceeds the manifest ceiling and stays rejected before
+# any dispatch, even when the manifest itself is allowlisted.
+jq '.timeout_seconds = 901' "$TMP/manifest.json" >"$TMP/manifest-timeout901.json"
+TIMEOUT901_MANIFEST_SHA="$(sha256 "$TMP/manifest-timeout901.json")"
+jq --arg hash "$TIMEOUT901_MANIFEST_SHA" '
+  .profiles["qwen3.8-max-preview"].lanes["policy-annotation"].evaluation_manifest_sha256 += [$hash]
+' "$ROOT/config/routing-gates.json" >"$TMP/gates.json"
+mv "$TMP/gates.json" "$ROOT/config/routing-gates.json"
+jq --arg hash "$TIMEOUT901_MANIFEST_SHA" '
+  .lanes["policy-annotation"].backends["token-plan-openai"].evaluation_manifest_sha256 += [$hash]
+' "$ROOT/config/qwen3.8-max-preview-routing.json" >"$TMP/qwen-routing.json"
+mv "$TMP/qwen-routing.json" "$ROOT/config/qwen3.8-max-preview-routing.json"
+git -C "$ROOT" add config/routing-gates.json config/qwen3.8-max-preview-routing.json
+git -C "$ROOT" commit -qm 'allowlist out-of-bounds timeout fixture'
+rc=0
+PATH="$TMP/bin:$PATH" TMPDIR="$TMP/runtime" QWEN_TOKEN_PLAN_API_KEY=sk-sp-test \
+  FAKE_QWEN_CASE=success FAKE_QWEN_REQUEST_CAPTURE="$TMP/results/preflight-901.request.json" \
+  "$ROOT/bin/delegation-qwen" run --lane policy-annotation --effort auto \
+  --backend token-plan-openai --evaluation --evaluation-manifest "$TMP/manifest-timeout901.json" \
+  --preflight-only --prompt-file "$TMP/prompt" \
+  --output "$TMP/results/preflight-901.out" --workdir "$TMP/work" \
+  >"$TMP/results/preflight-901.stdout" 2>"$TMP/results/preflight-901.stderr" || rc=$?
+[ "$rc" = 78 ] || fail "timeout_seconds=901 preflight returned $rc"
+[ ! -e "$TMP/results/preflight-901.request.json" ] \
+  || fail 'out-of-bounds manifest reached the provider'
+[ ! -e "$TMP/results/preflight-901.out" ] && [ ! -e "$TMP/results/preflight-901.out.metrics.json" ] &&
+  [ ! -e "$TMP/results/preflight-901.out.error.json" ] && [ ! -e "$TMP/results/preflight-901.out.commit.json" ] \
   || fail 'out-of-bounds manifest left artifacts'
 
 # Flip the throwaway lane to qualified in BOTH gates so ordinary (non-evaluation)
