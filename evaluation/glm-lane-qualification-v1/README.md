@@ -7,7 +7,7 @@ downstream source material and remain under the ignored private `eval/` tree.
 
 Every provider attempt is bound by a private manifest using
 `delegation_glm_lane_evaluation_v1`. The manifest hashes the prompt, this
-contract, the output schema, the runner, the committed runner source, and the
+contract, the per-attempt output schema, the runner, the committed runner source, and the
 committed fixture worktree. Its hash must appear in both a private copy of the
 central gate and a private copy of the GLM executable gate. The public routing
 files are changed only after the frozen aggregate has been checked against the

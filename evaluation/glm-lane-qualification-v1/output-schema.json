@@ -1,86 +1,19 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://delegation-kit.local/schemas/glm-lane-qualification-result-v1.json",
-  "title": "GLM lane qualification aggregate",
+  "$id": "https://delegation-kit.local/schemas/glm-lane-qualification-attempt-v1.json",
+  "title": "GLM lane qualification attempt output",
   "type": "object",
   "additionalProperties": false,
   "required": [
-    "schema_version",
-    "contract_sha256",
-    "runner_source_commit",
-    "lanes"
+    "status",
+    "answers"
   ],
   "properties": {
-    "schema_version": {
-      "const": "delegation_glm_lane_qualification_result_v1"
+    "status": {
+      "const": "completed"
     },
-    "contract_sha256": {
-      "type": "string",
-      "pattern": "^[0-9a-f]{64}$"
-    },
-    "runner_source_commit": {
-      "type": "string",
-      "pattern": "^[0-9a-f]{40}$"
-    },
-    "lanes": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": ["clerk", "scout", "builder"],
-      "properties": {
-        "clerk": {"$ref": "#/$defs/laneResult"},
-        "scout": {"$ref": "#/$defs/laneResult"},
-        "builder": {"$ref": "#/$defs/laneResult"}
-      }
-    }
-  },
-  "$defs": {
-    "laneResult": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": [
-        "glm",
-        "incumbents",
-        "threshold_passed",
-        "decision"
-      ],
-      "properties": {
-        "glm": {"$ref": "#/$defs/variantResult"},
-        "incumbents": {
-          "type": "array",
-          "minItems": 2,
-          "items": {"$ref": "#/$defs/variantResult"}
-        },
-        "threshold_passed": {"type": "boolean"},
-        "decision": {
-          "enum": ["promote", "unchanged"]
-        },
-        "limitations": {
-          "type": "array",
-          "items": {"type": "string"}
-        }
-      }
-    },
-    "variantResult": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": [
-        "identity",
-        "valid_repeats",
-        "required_repeats",
-        "mean_score",
-        "all_checker_runs_pass"
-      ],
-      "properties": {
-        "identity": {"type": "string", "minLength": 1},
-        "valid_repeats": {"type": "integer", "minimum": 0},
-        "required_repeats": {"const": 3},
-        "mean_score": {"type": ["number", "null"], "minimum": 0, "maximum": 1},
-        "all_checker_runs_pass": {"type": "boolean"},
-        "void_reasons": {
-          "type": "array",
-          "items": {"type": "string"}
-        }
-      }
+    "answers": {
+      "type": "object"
     }
   }
 }
