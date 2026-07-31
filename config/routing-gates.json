@@ -27,7 +27,7 @@
     },
     "sol-max-policy-annotator": {
       "model": "gpt-5.6-sol", "harness": "codex", "effort": "max",
-      "lanes": {"policy-annotation": {"status": "candidate", "selection": "blocked", "exact_evidence_ids": [], "context_evidence_ids": [], "evaluation_manifest_sha256": ["a3eb98bf198f1dbdf741cb789179e5528274844e7edd2b86f826615d66fd5ef2", "8755602701bd8324bfeb2351a65bdf2df4813057efae104ba17089aca5297a5d"], "evidence_gap": "No frozen local policy-annotation result exists for the max-effort Codex variant."}}
+      "lanes": {"policy-annotation": {"status": "candidate", "selection": "blocked", "exact_evidence_ids": [], "context_evidence_ids": [], "evaluation_manifest_sha256": ["a3eb98bf198f1dbdf741cb789179e5528274844e7edd2b86f826615d66fd5ef2", "8755602701bd8324bfeb2351a65bdf2df4813057efae104ba17089aca5297a5d", "7f274ac025066d40d6f2aac3dfbdc24fc4508c76067c72fe9f276530f58fa407"], "evidence_gap": "No frozen local policy-annotation result exists for the max-effort Codex variant."}}
     },
     "sonnet-clerk": {
       "model": "claude-sonnet-5", "harness": "claude-code", "effort": "low",
@@ -127,7 +127,7 @@
         "frontend-builder": {"status": "provisional", "selection": "preferred-explicit", "exact_evidence_ids": [], "context_evidence_ids": ["webdev-kimi-k3", "aa-kimi-code-kimi-k3"], "local_evaluation": {"run_id": "2026-07-16-kimi-k3", "task_count": null, "repeats": null, "confidence": "low", "limitations": "No frontend-specific local pack; provider quota truncated the general run."}, "evidence_gap": "WebDev uses a different harness/default effort; coding evidence is supporting only.", "fallback": "sonnet-builder"},
         "senior": {"status": "candidate", "selection": "blocked", "exact_evidence_ids": [], "context_evidence_ids": ["arena-agent-kimi-k3"], "evidence_gap": "Steerability evidence is insufficient for promotion."},
         "judgement": {"status": "disabled", "selection": "blocked", "exact_evidence_ids": [], "context_evidence_ids": []},
-        "policy-annotation": {"status": "candidate", "selection": "blocked", "exact_evidence_ids": [], "context_evidence_ids": [], "evaluation_manifest_sha256": ["1ad132e3396b8b0f951c121af661e998c27c836e2d43a49c2a8c5f02b39d59c0", "49970b7eed76090c9fc34e921fd86788829f7f44c3a26b7937b56addeb1ac77e", "05fad5a08ece9c9beb34726c202f3b413898517d66e3b10e8a654867a0851805", "2d971308304df41f48bedfce95673548c0d0ca603d92662c143cc4fe200ae410"], "evidence_gap": "No frozen local policy-annotation result exists."},
+        "policy-annotation": {"status": "candidate", "selection": "blocked", "exact_evidence_ids": [], "context_evidence_ids": [], "evaluation_manifest_sha256": ["1ad132e3396b8b0f951c121af661e998c27c836e2d43a49c2a8c5f02b39d59c0", "49970b7eed76090c9fc34e921fd86788829f7f44c3a26b7937b56addeb1ac77e", "05fad5a08ece9c9beb34726c202f3b413898517d66e3b10e8a654867a0851805", "2d971308304df41f48bedfce95673548c0d0ca603d92662c143cc4fe200ae410", "03eecda56793c82f8f1b2f86be9cf55010c594bb342fbe26e798f6ea2b5378b8"], "evidence_gap": "No frozen local policy-annotation result exists."},
         "reviewer": {"status": "disabled", "selection": "blocked", "exact_evidence_ids": [], "context_evidence_ids": [], "evidence_gap": "No exact review precision/recall row."}
       }
     },
@@ -261,7 +261,7 @@
           "selection": "blocked",
           "exact_evidence_ids": [],
           "context_evidence_ids": [],
-          "evaluation_manifest_sha256": ["e26ad93b5c06b92982f169e5e6236b42f47842bbbffa86c4fb3215541febc061", "14452ea9dee477b01a0c3933fa44f311cd340123e5c0546c205f69deb6d4a4c6", "750859c12b4285cbb2dcb0fc2195d43c340e1ce3620b16f6fb96c6c3b21f53f8", "9e4d859533801db008dfdaed9d6203ac8da2623d9cb973179e972b9bb4e1aae0"],
+          "evaluation_manifest_sha256": ["e26ad93b5c06b92982f169e5e6236b42f47842bbbffa86c4fb3215541febc061", "14452ea9dee477b01a0c3933fa44f311cd340123e5c0546c205f69deb6d4a4c6", "750859c12b4285cbb2dcb0fc2195d43c340e1ce3620b16f6fb96c6c3b21f53f8", "9e4d859533801db008dfdaed9d6203ac8da2623d9cb973179e972b9bb4e1aae0", "fe7a2ab7575fe2a88f12d1e118e5bde26f6e85807d8baf39da18897055d60836"],
           "evidence_gap": "No frozen local policy-annotation result exists for Grok Build at its highest supported effort."
         }
       }
@@ -274,7 +274,7 @@
         "reviewer": {"status": "candidate", "selection": "blocked", "exact_evidence_ids": [], "context_evidence_ids": [], "evidence_gap": "No exact review precision/recall evaluation."},
         "senior": {"status": "candidate", "selection": "blocked", "exact_evidence_ids": [], "context_evidence_ids": [], "evidence_gap": "No exact high-risk judgement or steerability evaluation."},
         "judgement": {"status": "disabled", "selection": "blocked", "exact_evidence_ids": [], "context_evidence_ids": [], "evidence_gap": "Preview marketing claims and runtime access cannot qualify judgement."},
-        "policy-annotation": {"status": "candidate", "selection": "blocked", "exact_evidence_ids": [], "context_evidence_ids": [], "evaluation_manifest_sha256": ["77a8cb43489ce1708f904d8aef1f27e5cc003a8216be32306c5cd50740ab5664", "2dc9c37c34661bf82d38f1edccac0b3679ea5af48f8f8ddc4e6ad489cfd98e54", "0ff9a95fd8178916e1938b19aebaf8f2b96a2232131ebfdb12d893917bd6dca9"], "evidence_gap": "No frozen local policy-annotation result exists."}
+        "policy-annotation": {"status": "candidate", "selection": "blocked", "exact_evidence_ids": [], "context_evidence_ids": [], "evaluation_manifest_sha256": ["77a8cb43489ce1708f904d8aef1f27e5cc003a8216be32306c5cd50740ab5664", "2dc9c37c34661bf82d38f1edccac0b3679ea5af48f8f8ddc4e6ad489cfd98e54", "0ff9a95fd8178916e1938b19aebaf8f2b96a2232131ebfdb12d893917bd6dca9", "4c28aa4fbf488d77cf80aeb2dd00652a356439bf9f9008b98490bd37d97674da"], "evidence_gap": "No frozen local policy-annotation result exists."}
       }
     }
   },

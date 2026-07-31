@@ -93,7 +93,8 @@
             "e26ad93b5c06b92982f169e5e6236b42f47842bbbffa86c4fb3215541febc061",
             "14452ea9dee477b01a0c3933fa44f311cd340123e5c0546c205f69deb6d4a4c6",
             "750859c12b4285cbb2dcb0fc2195d43c340e1ce3620b16f6fb96c6c3b21f53f8",
-            "9e4d859533801db008dfdaed9d6203ac8da2623d9cb973179e972b9bb4e1aae0"
+            "9e4d859533801db008dfdaed9d6203ac8da2623d9cb973179e972b9bb4e1aae0",
+            "fe7a2ab7575fe2a88f12d1e118e5bde26f6e85807d8baf39da18897055d60836"
           ],
           "runtime_controls": {
             "sandbox": "delegation-kit-read-only",
