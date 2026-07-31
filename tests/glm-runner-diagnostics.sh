@@ -29,6 +29,11 @@ case "${FAKE_CLAUDE_CASE:-success}" in
       '{"type":"system","subtype":"init","model":"glm-5.2"}' \
       '{"type":"result","subtype":"success","result":"{\"status\":\"completed\"}","usage":{"input_tokens":4,"output_tokens":2},"total_cost_usd":0.02}'
     ;;
+  structured_success)
+    printf '%s\n' \
+      '{"type":"system","subtype":"init","model":"glm-5.2"}' \
+      '{"type":"result","subtype":"success","result":"","structured_output":{"status":"completed","answers":{"value":"PONG"}},"usage":{"input_tokens":3,"output_tokens":4},"total_cost_usd":0.01}'
+    ;;
   process_exit)
     printf '%s\n' '{"type":"system","subtype":"init","model":"glm-5.2"}'
     printf '%s\n' 'provider connection closed' >&2
@@ -334,15 +339,15 @@ jq --arg scout "$LANE_SCOUT_MANIFEST_SHA" --arg builder "$LANE_BUILDER_MANIFEST_
 ' "$LANE_EVAL_ROOT/config/glm-5.2-routing.json" >"$LANE_EXECUTABLE_GATE"
 
 PATH="$TEST_TMP/bin:$PATH" TMPDIR="$TEST_TMP/runtime" ZAI_API_KEY=fixture-key \
-  FAKE_CLAUDE_CASE=success DELEGATION_ROUTING_GATES_FILE="$LANE_CENTRAL_GATE" \
+  FAKE_CLAUDE_CASE=structured_success DELEGATION_ROUTING_GATES_FILE="$LANE_CENTRAL_GATE" \
   DELEGATION_GLM_ROUTING_FILE="$LANE_EXECUTABLE_GATE" \
   "$LANE_EVAL_ROOT/bin/delegation-glm" run \
   --lane scout --effort high --backend claude-zai --evaluation \
   --evaluation-manifest "$LANE_SCOUT_MANIFEST" \
   --prompt-file "$TEST_TMP/prompt" --output "$TEST_TMP/results/lane-scout.out" \
   --workdir "$LANE_SCOUT_WORK"
-[ "$(cat "$TEST_TMP/results/lane-scout.out")" = PONG ] \
-  || fail "generic scout evaluation output mismatch"
+assert_json "$TEST_TMP/results/lane-scout.out" \
+  '.status == "completed" and .answers.value == "PONG"'
 assert_json "$TEST_TMP/results/lane-scout.out.metrics.json" '
   .lane == "scout" and
   .evaluation_receipt.schema_version == "delegation_glm_lane_evaluation_attempt_receipt_v1" and

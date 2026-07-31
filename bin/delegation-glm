@@ -33,6 +33,7 @@ EVALUATION_TASK_COUNT=0
 EVALUATION_TIMEOUT_SECONDS=""
 EVALUATION_MAX_OUTPUT_CHARS=""
 EVALUATION_MAX_COST_USD=""
+EVALUATION_OUTPUT_SCHEMA_JSON=""
 
 cleanup_run() {
   [ -z "$RUN_OUTPUT_TMP" ] || rm -f -- "$RUN_OUTPUT_TMP"
@@ -123,6 +124,8 @@ evaluation_manifest() {
     ' "$manifest" >/dev/null 2>&1 || die 78 "evaluation manifest is malformed or does not bind this exact run"
     EVALUATION_MAX_COST_USD="$(jq -r '.max_cost_usd' "$manifest")"
     EVALUATION_TASK_COUNT="$(jq -r '.task_count' "$manifest")"
+    EVALUATION_OUTPUT_SCHEMA_JSON="$(jq -c . "$schema")" \
+      || die 78 "evaluation output schema is invalid"
   else
     die 78 "unsupported evaluation manifest schema"
   fi
@@ -339,16 +342,21 @@ extract_claude() {
     EXTRACT_REASON="result_error"
     return 1
   fi
-  if ! jq -se '
+  if ! jq -se --arg structured "$EVALUATION_OUTPUT_SCHEMA_JSON" '
       ([.[] | select(.type == "result")] | last // {}) as $r |
-      $r.subtype == "success" and ($r.result | type) == "string"
+      $r.subtype == "success" and
+      (($structured != "" and ($r.structured_output | type) == "object") or
+       (($r.result | type) == "string"))
     ' "$events" >/dev/null; then
     EXTRACT_REASON="invalid_stream"
     return 1
   fi
-  jq -rs '
-    ([.[] | select(.type == "result")] | last // {}) | .result |
-    select(type == "string" and length > 0) // empty
+  jq -rcs --arg structured "$EVALUATION_OUTPUT_SCHEMA_JSON" '
+    ([.[] | select(.type == "result")] | last // {}) as $r |
+    if $structured != "" and ($r.structured_output | type) == "object"
+    then $r.structured_output
+    else ($r.result | select(type == "string" and length > 0))
+    end
   ' "$events" >"$output" || {
     EXTRACT_REASON="invalid_stream"
     return 1
@@ -559,7 +567,11 @@ run_command() {
   started="$(date +%s)"
 
   local permission="plan"
+  local -a evaluation_tail=(--max-budget-usd "$max_cost")
   [ "$lane" != builder ] || permission="acceptEdits"
+  if [ -n "$EVALUATION_OUTPUT_SCHEMA_JSON" ]; then
+    evaluation_tail=(--json-schema "$EVALUATION_OUTPUT_SCHEMA_JSON" --max-budget-usd "$max_cost")
+  fi
   mkdir -p "$tmp/claude-config"
   local timeout_bin='' sandbox_profile=''
   if [ "$evaluation" = 1 ]; then
@@ -594,7 +606,7 @@ run_command() {
         claude -p "$(<"$prompt_file")" --model opus --effort "$effort" \
         --permission-mode "$permission" --setting-sources '' --strict-mcp-config \
         --output-format stream-json --verbose --no-session-persistence \
-        --max-budget-usd "$max_cost"
+        "${evaluation_tail[@]}"
     else
       env -u ANTHROPIC_API_KEY -u CLAUDE_CODE_OAUTH_TOKEN -u ZAI_API_KEY \
         -u ANTHROPIC_MODEL -u ANTHROPIC_CUSTOM_HEADERS \
