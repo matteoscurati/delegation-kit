@@ -1,0 +1,19 @@
+{
+  "title": "GLM lane qualification attempt output",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "status",
+    "answers"
+  ],
+  "properties": {
+    "status": {
+      "type": "string",
+      "const": "completed"
+    },
+    "answers": {
+      "type": "object",
+      "additionalProperties": true
+    }
+  }
+}

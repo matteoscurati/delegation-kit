@@ -100,15 +100,15 @@
     },
     "glm-clerk": {
       "model": "glm-5.2", "harness": "claude-zai", "effort": "high",
-      "lanes": {"clerk": {"status": "provisional", "selection": "explicit-only", "exact_evidence_ids": [], "context_evidence_ids": ["aa-claude-glm-5.2"], "local_evaluation": {"run_id": "2026-07-14-glm-5.2", "task_count": null, "repeats": null, "confidence": "low", "limitations": "Legacy compatibility run; sample metadata is unavailable."}, "fallback": "luna-clerk"}}
+      "lanes": {"clerk": {"status": "qualified", "selection": "explicit-only", "exact_evidence_ids": [], "context_evidence_ids": ["aa-claude-glm-5.2", "zai-glm-5.2-launch"], "local_evaluation": {"run_id": "2026-07-31-glm-lane-qualification-v6", "task_count": 6, "repeats": 3, "valid_repeats": 3, "mean_score": 1.0, "best_incumbent_mean_score": 1.0, "confidence": "bounded-repeated", "limitations": "Exact local tuple on a synthetic extraction pack; explicit-only selection is retained."}, "fallback": "luna-clerk"}}
     },
     "glm-scout": {
       "model": "glm-5.2", "harness": "claude-zai", "effort": "high",
-      "lanes": {"scout": {"status": "provisional", "selection": "explicit-only", "exact_evidence_ids": [], "context_evidence_ids": ["aa-claude-glm-5.2", "arena-agent-glm-5.2-max"], "local_evaluation": {"run_id": "2026-07-14-glm-5.2", "task_count": null, "repeats": null, "confidence": "low", "limitations": "Legacy compatibility run measured at max before high was pinned; sample metadata is unavailable."}, "evidence_gap": "No exact claude-zai/high public row.", "fallback": "terra-scout"}}
+      "lanes": {"scout": {"status": "qualified", "selection": "explicit-only", "exact_evidence_ids": [], "context_evidence_ids": ["aa-claude-glm-5.2", "arena-agent-glm-5.2-max-2026-07-28", "zai-glm-5.2-launch"], "local_evaluation": {"run_id": "2026-07-31-glm-lane-qualification-v6", "task_count": 7, "repeats": 3, "valid_repeats": 3, "mean_score": 1.0, "best_incumbent_mean_score": 1.0, "confidence": "bounded-repeated", "limitations": "Exact local tuple on a synthetic trace pack; GLM mean latency was 206.0 seconds and explicit-only selection is retained."}, "evidence_gap": "No exact public claude-zai/high row; qualification is based on the frozen exact local comparison.", "fallback": "terra-scout"}}
     },
     "glm-builder": {
       "model": "glm-5.2", "harness": "claude-zai", "effort": "high",
-      "lanes": {"builder": {"status": "candidate", "selection": "blocked", "exact_evidence_ids": [], "context_evidence_ids": ["aa-claude-glm-5.2"], "evidence_gap": "No exact local builder run; external DeepSWE is 29%.", "fallback": "terra-builder"}}
+      "lanes": {"builder": {"status": "provisional", "selection": "explicit-only", "exact_evidence_ids": [], "context_evidence_ids": ["aa-claude-glm-5.2", "zai-glm-5.2-launch"], "local_evaluation": {"run_id": "2026-07-31-glm-lane-qualification-v6", "task_count": 6, "repeats": 3, "valid_repeats": 3, "mean_score": 1.0, "best_incumbent_mean_score": 1.0, "all_checker_runs_pass": true, "confidence": "bounded-repeated", "limitations": "First exact local builder pack; promotion stops at provisional and remains explicit-only."}, "evidence_gap": "No exact public claude-zai/high builder row; broader and real-repository evidence is still limited.", "fallback": "terra-builder"}}
     },
     "glm-reviewer": {
       "model": "glm-5.2", "harness": "claude-zai", "effort": "high",

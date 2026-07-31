@@ -1,25 +1,27 @@
 {
   "model": "glm-5.2",
   "status": "provisional",
-  "evaluated_at": "2026-07-15T00:08:13.667Z",
-  "source_run": "2026-07-14-glm-5.2",
-  "promoted_at": "2026-07-21T00:00:00Z",
+  "evaluated_at": "2026-07-31T13:55:22Z",
+  "source_run": "2026-07-31-glm-lane-qualification-v6",
+  "promoted_at": "2026-07-31T13:55:22Z",
   "external_evidence_file": "model-evidence.json",
-  "external_evidence_ids": ["aa-claude-glm-5.2", "arena-agent-glm-5.2-max", "webdev-glm-5.2-max"],
-  "qualification_basis": "Clerk and scout passed a small local run but remain provisional under the evidence-backed gate. Builder is only a blocked candidate because no exact local builder run exists.",
-  "qualified_lanes": [],
-  "provisional_lanes": ["clerk", "scout"],
+  "external_evidence_ids": ["aa-claude-glm-5.2", "arena-agent-glm-5.2-max-2026-07-28", "webdev-glm-5.2-max-2026-07-21", "zai-glm-5.2-launch"],
+  "qualification_basis": "The frozen exact glm-5.2/claude-zai/high comparison completed three no-retry attempts per provider and lane. Clerk and scout matched the best incumbent and are qualified explicit-only. Builder passed all checkers but stops at provisional after its first exact local pack.",
+  "qualified_lanes": ["clerk", "scout"],
+  "provisional_lanes": ["builder"],
   "lanes": {
     "clerk": {
       "default_effort": "high",
       "backends": {
         "claude-zai": {
-          "qualified": false, "status": "provisional", "selection": "explicit-only",
-          "effort": "high", "cost_per_task_usd": 0.052285,
+          "qualified": true, "status": "qualified", "selection": "explicit-only",
+          "effort": "high", "cost_per_task_usd": 0.004875,
           "legacy_local_result": {
-            "run_id": "2026-07-14-glm-5.2", "outcome": "passed-valid-subset",
-            "task_count": null, "repeats": null, "confidence": "low",
-            "limitations": "Sample metadata is unavailable; do not compare this result across lanes."
+            "run_id": "2026-07-31-glm-lane-qualification-v6", "outcome": "passed",
+            "task_count": 6, "repeats": 3, "valid_repeats": 3,
+            "mean_score": 1.0, "best_incumbent_mean_score": 1.0,
+            "confidence": "bounded-repeated",
+            "limitations": "Synthetic extraction pack; selection remains explicit-only."
           }
         }
       }
@@ -28,15 +30,17 @@
       "default_effort": "high",
       "backends": {
         "claude-zai": {
-          "qualified": false, "status": "provisional", "selection": "explicit-only",
-          "effort": "high", "cost_per_task_usd": 0.073542,
+          "qualified": true, "status": "qualified", "selection": "explicit-only",
+          "effort": "high", "cost_per_task_usd": 0.032234,
           "legacy_local_result": {
-            "run_id": "2026-07-14-glm-5.2", "outcome": "passed-valid-subset",
-            "task_count": null, "repeats": null, "confidence": "low",
-            "limitations": "Measured at max before high was pinned; sample metadata is unavailable."
+            "run_id": "2026-07-31-glm-lane-qualification-v6", "outcome": "passed",
+            "task_count": 7, "repeats": 3, "valid_repeats": 3,
+            "mean_score": 1.0, "best_incumbent_mean_score": 1.0,
+            "confidence": "bounded-repeated",
+            "limitations": "Synthetic trace pack; mean latency was 206.0 seconds and selection remains explicit-only."
           },
-          "score_measured_at_effort": "max",
-          "effort_override_note": "Routed at high by owner decision on 2026-07-17 after a same-prompt probe; score/cost were measured at max and are not re-measured at high."
+          "score_measured_at_effort": "high",
+          "effort_override_note": null
         }
       }
     },
@@ -44,10 +48,16 @@
       "default_effort": "high",
       "backends": {
         "claude-zai": {
-          "qualified": false, "status": "candidate", "selection": "blocked",
-          "effort": "high", "cost_per_task_usd": null,
-          "qualification_basis": "External context only; neither the Claude Code/default nor WebDev/max row is the exact local claude-zai/high runner.",
-          "unmeasured_note": "No exact local builder run. External DeepSWE is 29%; evaluate against the incumbent before promotion."
+          "qualified": false, "status": "provisional", "selection": "explicit-only",
+          "effort": "high", "cost_per_task_usd": 0.021932,
+          "local_result": {
+            "run_id": "2026-07-31-glm-lane-qualification-v6", "outcome": "passed",
+            "task_count": 6, "repeats": 3, "valid_repeats": 3,
+            "mean_score": 1.0, "best_incumbent_mean_score": 1.0,
+            "all_checker_runs_pass": true, "confidence": "bounded-repeated"
+          },
+          "qualification_basis": "First exact local builder comparison passed; the lane stops at provisional and remains explicit-only.",
+          "unmeasured_note": null
         }
       }
     },

@@ -2,6 +2,48 @@
 
 All notable changes to delegation-kit are documented here.
 
+## [0.8.0] — 2026-07-31
+
+### Added
+
+- Added hash-allowlisted, manifest-bound qualification for GLM clerk, scout,
+  and builder at the exact `glm-5.2` / `claude-zai` / `high` tuple.
+- Added portable lane-specific structured-output schemas, per-attempt receipts,
+  full worktree and Git-control attestation, and a public minimal aggregate for
+  the frozen repeated comparison.
+- Refreshed current GLM and cross-model context from Agent Arena, Code Arena
+  WebDev, Terminal-Bench 2.1, SWE-bench-Live, OpenBench, Z.ai, and Epoch.
+
+### Changed
+
+- Qualified GLM clerk and scout as explicit-only routes after three valid
+  repeats matched the best incumbent on each bounded pack.
+- Moved GLM builder from candidate/blocked to provisional/explicit-only after
+  all three GLM attempts and all three Terra incumbent attempts passed the
+  deterministic checker. Builder still requires `--allow-provisional`.
+- Extended central gate validation so private GLM qualification allowlists may
+  cover clerk, scout, and builder without creating an operational route by
+  themselves.
+
+### Fixed
+
+- Made the GLM runner actually pass the manifest-bound output schema to Claude
+  Code and extract structured output without changing the historical
+  policy-annotation path.
+- Replaced a non-portable generic comparison schema with lane-specific schemas
+  accepted by both Claude Code and Codex.
+- Hardened GLM qualification with fixture-only data reads, a native-CLI process
+  allowlist, an empty environment, immutable `.git`, ignored/untracked file and
+  executable-mode hashing, and disabled Claude keychain prefetch. The final
+  runner passed independent security review and macOS sandbox canaries.
+
+### Documentation
+
+- Documented the exact local decisions, costs, latency limitation, invalidated
+  runner/preflight series, and two `VOID` Claude builder comparator attempts
+  caused by an out-of-fixture write. No attempt in the final v6 series was
+  retried.
+
 ## [0.7.2] — 2026-07-31
 
 ### Changed

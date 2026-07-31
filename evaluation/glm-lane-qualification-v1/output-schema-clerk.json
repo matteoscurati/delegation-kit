@@ -1,0 +1,29 @@
+{
+  "title": "Clerk qualification attempt output",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["status", "answers"],
+  "properties": {
+    "status": {"type": "string", "enum": ["completed"]},
+    "answers": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "service_count",
+        "public_services",
+        "billing_owner_email",
+        "highest_schema_service",
+        "latest_release_service",
+        "pager_for_search"
+      ],
+      "properties": {
+        "service_count": {"type": "integer"},
+        "public_services": {"type": "array", "items": {"type": "string"}},
+        "billing_owner_email": {"type": "string"},
+        "highest_schema_service": {"type": "string"},
+        "latest_release_service": {"type": "string"},
+        "pager_for_search": {"type": "string"}
+      }
+    }
+  }
+}

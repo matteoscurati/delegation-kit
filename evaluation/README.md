@@ -60,7 +60,15 @@ also be relevant to the lane. Nearby variants, different harnesses, and general
 coding evidence for review/judgement are context and are shown separately in the
 generated table.
 
-The snapshot observed through 2026-07-28 keeps historical rows only when no
+Normal GLM clerk, scout, and builder qualification is defined separately by the
+[`glm-lane-qualification-v1`](./glm-lane-qualification-v1/README.md) contract.
+Only its protocol is public here: downstream prompts, fixture repositories, raw
+provider streams, and aggregates remain under ignored `eval/` until an owner
+chooses to publish a minimal, reviewed result. The runner binds every attempt to
+the exact model/backend/effort, source commit, worktree commit, and artifact
+hashes without mutating the operational gates.
+
+The snapshot observed through 2026-07-31 keeps historical rows only when no
 current equivalent exists. Current exact variants use the latest verified source;
 nearby variants, different harnesses, preliminary rows, and general-capability
 benchmarks remain separately labeled context.
@@ -81,21 +89,18 @@ benchmarks remain separately labeled context.
   per-benchmark chart because the tabular export is paywalled, and per-task
   token totals were left unrecorded for the new rows because the chart's token
   metric could not be reconciled with the previously recorded figures.
-- [Arena Agent Arena](https://arena.ai/leaderboard/agent), dated 2026-07-27,
+- [Arena Agent Arena](https://arena.ai/leaderboard/agent), dated 2026-07-28,
   with [causal-evaluation methodology](https://arena.ai/blog/agent-arena-methodology/):
-  1,385,187 real-world sessions across 42 models covering confirmed success,
-  user feedback, steerability, bash recovery, and tool hallucination. It still
-  has no Opus 5 or Qwen3.8 row. Gemini 3.6 Flash now appears but on only 2,194
-  sessions, so it is recorded as provisional. Estimates move between refreshes:
-  Kimi K3's praise-vs-complaint effect fell 20.30% → 16.22% while its
-  steerability rose 6.52% → 9.17% over six days, which is why the lane gate
-  reads the current row rather than a remembered number.
+  1,412,751 real-world sessions across 44 models covering confirmed success,
+  user feedback, steerability, bash recovery, and tool hallucination. The new
+  source is contextual: it refreshes GLM-5.2 Max at 43,277 sessions, but neither
+  that row nor a same-named Arena variant is a match for the Claude-to-Z.AI
+  runtime. Estimates move between snapshots and do not update a gate.
 - [Arena Code Arena WebDev](https://arena.ai/leaderboard/code/webdev?rankBy=labs),
-  dated 2026-07-27: 489,150 human-preference votes across 19 labs for
-  frontend/product output only. `claude-opus-5-max` enters first at 1725 but is
-  preliminary on 686 votes; `claude-opus-5-high` (1670) and `claude-sonnet-5-high`
-  (1545) are new and not preliminary. Kimi K3 and Gemini 3.6 Flash remain
-  preliminary.
+  dated 2026-07-28 and observed 2026-07-31: 492,170 human-preference votes
+  across 106 models for frontend/product output only. GLM-5.2 Max is recorded
+  as contextual WebDev evidence (1588, interval 1579–1597, 5,865 votes); it cannot qualify
+  general builder, reviewer, or judgement work.
 - [SWE-PRBench](https://arxiv.org/abs/2603.26130) and the continuously refreshed
   [Martian Code Review Bench](https://github.com/withmartian/code-review-benchmark)
   as the required evidence family for reviewer lanes. As of 2026-07-28 neither
@@ -104,19 +109,24 @@ benchmarks remain separately labeled context.
   Connector 59.3, Claude 55.3 (66.2% precision / 47.4% recall) — not a model at a
   named effort, and its offline repository has not published new results since
   2026-07-13. The `reviewer` lane therefore still shows zero rows.
-- The dated [Terminal-Bench 2.0](https://www.tbench.ai/leaderboard/terminal-bench/2.0?verified=true)
-  snapshot and [SWE-bench-Live](https://swe-bench-live.github.io/) remain
-  secondary context. Current Grok comparisons use Terminal-Bench 2.1 through
-  their explicitly named source/harness rather than overwriting those rows.
-- [CursorBench 3.2](https://cursor.com/cursorbench), observed 2026-07-25 and
-  re-verified unchanged on 2026-07-28, for ambiguous multi-file understanding,
+- [Terminal-Bench 2.1](https://www.tbench.ai/leaderboard/terminal-bench/2.1)
+  is a distinct source from the retained 2.0 snapshot: it repaired 28 of 89
+  tasks, and the contextual Grok 4.5/Cursor CLI `high` row records the final
+  anti-cheat-adjusted 79.3% ±1.5%, not its 88.3% pre-judgement value. Forty
+  of 445 trials were disqualified (−9.0 percentage points); the source's
+  Cursor CLI harness and `high` effort remain explicit rather than being silently
+  mapped to Grok Build. [SWE-bench-Live](https://swe-bench-live.github.io/) was
+  also refreshed on 2026-07-31; its live report feed contained submissions
+  through 2026-07-30. It remains provenance for an automatically updated
+  multi-language and multi-OS task family, not an exact local result.
+- [CursorBench 3.2](https://cursor.com/cursorbench), observed 2026-07-30, for ambiguous multi-file understanding,
   planning, implementation, bugfinding, and review tasks. Every row uses Cursor's
   harness; its Grok 4.5 row also carries the publisher's possible
   training-contamination warning. It supplies the first coding-context rows for
   Gemini 3.6 Flash `medium` and `high`, but not for the production `agy` harness.
-  The 2026-07-28 pass filled previously uncaptured rows rather than changing any
-  recorded value: Fable 5 `max` (70.5), Opus 5 `max` (70.0), and Opus 5 `xhigh`
-  (69.3).
+  The pricing provenance now explicitly uses the publisher's per-task tokens and
+  published input, cache-read, cache-write, and output rates; it changes no
+  recorded CursorBench score.
 - [FrontierCode 1.1](https://cognition.com/frontiercode), with its
   [revision notes](https://cognition.com/blog/frontier-code-1.1), for
   maintainer-defined mergeability across correctness, tests, scope, style, and
@@ -133,6 +143,9 @@ benchmarks remain separately labeled context.
   releases, as reproducible local-harness context. Kimi was not run through Kimi
   Code CLI, and the Codex GPT-5.6 Sol row used `medium`, not the production
   reviewer/judge `high` effort.
+- The 2026-07-31 OpenBench refresh records current reproducibility provenance,
+  not a re-score: wrappers, effort, permissions, checker controls, raw results,
+  and token/cost telemetry remain part of the result identity.
 - [OpenBench's Grok 4.5 release](https://github.com/minghinmatthewlam/openbench/blob/main/docs/releases/2026-07-20-grok45/index.html)
   and the current [Code Arena WebDev leaderboard](https://arena.ai/leaderboard/code/webdev?rankBy=labs)
   as contextual support for Grok's builder and frontend-builder promotion.
@@ -146,6 +159,10 @@ benchmarks remain separately labeled context.
   contextual release evidence, not an independent reviewer benchmark. Anthropic
   also documents that flagged cyber requests may fall back to Opus 4.8; the
   security gate exposes that provider-controlled exception explicitly.
+- [Z.ai's GLM-5.2 launch](https://z.ai/blog/glm-5.2), observed 2026-07-31, is
+  first-party contextual release provenance for the pinned model identity,
+  long-horizon coding positioning, and one-million-token context. It is not an
+  independent benchmark, local compatibility proof, or lane qualification.
 
 ### Local harness evaluation with OpenBench
 
@@ -205,12 +222,12 @@ before manually adding selected source/evidence objects to
 `config/model-evidence.json`; the importer has no gate or snapshot mutation
 path.
 
-The 2026-07-28 ZIP snapshot has SHA-256
-`c8d42856b661b8d839b636c48766febc9bf56c9c0f1db68ad9bdf2b71e009164`
-and contains 74 benchmark CSVs, 5,671 rows, and 5,617 normalized advisory
-records. Epoch re-published the archive between July 25 and July 28: the hash
-changed from `72a03e2fb8f7e24aba2fafdb08558100e6131b70d67370246dd1bf22daf36cff`
-while the shape stayed identical. The recorded hash is descriptive provenance —
+The 2026-07-31 ZIP snapshot has SHA-256
+`fa42ce8e17bacd56885032891dfd1073894ba09c424bf540ab51d0469e9c2850`
+and contains 75 benchmark CSVs, 5,984 rows, and 5,930 normalized advisory
+records. Epoch re-published the archive since the 2026-07-28 record
+(`c8d42856b661b8d839b636c48766febc9bf56c9c0f1db68ad9bdf2b71e009164`). The
+recorded hash is descriptive provenance —
 `delegation-epoch` prints the hash of whatever it downloads and no check
 compares it against the snapshot, so a mismatch is a signal to re-read, not a
 failure. New relevant families include FrontierCode, FrontierSWE, APEX Agents,

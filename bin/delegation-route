@@ -73,19 +73,25 @@ validate() {
       ($evidence[0].lane_evidence[evidence_lane($lane.key)].required_metrics // [])[] as $metric |
       select(has_metric($rows[$id].metrics; $metric) | not)] | length == 0) and
     ([.profiles[].lanes[] | ((.exact_evidence_ids + .context_evidence_ids) | length) == ((.exact_evidence_ids + .context_evidence_ids) | unique | length)] | all) and
+    ([.profiles | to_entries[] as $p | $p.value.lanes | to_entries[] as $lane |
+      select($lane.value.evaluation_manifest_sha256? != null) |
+      ($lane.key == "policy-annotation") or
+      ($p.value.model == "glm-5.2" and $p.value.harness == "claude-zai" and
+       (["clerk","scout","builder"] | index($lane.key)) != null and
+       (($lane.value.status == "provisional" and $lane.value.selection == "explicit-only") or
+        ($lane.value.status == "candidate" and $lane.value.selection == "blocked")))] | all) and
     ([.profiles | to_entries[] as $p | $p.value.lanes | to_entries[] |
-      select(.value.evaluation_manifest_sha256? != null) |
-      .key == "policy-annotation"] | all) and
-    ([.profiles | to_entries[] as $p | $p.value.lanes | to_entries[] |
-      select(.key == "policy-annotation") | .value |
+      select(.value.evaluation_manifest_sha256? != null) | .value |
       (.evaluation_manifest_sha256 // null) as $hashes |
       ($hashes | type) == "array" and
       ($hashes | length) == ($hashes | unique | length) and
-      all($hashes[]; type == "string" and test("^[0-9a-f]{64}$")) and
-      (if .status == "candidate"
-       then .selection == "blocked"
-       else ($hashes | length) == 0
-       end)] | all) and
+      all($hashes[]; type == "string" and test("^[0-9a-f]{64}$"))] | all) and
+    ([.profiles | to_entries[] as $p | $p.value.lanes | to_entries[] |
+      select(.key == "policy-annotation") | .value |
+      if .status == "candidate"
+      then .selection == "blocked"
+      else ((.evaluation_manifest_sha256 // []) | length) == 0
+      end] | all) and
     ([.profiles[].lanes[] | select((.provider_fallback // null) != null) |
       .provider_fallback |
       .possible == true and

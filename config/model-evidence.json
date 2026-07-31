@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "snapshot_at": "2026-07-28T00:00:00Z",
+  "snapshot_at": "2026-07-31T00:00:00Z",
   "max_snapshot_age_days": 45,
   "policy": {
     "external_evidence_never_auto_qualifies": true,
@@ -133,9 +133,10 @@
     "cursorbench-3.2-2026-07-08": {
       "name": "CursorBench 3.2",
       "url": "https://cursor.com/cursorbench",
-      "observed_at": "2026-07-25",
+      "observed_at": "2026-07-30",
       "data_date": "2026-07-09",
       "scope": "Ambiguous multi-file tasks derived from real Cursor sessions, including codebase understanding, bugfinding, planning, implementation, and code review",
+      "pricing_provenance": "Cursor's 2026-07-30 evaluation page prices each task by applying published per-million-token input, cache-read, cache-write, and output rates to the tokens used; this refresh changes no recorded benchmark score",
       "limitations": "The Cursor agent harness differs from every production runner in this kit; Cursor reports possible Grok 4.5 training contamination from an earlier benchmark codebase snapshot; no review precision or recall is published"
     },
     "frontiercode-1.1-2026-07-07": {
@@ -208,6 +209,68 @@
       "data_date": "2026-05",
       "scope": "Agentic multimodal spatial-reasoning evaluation over 50 apartments with a persistent cross-task notepad",
       "limitations": "Spatial reconstruction is useful general agent context but is not coding-lane qualification"
+    },
+    "terminal-bench-2.1-2026-07-31": {
+      "name": "Terminal-Bench 2.1",
+      "url": "https://www.tbench.ai/leaderboard/terminal-bench/2.1",
+      "release_url": "https://www.tbench.ai/news/terminal-bench-2-1",
+      "observed_at": "2026-07-31",
+      "scope": "Verified 89-task terminal-agent leaderboard. The published model, harness, effort, cost, and anti-cheat adjustment are preserved together; Terminal-Bench 2.1 repaired 28 Terminal-Bench 2.0 tasks.",
+      "limitations": "A named harness and effort establish source identity only. The Cursor CLI row is contextual for delegation-grok, and anti-cheat-adjusted accuracy must not be replaced with the pre-judgement value."
+    },
+    "agent-arena-2026-07-28": {
+      "name": "Arena Agent Arena",
+      "url": "https://arena.ai/leaderboard/agent",
+      "methodology_url": "https://arena.ai/blog/agent-arena-methodology/",
+      "observed_at": "2026-07-31",
+      "data_date": "2026-07-28",
+      "scope": "1,412,751 in-the-wild sessions across 44 models with causal estimates for confirmed success, feedback, steerability, bash recovery, and tool hallucination.",
+      "limitations": "Arena variants and effort labels remain contextual unless the production runner also matches; it is not a routing qualification or a substitute for review precision/recall."
+    },
+    "code-arena-webdev-2026-07-28": {
+      "name": "Arena Code Arena WebDev",
+      "url": "https://arena.ai/leaderboard/code/webdev?rankBy=labs",
+      "methodology_url": "https://arena.ai/blog/new-categories-code-arena/",
+      "observed_at": "2026-07-31",
+      "data_date": "2026-07-28",
+      "scope": "492,170 human-preference votes across 106 models for WebDev outputs. It is frontend/product context only.",
+      "limitations": "The table is neither general builder evidence nor reviewer or judgement evidence; model and harness identity still must match before an owner can consider it exact."
+    },
+    "swe-bench-live-2026-07-31": {
+      "name": "SWE-bench-Live",
+      "url": "https://swe-bench-live.github.io/",
+      "observed_at": "2026-07-31",
+      "data_date": "2026-07-30",
+      "scope": "Automatically updated multi-language and multi-OS software-engineering tasks; the live report feed contained submissions through 2026-07-30 when observed.",
+      "limitations": "The site is provenance for a contamination-resistant evaluation family, not a matching local-harness result or a reviewer qualification."
+    },
+    "openbench-2026-07-31": {
+      "name": "OpenBench provenance refresh",
+      "url": "https://github.com/minghinmatthewlam/openbench",
+      "results_url": "https://github.com/minghinmatthewlam/openbench/blob/main/RESULTS.md",
+      "observed_at": "2026-07-31",
+      "scope": "Same-model, different-wrapper coding-agent comparison with correctness, speed, token cost, disposable workspaces, checker controls, repeated trials, and raw-result provenance.",
+      "limitations": "No pre-existing OpenBench row is re-scored here. A wrapper, permission surface, or effort mismatch remains contextual and cannot promote a route."
+    },
+    "zai-glm-5.2-launch-2026-06": {
+      "name": "Z.ai GLM-5.2 launch",
+      "url": "https://z.ai/blog/glm-5.2",
+      "observed_at": "2026-07-31",
+      "data_date": "2026-06",
+      "category": "first-party-release-evidence",
+      "scope": "Official GLM-5.2 launch evidence for identity, long-horizon coding positioning, and one-million-token context availability.",
+      "limitations": "First-party launch claims are contextual provenance, not independent benchmark evidence, local compatibility evidence, or automatic lane qualification."
+    },
+    "epoch-zip-2026-07-31": {
+      "name": "Epoch AI benchmark data ZIP",
+      "url": "https://epoch.ai/benchmarks/use-this-data",
+      "data_url": "https://epoch.ai/data/benchmark_data.zip",
+      "observed_at": "2026-07-31",
+      "archive_sha256": "fa42ce8e17bacd56885032891dfd1073894ba09c424bf540ab51d0469e9c2850",
+      "previous_archive_sha256": "c8d42856b661b8d839b636c48766febc9bf56c9c0f1db68ad9bdf2b71e009164",
+      "republished": "The archive was re-published since the 2026-07-28 record. Its 2026-07-31 shape is 75 CSVs, 5,984 rows, and 5,930 normalized advisory records; the hash is descriptive provenance and is not enforced by any check.",
+      "scope": "75 benchmark CSVs, 5,984 rows, and 5,930 advisory normalized records spanning coding, agents, multimodal reasoning, and general capabilities.",
+      "limitations": "Many imported rows have unknown harness or effort and remain contextual; ZIP evidence cannot mutate a routing gate or qualify a production lane by itself."
     }
   },
   "lane_evidence": {
@@ -789,6 +852,88 @@
           "adaptive_thinking_default": true,
           "supported_efforts": ["low", "medium", "high", "xhigh", "max"],
           "code_review_improvement_claimed": true
+        }
+      }
+    },
+    {
+      "id": "terminal-bench-2.1-grok-4.5-cursor-cli-high",
+      "model": "grok-4.5",
+      "harness": "cursor-cli",
+      "effort": "high",
+      "source": "terminal-bench-2.1-2026-07-31",
+      "contextual_only": true,
+      "metrics": {
+        "coding": {
+          "terminal_bench_v2_1_pass_pct": 79.3,
+          "reported_error_half_width_pct": 1.5,
+          "pre_anti_cheat_pass_pct": 88.3,
+          "anti_cheat_adjustment_pct": -9.0,
+          "disqualified_trials": 40,
+          "trials_total": 445,
+          "tokens_total": 178384443,
+          "cost_total_usd": 134.09
+        }
+      }
+    },
+    {
+      "id": "arena-agent-glm-5.2-max-2026-07-28",
+      "model": "glm-5.2",
+      "harness": "arena-agent-mode",
+      "effort": "max",
+      "source": "agent-arena-2026-07-28",
+      "contextual_only": true,
+      "metrics": {
+        "agent": {
+          "net_improvement_pct": 7.08,
+          "confirmed_success_effect_pct": 9.08,
+          "praise_vs_complaint_effect_pct": 13.79,
+          "steerability_effect_pct": 5.96,
+          "bash_recovery_effect_pct": 5.23,
+          "tool_hallucination_effect_pct": 1.32,
+          "sessions": 43277
+        }
+      }
+    },
+    {
+      "id": "webdev-glm-5.2-max-2026-07-21",
+      "model": "glm-5.2",
+      "harness": "arena-code-webdev",
+      "effort": "max",
+      "source": "code-arena-webdev-2026-07-28",
+      "contextual_only": true,
+      "metrics": {
+        "webdev": {
+          "elo": 1588,
+          "confidence_interval_low": 1579,
+          "confidence_interval_high": 1597,
+          "votes": 5865,
+          "input_price_per_million_tokens_usd": 1.4,
+          "output_price_per_million_tokens_usd": 4.4
+        }
+      }
+    },
+    {
+      "id": "zai-glm-5.2-launch",
+      "model": "glm-5.2",
+      "harness": "zai-launch",
+      "effort": "reported-max",
+      "source": "zai-glm-5.2-launch-2026-06",
+      "contextual_only": true,
+      "metrics": {
+        "launch": {
+          "context_window_tokens": 1000000,
+          "first_party_claim": "long-horizon coding and agentic tasks",
+          "swe_bench_pro_pass_pct": 62.1,
+          "nl2repo_pass_pct": 48.9,
+          "deep_swe_pass_pct": 46.2,
+          "programbench_pass_pct": 63.7,
+          "terminal_bench_v2_1_terminus_2_pass_pct": 81.0,
+          "terminal_bench_v2_1_best_reported_claude_code_pass_pct": 82.7,
+          "frontier_swe_dominance_pct": 74.4,
+          "post_train_bench_pass_pct": 34.3,
+          "swe_marathon_pass_pct": 13.0,
+          "mcp_atlas_pass_pct": 76.8,
+          "tool_decathlon_pass_pct": 48.2
         }
       }
     }

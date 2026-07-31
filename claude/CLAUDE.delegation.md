@@ -55,12 +55,12 @@ the dated evidence snapshot and lane mapping.
 
 GLM-5.2 may replace an executor profile only through the installed
 `glm-executor` skill. The current gate reports `clerk` and `scout` in
-`provisional_lanes`; dispatch requires an explicit decision and
-`--allow-provisional`, even if Claude can list
-the model. The bridge pins GLM-5.2 and runs only through the isolated Claude→Z.AI
+`qualified_lanes`, while retaining explicit-only selection. `builder` is
+provisional after its first exact local pack and requires an explicit decision
+plus `--allow-provisional`. The bridge pins GLM-5.2 and runs only through the isolated Claude→Z.AI
 backend, keyed by `ZAI_API_KEY` or the 600-mode key the installer stored. All
-provisional lanes route at `high`, and an effort the gate did not pin is refused.
-Builder is a blocked candidate and reviewer remains disabled.
+operational lanes route at `high`, and an effort the gate did not pin is refused.
+Reviewer remains disabled.
 Never silently substitute another model or promote an unevaluated lane.
 `policy-annotation` at `high` is a separate candidate/blocked lane that may run
 only with an allowlisted read-only evaluation manifest. It never widens the

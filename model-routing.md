@@ -243,10 +243,12 @@ prices for the keystrokes in between.
 6. **Refresh or disable.** A stale evidence snapshot (currently >45 days) blocks
    new qualification decisions until its live sources are checked again.
 
-The current GLM gate keeps `clerk` and `scout` provisional and makes builder a
-blocked candidate. Kimi K3 is provisional for `clerk`, `scout`, `builder`, and
+The frozen 2026-07-31 exact comparison qualifies GLM `clerk` and `scout` while
+retaining explicit-only selection. Builder passed its first repeated pack and
+moves only from candidate to provisional; it still requires
+`--allow-provisional`. Reviewer remains disabled. Kimi K3 is provisional for `clerk`, `scout`, `builder`, and
 `frontend-builder`; senior is a blocked candidate, while reviewer and judgement
-remain disabled. Provisional bridge runs require `--allow-provisional`.
+remain disabled. Other provisional bridge runs require `--allow-provisional`.
 Grok 4.5 is provisional for `builder` and `frontend-builder` through Grok Build
 CLI at `high`; builder is explicit-only and frontend-builder is
 preferred-explicit. The runner capability-probes the CLI and optionally archives

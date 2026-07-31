@@ -1,0 +1,128 @@
+{
+  "schema_version": "delegation_glm_lane_qualification_result_v1",
+  "evaluated_at": "2026-07-31T13:55:22Z",
+  "run_id": "2026-07-31-glm-lane-qualification-v6",
+  "tuple": {
+    "model": "glm-5.2",
+    "backend": "claude-zai",
+    "effort": "high"
+  },
+  "runtime_provenance": {
+    "runner_source_commit": "4d38ba684f95f496594f7cdffafeee292a45ee77",
+    "runner_sha256": "f80b0de8a47a4372f651a83e94ecf081ddca679d58fe5967337248e54f22c253",
+    "claude_code": "2.1.220",
+    "codex_cli": "0.146.0",
+    "contract_sha256": "a6e216e35536f809ede7d75781012c0a74c2513ed1ff8a231727ab4bd910154e",
+    "post_observation_retries": 0
+  },
+  "comparison_sources": {
+    "glm_attempts": "2026-07-31-glm-lane-qualification-v6",
+    "incumbent_attempts": "2026-07-31-glm-lane-qualification-v3",
+    "incumbent_scores_sha256": "e720895d18192e1acc4caa1d8d45d5fa29d66aa9c316e6351ea19be06bbfb141",
+    "combined_aggregate_sha256": "c172eeeb1758ff62d38bbdd9e6dde3fe025e03f4c0fcadbd758e1d48eb681a49"
+  },
+  "invalidated_runs": [
+    {
+      "run": "glm-2026-07-31",
+      "provider_reached": false,
+      "model_output_observed": false,
+      "reason": "unsupported_draft_2020_12_meta_schema"
+    },
+    {
+      "run": "glm-2026-07-31-v2",
+      "provider_reached": false,
+      "model_output_observed": false,
+      "reason": "generic_schema_rejected_by_codex"
+    },
+    {
+      "run": "glm-2026-07-31-v3",
+      "provider_reached": true,
+      "model_output_observed": true,
+      "reason": "qualification_runner_failed_final_security_review"
+    },
+    {
+      "run": "glm-2026-07-31-v4",
+      "provider_reached": false,
+      "model_output_observed": false,
+      "reason": "sandbox_missing_macos_timezone_runtime_path"
+    },
+    {
+      "run": "glm-2026-07-31-v5",
+      "provider_reached": false,
+      "model_output_observed": false,
+      "reason": "claude_keychain_prefetch_blocked_by_process_allowlist"
+    }
+  ],
+  "lanes": {
+    "clerk": {
+      "task_count": 6,
+      "repeats": 3,
+      "prompt_sha256": "0952724771812eec8c1c3a85d2c7e8676587830494019bdbe38de980ff356d33",
+      "fixture_commit": "f3178215b7881cb3d4376c6ec720de56be357338",
+      "output_schema_sha256": "d8d5d89ed66769921df6cfce6cd93b325a2e6ee5e7f1e4220a9d55f4870fb917",
+      "glm": {
+        "valid_repeats": 3,
+        "mean_score": 1.0,
+        "elapsed_seconds": [21, 21, 24],
+        "provider_cost_usd": 0.087746
+      },
+      "incumbents": [
+        {"identity": "codex/luna-clerk/low", "valid_repeats": 3, "mean_score": 1.0},
+        {"identity": "claude/sonnet/low", "valid_repeats": 3, "mean_score": 1.0}
+      ],
+      "threshold_passed": true,
+      "previous_status": "provisional",
+      "decision": "qualified"
+    },
+    "scout": {
+      "task_count": 7,
+      "repeats": 3,
+      "prompt_sha256": "cdb44c9c74907719abbeccd95471c0761914388740432206a608e6cc1e760d6b",
+      "fixture_commit": "d490fac69e0c5e255dfef9c46a8aa704c17a1fd1",
+      "output_schema_sha256": "0d788da73f4e327ae0e8ad58833f75ab36eb98a993210464555e88bb27732d4a",
+      "glm": {
+        "valid_repeats": 3,
+        "mean_score": 1.0,
+        "elapsed_seconds": [151, 213, 254],
+        "provider_cost_usd": 0.676913
+      },
+      "incumbents": [
+        {"identity": "codex/terra-scout/low", "valid_repeats": 3, "mean_score": 1.0},
+        {"identity": "claude/sonnet/low", "valid_repeats": 3, "mean_score": 0.5714285714285714}
+      ],
+      "threshold_passed": true,
+      "previous_status": "provisional",
+      "decision": "qualified"
+    },
+    "builder": {
+      "task_count": 6,
+      "repeats": 3,
+      "prompt_sha256": "6987036d994added544e5e0de416d29dbacbb39e5decc3d0d431e70344c5e837",
+      "fixture_commit": "5843017be0163cc7e314687743c82a16857e9519",
+      "output_schema_sha256": "17d2387f9a7192a8d453fe6ec459fc04a8a79055b5ce0bdeab12038ce7c9e707",
+      "glm": {
+        "valid_repeats": 3,
+        "mean_score": 1.0,
+        "all_checker_runs_pass": true,
+        "elapsed_seconds": [87, 111, 94],
+        "provider_cost_usd": 0.394778
+      },
+      "incumbents": [
+        {"identity": "codex/terra-builder/medium", "valid_repeats": 3, "mean_score": 1.0, "all_checker_runs_pass": true},
+        {"identity": "claude/sonnet/medium", "valid_repeats": 1, "mean_score": 1.0, "all_checker_runs_pass": false, "void_reasons": ["out_of_fixture_write", "out_of_fixture_write"]}
+      ],
+      "threshold_passed": true,
+      "previous_status": "candidate",
+      "decision": "provisional"
+    }
+  },
+  "limitations": [
+    "The packs are bounded synthetic qualification tasks, not broad model-quality benchmarks.",
+    "The result qualifies only the exact model, backend, effort, runner, and named lanes.",
+    "GLM v3 outputs were discarded after final security review; v6 reran GLM only with unchanged prompts, fixtures, schemas, and thresholds, while incumbent attempts were reused byte-for-byte.",
+    "Scout latency was materially higher for GLM than for both incumbents.",
+    "The Claude builder comparator wrote outside its fixture in repeats 2 and 3; both attempts are VOID, the artifact was quarantined privately, and no retry was made.",
+    "Builder remains explicit-only and provisional after its first exact local qualification.",
+    "Reviewer, judgement, frontend-builder, and policy-annotation are unchanged."
+  ]
+}
