@@ -106,8 +106,10 @@ EOF
 cat >"$TMP/bin/gtimeout" <<'EOF'
 #!/usr/bin/env bash
 set -euo pipefail
+root="$(cd "$(dirname "$0")/.." && pwd)"
 if [ "${1:-}" = -k ]; then shift 2; fi
 seconds="${1:-}"; shift
+printf '%s\n' "$seconds" >"$root/last-timeout-seconds"
 case "$*" in *TIMEOUT_EVALUATION*) exit 124 ;; esac
 case "$*" in *TIMEOUT_OPERATIONAL*) exit 124 ;; esac
 exec "$@"
@@ -325,7 +327,7 @@ write_manifest() {
     --arg contract_sha256 "$(sha256 "$ROOT/evaluation/test-fixtures/contract.txt")" \
     --arg output_schema_sha256 "$(sha256 "$ROOT/evaluation/test-fixtures/output-schema.json")" \
     --arg source_commit "$BASE_COMMIT" \
-    '{schema:"delegation_policy_annotation_evaluation_v1",profile:"kimi-k3",lane:"policy-annotation",model:"kimi-code/k3",backend:"native",effort:"max",prompt_sha256:$prompt_sha256,runner_source_commit:$source_commit,runner_sha256:$runner_sha256,contract_path:"evaluation/test-fixtures/contract.txt",contract_sha256:$contract_sha256,output_schema_path:"evaluation/test-fixtures/output-schema.json",output_schema_sha256:$output_schema_sha256,timeout_seconds:60,max_output_chars:1024}' \
+    '{schema:"delegation_policy_annotation_evaluation_v1",profile:"kimi-k3",lane:"policy-annotation",model:"kimi-code/k3",backend:"native",effort:"max",prompt_sha256:$prompt_sha256,runner_source_commit:$source_commit,runner_sha256:$runner_sha256,contract_path:"evaluation/test-fixtures/contract.txt",contract_sha256:$contract_sha256,output_schema_path:"evaluation/test-fixtures/output-schema.json",output_schema_sha256:$output_schema_sha256,timeout_seconds:1200,max_output_chars:1024}' \
     >"$TMP/manifest.json"
 }
 write_manifest
@@ -530,6 +532,8 @@ run_kimi run --lane policy-annotation --evaluation \
   --evaluation-manifest "$TMP/manifest.json" --prompt-file "$TMP/prompt" \
   --output "$TMP/results/evaluation.txt" --workdir "$TMP/work"
 [ "$(cat "$TMP/results/evaluation.txt")" = PONG ] || fail "evaluation output mismatch"
+[ "$(cat "$TMP/last-timeout-seconds")" = 1200 ] \
+  || fail "evaluation did not use the 1200-second manifest timeout"
 jq -e '.lane == "policy-annotation" and .effort == "max"' \
   "$TMP/results/evaluation.txt.metrics.json" >/dev/null || fail "evaluation metrics mismatch"
 
@@ -628,6 +632,20 @@ run_kimi run --lane policy-annotation --evaluation \
 [ ! -e "$TMP/results/preflight-missing.txt" ] &&
   [ ! -e "$TMP/results/preflight-missing.txt.stderr" ] \
   || fail "manifest failure created artifacts"
+
+# The manifest-bound Kimi evaluation ceiling is 1200 seconds. The shared
+# positive fixture above exercises the exact accepted boundary; 1201 must fail
+# before provider dispatch even if a caller supplies an otherwise valid manifest.
+jq '.timeout_seconds = 1201' "$TMP/manifest.json" >"$TMP/manifest-timeout-too-large.json"
+rc=0
+run_kimi run --lane policy-annotation --evaluation \
+  --evaluation-manifest "$TMP/manifest-timeout-too-large.json" --preflight-only \
+  --prompt-file "$TMP/prompt" --output "$TMP/results/preflight-timeout-too-large.txt" \
+  --workdir "$TMP/work" >/dev/null 2>&1 || rc=$?
+[ "$rc" = 78 ] || fail "preflight accepted evaluation timeout above 1200 seconds"
+[ ! -e "$TMP/results/preflight-timeout-too-large.txt" ] &&
+  [ ! -e "$TMP/results/preflight-timeout-too-large.txt.stderr" ] \
+  || fail "oversized evaluation timeout created artifacts"
 
 rc=0
 run_kimi run --lane policy-annotation --evaluation \
