@@ -37,6 +37,12 @@ Qwen Token Plan at `xhigh`, GLM-5.2/Claude-to-Z.AI at `high`, and Grok
 Sol policy-annotation candidates; those profiles still require their own frozen
 transport harness and an allowlisted manifest before they may supply evidence.
 
+Only qualification assets owned by delegation-kit belong in this directory.
+Evaluation contracts, packets, results, or jury packs for a downstream project
+must remain in that project's repository or a dedicated artifact registry.
+`evaluation/dipylon-ai-jury-*/` is ignored deliberately; external packs must not
+be installed, diagnosed, or allowlisted by this kit.
+
 ## Versioned snapshot
 
 [`config/model-evidence.json`](../config/model-evidence.json) records raw metrics,

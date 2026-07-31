@@ -352,9 +352,9 @@ PATH="$TMP/bin:$PATH" QWEN_TOKEN_PLAN_API_KEY=sk-sp-test \
   || fail 'provider invoked despite manifest failure'
 [ ! -e "$TMP/results/preflight-missing.out" ] || fail 'manifest failure created output'
 
-# Regression: a frozen Dipylon manifest pinned timeout_seconds=900. The
-# manifest ceiling is exactly 900, so preflight must accept the allowlisted
-# manifest and still stop before any provider dispatch or artifact.
+# Regression: an allowlisted evaluation manifest may pin timeout_seconds=900.
+# The ceiling is exactly 900, so preflight must accept it and still stop before
+# any provider dispatch or artifact.
 jq '.timeout_seconds = 900' "$TMP/manifest.json" >"$TMP/manifest-timeout900.json"
 TIMEOUT900_MANIFEST_SHA="$(sha256 "$TMP/manifest-timeout900.json")"
 jq --arg hash "$TIMEOUT900_MANIFEST_SHA" '

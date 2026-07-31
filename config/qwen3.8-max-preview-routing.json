@@ -13,6 +13,6 @@
     "reviewer": {"default_effort": "xhigh", "backends": {"token-plan-openai": {"qualified": false, "status": "candidate", "selection": "blocked", "effort": "xhigh"}}},
     "senior": {"default_effort": "xhigh", "backends": {"token-plan-openai": {"qualified": false, "status": "candidate", "selection": "blocked", "effort": "xhigh"}}},
     "judgement": {"default_effort": "xhigh", "backends": {"token-plan-openai": {"qualified": false, "status": "disabled", "selection": "blocked", "effort": "xhigh"}}},
-    "policy-annotation": {"default_effort": "xhigh", "backends": {"token-plan-openai": {"qualified": false, "status": "candidate", "selection": "blocked", "effort": "xhigh", "evaluation_manifest_sha256": ["77a8cb43489ce1708f904d8aef1f27e5cc003a8216be32306c5cd50740ab5664", "2dc9c37c34661bf82d38f1edccac0b3679ea5af48f8f8ddc4e6ad489cfd98e54", "0ff9a95fd8178916e1938b19aebaf8f2b96a2232131ebfdb12d893917bd6dca9", "4c28aa4fbf488d77cf80aeb2dd00652a356439bf9f9008b98490bd37d97674da", "54af7658c78a8a65fc2f0104eb04979e8ff6f9c12c628cef3f9f09e1914459f3"]}}}
+    "policy-annotation": {"default_effort": "xhigh", "backends": {"token-plan-openai": {"qualified": false, "status": "candidate", "selection": "blocked", "effort": "xhigh", "evaluation_manifest_sha256": ["77a8cb43489ce1708f904d8aef1f27e5cc003a8216be32306c5cd50740ab5664"]}}}
   }
 }
