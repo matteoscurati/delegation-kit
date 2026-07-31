@@ -9,17 +9,14 @@ It ships as a **reference implementation**: the author's concrete models
 external-evidence snapshot, and fail-closed local gates. Swap the models for your own tiers with
 [`ADAPTING.md`](./ADAPTING.md) — the *structure* is the transferable part.
 
-## Current release: 0.7.2
+## Current release: 0.8.0
 
-Version 0.7.2 keeps this repository focused on reusable delegation-kit assets:
-project-specific evaluation packs now remain with the downstream project that
-owns them and are ignored here. The installer, doctor, routing gates, and tests
-no longer depend on those external packs; generic, kit-owned qualification
-manifests and the Qwen timeout/error handling remain covered. The cross-agent
-compatibility verification introduced in 0.7.1 still applies to every shipped
-Claude Code agent, Codex profile, and optional external runner. No lane is
-promoted by this cleanup; provisional and blocked routes keep their existing
-gates. See
+Version 0.8.0 adds manifest-bound qualification for the exact
+`glm-5.2` / `claude-zai` / `high` tuple and refreshes the dated external model
+evidence. A frozen, repeated comparison against the Codex and Claude incumbents
+qualifies GLM clerk and scout as explicit-only routes; builder moves only to
+provisional and still requires `--allow-provisional`. Reviewer, judgement,
+frontend-builder, and policy annotation are unchanged. See
 [`docs/compatibility.md`](./docs/compatibility.md) and
 [`CHANGELOG.md`](./CHANGELOG.md).
 
@@ -56,8 +53,9 @@ The universal installer also adds `delegation-glm`, `delegation-gemini`, `delega
 `delegation-evidence`, the ZIP-only `delegation-epoch` importer, and the read-only
 central router `delegation-route` under
 `~/.local/bin`, with versioned gates under `~/.local/share/delegation-kit/`.
-GLM `clerk` and `scout` are provisional and require `--allow-provisional`;
-builder is a blocked candidate and reviewer is disabled. A separate
+GLM `clerk` and `scout` are qualified but remain explicit-only; `builder` is
+provisional and requires an explicit decision plus `--allow-provisional`.
+Reviewer is disabled. A separate
 `policy-annotation` candidate at the highest supported bridge effort (`high`)
 can run only through an allowlisted read-only evaluation manifest and creates no
 operational route. The runner refuses every
@@ -77,10 +75,12 @@ Each attempt is pinned to `glm-5.2` / `claude-zai` / `high` and to hashes of the
 prompt, contract, output schema, runner, runner commit, and fixture commit. The
 private manifest must be allowlisted in private copies of both gates; raw packs
 and results stay under ignored `eval/`. Three GLM attempts are compared with the
-Codex and Claude incumbents for the same lane. A timeout, missing output,
-identity mismatch, permission violation, or checker failure is `VOID`, and the
-runner never promotes a route. Only a separately reviewed aggregate that passes
-the preregistered thresholds may justify a public gate change.
+Codex and Claude incumbents for the same lane. The frozen 2026-07-31 comparison
+qualified clerk and scout and moved builder only to provisional. A timeout,
+missing output, identity mismatch, permission violation, or checker failure is
+`VOID`, and the runner never promotes a route. Only a separately reviewed
+aggregate that passes the preregistered thresholds may justify a public gate
+change.
 
 Gemini 3.6 Flash uses the installed, user-authenticated Antigravity CLI (`agy`).
 Only `scout` at `medium` is provisional and requires `--allow-provisional`;
