@@ -34,6 +34,7 @@ EVALUATION_TIMEOUT_SECONDS=""
 EVALUATION_MAX_OUTPUT_CHARS=""
 EVALUATION_MAX_COST_USD=""
 EVALUATION_OUTPUT_SCHEMA_JSON=""
+EVALUATION_GIT_DIR=""
 
 cleanup_run() {
   [ -z "$RUN_OUTPUT_TMP" ] || rm -f -- "$RUN_OUTPUT_TMP"
@@ -77,10 +78,78 @@ sha256_file() {
   else return 1; fi
 }
 
+normalized_mode() {
+  local raw
+  if raw="$(stat -f '%Lp' "$1" 2>/dev/null)"; then :
+  elif raw="$(stat -c '%a' "$1" 2>/dev/null)"; then :
+  else return 1; fi
+  printf '%04o' "$((8#$raw & 07777))"
+}
+
+# Hash every tracked, untracked, and ignored path in a fixture worktree. Git's
+# binary diff is useful evidence for tracked changes, but it deliberately omits
+# untracked and ignored files. The NUL-delimited inventory makes those bytes
+# part of the canonical evaluation receipt without relying on path quoting.
+worktree_snapshot_sha256() {
+  local workdir="$1" inventory="$2" paths path digest target mode
+  paths="$inventory.paths"
+  {
+    git -C "$workdir" ls-files -z
+    git -C "$workdir" ls-files -z --others --exclude-standard
+    git -C "$workdir" ls-files -z --others --ignored --exclude-standard
+  } | LC_ALL=C sort -zu >"$paths" || return 1
+  : >"$inventory"
+  while IFS= read -r -d '' path; do
+    if [ -L "$workdir/$path" ]; then
+      target="$(readlink "$workdir/$path")" || return 1
+      mode="$(normalized_mode "$workdir/$path")" || return 1
+      printf 'symlink\0%s\0%s\0%s\0' "$path" "$mode" "$target" >>"$inventory"
+    elif [ -f "$workdir/$path" ]; then
+      digest="$(sha256_file "$workdir/$path")" || return 1
+      mode="$(normalized_mode "$workdir/$path")" || return 1
+      printf 'file\0%s\0%s\0%s\0' "$path" "$mode" "$digest" >>"$inventory"
+    elif [ -d "$workdir/$path" ]; then
+      mode="$(normalized_mode "$workdir/$path")" || return 1
+      printf 'directory\0%s\0%s\0\0' "$path" "$mode" >>"$inventory"
+    else
+      printf 'missing\0%s\0\0\0' "$path" >>"$inventory"
+    fi
+  done <"$paths"
+  rm -f -- "$paths"
+  sha256_file "$inventory"
+}
+
+directory_snapshot_sha256() {
+  local root="$1" inventory="$2" paths path digest target mode
+  paths="$inventory.paths"
+  (
+    cd "$root"
+    find . -mindepth 1 \( -type f -o -type l -o -type d \) -print0 | LC_ALL=C sort -zu
+  ) >"$paths" || return 1
+  : >"$inventory"
+  while IFS= read -r -d '' path; do
+    path="${path#./}"
+    if [ -L "$root/$path" ]; then
+      target="$(readlink "$root/$path")" || return 1
+      mode="$(normalized_mode "$root/$path")" || return 1
+      printf 'symlink\0%s\0%s\0%s\0' "$path" "$mode" "$target" >>"$inventory"
+    elif [ -f "$root/$path" ]; then
+      digest="$(sha256_file "$root/$path")" || return 1
+      mode="$(normalized_mode "$root/$path")" || return 1
+      printf 'file\0%s\0%s\0%s\0' "$path" "$mode" "$digest" >>"$inventory"
+    elif [ -d "$root/$path" ]; then
+      mode="$(normalized_mode "$root/$path")" || return 1
+      printf 'directory\0%s\0%s\0\0' "$path" "$mode" >>"$inventory"
+    fi
+  done <"$paths"
+  rm -f -- "$paths"
+  sha256_file "$inventory"
+}
+
 evaluation_manifest() {
   local manifest="$1" prompt_file="$2" effort="$3" lane="$4" workdir="$5"
   local manifest_hash prompt_hash source_head contract schema runner_hash manifest_schema
-  local expected_permission expected_workdir_mode workdir_head
+  local expected_permission expected_workdir_mode workdir_head git_dir
   [ -f "$manifest" ] && [ ! -L "$manifest" ] || die 78 "evaluation manifest is missing or symlinked"
   manifest_hash="$(sha256_file "$manifest")" || die 69 "sha256 tool is required for evaluation"
   prompt_hash="$(sha256_file "$prompt_file")" || die 69 "sha256 tool is required for evaluation"
@@ -107,7 +176,15 @@ evaluation_manifest() {
   elif [ "$manifest_schema" = delegation_glm_lane_evaluation_v1 ]; then
     case "$lane" in clerk|scout|builder) ;; *) die 78 "GLM lane evaluation supports clerk, scout, or builder only" ;; esac
     workdir_head="$(git -C "$workdir" rev-parse HEAD 2>/dev/null)" || die 78 "evaluation workdir must be a git checkout"
-    git -C "$workdir" diff --quiet && git -C "$workdir" diff --cached --quiet && [ -z "$(git -C "$workdir" ls-files --others --exclude-standard)" ] || die 78 "evaluation workdir is dirty"
+    git_dir="$(git -C "$workdir" rev-parse --absolute-git-dir 2>/dev/null)" \
+      || die 78 "evaluation workdir has no resolvable git directory"
+    git_dir="$(cd "$git_dir" && pwd -P)"
+    [ "$git_dir" = "$workdir/.git" ] \
+      || die 78 "evaluation workdir must use an in-tree .git directory"
+    git -C "$workdir" diff --quiet && git -C "$workdir" diff --cached --quiet &&
+      [ -z "$(git -C "$workdir" ls-files --others --exclude-standard)" ] &&
+      [ -z "$(git -C "$workdir" ls-files --others --ignored --exclude-standard)" ] \
+      || die 78 "evaluation workdir is dirty, including ignored paths"
     expected_permission=plan; expected_workdir_mode=read-only
     if [ "$lane" = builder ]; then expected_permission=acceptEdits; expected_workdir_mode=writable-fixture; fi
     jq -e --arg prompt_sha256 "$prompt_hash" --arg contract_sha256 "$(sha256_file "$contract")" --arg schema_sha256 "$(sha256_file "$schema")" --arg runner_sha256 "$runner_hash" --arg source_head "$source_head" --arg workdir_head "$workdir_head" --arg effort "$effort" --arg lane "$lane" --arg permission "$expected_permission" --arg workdir_mode "$expected_workdir_mode" '
@@ -126,6 +203,7 @@ evaluation_manifest() {
     EVALUATION_TASK_COUNT="$(jq -r '.task_count' "$manifest")"
     EVALUATION_OUTPUT_SCHEMA_JSON="$(jq -c . "$schema")" \
       || die 78 "evaluation output schema is invalid"
+    EVALUATION_GIT_DIR="$git_dir"
   else
     die 78 "unsupported evaluation manifest schema"
   fi
@@ -548,10 +626,12 @@ run_command() {
     max_cost="$EVALUATION_MAX_COST_USD"
   fi
 
-  local tmp events stderr_file rc=0 started
+  local tmp events stderr_file rc=0 started workdir_tree_before_sha="" workdir_tree_after_sha=""
+  local git_control_before_sha="" git_control_after_sha=""
   local output_parent output_name metrics_parent metrics_name
   local phase="" reason="" final_rc=0 cli_exit=null debug_warning=""
   tmp="$(mktemp -d "${TMPDIR:-/tmp}/delegation-glm.XXXXXX")"
+  tmp="$(cd "$tmp" && pwd -P)"
   RUN_TMP="$tmp"
   trap cleanup_run EXIT
   events="$tmp/events.jsonl"
@@ -564,6 +644,12 @@ run_command() {
   metrics_name="$(basename "$metrics")"
   RUN_OUTPUT_TMP="$(mktemp "$output_parent/.$output_name.XXXXXX")"
   RUN_METRICS_TMP="$(mktemp "$metrics_parent/.$metrics_name.XXXXXX")"
+  if [ "$evaluation" = 1 ] && [ -n "$EVALUATION_WORKDIR_COMMIT" ]; then
+    workdir_tree_before_sha="$(worktree_snapshot_sha256 "$workdir" "$tmp/workdir.before")" \
+      || die 69 "could not attest the evaluation worktree before dispatch"
+    git_control_before_sha="$(directory_snapshot_sha256 "$EVALUATION_GIT_DIR" "$tmp/git-control.before")" \
+      || die 69 "could not attest evaluation git control state before dispatch"
+  fi
   started="$(date +%s)"
 
   local permission="plan"
@@ -572,38 +658,75 @@ run_command() {
   if [ -n "$EVALUATION_OUTPUT_SCHEMA_JSON" ]; then
     evaluation_tail=(--json-schema "$EVALUATION_OUTPUT_SCHEMA_JSON" --max-budget-usd "$max_cost")
   fi
-  mkdir -p "$tmp/claude-config"
-  local timeout_bin='' sandbox_profile=''
+  mkdir -p "$tmp/claude-config" "$tmp/home"
+  local timeout_bin='' sandbox_profile='' claude_bin='' git_dir=''
   if [ "$evaluation" = 1 ]; then
     [ "$(uname)" = Darwin ] && [ -x /usr/bin/sandbox-exec ] || die 69 "GLM evaluation requires macOS sandbox-exec"
     if have gtimeout; then timeout_bin="$(command -v gtimeout)"
     elif have timeout; then timeout_bin="$(command -v timeout)"
     else die 69 "GLM evaluation requires gtimeout or timeout"; fi
+    claude_bin="$(command -v claude)" || die 69 "Claude Code is required"
+    claude_bin="$(cd "$(dirname "$claude_bin")" && pwd -P)/$(basename "$claude_bin")"
+    while [ -L "$claude_bin" ]; do
+      local claude_link
+      claude_link="$(readlink "$claude_bin")" || die 69 "could not resolve Claude Code"
+      case "$claude_link" in
+        /*) claude_bin="$claude_link" ;;
+        *) claude_bin="$(cd "$(dirname "$claude_bin")" && cd "$(dirname "$claude_link")" && pwd -P)/$(basename "$claude_link")" ;;
+      esac
+    done
+    if IFS= read -r shebang <"$claude_bin" 2>/dev/null && [[ "$shebang" == '#!'* ]]; then
+      die 69 "GLM evaluation requires a native Claude Code executable, not a script launcher"
+    fi
+    git_dir="${EVALUATION_GIT_DIR:-$tmp/empty-git-control}"
+    mkdir -p "$git_dir"
     sandbox_profile='(version 1)
-      (allow default)'
+      (allow default)
+      (deny process-exec
+        (require-all
+          (require-not (literal (param "CLAUDE_BIN")))
+          (require-not (literal "/usr/bin/true"))))
+      (deny file-read-data
+        (require-all
+          (require-not (literal "/"))
+          (require-not (subpath (param "SCRATCH")))
+          (require-not (subpath (param "WORKDIR")))
+          (require-not (literal (param "CLAUDE_BIN")))
+          (require-not (subpath "/System"))
+          (require-not (subpath "/usr/lib"))
+          (require-not (subpath "/usr/share"))
+          (require-not (subpath "/usr/bin"))
+          (require-not (subpath "/bin"))
+          (require-not (subpath "/dev"))
+          (require-not (subpath "/private/etc"))
+          (require-not (subpath "/Library/Apple"))))'
     if [ "$lane" = builder ]; then
       sandbox_profile+=$'\n      (deny file-write* (require-all (require-not (subpath (param "SCRATCH"))) (require-not (subpath (param "WORKDIR")))))'
     else
       sandbox_profile+=$'\n      (deny file-write* (require-not (subpath (param "SCRATCH"))))'
     fi
+    sandbox_profile+=$'\n      (deny file-write* (subpath (param "GIT_DIR")))'
   fi
   # Claude has no --cwd flag. Enter the delegated worktree explicitly so it
   # cannot inspect or edit the delegation-kit source checkout by accident.
   (
     cd "$workdir"
     if [ "$evaluation" = 1 ]; then
-      env -u ANTHROPIC_API_KEY -u CLAUDE_CODE_OAUTH_TOKEN -u ZAI_API_KEY \
-        -u ANTHROPIC_MODEL -u ANTHROPIC_CUSTOM_HEADERS \
-        -u CLAUDE_CODE_USE_BEDROCK -u CLAUDE_CODE_USE_VERTEX \
-        -u CLAUDE_CODE_USE_FOUNDRY \
+      env -i PATH="/usr/bin:/bin" LANG="${LANG:-C}" NO_COLOR=1 CI=1 \
+        FAKE_CLAUDE_CASE="${FAKE_CLAUDE_CASE:-}" \
+        FAKE_FORBIDDEN_HOME="${FAKE_FORBIDDEN_HOME:-}" \
+        FAKE_FORBIDDEN_SOURCE="${FAKE_FORBIDDEN_SOURCE:-}" \
+        FAKE_FORBIDDEN_HOST="${FAKE_FORBIDDEN_HOST:-}" \
         ANTHROPIC_AUTH_TOKEN="$ZAI_API_KEY" \
         ANTHROPIC_BASE_URL="https://api.z.ai/api/anthropic" \
         ANTHROPIC_DEFAULT_OPUS_MODEL="glm-5.2" \
+        HOME="$tmp/home" TMPDIR="$tmp" \
         CLAUDE_CONFIG_DIR="$tmp/claude-config" \
         CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1 API_TIMEOUT_MS=3000000 \
         "$timeout_bin" "$EVALUATION_TIMEOUT_SECONDS" \
-        /usr/bin/sandbox-exec -D "SCRATCH=$tmp" -D "WORKDIR=$workdir" -p "$sandbox_profile" \
-        claude -p "$(<"$prompt_file")" --model opus --effort "$effort" \
+        /usr/bin/sandbox-exec -D "SCRATCH=$tmp" -D "WORKDIR=$workdir" \
+        -D "GIT_DIR=$git_dir" -D "CLAUDE_BIN=$claude_bin" \
+        -p "$sandbox_profile" "$claude_bin" -p "$(<"$prompt_file")" --model opus --effort "$effort" \
         --permission-mode "$permission" --setting-sources '' --strict-mcp-config \
         --output-format stream-json --verbose --no-session-persistence \
         "${evaluation_tail[@]}"
@@ -636,18 +759,45 @@ run_command() {
       reason="max_output_chars"
       final_rc=70
     fi
-    if [ "$final_rc" -eq 0 ] && [ -n "$EVALUATION_WORKDIR_COMMIT" ] && [ "$lane" != builder ] &&
-        { ! git -C "$workdir" diff --quiet || ! git -C "$workdir" diff --cached --quiet ||
-          [ -n "$(git -C "$workdir" ls-files --others --exclude-standard)" ]; }; then
-      phase="dispatch"
-      reason="workdir_modified"
-      final_rc=70
+    if [ "$final_rc" -eq 0 ] && [ -n "$EVALUATION_WORKDIR_COMMIT" ]; then
+      workdir_tree_after_sha="$(worktree_snapshot_sha256 "$workdir" "$tmp/workdir.after")" \
+        || { phase="extract"; reason="workdir_snapshot_failed"; final_rc=70; }
+      git_control_after_sha="$(directory_snapshot_sha256 "$EVALUATION_GIT_DIR" "$tmp/git-control.after")" \
+        || { phase="extract"; reason="git_control_snapshot_failed"; final_rc=70; }
+      if [ "$final_rc" -eq 0 ] && [ "$git_control_before_sha" != "$git_control_after_sha" ]; then
+        phase="dispatch"
+        reason="git_control_modified"
+        final_rc=70
+      fi
+      if [ "$final_rc" -eq 0 ] && [ "$lane" != builder ] &&
+          [ "$workdir_tree_before_sha" != "$workdir_tree_after_sha" ]; then
+        phase="dispatch"
+        reason="workdir_modified"
+        final_rc=70
+      fi
     fi
     if [ "$final_rc" -eq 0 ] && [ -n "$EVALUATION_WORKDIR_COMMIT" ]; then
-      local receipt_tmp raw_output_sha changed_paths diff_sha
+      local receipt_tmp raw_output_sha changed_paths ignored_paths changed_path_modes diff_sha changed_paths_file ignored_paths_file path mode
       receipt_tmp="$(mktemp "$metrics_parent/.${metrics_name}.receipt.XXXXXX")"
       raw_output_sha="$(sha256_file "$RUN_OUTPUT_TMP")" || die 69 "sha256 tool is required for evaluation receipt"
-      changed_paths="$(git -C "$workdir" status --porcelain=v1 | sed 's/^...//' | jq -Rsc 'split("\n") | map(select(length > 0))')"
+      changed_paths_file="$tmp/changed-paths"
+      ignored_paths_file="$tmp/ignored-paths"
+      {
+        git -C "$workdir" diff --name-only -z HEAD --
+        git -C "$workdir" ls-files -z --others --exclude-standard
+        git -C "$workdir" ls-files -z --others --ignored --exclude-standard
+      } | LC_ALL=C sort -zu >"$changed_paths_file"
+      git -C "$workdir" ls-files -z --others --ignored --exclude-standard \
+        | LC_ALL=C sort -zu >"$ignored_paths_file"
+      changed_paths="$(jq -Rsc 'split("\u0000") | map(select(length > 0))' "$changed_paths_file")"
+      ignored_paths="$(jq -Rsc 'split("\u0000") | map(select(length > 0))' "$ignored_paths_file")"
+      changed_path_modes="$({
+        while IFS= read -r -d '' path; do
+          mode="$(normalized_mode "$workdir/$path" 2>/dev/null || true)"
+          jq -nc --arg path "$path" --arg mode "$mode" \
+            '{path:$path,mode:(if $mode == "" then null else $mode end)}'
+        done <"$changed_paths_file"
+      } | jq -sc '.')"
       if git -C "$workdir" diff --binary HEAD -- >"$tmp/workdir.diff"; then
         diff_sha="$(sha256_file "$tmp/workdir.diff")"
       else
@@ -661,10 +811,16 @@ run_command() {
           --arg workdir_commit "$EVALUATION_WORKDIR_COMMIT" \
           --arg raw_output_sha256 "$raw_output_sha" \
           --arg workdir_diff_sha256 "$diff_sha" \
+          --arg workdir_tree_before_sha256 "$workdir_tree_before_sha" \
+          --arg workdir_tree_after_sha256 "$workdir_tree_after_sha" \
+          --arg git_control_before_sha256 "$git_control_before_sha" \
+          --arg git_control_after_sha256 "$git_control_after_sha" \
           --argjson changed_paths "$changed_paths" \
+          --argjson ignored_paths "$ignored_paths" \
+          --argjson changed_path_modes "$changed_path_modes" \
           --argjson task_count "$EVALUATION_TASK_COUNT" '
             . + {evaluation_receipt:{
-              schema_version:"delegation_glm_lane_evaluation_attempt_receipt_v1",
+              schema_version:"delegation_glm_lane_evaluation_attempt_receipt_v2",
               evaluation_manifest_sha256:$manifest_sha256,
               prompt_sha256:$prompt_sha256,
               runner_source_commit:$runner_source_commit,
@@ -673,7 +829,13 @@ run_command() {
               task_count:$task_count,provider_attempts:1,post_observation_retries:0,
               raw_output_sha256:$raw_output_sha256,
               workdir_diff_sha256:$workdir_diff_sha256,
-              changed_paths:$changed_paths}}
+              workdir_tree_before_sha256:$workdir_tree_before_sha256,
+              workdir_tree_after_sha256:$workdir_tree_after_sha256,
+              git_control_before_sha256:$git_control_before_sha256,
+              git_control_after_sha256:$git_control_after_sha256,
+              changed_paths:$changed_paths,
+              ignored_paths:$ignored_paths,
+              changed_path_modes:$changed_path_modes}}
           ' "$RUN_METRICS_TMP" >"$receipt_tmp" || { phase="extract"; reason="evaluation_receipt_failed"; final_rc=70; }
         if [ "$final_rc" -eq 0 ]; then mv "$receipt_tmp" "$RUN_METRICS_TMP"; else rm -f -- "$receipt_tmp"; fi
       fi
