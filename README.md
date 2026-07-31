@@ -71,6 +71,17 @@ rate limits. Raw events and stderr are deleted unless an existing private
 directory is explicitly supplied with `--debug-dir`; those artifacts are
 sensitive and must not be committed.
 
+Qualification of the normal GLM lanes uses the public
+[`glm-lane-qualification-v1` contract](./evaluation/glm-lane-qualification-v1/README.md).
+Each attempt is pinned to `glm-5.2` / `claude-zai` / `high` and to hashes of the
+prompt, contract, output schema, runner, runner commit, and fixture commit. The
+private manifest must be allowlisted in private copies of both gates; raw packs
+and results stay under ignored `eval/`. Three GLM attempts are compared with the
+Codex and Claude incumbents for the same lane. A timeout, missing output,
+identity mismatch, permission violation, or checker failure is `VOID`, and the
+runner never promotes a route. Only a separately reviewed aggregate that passes
+the preregistered thresholds may justify a public gate change.
+
 Gemini 3.6 Flash uses the installed, user-authenticated Antigravity CLI (`agy`).
 Only `scout` at `medium` is provisional and requires `--allow-provisional`;
 builder and frontend-builder at `high` remain blocked candidates, while reviewer

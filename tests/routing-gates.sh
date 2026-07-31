@@ -82,8 +82,9 @@ jq '.profiles["kimi-k3"].lanes.judgement.selection = "explicit-only"' \
 expect_failure 65 env DELEGATION_ROUTING_GATES_FILE="$TMP/bad-pair.json" \
   bin/delegation-route check --json
 
-# Evaluation manifest allowlists belong only to policy-annotation, contain
-# unique lowercase SHA-256 values, and remain central/executable-identical.
+# Evaluation manifest allowlists normally belong only to policy-annotation.
+# GLM qualification also permits private, central/executable-identical hashes
+# for clerk/scout/builder while those routes remain provisional or candidate.
 jq '.profiles["kimi-k3"].lanes["policy-annotation"].evaluation_manifest_sha256 = ["NOT-A-SHA"]' \
   config/routing-gates.json >"$TMP/bad-manifest-shape.json"
 expect_failure 65 env DELEGATION_ROUTING_GATES_FILE="$TMP/bad-manifest-shape.json" \
@@ -99,6 +100,15 @@ jq '.profiles["kimi-k3"].lanes.scout.evaluation_manifest_sha256 =
   config/routing-gates.json >"$TMP/misplaced-manifest.json"
 expect_failure 65 env DELEGATION_ROUTING_GATES_FILE="$TMP/misplaced-manifest.json" \
   bin/delegation-route check --json
+jq '.profiles["glm-scout"].lanes.scout.evaluation_manifest_sha256 =
+      ["aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"]' \
+  config/routing-gates.json >"$TMP/glm-lane-central.json"
+jq '.lanes.scout.backends["claude-zai"].evaluation_manifest_sha256 =
+      ["aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"]' \
+  config/glm-5.2-routing.json >"$TMP/glm-lane-executable.json"
+env DELEGATION_ROUTING_GATES_FILE="$TMP/glm-lane-central.json" \
+  DELEGATION_GLM_ROUTING_FILE="$TMP/glm-lane-executable.json" \
+  bin/delegation-route check --json >/dev/null
 jq '.profiles["kimi-k3"].lanes["policy-annotation"].evaluation_manifest_sha256 =
       ["aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"]' \
   config/routing-gates.json >"$TMP/central-only-manifest.json"

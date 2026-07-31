@@ -23,6 +23,12 @@ case "${FAKE_CLAUDE_CASE:-success}" in
       '{"type":"system","subtype":"init","model":"glm-5.2"}' \
       '{"type":"result","subtype":"success","result":"PONG","usage":{"input_tokens":3,"output_tokens":1},"total_cost_usd":0.01}'
     ;;
+  builder_success)
+    printf '%s\n' 'fixed' >fixture.txt
+    printf '%s\n' \
+      '{"type":"system","subtype":"init","model":"glm-5.2"}' \
+      '{"type":"result","subtype":"success","result":"{\"status\":\"completed\"}","usage":{"input_tokens":4,"output_tokens":2},"total_cost_usd":0.02}'
+    ;;
   process_exit)
     printf '%s\n' '{"type":"system","subtype":"init","model":"glm-5.2"}'
     printf '%s\n' 'provider connection closed' >&2
@@ -260,6 +266,119 @@ PATH="$TEST_TMP/bin:$PATH" TMPDIR="$TEST_TMP/runtime" ZAI_API_KEY=fixture-key \
   || fail "policy-annotation output limit published partial artifacts"
 assert_json "$TEST_TMP/results/policy-too-large.out.error.json" \
   '.reason == "max_output_chars" and .phase == "extract"'
+
+# Exercise the generic lane-qualification schema with private gate copies. The
+# source checkout stays clean and at the exact commit bound by both manifests;
+# allowlisting the private hashes therefore cannot create a commit/hash cycle.
+LANE_EVAL_ROOT="$TEST_TMP/lane-eval-repo"
+cp -R "$ROOT/." "$LANE_EVAL_ROOT"
+rm -rf -- "$LANE_EVAL_ROOT/.git"
+rm -f -- "$LANE_EVAL_ROOT/.claude/settings.local.json"
+git -C "$LANE_EVAL_ROOT" init -q
+git -C "$LANE_EVAL_ROOT" config user.email test@example.invalid
+git -C "$LANE_EVAL_ROOT" config user.name delegation-runner-test
+git -C "$LANE_EVAL_ROOT" add -A
+git -C "$LANE_EVAL_ROOT" commit -qm 'generic lane evaluation fixture'
+LANE_SOURCE_COMMIT="$(git -C "$LANE_EVAL_ROOT" rev-parse HEAD)"
+LANE_RUNNER_SHA="$(sha256 "$LANE_EVAL_ROOT/bin/delegation-glm")"
+LANE_CONTRACT_PATH="evaluation/glm-lane-qualification-v1/contract.json"
+LANE_SCHEMA_PATH="evaluation/glm-lane-qualification-v1/output-schema.json"
+LANE_CONTRACT_SHA="$(sha256 "$LANE_EVAL_ROOT/$LANE_CONTRACT_PATH")"
+LANE_SCHEMA_SHA="$(sha256 "$LANE_EVAL_ROOT/$LANE_SCHEMA_PATH")"
+
+LANE_SCOUT_WORK="$TEST_TMP/lane-scout-work"
+LANE_BUILDER_WORK="$TEST_TMP/lane-builder-work"
+for fixture in "$LANE_SCOUT_WORK" "$LANE_BUILDER_WORK"; do
+  mkdir "$fixture"
+  printf '%s\n' 'original' >"$fixture/fixture.txt"
+  git -C "$fixture" init -q
+  git -C "$fixture" config user.email test@example.invalid
+  git -C "$fixture" config user.name delegation-runner-test
+  git -C "$fixture" add fixture.txt
+  git -C "$fixture" commit -qm 'fixture base'
+done
+
+make_lane_manifest() {
+  local lane="$1" permission="$2" workdir_mode="$3" workdir="$4" destination="$5"
+  jq -n \
+    --arg lane "$lane" --arg permission "$permission" \
+    --arg workdir_mode "$workdir_mode" \
+    --arg prompt_sha256 "$(sha256 "$TEST_TMP/prompt")" \
+    --arg runner_sha256 "$LANE_RUNNER_SHA" \
+    --arg runner_source_commit "$LANE_SOURCE_COMMIT" \
+    --arg workdir_commit "$(git -C "$workdir" rev-parse HEAD)" \
+    --arg contract_path "$LANE_CONTRACT_PATH" \
+    --arg contract_sha256 "$LANE_CONTRACT_SHA" \
+    --arg output_schema_path "$LANE_SCHEMA_PATH" \
+    --arg output_schema_sha256 "$LANE_SCHEMA_SHA" \
+    '{schema:"delegation_glm_lane_evaluation_v1",profile:("glm-" + $lane),lane:$lane,model:"glm-5.2",backend:"claude-zai",effort:"high",permission_mode:$permission,workdir_mode:$workdir_mode,prompt_sha256:$prompt_sha256,runner_source_commit:$runner_source_commit,runner_sha256:$runner_sha256,workdir_commit:$workdir_commit,contract_path:$contract_path,contract_sha256:$contract_sha256,output_schema_path:$output_schema_path,output_schema_sha256:$output_schema_sha256,task_count:3,timeout_seconds:60,max_output_chars:1024,max_cost_usd:2}' \
+    >"$destination"
+}
+
+LANE_SCOUT_MANIFEST="$TEST_TMP/glm-scout-manifest.json"
+LANE_BUILDER_MANIFEST="$TEST_TMP/glm-builder-manifest.json"
+make_lane_manifest scout plan read-only "$LANE_SCOUT_WORK" "$LANE_SCOUT_MANIFEST"
+make_lane_manifest builder acceptEdits writable-fixture "$LANE_BUILDER_WORK" "$LANE_BUILDER_MANIFEST"
+LANE_SCOUT_MANIFEST_SHA="$(sha256 "$LANE_SCOUT_MANIFEST")"
+LANE_BUILDER_MANIFEST_SHA="$(sha256 "$LANE_BUILDER_MANIFEST")"
+
+LANE_CENTRAL_GATE="$TEST_TMP/lane-central.json"
+LANE_EXECUTABLE_GATE="$TEST_TMP/lane-executable.json"
+jq --arg scout "$LANE_SCOUT_MANIFEST_SHA" --arg builder "$LANE_BUILDER_MANIFEST_SHA" '
+  .profiles["glm-scout"].lanes.scout.evaluation_manifest_sha256 = [$scout] |
+  .profiles["glm-builder"].lanes.builder.evaluation_manifest_sha256 = [$builder]
+' "$LANE_EVAL_ROOT/config/routing-gates.json" >"$LANE_CENTRAL_GATE"
+jq --arg scout "$LANE_SCOUT_MANIFEST_SHA" --arg builder "$LANE_BUILDER_MANIFEST_SHA" '
+  .lanes.scout.backends["claude-zai"].evaluation_manifest_sha256 = [$scout] |
+  .lanes.builder.backends["claude-zai"].evaluation_manifest_sha256 = [$builder]
+' "$LANE_EVAL_ROOT/config/glm-5.2-routing.json" >"$LANE_EXECUTABLE_GATE"
+
+PATH="$TEST_TMP/bin:$PATH" TMPDIR="$TEST_TMP/runtime" ZAI_API_KEY=fixture-key \
+  FAKE_CLAUDE_CASE=success DELEGATION_ROUTING_GATES_FILE="$LANE_CENTRAL_GATE" \
+  DELEGATION_GLM_ROUTING_FILE="$LANE_EXECUTABLE_GATE" \
+  "$LANE_EVAL_ROOT/bin/delegation-glm" run \
+  --lane scout --effort high --backend claude-zai --evaluation \
+  --evaluation-manifest "$LANE_SCOUT_MANIFEST" \
+  --prompt-file "$TEST_TMP/prompt" --output "$TEST_TMP/results/lane-scout.out" \
+  --workdir "$LANE_SCOUT_WORK"
+[ "$(cat "$TEST_TMP/results/lane-scout.out")" = PONG ] \
+  || fail "generic scout evaluation output mismatch"
+assert_json "$TEST_TMP/results/lane-scout.out.metrics.json" '
+  .lane == "scout" and
+  .evaluation_receipt.schema_version == "delegation_glm_lane_evaluation_attempt_receipt_v1" and
+  .evaluation_receipt.task_count == 3 and
+  .evaluation_receipt.provider_attempts == 1 and
+  .evaluation_receipt.post_observation_retries == 0 and
+  .evaluation_receipt.changed_paths == []
+'
+[ -z "$(git -C "$LANE_SCOUT_WORK" status --porcelain=v1)" ] \
+  || fail "generic scout evaluation modified its read-only fixture"
+
+PATH="$TEST_TMP/bin:$PATH" TMPDIR="$TEST_TMP/runtime" ZAI_API_KEY=fixture-key \
+  FAKE_CLAUDE_CASE=builder_success DELEGATION_ROUTING_GATES_FILE="$LANE_CENTRAL_GATE" \
+  DELEGATION_GLM_ROUTING_FILE="$LANE_EXECUTABLE_GATE" \
+  "$LANE_EVAL_ROOT/bin/delegation-glm" run \
+  --lane builder --effort high --backend claude-zai --evaluation \
+  --evaluation-manifest "$LANE_BUILDER_MANIFEST" \
+  --prompt-file "$TEST_TMP/prompt" --output "$TEST_TMP/results/lane-builder.out" \
+  --workdir "$LANE_BUILDER_WORK"
+[ "$(cat "$LANE_BUILDER_WORK/fixture.txt")" = fixed ] \
+  || fail "generic builder evaluation did not edit its fixture"
+assert_json "$TEST_TMP/results/lane-builder.out.metrics.json" '
+  .lane == "builder" and
+  .evaluation_receipt.workdir_commit != null and
+  .evaluation_receipt.workdir_diff_sha256 != null and
+  .evaluation_receipt.changed_paths == ["fixture.txt"]
+'
+
+rc=0
+PATH="$TEST_TMP/bin:$PATH" ZAI_API_KEY=fixture-key FAKE_CLAUDE_CASE=success \
+  "$ROOT/bin/delegation-glm" run \
+    --lane scout --effort high --backend claude-zai --evaluation \
+    --allow-provisional --evaluation-manifest "$LANE_SCOUT_MANIFEST" \
+    --prompt-file "$TEST_TMP/prompt" --output "$TEST_TMP/results/eval-provisional.out" \
+    --workdir "$LANE_SCOUT_WORK" >/dev/null 2>&1 || rc=$?
+[ "$rc" -eq 64 ] || fail "evaluation plus provisional returned $rc, expected 64"
 
 mkdir "$TEST_TMP/output-dir" "$TEST_TMP/metrics-dir"
 rc=0

@@ -24,6 +24,15 @@ MODEL="glm-5.2"
 RUN_TMP=""
 RUN_OUTPUT_TMP=""
 RUN_METRICS_TMP=""
+EVALUATION_MANIFEST_SHA256=""
+EVALUATION_PROMPT_SHA256=""
+EVALUATION_RUNNER_SOURCE_COMMIT=""
+EVALUATION_RUNNER_SHA256=""
+EVALUATION_WORKDIR_COMMIT=""
+EVALUATION_TASK_COUNT=0
+EVALUATION_TIMEOUT_SECONDS=""
+EVALUATION_MAX_OUTPUT_CHARS=""
+EVALUATION_MAX_COST_USD=""
 
 cleanup_run() {
   [ -z "$RUN_OUTPUT_TMP" ] || rm -f -- "$RUN_OUTPUT_TMP"
@@ -53,6 +62,8 @@ Exit codes: 64 invalid input, 69 unavailable, 70 dispatch failure,
 
 Failures write a sanitized diagnostic to <output>.error.json. --debug-dir
 additionally preserves the raw event stream and stderr in a private subdirectory.
+Lane-qualification evaluation accepts only a hash-allowlisted manifest for the
+exact glm-5.2/claude-zai/high tuple and never changes a routing gate itself.
 EOF
 }
 
@@ -66,26 +77,62 @@ sha256_file() {
 }
 
 evaluation_manifest() {
-  local manifest="$1" prompt_file="$2" effort="$3" manifest_hash prompt_hash source_head contract schema runner_hash
+  local manifest="$1" prompt_file="$2" effort="$3" lane="$4" workdir="$5"
+  local manifest_hash prompt_hash source_head contract schema runner_hash manifest_schema
+  local expected_permission expected_workdir_mode workdir_head
   [ -f "$manifest" ] && [ ! -L "$manifest" ] || die 78 "evaluation manifest is missing or symlinked"
   manifest_hash="$(sha256_file "$manifest")" || die 69 "sha256 tool is required for evaluation"
   prompt_hash="$(sha256_file "$prompt_file")" || die 69 "sha256 tool is required for evaluation"
   source_head="$(git -C "$ROOT" rev-parse HEAD 2>/dev/null)" || die 78 "runner source checkout is unavailable"
+  workdir_head=""
   contract="$(jq -r '.contract_path // empty' "$manifest" 2>/dev/null)"; schema="$(jq -r '.output_schema_path // empty' "$manifest" 2>/dev/null)"
   case "$contract" in /*|*..*) die 78 "evaluation contract_path must be root-relative";; esac; case "$schema" in /*|*..*) die 78 "evaluation output_schema_path must be root-relative";; esac
   contract="$ROOT/$contract"; schema="$ROOT/$schema"; runner_hash="$(sha256_file "$SOURCE")" || die 69 "sha256 tool is required for evaluation"
   [ -n "$contract" ] && [ -n "$schema" ] || die 78 "evaluation manifest requires contract_path and output_schema_path"
   [ -f "$contract" ] && [ ! -L "$contract" ] && [ -f "$schema" ] && [ ! -L "$schema" ] || die 78 "evaluation contract or schema is missing or symlinked"
   git -C "$ROOT" diff --quiet && git -C "$ROOT" diff --cached --quiet && [ -z "$(git -C "$ROOT" ls-files --others --exclude-standard)" ] || die 78 "runner source checkout is dirty"
-  jq -e --arg prompt_sha256 "$prompt_hash" --arg contract_sha256 "$(sha256_file "$contract")" --arg schema_sha256 "$(sha256_file "$schema")" --arg runner_sha256 "$runner_hash" --arg effort "$effort" '
-    (keys | sort) == ["backend","contract_path","contract_sha256","effort","lane","max_output_chars","model","output_schema_path","output_schema_sha256","profile","prompt_sha256","runner_sha256","runner_source_commit","schema","timeout_seconds"] and
-    .schema == "delegation_policy_annotation_evaluation_v1" and .profile == "glm-policy-annotation" and .lane == "policy-annotation" and .model == "glm-5.2" and .backend == "claude-zai" and .effort == $effort and .prompt_sha256 == $prompt_sha256 and .contract_sha256 == $contract_sha256 and .output_schema_sha256 == $schema_sha256 and
-    .runner_sha256 == $runner_sha256 and ([.prompt_sha256,.contract_sha256,.output_schema_sha256,.runner_sha256] | all(test("^[0-9a-f]{64}$"))) and (.runner_source_commit | test("^[0-9a-f]{40}$")) and
-    (.timeout_seconds | type == "number" and floor == . and . >= 1 and . <= 600) and (.max_output_chars | type == "number" and floor == . and . >= 1 and . <= 65536)
-  ' "$manifest" >/dev/null 2>&1 || die 78 "evaluation manifest is malformed or does not bind this exact run"
-  git -C "$ROOT" merge-base --is-ancestor "$(jq -r '.runner_source_commit' "$manifest")" "$source_head" || die 78 "evaluation manifest source commit is not an ancestor of this runner"
-  jq -e --arg hash "$manifest_hash" '.profiles | to_entries[] | select(.value.model == "glm-5.2" and .value.harness == "claude-zai") | .value.lanes["policy-annotation"].evaluation_manifest_sha256 | type == "array" and index($hash) != null' "$CENTRAL_GATES" >/dev/null 2>&1 || die 78 "evaluation manifest is not allowlisted by the central gate"
-  jq -e --arg hash "$manifest_hash" '.lanes["policy-annotation"].backends["claude-zai"].evaluation_manifest_sha256 | type == "array" and index($hash) != null' "$ROUTING_FILE" >/dev/null 2>&1 || die 78 "evaluation manifest is not allowlisted by the executable gate"
+  manifest_schema="$(jq -r '.schema // empty' "$manifest" 2>/dev/null)"
+  if [ "$manifest_schema" = delegation_policy_annotation_evaluation_v1 ]; then
+    [ "$lane" = policy-annotation ] || die 78 "policy-annotation manifest cannot evaluate another lane"
+    jq -e --arg prompt_sha256 "$prompt_hash" --arg contract_sha256 "$(sha256_file "$contract")" --arg schema_sha256 "$(sha256_file "$schema")" --arg runner_sha256 "$runner_hash" --arg effort "$effort" '
+      (keys | sort) == ["backend","contract_path","contract_sha256","effort","lane","max_output_chars","model","output_schema_path","output_schema_sha256","profile","prompt_sha256","runner_sha256","runner_source_commit","schema","timeout_seconds"] and
+      .schema == "delegation_policy_annotation_evaluation_v1" and .profile == "glm-policy-annotation" and .lane == "policy-annotation" and .model == "glm-5.2" and .backend == "claude-zai" and .effort == $effort and .prompt_sha256 == $prompt_sha256 and .contract_sha256 == $contract_sha256 and .output_schema_sha256 == $schema_sha256 and
+      .runner_sha256 == $runner_sha256 and ([.prompt_sha256,.contract_sha256,.output_schema_sha256,.runner_sha256] | all(test("^[0-9a-f]{64}$"))) and (.runner_source_commit | test("^[0-9a-f]{40}$")) and
+      (.timeout_seconds | type == "number" and floor == . and . >= 1 and . <= 600) and (.max_output_chars | type == "number" and floor == . and . >= 1 and . <= 65536)
+    ' "$manifest" >/dev/null 2>&1 || die 78 "evaluation manifest is malformed or does not bind this exact run"
+    git -C "$ROOT" merge-base --is-ancestor "$(jq -r '.runner_source_commit' "$manifest")" "$source_head" || die 78 "evaluation manifest source commit is not an ancestor of this runner"
+    EVALUATION_MAX_COST_USD="2.00"
+    EVALUATION_TASK_COUNT=20
+  elif [ "$manifest_schema" = delegation_glm_lane_evaluation_v1 ]; then
+    case "$lane" in clerk|scout|builder) ;; *) die 78 "GLM lane evaluation supports clerk, scout, or builder only" ;; esac
+    workdir_head="$(git -C "$workdir" rev-parse HEAD 2>/dev/null)" || die 78 "evaluation workdir must be a git checkout"
+    git -C "$workdir" diff --quiet && git -C "$workdir" diff --cached --quiet && [ -z "$(git -C "$workdir" ls-files --others --exclude-standard)" ] || die 78 "evaluation workdir is dirty"
+    expected_permission=plan; expected_workdir_mode=read-only
+    if [ "$lane" = builder ]; then expected_permission=acceptEdits; expected_workdir_mode=writable-fixture; fi
+    jq -e --arg prompt_sha256 "$prompt_hash" --arg contract_sha256 "$(sha256_file "$contract")" --arg schema_sha256 "$(sha256_file "$schema")" --arg runner_sha256 "$runner_hash" --arg source_head "$source_head" --arg workdir_head "$workdir_head" --arg effort "$effort" --arg lane "$lane" --arg permission "$expected_permission" --arg workdir_mode "$expected_workdir_mode" '
+      (keys | sort) == ["backend","contract_path","contract_sha256","effort","lane","max_cost_usd","max_output_chars","model","output_schema_path","output_schema_sha256","permission_mode","profile","prompt_sha256","runner_sha256","runner_source_commit","schema","task_count","timeout_seconds","workdir_commit","workdir_mode"] and
+      .schema == "delegation_glm_lane_evaluation_v1" and .profile == ("glm-" + $lane) and .lane == $lane and .model == "glm-5.2" and .backend == "claude-zai" and .effort == $effort and
+      .permission_mode == $permission and .workdir_mode == $workdir_mode and .workdir_commit == $workdir_head and .runner_source_commit == $source_head and
+      .prompt_sha256 == $prompt_sha256 and .contract_sha256 == $contract_sha256 and .output_schema_sha256 == $schema_sha256 and .runner_sha256 == $runner_sha256 and
+      ([.prompt_sha256,.contract_sha256,.output_schema_sha256,.runner_sha256] | all(test("^[0-9a-f]{64}$"))) and
+      ([.runner_source_commit,.workdir_commit] | all(test("^[0-9a-f]{40}$"))) and
+      (.task_count | type == "number" and floor == . and . >= 1 and . <= 100) and
+      (.timeout_seconds | type == "number" and floor == . and . >= 1 and . <= 900) and
+      (.max_output_chars | type == "number" and floor == . and . >= 1 and . <= 65536) and
+      (.max_cost_usd | type == "number" and . >= 0.01 and . <= 25)
+    ' "$manifest" >/dev/null 2>&1 || die 78 "evaluation manifest is malformed or does not bind this exact run"
+    EVALUATION_MAX_COST_USD="$(jq -r '.max_cost_usd' "$manifest")"
+    EVALUATION_TASK_COUNT="$(jq -r '.task_count' "$manifest")"
+  else
+    die 78 "unsupported evaluation manifest schema"
+  fi
+  jq -e --arg hash "$manifest_hash" --arg lane "$lane" --arg profile "glm-$lane" '.profiles[$profile].lanes[$lane].evaluation_manifest_sha256 | type == "array" and index($hash) != null' "$CENTRAL_GATES" >/dev/null 2>&1 || die 78 "evaluation manifest is not allowlisted by the central gate"
+  jq -e --arg hash "$manifest_hash" --arg lane "$lane" '.lanes[$lane].backends["claude-zai"].evaluation_manifest_sha256 | type == "array" and index($hash) != null' "$ROUTING_FILE" >/dev/null 2>&1 || die 78 "evaluation manifest is not allowlisted by the executable gate"
+  EVALUATION_MANIFEST_SHA256="$manifest_hash"
+  EVALUATION_PROMPT_SHA256="$prompt_hash"
+  EVALUATION_RUNNER_SOURCE_COMMIT="$(jq -r '.runner_source_commit' "$manifest")"
+  EVALUATION_RUNNER_SHA256="$runner_hash"
+  EVALUATION_WORKDIR_COMMIT="$workdir_head"
   EVALUATION_TIMEOUT_SECONDS="$(jq -r '.timeout_seconds' "$manifest")"
   EVALUATION_MAX_OUTPUT_CHARS="$(jq -r '.max_output_chars' "$manifest")"
 }
@@ -419,6 +466,7 @@ run_command() {
   [ -f "$prompt_file" ] || die 64 "prompt file missing: $prompt_file"
   if [ "$evaluation" = 1 ]; then
     [ -n "$evaluation_manifest_path" ] || die 64 "--evaluation requires --evaluation-manifest"
+    [ "$allow_provisional" = 0 ] || die 64 "--evaluation cannot be combined with --allow-provisional"
   else
     [ -z "$evaluation_manifest_path" ] || die 64 "--evaluation-manifest requires --evaluation"
   fi
@@ -447,11 +495,11 @@ run_command() {
     || die 64 "metrics path collides with reserved diagnostic path: $diagnostic"
 
   workdir="$(cd "$workdir" && pwd -P)"
-  if [ "$lane" = policy-annotation ]; then
-    case "$normalized_output" in "$workdir"/*) die 64 "policy-annotation output must be outside workdir" ;; esac
-    case "$normalized_metrics" in "$workdir"/*) die 64 "policy-annotation metrics must be outside workdir" ;; esac
-    case "$normalized_diagnostic" in "$workdir"/*) die 64 "policy-annotation diagnostic must be outside workdir" ;; esac
-    if [ -n "$debug_dir" ]; then case "$debug_dir" in "$workdir"|"$workdir"/*) die 64 "policy-annotation debug directory must be outside workdir" ;; esac; fi
+  if [ "$evaluation" = 1 ]; then
+    case "$normalized_output" in "$workdir"/*) die 64 "evaluation output must be outside workdir" ;; esac
+    case "$normalized_metrics" in "$workdir"/*) die 64 "evaluation metrics must be outside workdir" ;; esac
+    case "$normalized_diagnostic" in "$workdir"/*) die 64 "evaluation diagnostic must be outside workdir" ;; esac
+    if [ -n "$debug_dir" ]; then case "$debug_dir" in "$workdir"|"$workdir"/*) die 64 "evaluation debug directory must be outside workdir" ;; esac; fi
   fi
 
   backend="claude-zai"
@@ -468,8 +516,11 @@ run_command() {
     fi
   fi
   if [ "$evaluation" = 1 ]; then
-    [ "$lane" = policy-annotation ] || die 78 "--evaluation permits policy-annotation candidate only"
-    [ "$(gate_status "$lane" "$backend")" = candidate ] || die 78 "policy-annotation is not a candidate in the central gate"
+    status="$(gate_status "$lane" "$backend")"
+    case "$lane:$status" in
+      policy-annotation:candidate|builder:candidate|clerk:provisional|scout:provisional) ;;
+      *) die 78 "lane '$lane' with status '$status' is not eligible for GLM qualification evaluation" ;;
+    esac
   fi
   host_status || die 69 "$HOST_REASON"
   claude_zai_status || die 69 "$CLAUDE_ZAI_REASON"
@@ -484,8 +535,9 @@ run_command() {
       || die 78 "lane '$lane' backend '$backend' is qualified only at effort '$expected_effort'"
   fi
   if [ "$evaluation" = 1 ]; then
-    [ "$effort" = high ] || die 78 "policy-annotation is pinned only at effort 'high'"
-    evaluation_manifest "$evaluation_manifest_path" "$prompt_file" "$effort"
+    [ "$effort" = high ] || die 78 "GLM qualification evaluation is pinned only at effort 'high'"
+    evaluation_manifest "$evaluation_manifest_path" "$prompt_file" "$effort" "$lane" "$workdir"
+    max_cost="$EVALUATION_MAX_COST_USD"
   fi
 
   local tmp events stderr_file rc=0 started
@@ -511,13 +563,17 @@ run_command() {
   mkdir -p "$tmp/claude-config"
   local timeout_bin='' sandbox_profile=''
   if [ "$evaluation" = 1 ]; then
-    [ "$(uname)" = Darwin ] && [ -x /usr/bin/sandbox-exec ] || die 69 "policy-annotation evaluation requires macOS sandbox-exec"
+    [ "$(uname)" = Darwin ] && [ -x /usr/bin/sandbox-exec ] || die 69 "GLM evaluation requires macOS sandbox-exec"
     if have gtimeout; then timeout_bin="$(command -v gtimeout)"
     elif have timeout; then timeout_bin="$(command -v timeout)"
-    else die 69 "policy-annotation evaluation requires gtimeout or timeout"; fi
+    else die 69 "GLM evaluation requires gtimeout or timeout"; fi
     sandbox_profile='(version 1)
-      (allow default)
-      (deny file-write* (require-not (subpath (param "SCRATCH"))))'
+      (allow default)'
+    if [ "$lane" = builder ]; then
+      sandbox_profile+=$'\n      (deny file-write* (require-all (require-not (subpath (param "SCRATCH"))) (require-not (subpath (param "WORKDIR")))))'
+    else
+      sandbox_profile+=$'\n      (deny file-write* (require-not (subpath (param "SCRATCH"))))'
+    fi
   fi
   # Claude has no --cwd flag. Enter the delegated worktree explicitly so it
   # cannot inspect or edit the delegation-kit source checkout by accident.
@@ -534,7 +590,7 @@ run_command() {
         CLAUDE_CONFIG_DIR="$tmp/claude-config" \
         CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1 API_TIMEOUT_MS=3000000 \
         "$timeout_bin" "$EVALUATION_TIMEOUT_SECONDS" \
-        /usr/bin/sandbox-exec -D "SCRATCH=$tmp" -p "$sandbox_profile" \
+        /usr/bin/sandbox-exec -D "SCRATCH=$tmp" -D "WORKDIR=$workdir" -p "$sandbox_profile" \
         claude -p "$(<"$prompt_file")" --model opus --effort "$effort" \
         --permission-mode "$permission" --setting-sources '' --strict-mcp-config \
         --output-format stream-json --verbose --no-session-persistence \
@@ -568,11 +624,57 @@ run_command() {
       reason="max_output_chars"
       final_rc=70
     fi
+    if [ "$final_rc" -eq 0 ] && [ -n "$EVALUATION_WORKDIR_COMMIT" ] && [ "$lane" != builder ] &&
+        { ! git -C "$workdir" diff --quiet || ! git -C "$workdir" diff --cached --quiet ||
+          [ -n "$(git -C "$workdir" ls-files --others --exclude-standard)" ]; }; then
+      phase="dispatch"
+      reason="workdir_modified"
+      final_rc=70
+    fi
+    if [ "$final_rc" -eq 0 ] && [ -n "$EVALUATION_WORKDIR_COMMIT" ]; then
+      local receipt_tmp raw_output_sha changed_paths diff_sha
+      receipt_tmp="$(mktemp "$metrics_parent/.${metrics_name}.receipt.XXXXXX")"
+      raw_output_sha="$(sha256_file "$RUN_OUTPUT_TMP")" || die 69 "sha256 tool is required for evaluation receipt"
+      changed_paths="$(git -C "$workdir" status --porcelain=v1 | sed 's/^...//' | jq -Rsc 'split("\n") | map(select(length > 0))')"
+      if git -C "$workdir" diff --binary HEAD -- >"$tmp/workdir.diff"; then
+        diff_sha="$(sha256_file "$tmp/workdir.diff")"
+      else
+        phase="extract"; reason="workdir_diff_failed"; final_rc=70; diff_sha=""
+      fi
+      if [ "$final_rc" -eq 0 ]; then
+        jq --arg manifest_sha256 "$EVALUATION_MANIFEST_SHA256" \
+          --arg prompt_sha256 "$EVALUATION_PROMPT_SHA256" \
+          --arg runner_source_commit "$EVALUATION_RUNNER_SOURCE_COMMIT" \
+          --arg runner_sha256 "$EVALUATION_RUNNER_SHA256" \
+          --arg workdir_commit "$EVALUATION_WORKDIR_COMMIT" \
+          --arg raw_output_sha256 "$raw_output_sha" \
+          --arg workdir_diff_sha256 "$diff_sha" \
+          --argjson changed_paths "$changed_paths" \
+          --argjson task_count "$EVALUATION_TASK_COUNT" '
+            . + {evaluation_receipt:{
+              schema_version:"delegation_glm_lane_evaluation_attempt_receipt_v1",
+              evaluation_manifest_sha256:$manifest_sha256,
+              prompt_sha256:$prompt_sha256,
+              runner_source_commit:$runner_source_commit,
+              runner_sha256:$runner_sha256,
+              workdir_commit:(if $workdir_commit == "" then null else $workdir_commit end),
+              task_count:$task_count,provider_attempts:1,post_observation_retries:0,
+              raw_output_sha256:$raw_output_sha256,
+              workdir_diff_sha256:$workdir_diff_sha256,
+              changed_paths:$changed_paths}}
+          ' "$RUN_METRICS_TMP" >"$receipt_tmp" || { phase="extract"; reason="evaluation_receipt_failed"; final_rc=70; }
+        if [ "$final_rc" -eq 0 ]; then mv "$receipt_tmp" "$RUN_METRICS_TMP"; else rm -f -- "$receipt_tmp"; fi
+      fi
+    fi
   else
     phase="dispatch"
     reason="process_exit"
     final_rc=70
     cli_exit="$rc"
+    if [ "$evaluation" = 1 ] && { [ "$rc" -eq 124 ] || [ "$rc" -eq 137 ]; }; then
+      reason="evaluation_timeout"
+      final_rc=75
+    fi
   fi
 
   if [ "$final_rc" -ne 0 ]; then

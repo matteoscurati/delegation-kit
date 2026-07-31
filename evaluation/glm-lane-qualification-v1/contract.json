@@ -1,0 +1,61 @@
+{
+  "schema_version": "delegation_glm_lane_qualification_contract_v1",
+  "model": "glm-5.2",
+  "backend": "claude-zai",
+  "effort": "high",
+  "eligible_lanes": [
+    "clerk",
+    "scout",
+    "builder"
+  ],
+  "incumbents": {
+    "clerk": [
+      {"profile": "luna-clerk", "effort": "low", "provider": "codex"},
+      {"model": "sonnet", "effort": "low", "provider": "claude"}
+    ],
+    "scout": [
+      {"profile": "terra-scout", "effort": "low", "provider": "codex"},
+      {"model": "sonnet", "effort": "low", "provider": "claude"}
+    ],
+    "builder": [
+      {"profile": "terra-builder", "effort": "medium", "provider": "codex"},
+      {"model": "sonnet", "effort": "medium", "provider": "claude"}
+    ]
+  },
+  "required_repeats": 3,
+  "attempt_policy": {
+    "provider_attempts_per_repeat": 1,
+    "post_observation_retries": 0,
+    "timeout_seconds_max": 900,
+    "max_output_chars_max": 65536,
+    "raw_artifacts_private": true
+  },
+  "validity": {
+    "exact_tuple_required": true,
+    "manifest_allowlist_required": true,
+    "clean_committed_runner_required": true,
+    "clean_committed_fixture_required": true,
+    "read_only_lanes_must_preserve_workdir": true,
+    "builder_changes_must_remain_in_fixture": true,
+    "timeout_or_missing_required_output_is_void": true
+  },
+  "promotion_thresholds": {
+    "clerk": {
+      "minimum_mean_score": 0.8,
+      "maximum_gap_from_best_incumbent": 0.1,
+      "all_repeats_valid": true
+    },
+    "scout": {
+      "minimum_mean_score": 0.8,
+      "maximum_gap_from_best_incumbent": 0.1,
+      "all_repeats_valid": true
+    },
+    "builder": {
+      "minimum_mean_score": 0.8,
+      "maximum_gap_from_best_incumbent": 0.05,
+      "all_repeats_valid": true,
+      "all_checker_runs_pass": true
+    }
+  },
+  "decision_rule": "A lane may move only from candidate to provisional or from provisional to qualified when every validity condition and that lane's preregistered threshold pass. Failure or VOID leaves the existing gate unchanged. No result qualifies reviewer, judgement, policy-annotation, another model, backend, effort, or harness."
+}
