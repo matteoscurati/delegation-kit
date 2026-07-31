@@ -1,6 +1,4 @@
 {
-  "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://delegation-kit.local/schemas/glm-lane-qualification-attempt-v1.json",
   "title": "GLM lane qualification attempt output",
   "type": "object",
   "additionalProperties": false,
