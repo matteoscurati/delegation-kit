@@ -9,15 +9,14 @@ It ships as a **reference implementation**: the author's concrete models
 external-evidence snapshot, and fail-closed local gates. Swap the models for your own tiers with
 [`ADAPTING.md`](./ADAPTING.md) — the *structure* is the transferable part.
 
-## Current release: 0.6.0
+## Current release: 0.7.0
 
-Version 0.6.0 adds manifest-bound policy-annotation qualification, refreshes the
-external model evidence, and hardens every optional CLI bridge around exact
-runtime capabilities. Grok Build can now run from a digest-pinned private binary
-with an attested read-only sandbox; Kimi checks its effective `max` effort inside
-the same isolated HOME used for dispatch. Provider failures retain sanitized
-diagnostics by default and preserve raw evidence only through explicit private
-debug paths.
+Version 0.7.0 upgrades the Kimi bridge to a capability-probed Kimi Code runtime
+with ephemeral lane-specific agent files, an attested Grep-only process
+allowlist, protected ripgrep execution, bounded cancellation and timeout
+handling, sanitized heartbeat/error diagnostics, and explicit OAuth-finalization
+semantics. Kimi lanes remain provisional and explicit-only; no routing promotion
+or historical evaluation-manifest change is included.
 
 ## What it installs
 
