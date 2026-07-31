@@ -9,14 +9,17 @@ It ships as a **reference implementation**: the author's concrete models
 external-evidence snapshot, and fail-closed local gates. Swap the models for your own tiers with
 [`ADAPTING.md`](./ADAPTING.md) — the *structure* is the transferable part.
 
-## Current release: 0.7.0
+## Current release: 0.7.1
 
-Version 0.7.0 upgrades the Kimi bridge to a capability-probed Kimi Code runtime
-with ephemeral lane-specific agent files, an attested Grep-only process
-allowlist, protected ripgrep execution, bounded cancellation and timeout
-handling, sanitized heartbeat/error diagnostics, and explicit OAuth-finalization
-semantics. Kimi lanes remain provisional and explicit-only; no routing promotion
-or historical evaluation-manifest change is included.
+Version 0.7.1 records an end-to-end compatibility verification across every
+shipped Claude Code agent, Codex profile, and optional external runner. It adds
+the reproducible status matrix and documents two important boundaries: Codex
+profiles must not be combined with `--ignore-user-config`, and Claude read-only
+roles do not provide the same OS-enforced write isolation as Codex read-only
+sandboxes. No lane is promoted by this verification; provisional and blocked
+routes keep their existing gates. See
+[`docs/compatibility.md`](./docs/compatibility.md) and
+[`CHANGELOG.md`](./CHANGELOG.md).
 
 ## What it installs
 
@@ -220,7 +223,9 @@ blocks, and the Codex sandbox/network posture. `./doctor.sh --ping` also does a
 live round-trip in both directions; `--ping-glm`, `--ping-kimi`, and
 `--ping-grok` separately exercise their gated runtimes. The failure it catches
 is silent: profiles present but a policy block missing means the bridge never
-fires.
+fires. The complete supported-agent matrix, semantic-smoke rules, and host
+isolation differences are documented in
+[`docs/compatibility.md`](./docs/compatibility.md).
 
 Run the fail-closed regression suite after changing a gate:
 
