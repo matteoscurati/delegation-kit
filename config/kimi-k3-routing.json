@@ -6,7 +6,7 @@
   "source_run": "2026-07-16-kimi-k3",
   "external_evidence_file": "model-evidence.json",
   "external_evidence_ids": ["aa-kimi-code-kimi-k3", "arena-agent-kimi-k3", "webdev-kimi-k3"],
-  "qualification_basis": "The valid local subset plus exact public evidence supports controlled provisional use through native Kimi Code at max; quota truncation prevents full qualification. Compatibility is determined from capabilities: the runtime must expose structured output, the exact kimi-code/k3 model, OAuth credentials, and max as both supported and effective default effort. Every lane uses an isolated minimal config, allowlisted environment, disabled terminal execution, ambient-home read denial, and a macOS sandbox that limits writes to scratch or the canonical worktree.",
+  "qualification_basis": "The valid local subset plus exact public evidence supports controlled provisional use through native Kimi Code at max; quota truncation prevents full qualification. Compatibility is capability-probed: the runtime must expose --agent-file, stream-json, the exact kimi-code/k3 model, OAuth credentials, a valid isolated configuration, and max as both supported and effective default effort. Every lane uses an ephemeral agent file plus duplicated tool restrictions, an allowlisted environment, ambient-home read denial, and a macOS sandbox that limits writes to scratch or the canonical worktree and process execution to Kimi, /usr/bin/true, and a digest-attested ripgrep copy.",
   "preferred_backends": ["native"],
   "qualified_lanes": [],
   "provisional_lanes": ["builder", "clerk", "scout", "frontend-builder"],

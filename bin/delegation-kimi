@@ -17,28 +17,48 @@ CENTRAL_GATES="${DELEGATION_ROUTING_GATES_FILE:-$ROOT/config/routing-gates.json}
 ROUTER="$ROOT/bin/delegation-route"
 KIMI_HOME="${KIMI_CODE_HOME:-$HOME/.kimi-code}"
 CREDENTIAL_FILE="$KIMI_HOME/credentials/kimi-code.json"
+DATA_HOME="${DELEGATION_DATA_HOME:-${XDG_DATA_HOME:-$HOME/.local/share}/delegation-kit}"
+RG_STORE="${DELEGATION_KIMI_RG_STORE:-$DATA_HOME/kimi-rg}"
 NATIVE_MODEL="kimi-code/k3"
 NATIVE_EFFORT="max"
 EFFORTS='["max"]'
+OPERATIONAL_TIMEOUT_SECONDS=900
+HEARTBEAT_SECONDS="${DELEGATION_KIMI_HEARTBEAT_SECONDS:-30}"
+case "$HEARTBEAT_SECONDS" in ""|*[!0-9]*|0) HEARTBEAT_SECONDS=30 ;; esac
+CANCEL_GRACE_SECONDS="${DELEGATION_KIMI_CANCEL_GRACE_SECONDS:-10}"
+case "$CANCEL_GRACE_SECONDS" in ""|*[!0-9]*|0) CANCEL_GRACE_SECONDS=10 ;; esac
 NATIVE_BIN=""
 NATIVE_VERSION=""
+NATIVE_REASON=""
 KIMI_PLATFORM=""
 KIMI_SANDBOX_BIN=""
 KIMI_SHLOCK_BIN=""
+KIMI_TIMEOUT_BIN=""
+RG_BIN=""
+RG_VERSION=""
+RG_SHA256=""
+RG_DEPENDENCIES_SHA256=""
+RG_DEPENDENCY_COUNT=0
 RUN_TMP=""
+RG_RUN_DIR=""
 OAUTH_LOCK_PATH=""
 OAUTH_LOCK_HELD=0
 OAUTH_BASELINE_HASH=""
+CHILD_PID=""
+HEARTBEAT_PID=""
+CANCEL_REQUESTED=0
+OAUTH_SYNC_STATUS="not_attempted"
 
 usage() {
   cat <<'EOF'
 Usage:
   delegation-kimi check [--json]
+  delegation-kimi pin-rg [--from <path>] [--force]
   delegation-kimi run --lane <clerk|scout|builder|frontend-builder|reviewer|senior|judgement|policy-annotation> \
     [--effort <auto|low|high|max>] [--backend <auto|native>] \
     (--prompt-file <path> | --prompt <text>) --output <path> --workdir <path> \
     [--metrics <path>] [--allow-provisional] [--evaluation --evaluation-manifest <path>] \
-    [--preflight-only]
+    [--preflight-only] [--debug-dir <private-existing-directory>]
 
 `--evaluation` permits only allowlisted candidate lanes for a controlled
 qualification run. It never promotes or mutates a gate, adds no operational
@@ -49,8 +69,9 @@ validation path as the real evaluation run, prints a
 delegation_policy_annotation_preflight_receipt_v1 receipt on stdout, and exits
 zero before provider dispatch and before any caller-visible artifact exists.
 
-Exit codes: 64 invalid input, 69 unavailable, 70 dispatch failure,
-75 temporary/rate-limit failure, 78 lane not qualified.
+Exit codes: 64 invalid input; 69 runtime, login, entitlement, or quota unavailable;
+70 sandbox, output, or unclassified dispatch failure; 75 overload, 5xx, timeout,
+or temporary OAuth conflict; 78 lane not qualified; 130 caller cancellation.
 EOF
 }
 
@@ -68,8 +89,16 @@ release_oauth_lock() {
 }
 
 cleanup_run() {
+  [ -z "$HEARTBEAT_PID" ] || kill "$HEARTBEAT_PID" >/dev/null 2>&1 || true
+  [ -z "$CHILD_PID" ] || kill "$CHILD_PID" >/dev/null 2>&1 || true
   release_oauth_lock
+  [ -z "$RG_RUN_DIR" ] || rm -rf -- "$RG_RUN_DIR"
   [ -z "$RUN_TMP" ] || rm -rf -- "$RUN_TMP"
+}
+
+handle_cancel() {
+  CANCEL_REQUESTED=1
+  [ -z "$CHILD_PID" ] || kill -TERM "$CHILD_PID" >/dev/null 2>&1 || true
 }
 
 acquire_oauth_lock() {
@@ -89,31 +118,57 @@ sandbox_status() {
     || { NATIVE_REASON="native Kimi lanes require executable sandbox-exec at $KIMI_SANDBOX_BIN"; return 1; }
   [ -x "$KIMI_SHLOCK_BIN" ] \
     || { NATIVE_REASON="native Kimi lanes require executable shlock at $KIMI_SHLOCK_BIN"; return 1; }
+  if have gtimeout; then KIMI_TIMEOUT_BIN="$(command -v gtimeout)"
+  elif have timeout; then KIMI_TIMEOUT_BIN="$(command -v timeout)"
+  else
+    NATIVE_REASON="native Kimi lanes require gtimeout or timeout"
+    return 1
+  fi
 }
 
 native_status() {
   NATIVE_REASON=""
   have kimi || { NATIVE_REASON="kimi not on PATH"; return 1; }
   sandbox_status || return 1
-  local help providers providers_text status_tmp
+  verify_pinned_rg || return 1
+  local help doctor_help providers providers_text status_tmp
   NATIVE_BIN="$(command -v kimi)"
   NATIVE_VERSION="$("$NATIVE_BIN" --version 2>/dev/null | head -1 || true)"
   NATIVE_VERSION="${NATIVE_VERSION:-unknown}"
   help="$("$NATIVE_BIN" --help 2>&1 || true)"
-  grep -q -- '--output-format' <<<"$help" \
+  grep -q -- '--output-format' <<<"$help" && grep -q -- 'stream-json' <<<"$help" \
     || { NATIVE_REASON="kimi lacks stream-json output"; return 1; }
+  grep -q -- '--agent-file' <<<"$help" \
+    || { NATIVE_REASON="kimi lacks --agent-file"; return 1; }
+  grep -q -- '--skills-dir' <<<"$help" \
+    || { NATIVE_REASON="kimi lacks --skills-dir"; return 1; }
+  doctor_help="$("$NATIVE_BIN" doctor --help 2>&1 || true)"
+  grep -q -- 'config' <<<"$doctor_help" \
+    || { NATIVE_REASON="kimi lacks doctor config validation"; return 1; }
   # Probe the exact minimal HOME used for dispatch. The ambient Kimi default is
   # user preference and may legitimately differ from the evaluated max effort;
   # only the isolated config's effective default is relevant to this runner.
   status_tmp="$(mktemp -d "${TMPDIR:-/tmp}/delegation-kimi-status.XXXXXX")" \
     || { NATIVE_REASON="could not create isolated Kimi status directory"; return 1; }
-  if ! prepare_native_home "$status_tmp"; then
+  if ! prepare_native_home "$status_tmp" scout; then
     rm -rf -- "$status_tmp"
     NATIVE_REASON="could not prepare isolated Kimi status home"
     return 1
   fi
-  providers="$(HOME="$status_tmp/home" "$NATIVE_BIN" provider list --json 2>/dev/null || true)"
-  providers_text="$(HOME="$status_tmp/home" "$NATIVE_BIN" provider list 2>/dev/null || true)"
+  if ! HOME="$status_tmp/home" KIMI_CODE_HOME="$status_tmp/home/.kimi-code" \
+      KIMI_DISABLE_TELEMETRY=1 KIMI_CODE_NO_AUTO_UPDATE=1 KIMI_DISABLE_CRON=1 \
+      "$NATIVE_BIN" doctor config "$status_tmp/home/.kimi-code/config.toml" \
+      >/dev/null 2>&1; then
+    rm -rf -- "$status_tmp"
+    NATIVE_REASON="isolated Kimi configuration failed validation"
+    return 1
+  fi
+  providers="$(HOME="$status_tmp/home" KIMI_CODE_HOME="$status_tmp/home/.kimi-code" \
+    KIMI_DISABLE_TELEMETRY=1 KIMI_CODE_NO_AUTO_UPDATE=1 KIMI_DISABLE_CRON=1 \
+    "$NATIVE_BIN" provider list --json 2>/dev/null || true)"
+  providers_text="$(HOME="$status_tmp/home" KIMI_CODE_HOME="$status_tmp/home/.kimi-code" \
+    KIMI_DISABLE_TELEMETRY=1 KIMI_CODE_NO_AUTO_UPDATE=1 KIMI_DISABLE_CRON=1 \
+    "$NATIVE_BIN" provider list 2>/dev/null || true)"
   rm -rf -- "$status_tmp"
   jq -e --arg model "$NATIVE_MODEL" '.models[$model] != null' <<<"$providers" >/dev/null 2>&1 \
     || { NATIVE_REASON="$NATIVE_MODEL is not configured"; return 1; }
@@ -201,6 +256,233 @@ sha256_file() {
   if have shasum; then shasum -a 256 "$1" | awk '{print $1}';
   elif have sha256sum; then sha256sum "$1" | awk '{print $1}';
   else return 1; fi
+}
+
+pinned_rg_path() { printf '%s/current/rg' "$RG_STORE"; }
+pinned_rg_digest_path() { printf '%s/current/rg.sha256' "$RG_STORE"; }
+pinned_rg_version_path() { printf '%s/current/rg.version' "$RG_STORE"; }
+pinned_rg_dependencies_path() { printf '%s/current/dependencies.json' "$RG_STORE"; }
+pinned_rg_dependencies_digest_path() { printf '%s/current/dependencies.sha256' "$RG_STORE"; }
+
+resolve_macho_dependency() {
+  local binary="$1" dependency="$2" suffix="" rpath=""
+  case "$dependency" in
+    /usr/lib/*|/System/Library/*) return 2 ;;
+    /*)
+      [ -f "$dependency" ] || return 1
+      printf '%s/%s\n' "$(cd "$(dirname "$dependency")" && pwd -P)" "$(basename "$dependency")"
+      return 0
+      ;;
+    @loader_path/*)
+      suffix="${dependency#@loader_path/}"
+      printf '%s/%s\n' "$(cd "$(dirname "$binary")" && pwd -P)" "$suffix"
+      return 0
+      ;;
+    @executable_path/*)
+      suffix="${dependency#@executable_path/}"
+      printf '%s/%s\n' "$(cd "$(dirname "$binary")" && pwd -P)" "$suffix"
+      return 0
+      ;;
+    @rpath/*)
+      suffix="${dependency#@rpath/}"
+      while IFS= read -r rpath; do
+        case "$rpath" in
+          @loader_path/*) rpath="$(dirname "$binary")/${rpath#@loader_path/}" ;;
+          @executable_path/*) rpath="$(dirname "$binary")/${rpath#@executable_path/}" ;;
+        esac
+        if [ -f "$rpath/$suffix" ]; then
+          printf '%s\n' "$(cd "$(dirname "$rpath/$suffix")" && pwd -P)/$(basename "$rpath/$suffix")"
+          return 0
+        fi
+      done < <(/usr/bin/otool -l "$binary" 2>/dev/null |
+        awk '$1 == "cmd" && $2 == "LC_RPATH" {found=1; next} found && $1 == "path" {print $2; found=0}')
+      return 1
+      ;;
+    *) return 1 ;;
+  esac
+}
+
+write_dependency_manifest() {
+  local binary="$1" output="$2" dependency resolved digest next resolve_rc
+  [ "$KIMI_PLATFORM" = Darwin ] || KIMI_PLATFORM="${DELEGATION_KIMI_PLATFORM:-$(uname)}"
+  printf '[]\n' >"$output"
+  [ "$KIMI_PLATFORM" = Darwin ] || return 0
+  [ -x /usr/bin/otool ] || return 1
+  while IFS= read -r dependency; do
+    [ -n "$dependency" ] || continue
+    resolved=""
+    resolve_rc=0
+    resolved="$(resolve_macho_dependency "$binary" "$dependency")" || resolve_rc=$?
+    if [ "$resolve_rc" -ne 0 ]; then
+      [ "$resolve_rc" -eq 2 ] && continue
+      return 1
+    fi
+    [ -f "$resolved" ] && [ ! -L "$resolved" ] || return 1
+    digest="$(sha256_file "$resolved")" || return 1
+    next="$output.next"
+    jq --arg path "$resolved" --arg sha256 "$digest" \
+      '. + [{path:$path,sha256:$sha256}] | unique_by(.path) | sort_by(.path)' \
+      "$output" >"$next" || return 1
+    mv -f "$next" "$output" || return 1
+  done < <(/usr/bin/otool -L "$binary" 2>/dev/null | tail -n +2 | awk '{print $1}')
+}
+
+verify_pinned_rg() {
+  local binary digest_file version_file dependencies dependencies_digest_file expected actual
+  local generated generated_digest dependency_path real_home
+  binary="$(pinned_rg_path)"
+  digest_file="$(pinned_rg_digest_path)"
+  version_file="$(pinned_rg_version_path)"
+  dependencies="$(pinned_rg_dependencies_path)"
+  dependencies_digest_file="$(pinned_rg_dependencies_digest_path)"
+  [ -x "$binary" ] && [ ! -L "$binary" ] || {
+    NATIVE_REASON="verified ripgrep is not pinned; run: delegation-kimi pin-rg"
+    return 1
+  }
+  [ ! -L "$RG_STORE/current" ] &&
+    [ -f "$digest_file" ] && [ ! -L "$digest_file" ] &&
+    [ -f "$version_file" ] && [ ! -L "$version_file" ] &&
+    [ -f "$dependencies" ] && [ ! -L "$dependencies" ] &&
+    [ -f "$dependencies_digest_file" ] && [ ! -L "$dependencies_digest_file" ] || {
+      NATIVE_REASON="pinned ripgrep attestation is incomplete; re-run: delegation-kimi pin-rg --force"
+      return 1
+    }
+  expected="$(awk 'NR == 1 {print $1}' "$digest_file")"
+  actual="$(sha256_file "$binary")" || {
+    NATIVE_REASON="sha256 tool is required to verify pinned ripgrep"
+    return 1
+  }
+  [ -n "$expected" ] && [ "$actual" = "$expected" ] || {
+    NATIVE_REASON="pinned ripgrep digest mismatch; re-run: delegation-kimi pin-rg --force"
+    return 1
+  }
+  RG_VERSION="$("$binary" --version 2>/dev/null | head -1 || true)"
+  expected="$(head -1 "$version_file" 2>/dev/null || true)"
+  [[ "$RG_VERSION" =~ ^ripgrep[[:space:]][0-9] ]] && [ "$RG_VERSION" = "$expected" ] || {
+    NATIVE_REASON="pinned search runtime is not the attested ripgrep build"
+    return 1
+  }
+  jq -e 'type == "array" and all(.[]; (.path | type == "string") and
+    (.sha256 | type == "string" and test("^[0-9a-f]{64}$")))' \
+    "$dependencies" >/dev/null 2>&1 || {
+      NATIVE_REASON="pinned ripgrep dependency manifest is invalid"
+      return 1
+    }
+  generated="$(mktemp "${TMPDIR:-/tmp}/delegation-kimi-rg-deps.XXXXXX")" || return 1
+  if ! write_dependency_manifest "$binary" "$generated"; then
+    rm -f -- "$generated"
+    NATIVE_REASON="could not attest pinned ripgrep dependencies"
+    return 1
+  fi
+  generated_digest="$(sha256_file "$generated")" || { rm -f -- "$generated"; return 1; }
+  expected="$(awk 'NR == 1 {print $1}' "$dependencies_digest_file")"
+  if [ "$generated_digest" != "$expected" ] || ! cmp -s "$generated" "$dependencies"; then
+    rm -f -- "$generated"
+    NATIVE_REASON="pinned ripgrep dependency digest mismatch; re-run: delegation-kimi pin-rg --force"
+    return 1
+  fi
+  rm -f -- "$generated"
+  real_home="$(cd "${HOME:?HOME is required}" && pwd -P)"
+  while IFS= read -r dependency_path; do
+    case "$dependency_path" in
+      "$real_home"/*)
+        NATIVE_REASON="pinned ripgrep depends on ambient HOME data: $dependency_path"
+        return 1
+        ;;
+    esac
+  done < <(jq -r '.[].path' "$dependencies")
+  RG_BIN="$binary"
+  RG_SHA256="$actual"
+  RG_DEPENDENCIES_SHA256="$generated_digest"
+  RG_DEPENDENCY_COUNT="$(jq 'length' "$dependencies")"
+}
+
+copy_verified_rg() {
+  local destination="$1" copied_digest copied_version
+  verify_pinned_rg || return 1
+  mkdir -p "$(dirname "$destination")"
+  cp "$RG_BIN" "$destination" && chmod 500 "$destination" || return 1
+  copied_digest="$(sha256_file "$destination")" || return 1
+  [ "$copied_digest" = "$RG_SHA256" ] || return 1
+  copied_version="$("$destination" --version 2>/dev/null | head -1 || true)"
+  [ "$copied_version" = "$RG_VERSION" ]
+}
+
+pin_rg_command() {
+  local from="" force=0 source digest existing stage target previous source_dir source_link
+  local source_version symlink_hops=0
+  while [ "$#" -gt 0 ]; do
+    case "$1" in
+      --from) from="${2:-}"; shift 2 ;;
+      --force) force=1; shift ;;
+      -h|--help) usage; exit 0 ;;
+      *) die 64 "unknown pin-rg argument: $1" ;;
+    esac
+  done
+  have jq || die 69 "jq is required"
+  have shasum || have sha256sum || die 69 "shasum or sha256sum is required"
+  if [ -n "$from" ]; then source="$from"
+  elif have rg; then source="$(command -v rg)"
+  else die 69 "rg is not on PATH; pass --from <path>"; fi
+  while [ -L "$source" ]; do
+    symlink_hops=$((symlink_hops + 1))
+    [ "$symlink_hops" -le 40 ] || die 64 "--from symlink chain is too deep or cyclic"
+    source_dir="$(cd "$(dirname "$source")" && pwd -P)"
+    source_link="$(readlink "$source")"
+    case "$source_link" in
+      /*) source="$source_link" ;;
+      *) source="$source_dir/$source_link" ;;
+    esac
+  done
+  [ -f "$source" ] && [ -x "$source" ] \
+    || die 64 "--from is not a regular executable file: $source"
+  source="$(cd "$(dirname "$source")" && pwd -P)/$(basename "$source")"
+  source_version="$("$source" --version 2>/dev/null | head -1 || true)"
+  [[ "$source_version" =~ ^ripgrep[[:space:]][0-9] ]] \
+    || die 64 "--from does not identify itself as ripgrep: $source"
+  digest="$(sha256_file "$source")" || die 70 "could not hash $source"
+  target="$(pinned_rg_path)"
+  if [ -e "$target" ] || [ -L "$target" ]; then
+    existing="$(sha256_file "$target" 2>/dev/null || true)"
+    if [ "$existing" = "$digest" ] && verify_pinned_rg; then
+      printf 'delegation-kimi: compatible ripgrep already pinned at %s\n' "$target"
+      return 0
+    fi
+    [ "$existing" = "$digest" ] || [ "$force" -eq 1 ] \
+      || die 64 "different or invalid ripgrep bytes are already pinned at $target; pass --force to replace them"
+  fi
+  mkdir -p "$RG_STORE"
+  stage="$(mktemp -d "$RG_STORE/.pin-rg.XXXXXX")" || die 70 "could not create ripgrep pin stage"
+  if ! cp "$source" "$stage/rg" || ! chmod 500 "$stage/rg"; then
+    rm -rf -- "$stage"
+    die 70 "could not archive $source"
+  fi
+  digest="$(sha256_file "$stage/rg")" \
+    || { rm -rf -- "$stage"; die 70 "could not hash archived ripgrep"; }
+  printf '%s  rg\n' "$digest" >"$stage/rg.sha256"
+  printf '%s\n' "$source_version" >"$stage/rg.version"
+  if ! write_dependency_manifest "$stage/rg" "$stage/dependencies.json"; then
+    rm -rf -- "$stage"
+    die 70 "could not attest non-system ripgrep dependencies"
+  fi
+  printf '%s  dependencies.json\n' "$(sha256_file "$stage/dependencies.json")" \
+    >"$stage/dependencies.sha256"
+  chmod 400 "$stage/rg.sha256" "$stage/rg.version" \
+    "$stage/dependencies.json" "$stage/dependencies.sha256"
+  previous="$RG_STORE/.previous.$$"
+  if [ -d "$RG_STORE/current" ]; then
+    mv "$RG_STORE/current" "$previous" \
+      || { rm -rf -- "$stage"; die 70 "could not stage existing ripgrep archive"; }
+  fi
+  if ! mv "$stage" "$RG_STORE/current"; then
+    [ ! -d "$previous" ] || mv "$previous" "$RG_STORE/current" || true
+    rm -rf -- "$stage"
+    die 70 "could not finalize ripgrep archive"
+  fi
+  rm -rf -- "$previous"
+  verify_pinned_rg || die 70 "$NATIVE_REASON"
+  printf 'delegation-kimi: pinned ripgrep\n  from: %s\n  to:   %s\n  sha256: %s\n  dependencies_sha256: %s\n' \
+    "$source" "$RG_BIN" "$RG_SHA256" "$RG_DEPENDENCIES_SHA256"
 }
 
 sync_native_credentials() {
@@ -310,44 +592,181 @@ print_preflight_receipt() {
       provider_dispatch_started:false,provider_attempts:0,post_observation_retries:0}'
 }
 
-# A dead session is not a broken dispatch: it means the runtime is unavailable
-# (69), so the caller keeps the incumbent instead of blaming the worker.
-#
-# Both classifiers slurp with `-s` and ask `any(...)`: `jq -e` over a JSONL
-# stream takes its exit status from the LAST value it emits, so a matching event
-# followed by any other error event would read as "no match".
-# The stderr greps carry no bare status numbers — a crash whose stack trace
-# happens to mention line 401 or 429 is a dispatch failure, not an auth or rate
-# problem. Structured codes are matched on the JSON, where they are unambiguous.
-auth_failure() {
-  local events="$1" stderr="$2"
-  grep -Eqi 'auth\.login_required|login_required|requires login|unauthorized|invalid[_ ]api[_ ]key' \
-    "$stderr" 2>/dev/null && return 0
-  jq -se 'any(.[];
-    .type == "error" and (
-      ((.error.data.statusCode // 0) == 401) or
-      ((.error.data.message // .error.message // "") |
-        test("login_required|requires login|unauthorized"; "i"))))
-  ' "$events" >/dev/null 2>&1
+failure_contains() {
+  local events="$1" stderr="$2" pattern="$3"
+  grep -Eqi "$pattern" "$stderr" 2>/dev/null ||
+    jq -se --arg pattern "$pattern" '
+      any(.[];
+        type == "object" and .type == "error" and
+        (((.error // .message // "") | tostring) | test($pattern; "i")))
+    ' "$events" >/dev/null 2>&1
 }
 
-temporary_failure() {
-  local events="$1" stderr="$2"
-  grep -Eqi 'rate.?limit|too many requests|usage limit|quota.*refresh|billing cycle|temporar.*unavailable|error[^0-9]*(1305|1312)' \
-    "$stderr" 2>/dev/null && return 0
-  jq -se 'any(.[];
-    .type == "error" and (
-      ((.error.data.statusCode // 0) == 429) or
-      ((.error.data.message // .error.message // "") |
-        test("rate.?limit|too many requests|usage limit|quota.*refresh|billing cycle|temporar.*unavailable"; "i"))))
-  ' "$events" >/dev/null 2>&1
+classify_dispatch_failure() {
+  local events="$1" stderr="$2" vendor_rc="$3" evaluation="$4"
+  if [ "$CANCEL_REQUESTED" -eq 1 ]; then
+    printf '%s\n' '130|caller_cancelled|dispatch'
+  elif [ "$vendor_rc" -eq 124 ] || [ "$vendor_rc" -eq 137 ]; then
+    [ "$evaluation" -eq 1 ] \
+      && printf '%s\n' '75|evaluation_timeout|dispatch' \
+      || printf '%s\n' '75|operational_timeout|dispatch'
+  elif failure_contains "$events" "$stderr" \
+      "usage limit for this billing cycle|usage limit for this period|monthly usage limit|quota (has been )?(fully )?(used|consumed|exhausted)|quota will be refreshed"; then
+    printf '%s\n' '69|quota_unavailable|dispatch'
+  elif failure_contains "$events" "$stderr" \
+      "sandbox|operation not permitted|deny\\(|process-exec"; then
+    printf '%s\n' '70|sandbox_failure|dispatch'
+  elif failure_contains "$events" "$stderr" \
+      "subscription does not have access|plan supports only|access terminated|model id does not exist|not found the model"; then
+    printf '%s\n' '69|entitlement_unavailable|dispatch'
+  elif failure_contains "$events" "$stderr" \
+      "auth\\.login_required|login_required|requires login|invalid authentication|api key appears to be invalid|unauthorized"; then
+    printf '%s\n' '69|authentication_unavailable|dispatch'
+  elif failure_contains "$events" "$stderr" \
+      "unable to verify (your )?membership benefits|statusCode[^0-9]*402"; then
+    printf '%s\n' '75|membership_verification_temporary|dispatch'
+  elif failure_contains "$events" "$stderr" \
+      "engine is currently overloaded|receiving too many requests|too many concurrent requests"; then
+    printf '%s\n' '75|provider_overloaded|dispatch'
+  elif failure_contains "$events" "$stderr" \
+      "503 service unavailable|504 gateway timeout|502 bad gateway|internal:.*(conn closed|bad connection|i/o timeout|unexpected eof)|statusCode[^0-9]*5[0-9][0-9]"; then
+    printf '%s\n' '75|provider_temporary_failure|dispatch'
+  elif failure_contains "$events" "$stderr" \
+      "context cancel(l)?ed|context deadline exceeded"; then
+    printf '%s\n' '75|provider_timeout|dispatch'
+  else
+    printf '%s\n' '70|dispatch_unclassified|dispatch'
+  fi
+}
+
+lane_tools_json() {
+  case "$1" in
+    clerk|scout) printf '%s\n' '["Read","Glob","Grep","TodoList"]' ;;
+    builder) printf '%s\n' '["Read","Glob","Grep","TodoList","Write","Edit"]' ;;
+    frontend-builder) printf '%s\n' '["Read","Glob","Grep","TodoList","Write","Edit","ReadMediaFile"]' ;;
+    policy-annotation) printf '%s\n' '[]' ;;
+    *) printf '%s\n' '[]' ;;
+  esac
+}
+
+event_summary_json() {
+  local events="$1"
+  jq -s '
+    [ .[] | select(type == "object") ] as $events |
+    ([ $events[] |
+       (.tool_calls[]?.function.name //
+        .content[]?.tool_calls[]?.function.name //
+        .name? // empty) |
+       select(type == "string" and length > 0) ]) as $tools |
+    {total_events:($events | length),
+     assistant_events:([$events[] | select(.role == "assistant")] | length),
+     tool_events:([$events[] | select(.role == "tool")] | length),
+     error_events:([$events[] | select(.type == "error")] | length),
+     tool_calls:($tools | length),
+     last_tool:($tools | last // null)}
+  ' "$events" 2>/dev/null || printf '%s\n' \
+    '{"total_events":0,"assistant_events":0,"tool_events":0,"error_events":0,"tool_calls":0,"last_tool":null}'
+}
+
+start_heartbeat() {
+  local child_pid="$1" events="$2" started="$3"
+  (
+    while kill -0 "$child_pid" >/dev/null 2>&1; do
+      sleep "$HEARTBEAT_SECONDS"
+      kill -0 "$child_pid" >/dev/null 2>&1 || exit 0
+      local_now="$(date +%s)"
+      local_count="$(wc -l <"$events" 2>/dev/null | tr -d ' ' || printf 0)"
+      local_last="$(event_summary_json "$events" | jq -r '.last_tool // "none"' 2>/dev/null || printf none)"
+      printf 'delegation-kimi: heartbeat duration=%ss events=%s last_tool=%s\n' \
+        "$((local_now - started))" "${local_count:-0}" "${local_last:-none}" >&2
+    done
+  ) &
+  HEARTBEAT_PID=$!
+}
+
+validate_debug_dir() {
+  local directory="$1" mode
+  [ -d "$directory" ] && [ ! -L "$directory" ] && [ -w "$directory" ] && [ -x "$directory" ] || return 1
+  mode="$(stat -f '%Lp' "$directory" 2>/dev/null || stat -c '%a' "$directory" 2>/dev/null)" || return 1
+  case "$mode" in *[!0-7]*|"") return 1 ;; esac
+  (( (8#$mode & 8#077) == 0 ))
+}
+
+redact_debug_file() {
+  local source="$1" destination="$2"
+  /usr/bin/perl -pe '
+    s{(authorization\s*[:=]\s*(?:bearer\s+)?)[A-Za-z0-9._~+/=-]+}{${1}[REDACTED]}ig;
+    s{((?:access_token|refresh_token)\s*["'\'']?\s*[:=]\s*["'\''])[^"'\'']+}{${1}[REDACTED]}ig;
+  ' "$source" >"$destination" 2>/dev/null
+}
+
+preserve_debug_artifacts() {
+  local debug_run_path="$1" events="$2" vendor_stderr="$3" scratch="$4" wire
+  [ -n "$debug_run_path" ] || return 0
+  redact_debug_file "$events" "$debug_run_path/events.jsonl" || true
+  redact_debug_file "$vendor_stderr" "$debug_run_path/stderr" || true
+  cp "$scratch/agent.md" "$debug_run_path/agent.md" 2>/dev/null || true
+  cp "$scratch/home/.kimi-code/config.toml" "$debug_run_path/config.toml" 2>/dev/null || true
+  cp "$scratch/home/.kimi-code/tui.toml" "$debug_run_path/tui.toml" 2>/dev/null || true
+  for wire in "$scratch"/home/.kimi-code/sessions/*/*/agents/main/wire.jsonl; do
+    [ -f "$wire" ] || continue
+    redact_debug_file "$wire" "$debug_run_path/wire.jsonl" || true
+    break
+  done
+  chmod 600 "$debug_run_path"/* 2>/dev/null || true
+  return 0
+}
+
+publish_stderr_receipt() {
+  local output="$1" reason="$2" receipt="$RUN_TMP/stderr.receipt"
+  printf 'delegation-kimi: %s\n' "$reason" >"$receipt" || return 1
+  chmod 600 "$receipt" || return 1
+  mv -f "$receipt" "$output.stderr"
+}
+
+publish_failure_diagnostic() {
+  local output="$1" phase="$2" reason="$3" runner_rc="$4" vendor_rc="$5"
+  local started="$6" events="$7" vendor_stderr="$8" lane="$9" write_scope="${10}"
+  local debug_run_path="${11}" finished duration events_bytes stderr_bytes summary tools tmp
+  finished="$(date +%s)"
+  duration="$((finished - started))"
+  events_bytes="$(wc -c <"$events" 2>/dev/null | tr -d ' ' || printf 0)"
+  stderr_bytes="$(wc -c <"$vendor_stderr" 2>/dev/null | tr -d ' ' || printf 0)"
+  summary="$(event_summary_json "$events")"
+  tools="$(lane_tools_json "$lane")"
+  tmp="$RUN_TMP/error.json"
+  jq -n \
+    --arg schema "delegation_kimi_error_v1" \
+    --arg phase "$phase" --arg reason "$reason" \
+    --argjson exit_code "$runner_rc" --argjson vendor_exit_code "$vendor_rc" \
+    --argjson duration_seconds "$duration" \
+    --argjson events_bytes "${events_bytes:-0}" --argjson stderr_bytes "${stderr_bytes:-0}" \
+    --argjson event_summary "$summary" --argjson allowed_tools "$tools" \
+    --arg write_scope "$write_scope" --arg rg_sha256 "$RG_SHA256" \
+    --arg rg_dependencies_sha256 "$RG_DEPENDENCIES_SHA256" \
+    --arg debug_path "$debug_run_path" --arg oauth_sync "$OAUTH_SYNC_STATUS" '
+      {schema:$schema,phase:$phase,reason:$reason,exit_code:$exit_code,
+       vendor_exit_code:$vendor_exit_code,duration_seconds:$duration_seconds,
+       oauth_sync:$oauth_sync,
+       captured_bytes:{events:$events_bytes,vendor_stderr:$stderr_bytes},
+       event_summary:$event_summary,
+       tool_policy:{allowed:$allowed_tools,terminal:false,web_tools:false,
+         subagents:false,skills:false,write_scope:$write_scope,
+         process_exec:{mode:"allowlist",allowed:["rg"],attested:true}},
+       search_runtime:{identity:"ripgrep",sha256:$rg_sha256,
+         dependencies_sha256:$rg_dependencies_sha256},
+       debug_path:(if $debug_path == "" then null else $debug_path end)}
+  ' >"$tmp" || return 1
+  mv -f "$tmp" "$output.error.json" || return 1
+  publish_stderr_receipt "$output" "$reason"
 }
 
 prepare_native_home() {
-  local scratch="$1" item source target source_path target_path
+  local scratch="$1" lane="${2:-scout}" item source target source_path target_path
+  local max_steps allowed_toml disabled_toml agent_file
   source="$KIMI_HOME"
   target="$scratch/home/.kimi-code"
-  mkdir -p "$target" "$scratch/home-tmp"
+  mkdir -p "$target" "$scratch/home-tmp" "$scratch/empty-skills"
   # Do not import the ambient config: it may contain hooks, plugins, services,
   # or a weaker thinking effort. Keep only the authentication material and a
   # minimal, capability-constrained provider/model definition.
@@ -360,14 +779,70 @@ prepare_native_home() {
       cp "$source_path" "$target_path"
     }
   done
-  cat >"$target/config.toml" <<'EOF'
+  case "$lane" in
+    clerk) max_steps=30 ;;
+    scout) max_steps=40 ;;
+    builder|frontend-builder) max_steps=60 ;;
+    policy-annotation) max_steps=30 ;;
+    *) return 1 ;;
+  esac
+  case "$lane" in
+    clerk|scout)
+      allowed_toml='"Read", "Glob", "Grep", "TodoList"'
+      ;;
+    builder)
+      allowed_toml='"Read", "Glob", "Grep", "TodoList", "Write", "Edit"'
+      ;;
+    frontend-builder)
+      allowed_toml='"Read", "Glob", "Grep", "TodoList", "Write", "Edit", "ReadMediaFile"'
+      ;;
+    policy-annotation)
+      # An empty global enabled list means "unconstrained", so policy annotation
+      # enables the known file tools and then denies all of them. The explicit
+      # agent file independently uses `tools: []`.
+      allowed_toml='"Read", "Glob", "Grep", "TodoList", "Write", "Edit", "ReadMediaFile"'
+      ;;
+  esac
+  disabled_toml='"Bash", "WebSearch", "FetchURL", "EnterPlanMode", "ExitPlanMode", "Agent", "AgentSwarm", "AskUserQuestion", "Skill", "TaskList", "TaskOutput", "TaskStop", "CronCreate", "CronList", "CronDelete", "mcp__*"'
+  case "$lane" in
+    clerk|scout)
+      disabled_toml="$disabled_toml, \"Write\", \"Edit\", \"ReadMediaFile\""
+      ;;
+    builder)
+      disabled_toml="$disabled_toml, \"ReadMediaFile\""
+      ;;
+    policy-annotation)
+      disabled_toml="$disabled_toml, \"Read\", \"Glob\", \"Grep\", \"TodoList\", \"Write\", \"Edit\", \"ReadMediaFile\""
+      ;;
+  esac
+  cat >"$target/config.toml" <<EOF
 default_model = "kimi-code/k3"
+default_permission_mode = "auto"
+default_plan_mode = false
+merge_all_available_skills = false
+telemetry = false
 
 [loop_control]
-max_steps_per_turn = 100
+max_steps_per_turn = $max_steps
 max_retries_per_step = 3
 max_ralph_iterations = 0
 reserved_context_size = 50000
+
+[background]
+max_running_tasks = 1
+keep_alive_on_exit = false
+bash_auto_background_on_timeout = false
+bash_task_timeout_s = 1
+print_background_mode = "exit"
+print_wait_ceiling_s = 1
+print_max_turns = 1
+
+[subagent]
+timeout_ms = 1
+
+[tools]
+enabled = [$allowed_toml]
+disabled = [$disabled_toml]
 
 [thinking]
 enabled = true
@@ -391,6 +866,54 @@ display_name = "K3"
 support_efforts = [ "low", "high", "max" ]
 default_effort = "max"
 EOF
+  cat >"$target/tui.toml" <<'EOF'
+[upgrade]
+auto_install = false
+EOF
+  agent_file="$scratch/agent.md"
+  {
+    printf '%s\n' '---'
+    printf 'name: delegation-kimi-%s\n' "$lane"
+    printf 'description: Delegation Kit constrained %s lane\n' "$lane"
+    case "$lane" in
+      clerk|scout)
+        printf '%s\n' 'tools:' '  - Read' '  - Glob' '  - Grep' '  - TodoList'
+        ;;
+      builder)
+        printf '%s\n' 'tools:' '  - Read' '  - Glob' '  - Grep' '  - TodoList' '  - Write' '  - Edit'
+        ;;
+      frontend-builder)
+        printf '%s\n' 'tools:' '  - Read' '  - Glob' '  - Grep' '  - TodoList' '  - Write' '  - Edit' '  - ReadMediaFile'
+        ;;
+      policy-annotation)
+        printf '%s\n' 'tools: []'
+        ;;
+    esac
+    # `${base_prompt}` below is a literal Kimi template token.
+    # shellcheck disable=SC2016
+    printf '%s\n' \
+      'disallowedTools:' \
+      '  - Bash' \
+      '  - WebSearch' \
+      '  - FetchURL' \
+      '  - EnterPlanMode' \
+      '  - ExitPlanMode' \
+      '  - Agent' \
+      '  - AgentSwarm' \
+      '  - AskUserQuestion' \
+      '  - Skill' \
+      '  - TaskList' \
+      '  - TaskOutput' \
+      '  - TaskStop' \
+      '  - CronCreate' \
+      '  - CronList' \
+      '  - CronDelete' \
+      '  - mcp__*' \
+      'subagents: []' \
+      '---' \
+      '' \
+      '${base_prompt}'
+  } >"$agent_file"
 }
 
 print_check() {
@@ -405,14 +928,29 @@ print_check() {
     jq -n \
       --arg model "kimi-k3" --arg native_model "$NATIVE_MODEL" \
       --arg cli_version "$NATIVE_VERSION" \
+      --arg rg_version "$RG_VERSION" --arg rg_sha256 "$RG_SHA256" \
+      --arg rg_dependencies_sha256 "$RG_DEPENDENCIES_SHA256" \
+      --argjson rg_dependency_count "$RG_DEPENDENCY_COUNT" \
       --arg selected "$selected" --argjson efforts "$EFFORTS" --argjson lanes "$lanes" --argjson provisional "$provisional" \
       --argjson native "$native_ok" --arg native_reason "$NATIVE_REASON" \
       '{model:$model,models:{native:$native_model},efforts:$efforts,
+        runtime_cli_compatibility:"capability-probed",
         runtime_cli_version:(if $cli_version == "" then null else $cli_version end),
+        process_exec:{mode:"allowlist",allowed:["rg"],attested:$native},
+        search_runtime:{identity:"ripgrep",
+          version:(if $rg_version == "" then null else $rg_version end),
+          sha256:(if $rg_sha256 == "" then null else $rg_sha256 end),
+          dependencies_sha256:(if $rg_dependencies_sha256 == "" then null else $rg_dependencies_sha256 end),
+          non_system_dependency_count:$rg_dependency_count,
+          copied_per_run:true},
+        terminal:false,web_tools:false,subagents:false,skills:false,
         selected_backend:$selected,qualified_lanes:$lanes,provisional_lanes:$provisional,backends:{
           native:{available:$native,reason:$native_reason,efforts:["max"],
             sandbox:"macos-sandbox-exec",isolated_home:true,environment_mode:"allowlist",
-            ambient_home_read:false,process_exec:false,hooks:false,services:false,
+            ambient_home_read:false,
+            process_exec:{mode:"allowlist",allowed:["rg"],attested:$native},
+            terminal:false,web_tools:false,subagents:false,skills:false,
+            hooks:false,services:false,
             oauth_refresh_persistence:"serialized-atomic-sync",
             builder_write_scope:"workdir",read_only_write_scope:"scratch"}}}'
   else
@@ -435,10 +973,17 @@ extract_native() {
   [ -s "$output" ] || return 1
   jq -n --arg model "$NATIVE_MODEL" --arg effort "$effort" --arg lane "$lane" \
     --arg cli_version "$NATIVE_VERSION" --arg write_scope "$write_scope" \
+    --arg rg_version "$RG_VERSION" --arg rg_sha256 "$RG_SHA256" \
+    --arg rg_dependencies_sha256 "$RG_DEPENDENCIES_SHA256" \
     --argjson started "$started" '
     {model:$model,backend:"native",effort:$effort,lane:$lane,runtime_cli_version:$cli_version,
+     runtime_cli_compatibility:"capability-probed",
      sandbox:"macos-sandbox-exec",isolated_home:true,environment_mode:"allowlist",
-     ambient_home_read:false,process_exec:false,hooks:false,services:false,
+     ambient_home_read:false,
+     process_exec:{mode:"allowlist",allowed:["rg"],attested:true},
+     search_runtime:{identity:"ripgrep",version:$rg_version,sha256:$rg_sha256,
+       dependencies_sha256:$rg_dependencies_sha256,copied_per_run:true},
+     terminal:false,web_tools:false,subagents:false,skills:false,hooks:false,services:false,
      oauth_refresh_persistence:"serialized-atomic-sync",
      write_scope:$write_scope,
      started_at_epoch:$started,finished_at_epoch:now,usage_reported:false,
@@ -456,6 +1001,7 @@ backend_available() {
 
 run_command() {
   local lane="" effort="auto" backend="auto" prompt_file="" prompt="" output="" workdir="" metrics="" evaluation_manifest_path=""
+  local debug_dir="" debug_run_path=""
   local prompt_source="" backend_checked=0 expected_effort="" allow_provisional=0 evaluation=0 preflight_only=0
   while [ "$#" -gt 0 ]; do
     case "$1" in
@@ -471,6 +1017,7 @@ run_command() {
       --evaluation) evaluation=1; shift ;;
       --evaluation-manifest) evaluation_manifest_path="${2:-}"; shift 2 ;;
       --preflight-only) preflight_only=1; shift ;;
+      --debug-dir) debug_dir="${2:-}"; shift 2 ;;
       -h|--help) usage; exit 0 ;;
       *) die 64 "unknown run argument: $1" ;;
     esac
@@ -502,6 +1049,11 @@ run_command() {
   ambient_home="$(cd "${HOME:?HOME is required}" && pwd -P)"
   [ "$workdir" != "$ambient_home" ] || die 64 "workdir must not be the user home"
   [ -n "$output" ] || die 64 "--output is required"
+  if [ -n "$debug_dir" ]; then
+    validate_debug_dir "$debug_dir" \
+      || die 64 "--debug-dir must be an existing, writable directory with no group or other permissions"
+    debug_dir="$(cd "$debug_dir" && pwd -P)"
+  fi
   have jq || die 69 "jq is required"
   [ -f "$ROUTING_FILE" ] || die 69 "routing file missing: $ROUTING_FILE"
   jq -e . "$ROUTING_FILE" >/dev/null 2>&1 || die 69 "routing file is invalid JSON"
@@ -572,7 +1124,7 @@ run_command() {
   fi
 
   metrics="${metrics:-$output.metrics.json}"
-  local output_parent metrics_parent output_name metrics_name commit
+  local output_parent metrics_parent output_name metrics_name commit error_json stderr_receipt
   output_parent="$(dirname "$output")"; output_name="$(basename "$output")"
   metrics_parent="$(dirname "$metrics")"; metrics_name="$(basename "$metrics")"
   case "$output_name" in .|..) die 64 "invalid output filename" ;; esac
@@ -582,15 +1134,23 @@ run_command() {
   output="$(cd "$output_parent" && pwd -P)/$output_name"
   metrics="$(cd "$metrics_parent" && pwd -P)/$metrics_name"
   commit="$output.commit.json"
+  error_json="$output.error.json"
+  stderr_receipt="$output.stderr"
   [ "$output" != "$metrics" ] || die 64 "output and metrics paths resolve to the same file"
+  [ "$metrics" != "$error_json" ] && [ "$metrics" != "$stderr_receipt" ] \
+    || die 64 "metrics path collides with a diagnostic artifact"
   if [ "$evaluation" = 1 ]; then
     [ "$metrics" != "$commit" ] \
       || die 64 "metrics path collides with evaluation commit marker"
   fi
   [ ! -L "$output" ] || die 64 "output must not be a symlink"
   [ ! -L "$metrics" ] || die 64 "metrics must not be a symlink"
+  [ ! -L "$error_json" ] || die 64 "error diagnostic must not be a symlink"
+  [ ! -L "$stderr_receipt" ] || die 64 "stderr receipt must not be a symlink"
   [ ! -e "$output" ] || die 64 "output must not already exist"
   [ ! -e "$metrics" ] || die 64 "metrics must not already exist"
+  [ ! -e "$error_json" ] || die 64 "error diagnostic must not already exist"
+  [ ! -e "$stderr_receipt" ] || die 64 "stderr receipt must not already exist"
   if [ "$evaluation" = 1 ]; then
     [ ! -L "$commit" ] || die 64 "evaluation commit marker must not be a symlink"
     [ ! -e "$commit" ] || die 64 "evaluation commit marker must not already exist"
@@ -599,12 +1159,13 @@ run_command() {
     case "$output" in "$workdir"/*) die 64 "read-only lane output must be outside workdir" ;; esac
     case "$metrics" in "$workdir"/*) die 64 "read-only lane metrics must be outside workdir" ;; esac
   fi
+  case "$debug_dir" in "$workdir"|"$workdir"/*) die 64 "debug directory must be outside workdir" ;; esac
 
-  local events rc=0 started result_tmp metrics_tmp error_tmp
+  local events rc=0 started result_tmp metrics_tmp cancel_killer_pid=""
+  local final_rc=0 failure_reason="" failure_phase="" vendor_rc=0
   events="$tmp/events.jsonl"
   result_tmp="$tmp/result.txt"
   metrics_tmp="$tmp/metrics.json"
-  error_tmp="$tmp/error.txt"
   started="$(date +%s)"
 
   # Every lane gets the same isolated configuration, scrubbed environment, and
@@ -612,14 +1173,12 @@ run_command() {
   # read-only lanes may write only runner scratch. No imported hooks/services or
   # child process execution is exposed. Network remains available to the Kimi
   # provider process itself.
-  local sandbox_bin timeout_bin=""
+  local sandbox_bin timeout_seconds
   sandbox_status || die 69 "$NATIVE_REASON"
   sandbox_bin="$KIMI_SANDBOX_BIN"
-  if [ "$evaluation" = 1 ]; then
-    if have gtimeout; then timeout_bin="$(command -v gtimeout)"
-    elif have timeout; then timeout_bin="$(command -v timeout)"
-    else die 69 "evaluation requires gtimeout or timeout to enforce its manifest limit"; fi
-  fi
+  [ "$evaluation" -eq 1 ] \
+    && timeout_seconds="$EVALUATION_TIMEOUT_SECONDS" \
+    || timeout_seconds="$OPERATIONAL_TIMEOUT_SECONDS"
   # Preflight ends here: every pre-provider check the real evaluation run makes
   # has passed, and nothing caller-visible has been created. Exit before the
   # OAuth lock, isolated dispatch home, and sandboxed CLI invocation below.
@@ -627,7 +1186,7 @@ run_command() {
     print_preflight_receipt "$lane" "$effort" || die 70 "could not emit preflight receipt"
     exit 0
   fi
-  local sandbox_profile write_scope
+  local sandbox_profile write_scope scratch_rg
   local lock_rc=0 sync_rc=0 ambient_credential_hash=""
   acquire_oauth_lock || lock_rc=$?
   if [ "$lock_rc" -eq 2 ]; then
@@ -635,19 +1194,30 @@ run_command() {
   elif [ "$lock_rc" -ne 0 ]; then
     die 69 "could not secure the Kimi OAuth credential for isolated dispatch"
   fi
-  prepare_native_home "$tmp" || die 69 "could not prepare isolated Kimi home"
+  prepare_native_home "$tmp" "$lane" || die 69 "could not prepare isolated Kimi home"
+  RG_RUN_DIR="$(mktemp -d "${TMPDIR:-/tmp}/delegation-kimi-rg-run.XXXXXX")" \
+    || die 70 "could not create protected ripgrep run directory"
+  RG_RUN_DIR="$(cd "$RG_RUN_DIR" && pwd -P)"
+  chmod 700 "$RG_RUN_DIR"
+  scratch_rg="$RG_RUN_DIR/rg"
+  copy_verified_rg "$scratch_rg" || die 69 "$NATIVE_REASON"
   OAUTH_BASELINE_HASH="$(sha256_file "$tmp/home/.kimi-code/credentials/kimi-code.json")" \
     || die 69 "could not fingerprint the isolated Kimi OAuth credential"
   ambient_credential_hash="$(sha256_file "$CREDENTIAL_FILE")" \
     || die 69 "could not fingerprint the ambient Kimi OAuth credential"
   [ "$OAUTH_BASELINE_HASH" = "$ambient_credential_hash" ] \
     || die 75 "Kimi OAuth credentials changed while isolated dispatch was being prepared; retry"
+  if [ -n "$debug_dir" ]; then
+    debug_run_path="$debug_dir/delegation-kimi-$(date -u +%Y%m%dT%H%M%SZ)-$$"
+    mkdir -m 700 "$debug_run_path" || die 70 "could not create private debug run directory"
+  fi
   sandbox_profile='(version 1)
     (allow default)
     (deny process-exec
       (require-all
         (require-not (literal (param "KIMI_BIN")))
-        (require-not (literal "/usr/bin/true"))))
+        (require-not (literal "/usr/bin/true"))
+        (require-not (literal (param "RG_BIN")))))
     (deny file-read-data
       (require-all
         (subpath (param "REAL_HOME"))
@@ -661,59 +1231,99 @@ run_command() {
     write_scope="scratch"
     sandbox_profile+=$'\n    (deny file-write* (require-not (subpath (param "SCRATCH"))))'
   fi
+  sandbox_profile+=$'\n    (deny file-write* (subpath (param "RG_DIR")))'
   sandbox_profile+=$'\n'
-  if [ "$evaluation" = 1 ]; then
-    (
-      cd "$workdir"
-      env -i \
-        PATH="/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin" \
-        HOME="$tmp/home" TMPDIR="$tmp/home-tmp" SHELL="/usr/bin/true" \
-        LANG="${LANG:-C}" NO_COLOR=1 \
-        "$timeout_bin" "$EVALUATION_TIMEOUT_SECONDS" "$sandbox_bin" -D "SCRATCH=$tmp" -D "WORKDIR=$workdir" \
-          -D "REAL_HOME=$ambient_home" -D "KIMI_BIN=$NATIVE_BIN" \
-          -p "$sandbox_profile" "$NATIVE_BIN" \
-          --prompt "$prompt" --model "$NATIVE_MODEL" \
-          --output-format stream-json </dev/null
-    ) >"$events" 2>"$tmp/stderr" || rc=$?
-  else
-    (
-      cd "$workdir"
-      env -i \
-      PATH="/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin" \
-      HOME="$tmp/home" TMPDIR="$tmp/home-tmp" SHELL="/usr/bin/true" \
-      LANG="${LANG:-C}" NO_COLOR=1 \
+  : >"$events"
+  : >"$tmp/stderr"
+  CANCEL_REQUESTED=0
+  trap handle_cancel INT TERM
+  (
+    cd "$workdir"
+    exec env -i \
+      PATH="$RG_RUN_DIR:/usr/bin:/bin" \
+      HOME="$tmp/home" KIMI_CODE_HOME="$tmp/home/.kimi-code" \
+      TMPDIR="$tmp/home-tmp" SHELL="/usr/bin/true" \
+      LANG="${LANG:-C}" NO_COLOR=1 CI=1 \
+      KIMI_DISABLE_TELEMETRY=1 KIMI_CODE_NO_AUTO_UPDATE=1 KIMI_DISABLE_CRON=1 \
+      "$KIMI_TIMEOUT_BIN" -k 10 "$timeout_seconds" \
       "$sandbox_bin" -D "SCRATCH=$tmp" -D "WORKDIR=$workdir" \
-        -D "REAL_HOME=$ambient_home" -D "KIMI_BIN=$NATIVE_BIN" \
+        -D "REAL_HOME=$ambient_home" -D "KIMI_BIN=$NATIVE_BIN" -D "RG_BIN=$scratch_rg" \
+        -D "RG_DIR=$RG_RUN_DIR" \
         -p "$sandbox_profile" "$NATIVE_BIN" \
         --prompt "$prompt" --model "$NATIVE_MODEL" \
+        --agent-file "$tmp/agent.md" --skills-dir "$tmp/empty-skills" \
         --output-format stream-json </dev/null
-    ) >"$events" 2>"$tmp/stderr" || rc=$?
+  ) >"$events" 2>"$tmp/stderr" &
+  CHILD_PID=$!
+  start_heartbeat "$CHILD_PID" "$events" "$started"
+  wait "$CHILD_PID" || rc=$?
+  if [ "$CANCEL_REQUESTED" -eq 1 ] && kill -0 "$CHILD_PID" >/dev/null 2>&1; then
+    (
+      sleep "$CANCEL_GRACE_SECONDS"
+      kill -KILL "$CHILD_PID" >/dev/null 2>&1 || true
+    ) &
+    cancel_killer_pid=$!
+    wait "$CHILD_PID" || rc=$?
+    kill "$cancel_killer_pid" >/dev/null 2>&1 || true
+    wait "$cancel_killer_pid" 2>/dev/null || true
+  fi
+  vendor_rc="$rc"
+  CHILD_PID=""
+  if [ -n "$HEARTBEAT_PID" ]; then
+    kill "$HEARTBEAT_PID" >/dev/null 2>&1 || true
+    wait "$HEARTBEAT_PID" 2>/dev/null || true
+    HEARTBEAT_PID=""
   fi
   sync_native_credentials "$tmp" || sync_rc=$?
+  case "$sync_rc" in
+    0) OAUTH_SYNC_STATUS="ok" ;;
+    2) OAUTH_SYNC_STATUS="conflict" ;;
+    *) OAUTH_SYNC_STATUS="failed" ;;
+  esac
   release_oauth_lock
-  if [ "$sync_rc" -eq 2 ]; then
-    printf '%s\n' 'Kimi OAuth persistence is temporarily unavailable because credentials changed outside the runner' >>"$tmp/stderr"
-    rc=75
+  trap - INT TERM
+  if [ "$CANCEL_REQUESTED" -eq 1 ]; then
+    final_rc=130
+    failure_reason="caller_cancelled"
+    failure_phase="dispatch"
+  elif [ "$rc" -ne 0 ]; then
+    IFS='|' read -r final_rc failure_reason failure_phase \
+      <<<"$(classify_dispatch_failure "$events" "$tmp/stderr" "$rc" "$evaluation")"
+  elif [ "$sync_rc" -eq 2 ]; then
+    final_rc=75
+    failure_reason="oauth_conflict"
+    failure_phase="oauth-sync"
   elif [ "$sync_rc" -ne 0 ]; then
-    printf '%s\n' 'could not safely persist refreshed Kimi OAuth credentials' >>"$tmp/stderr"
-    rc=70
+    final_rc=70
+    failure_reason="oauth_sync_failed"
+    failure_phase="oauth-sync"
   fi
-  if [ "$rc" -eq 0 ]; then
-    extract_native "$events" "$result_tmp" "$metrics_tmp" "$started" "$effort" "$lane" "$write_scope" || rc=70
+  if [ "$final_rc" -eq 0 ]; then
+    if ! extract_native "$events" "$result_tmp" "$metrics_tmp" "$started" "$effort" "$lane" "$write_scope"; then
+      final_rc=70
+      failure_reason="output_invalid"
+      failure_phase="output"
+    fi
   fi
-  if [ "$rc" -eq 0 ] && [ "$evaluation" = 1 ] && [ "$(wc -m <"$result_tmp" | tr -d ' ')" -gt "$EVALUATION_MAX_OUTPUT_CHARS" ]; then
-    rc=70
+  if [ "$final_rc" -eq 0 ] && [ "$evaluation" = 1 ] &&
+      [ "$(wc -m <"$result_tmp" | tr -d ' ')" -gt "$EVALUATION_MAX_OUTPUT_CHARS" ]; then
+    final_rc=70
+    failure_reason="output_too_large"
+    failure_phase="output"
   fi
+  preserve_debug_artifacts "$debug_run_path" "$events" "$tmp/stderr" "$tmp"
   # A successful evaluation publishes its attempt receipt or publishes nothing.
   # Every field is recomputed here from local state the manifest already bound;
   # nothing is accepted from the caller.
-  if [ "$rc" -eq 0 ] && [ "$evaluation" = 1 ]; then
+  if [ "$final_rc" -eq 0 ] && [ "$evaluation" = 1 ]; then
     local raw_output_sha256=""
     raw_output_sha256="$(sha256_file "$result_tmp")" || raw_output_sha256=""
     if [ -z "$raw_output_sha256" ] || [ -z "${EVALUATION_MANIFEST_SHA256:-}" ] ||
        [ -z "${EVALUATION_PROMPT_SHA256:-}" ] || [ -z "${EVALUATION_RUNNER_SOURCE_COMMIT:-}" ] ||
        [ -z "${EVALUATION_RUNNER_SHA256:-}" ]; then
-      rc=70
+      final_rc=70
+      failure_reason="evaluation_receipt_invalid"
+      failure_phase="output"
     elif ! jq --arg manifest_sha256 "$EVALUATION_MANIFEST_SHA256" \
         --arg prompt_sha256 "$EVALUATION_PROMPT_SHA256" \
         --arg source_commit "$EVALUATION_RUNNER_SOURCE_COMMIT" \
@@ -730,22 +1340,19 @@ run_command() {
           post_observation_retries:0}' "$metrics_tmp" >"$tmp/metrics.receipt.json" ||
        ! mv -f "$tmp/metrics.receipt.json" "$metrics_tmp"; then
       rm -f -- "$tmp/metrics.receipt.json"
-      rc=70
+      final_rc=70
+      failure_reason="evaluation_receipt_invalid"
+      failure_phase="output"
     fi
   fi
 
-  if [ "$rc" -ne 0 ]; then
-    if [ "$evaluation" = 1 ] && { [ "$rc" -eq 124 ] || [ "$rc" -eq 137 ]; }; then
-      printf '%s\n' 'evaluation_timeout' >"$error_tmp"
-      mv -f "$error_tmp" "$output.stderr" 2>/dev/null || true
-      exit 70
-    fi
-    cp "$tmp/stderr" "$error_tmp" 2>/dev/null || : >"$error_tmp"
-    jq -c 'select(.type == "error") | .error' "$events" >>"$error_tmp" 2>/dev/null || true
-    mv -f "$error_tmp" "$output.stderr" 2>/dev/null || true
-    auth_failure "$events" "$tmp/stderr" && exit 69
-    temporary_failure "$events" "$tmp/stderr" && exit 75
-    exit 70
+  if [ "$final_rc" -ne 0 ]; then
+    publish_failure_diagnostic "$output" "$failure_phase" "$failure_reason" \
+      "$final_rc" "$vendor_rc" "$started" "$events" "$tmp/stderr" \
+      "$lane" "$write_scope" "$debug_run_path" || {
+        publish_stderr_receipt "$output" "$failure_reason" || true
+      }
+    exit "$final_rc"
   fi
   local commit_tmp="$tmp/publication.commit.json" metrics_sha256=""
   if [ "$evaluation" = 1 ]; then
@@ -758,20 +1365,32 @@ run_command() {
          '{schema_version:"delegation_policy_annotation_publication_commit_v1",
            raw_output_sha256:$raw_output_sha256,metrics_sha256:$metrics_sha256,
            evaluation_manifest_sha256:$manifest_sha256}' >"$commit_tmp"; then
-      die 70 "could not stage evaluation publication commit"
+      publish_failure_diagnostic "$output" publish publication_stage_failed \
+        70 "$vendor_rc" "$started" "$events" "$tmp/stderr" \
+        "$lane" "$write_scope" "$debug_run_path" || true
+      exit 70
     fi
   fi
   if ! mv -f "$result_tmp" "$output"; then
     rm -f -- "$output"
-    die 70 "could not finalize output"
+    publish_failure_diagnostic "$output" publish output_finalize_failed \
+      70 "$vendor_rc" "$started" "$events" "$tmp/stderr" \
+      "$lane" "$write_scope" "$debug_run_path" || true
+    exit 70
   fi
   if ! mv -f "$metrics_tmp" "$metrics"; then
     rm -f -- "$output" "$metrics"
-    die 70 "could not finalize metrics"
+    publish_failure_diagnostic "$output" publish metrics_finalize_failed \
+      70 "$vendor_rc" "$started" "$events" "$tmp/stderr" \
+      "$lane" "$write_scope" "$debug_run_path" || true
+    exit 70
   fi
   if [ "$evaluation" = 1 ] && ! mv -f "$commit_tmp" "$commit"; then
     rm -f -- "$output" "$metrics" "$commit"
-    die 70 "could not finalize evaluation publication commit"
+    publish_failure_diagnostic "$output" publish evaluation_commit_finalize_failed \
+      70 "$vendor_rc" "$started" "$events" "$tmp/stderr" \
+      "$lane" "$write_scope" "$debug_run_path" || true
+    exit 70
   fi
 }
 
@@ -780,6 +1399,7 @@ case "${1:-}" in
     shift
     case "${1:-}" in "") print_check 0 ;; --json) shift; [ "$#" -eq 0 ] || die 64 "unknown check argument: $1"; print_check 1 ;; *) die 64 "unknown check argument: $1" ;; esac
     ;;
+  pin-rg) shift; pin_rg_command "$@" ;;
   run) shift; run_command "$@" ;;
   -h|--help|"") usage ;;
   *) die 64 "unknown command: $1" ;;

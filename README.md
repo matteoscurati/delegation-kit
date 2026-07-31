@@ -9,15 +9,14 @@ It ships as a **reference implementation**: the author's concrete models
 external-evidence snapshot, and fail-closed local gates. Swap the models for your own tiers with
 [`ADAPTING.md`](./ADAPTING.md) — the *structure* is the transferable part.
 
-## Current release: 0.6.0
+## Current release: 0.7.0
 
-Version 0.6.0 adds manifest-bound policy-annotation qualification, refreshes the
-external model evidence, and hardens every optional CLI bridge around exact
-runtime capabilities. Grok Build can now run from a digest-pinned private binary
-with an attested read-only sandbox; Kimi checks its effective `max` effort inside
-the same isolated HOME used for dispatch. Provider failures retain sanitized
-diagnostics by default and preserve raw evidence only through explicit private
-debug paths.
+Version 0.7.0 upgrades the Kimi bridge to a capability-probed Kimi Code runtime
+with ephemeral lane-specific agent files, an attested Grep-only process
+allowlist, protected ripgrep execution, bounded cancellation and timeout
+handling, sanitized heartbeat/error diagnostics, and explicit OAuth-finalization
+semantics. Kimi lanes remain provisional and explicit-only; no routing promotion
+or historical evaluation-manifest change is included.
 
 ## What it installs
 
@@ -81,24 +80,55 @@ Kimi K3 is installed as a **provisional coding model**. Its gate permits explici
 `clerk`, `scout`, `builder`, and `frontend-builder` runs at `max`; senior is a
 blocked candidate, reviewer/judgement remain disabled, and `policy-annotation`
 is candidate/blocked for manifest-bound evaluation only. It never creates an
-operational route or qualifies architecture/trade-off judgement. Provider quota exhaustion
-returns exit 75 without silently falling back or changing the quality
-qualification. Provisional runs require `--allow-provisional`; CLI
+operational route or qualifies architecture/trade-off judgement. Provisional
+runs require `--allow-provisional`; CLI
 availability or a provider model listing is not enough. CLI compatibility is
-determined from capabilities: structured output, the exact `kimi-code/k3`
-model, OAuth, and `max` as the supported/effective effort are required, while
-the observed version is provenance only. The runner imports
-only authentication into a minimal isolated HOME, scrubs the environment,
-disables terminal execution, and hides ambient HOME contents. Native invocations
-are serialized around OAuth refresh: after the isolated CLI rotates a token, the
-parent validates and atomically syncs only `credentials/kimi-code.json` back to
-the user-managed Kimi store. Runner invocations use an atomic process lock to
-avoid refresh-token rotation races. Do not run an external `kimi login`
-concurrently; if the parent observes such a credential change, it refuses to
-overwrite it and returns a temporary failure. macOS
-`sandbox-exec` limits read-only lanes to scratch writes and builder lanes to
-worktree-plus-scratch writes; every lane fails closed when that guard is
-unavailable.
+determined from capabilities: `--agent-file`, `stream-json`, the exact
+`kimi-code/k3` model, OAuth, a valid isolated configuration, and `max` as the
+supported/effective effort are required, while the observed version is
+provenance only. Update the vendor CLI explicitly with `kimi update`;
+`install.sh` never changes it.
+
+Each run receives an ephemeral agent file and duplicated `[tools]` restrictions.
+`clerk` and `scout` expose only `Read`, `Glob`, `Grep`, and `TodoList`; builders
+add `Write` and `Edit`, while `frontend-builder` also adds `ReadMediaFile`.
+Web, MCP, skills, subagents, cron, background tasks, Plan, and Bash stay
+disabled. Project `AGENTS.md` instructions remain loaded. The only executable
+tool is `Grep`: `delegation-kimi pin-rg` archives a verified ripgrep binary,
+its SHA-256, and the digests of non-system dependencies. Each invocation copies
+those exact bytes into a separate runner-owned, sandbox-unwritable exec
+directory, and `sandbox-exec` permits only Kimi,
+`/usr/bin/true`, and that precise `rg`; shells, Git, arbitrary commands, and
+ambient HOME reads remain denied. `install.sh` attempts the initial archive but
+never replaces different bytes without an explicit `--force`.
+
+Native invocations use an isolated `KIMI_CODE_HOME`, an allowlisted environment,
+and an atomic OAuth lock. After the child rotates a token, the parent validates
+and atomically syncs only `credentials/kimi-code.json` back to the user-managed
+Kimi store. `INT`/`TERM` stop the child, perform the final sync, release the lock,
+and return 130. Do not run an external `kimi login` concurrently; a conflicting
+credential change is a temporary failure. Operational runs are capped at 900
+seconds and emit content-free heartbeats every 30 seconds; evaluation runs keep
+their immutable manifest timeout.
+
+On failure, `<output>.error.json` is canonical. `<output>.stderr` remains a
+sanitized one-line receipt; detailed stderr/events are retained only under an
+explicit existing private `--debug-dir`, with credential-like fields redacted.
+The debug directory must stay outside every worktree. Exit 69 covers runtime, login,
+entitlement, or quota; 70 covers sandbox, output, or unclassified dispatch; 75
+covers overload, 5xx, timeout, or temporary OAuth conflict; 78 is an
+unauthorized lane; and 130 is caller cancellation. This follows Kimi Code's
+[error categories](https://www.kimi.com/code/docs/en/kimi-code/error-reference.html)
+without turning provider availability into quality evidence.
+
+```sh
+kimi update
+delegation-kimi pin-rg --from "$(command -v rg)"
+delegation-kimi check --json
+delegation-kimi run --lane scout --allow-provisional \
+  --effort auto --backend auto --prompt-file "$brief" \
+  --output "$result" --metrics "$metrics" --workdir "$repo"
+```
 
 Grok 4.5 is installed as a **provisional builder** through Grok Build CLI.
 `builder` and `frontend-builder` are available only at effort `high`, after an

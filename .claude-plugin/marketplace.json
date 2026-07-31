@@ -4,13 +4,13 @@
   "owner": { "name": "Matteo Scurati", "url": "https://github.com/matteoscurati" },
   "metadata": {
     "description": "Cross-tool delegation kit: Claude Opus 5 senior review, model-routing profiles, and guarded bridges for Claude Code, Codex, evaluated GLM-5.2 lanes, provisional Gemini 3.6 Flash, Kimi K3, and Grok 4.5 lanes, and blocked Qwen3.8 preview evaluation.",
-    "version": "0.6.0"
+    "version": "0.7.0"
   },
   "plugins": [
     {
       "name": "delegation-kit",
       "description": "Model-routing profiles with Claude Opus 5 senior review, plus routing, orchestration, and guarded GLM-5.2, Gemini 3.6 Flash, Kimi K3, Grok 4.5, and Qwen3.8 preview executor skills.",
-      "version": "0.6.0",
+      "version": "0.7.0",
       "author": { "name": "Matteo Scurati" },
       "homepage": "https://github.com/matteoscurati/delegation-kit",
       "license": "MIT",

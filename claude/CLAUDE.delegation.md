@@ -86,16 +86,23 @@ Kimi K3 is provisional for `clerk`, `scout`, `builder`, and `frontend-builder`
 only through the installed `kimi-executor` skill, using the native Kimi Code CLI
 at effort `max`. CLI compatibility is determined by capabilities, not by an
 exact version; the observed version is provenance only. Every lane uses an
-isolated minimal config, allowlisted environment, disabled terminal, and macOS
-write sandbox; builders
-are confined to their canonical worktree. Senior is blocked, and
+isolated minimal config, allowlisted environment, ephemeral `--agent-file`, and
+macOS sandbox. Read-only lanes expose Read/Glob/Grep/TodoList; builders add
+scoped editing tools. Grep runs through a digest-pinned `rg` copied into a
+sandbox-unwritable exec directory, while Bash, Web, MCP, skills, subagents,
+Plan, and every other executable stay
+blocked. Builders are confined to their canonical worktree. Compatibility
+requires `--agent-file`, `stream-json`, a valid isolated config, K3, and
+effective `max`; the installer never runs `kimi update`. Senior is blocked, and
 reviewer/judgement remain disabled. `policy-annotation` is candidate/blocked
 only for a manifest-bound evaluation at the exact Kimi K3/max tuple; it never
 adds an operational route or qualifies broad judgement.
 Require an explicit decision and `--allow-provisional` before dispatch.
 Kimi K3 is not scored or qualified merely because a CLI can reach it. If the gate
 or runtime is absent, keep the incumbent; never silently substitute a model,
-effort, or neighboring lane.
+effort, or neighboring lane. Exit 69 covers runtime/login/entitlement/quota,
+75 covers overload/5xx/timeout/OAuth conflict, 70 covers sandbox/output/
+unclassified failure, 78 covers authorization, and 130 is caller cancellation.
 
 ### Optional blocked Qwen candidate
 
