@@ -699,6 +699,7 @@ run_command() {
           (require-not (subpath "/bin"))
           (require-not (subpath "/dev"))
           (require-not (subpath "/private/etc"))
+          (require-not (subpath "/private/var/db/timezone"))
           (require-not (subpath "/Library/Apple"))))'
     if [ "$lane" = builder ]; then
       sandbox_profile+=$'\n      (deny file-write* (require-all (require-not (subpath (param "SCRATCH"))) (require-not (subpath (param "WORKDIR")))))'
