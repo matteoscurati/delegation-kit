@@ -46,7 +46,7 @@ reviewer is disabled. An installed CLI or visible model name is not qualificatio
 Kimi K3 is provisional for `clerk`, `scout`, `builder`, and `frontend-builder` at
 `max`; senior is a blocked candidate, while reviewer and judgement are disabled.
 Provisional dispatch requires `--allow-provisional`. Provider quota failures are
-temporary runtime failures, not quality evidence.
+runtime-availability failures, not quality evidence.
 
 Qwen3.8 Max Preview is a blocked candidate. Token Plan availability is only a
 runtime fact; it cannot enter a candidate set until exact local lane evidence
