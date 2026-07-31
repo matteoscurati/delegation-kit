@@ -1,0 +1,31 @@
+{
+  "title": "Scout qualification attempt output",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["status", "answers"],
+  "properties": {
+    "status": {"type": "string", "enum": ["completed"]},
+    "answers": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "route_file",
+        "handler_symbol",
+        "call_chain",
+        "required_scope",
+        "denied_audit_event",
+        "audit_path_env",
+        "row_limit_env"
+      ],
+      "properties": {
+        "route_file": {"type": "string"},
+        "handler_symbol": {"type": "string"},
+        "call_chain": {"type": "array", "items": {"type": "string"}},
+        "required_scope": {"type": "string"},
+        "denied_audit_event": {"type": "string"},
+        "audit_path_env": {"type": "string"},
+        "row_limit_env": {"type": "string"}
+      }
+    }
+  }
+}

@@ -13,6 +13,10 @@ central gate and a private copy of the GLM executable gate. The public routing
 files are changed only after the frozen aggregate has been checked against the
 preregistered decision rule.
 
+The three `output-schema-<lane>.json` files are the portable schemas used by
+real comparisons. `output-schema.json` is the minimal common shape used by the
+runner's transport test. All provider outputs are checked again by the scorer.
+
 The comparison uses three independent attempts for GLM and both incumbents in
 each lane. Clerk compares with Codex `luna-clerk`/`low` and Claude
 `sonnet`/`low`; scout with `terra-scout`/`low` and `sonnet`/`low`; builder with

@@ -8,10 +8,12 @@
   ],
   "properties": {
     "status": {
+      "type": "string",
       "const": "completed"
     },
     "answers": {
-      "type": "object"
+      "type": "object",
+      "additionalProperties": true
     }
   }
 }
