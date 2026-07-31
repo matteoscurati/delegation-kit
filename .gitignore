@@ -3,6 +3,19 @@
 *.bak
 .env*
 *.token
+
+# Per-checkout agent state is machine-specific and never part of the kit.
+.claude/settings.local.json
+.kilo/
+
+# Private and one-off evaluation scratch stays outside the published,
+# qualification-owned evaluation/ tree.
+eval/
+
+# Running the Python advisory importer locally must not dirty the worktree.
+__pycache__/
+*.py[cod]
+
 # KEY_FILE resolves to $ROOT/config/zai.env, which is this directory when the
 # runner is invoked from a checkout. Nothing writes it here, but never risk it.
 config/zai.env
