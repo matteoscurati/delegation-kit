@@ -723,7 +723,8 @@ run_command() {
         ANTHROPIC_DEFAULT_OPUS_MODEL="glm-5.2" \
         HOME="$tmp/home" TMPDIR="$tmp" \
         CLAUDE_CONFIG_DIR="$tmp/claude-config" \
-        CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1 API_TIMEOUT_MS=3000000 \
+        CLAUDE_CODE_SIMPLE=1 CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1 \
+        API_TIMEOUT_MS=3000000 \
         "$timeout_bin" "$EVALUATION_TIMEOUT_SECONDS" \
         /usr/bin/sandbox-exec -D "SCRATCH=$tmp" -D "WORKDIR=$workdir" \
         -D "GIT_DIR=$git_dir" -D "CLAUDE_BIN=$claude_bin" \
