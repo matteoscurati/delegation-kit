@@ -9,15 +9,17 @@ It ships as a **reference implementation**: the author's concrete models
 external-evidence snapshot, and fail-closed local gates. Swap the models for your own tiers with
 [`ADAPTING.md`](./ADAPTING.md) — the *structure* is the transferable part.
 
-## Current release: 0.7.1
+## Current release: 0.7.2
 
-Version 0.7.1 records an end-to-end compatibility verification across every
-shipped Claude Code agent, Codex profile, and optional external runner. It adds
-the reproducible status matrix and documents two important boundaries: Codex
-profiles must not be combined with `--ignore-user-config`, and Claude read-only
-roles do not provide the same OS-enforced write isolation as Codex read-only
-sandboxes. No lane is promoted by this verification; provisional and blocked
-routes keep their existing gates. See
+Version 0.7.2 keeps this repository focused on reusable delegation-kit assets:
+project-specific evaluation packs now remain with the downstream project that
+owns them and are ignored here. The installer, doctor, routing gates, and tests
+no longer depend on those external packs; generic, kit-owned qualification
+manifests and the Qwen timeout/error handling remain covered. The cross-agent
+compatibility verification introduced in 0.7.1 still applies to every shipped
+Claude Code agent, Codex profile, and optional external runner. No lane is
+promoted by this cleanup; provisional and blocked routes keep their existing
+gates. See
 [`docs/compatibility.md`](./docs/compatibility.md) and
 [`CHANGELOG.md`](./CHANGELOG.md).
 

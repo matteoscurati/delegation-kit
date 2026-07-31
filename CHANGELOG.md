@@ -2,6 +2,24 @@
 
 All notable changes to delegation-kit are documented here.
 
+## [0.7.2] — 2026-07-31
+
+### Changed
+
+- Removed downstream Dipylon evaluation packs from the repository, installer,
+  doctor, routing allowlists, and pack-specific tests.
+- Kept only kit-owned qualification manifests in the central routing allowlist
+  and added a generic invariant that every allowlisted manifest is tracked.
+- Preserved the generic Qwen 900-second evaluation ceiling and timeout
+  classification introduced alongside the downstream packs.
+
+### Documentation
+
+- Documented that project-specific evaluation packs belong in their owning
+  repository or artifact registry and are deliberately ignored here.
+- Kept the 0.7.1 Claude Code, Codex, and external-runner compatibility matrix as
+  the reproducible compatibility snapshot for this patch release.
+
 ## [0.7.1] — 2026-07-31
 
 ### Added
