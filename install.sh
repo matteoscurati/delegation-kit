@@ -358,6 +358,53 @@ fi
 [ -z "$eval_v4_old" ] || rm -rf "$eval_v4_old"
 echo "Dipylon AI jury v4 evaluation pack -> $EVAL_V4_PACK_DEST (${#eval_v4_files[@]} exact JSON files)"
 
+# Exact Dipylon AI jury v5 evaluation pack. Keep this separate from v2/v3/v4:
+# all packs remain valid provenance, and runners resolve manifest-relative
+# paths.
+EVAL_V5_PACK_SRC="$KIT/evaluation/dipylon-ai-jury-v5"
+EVAL_V5_PACK_DEST="$DATA_HOME/evaluation/dipylon-ai-jury-v5"
+eval_v5_listing="$(mktemp "${TMPDIR:-/tmp}/delegation-kit-pack-v5-src.XXXXXX")"
+eval_v5_enum=0
+find "$EVAL_V5_PACK_SRC" -maxdepth 1 -type f -name '*.json' -print0 >"$eval_v5_listing" || eval_v5_enum=$?
+eval_v5_files=()
+while IFS= read -r -d '' eval_v5_file; do
+  eval_v5_files+=("$eval_v5_file")
+done <"$eval_v5_listing"
+rm -f "$eval_v5_listing"
+if [ "$eval_v5_enum" -ne 0 ]; then
+  echo "error: cannot enumerate $EVAL_V5_PACK_SRC (find exit $eval_v5_enum)" >&2
+  exit 1
+fi
+if [ "${#eval_v5_files[@]}" -ne 6 ]; then
+  echo "error: expected exactly 6 regular JSON files in $EVAL_V5_PACK_SRC, found ${#eval_v5_files[@]}" >&2
+  exit 1
+fi
+eval_v5_stage="$(mktemp -d "$DATA_HOME/evaluation/.dipylon-ai-jury-v5.stage.XXXXXX")"
+cp "${eval_v5_files[@]}" "$eval_v5_stage/"
+eval_v5_old=""
+if [ -e "$EVAL_V5_PACK_DEST" ] || [ -L "$EVAL_V5_PACK_DEST" ]; then
+  eval_v5_old="$(mktemp -d "$DATA_HOME/evaluation/.dipylon-ai-jury-v5.prev.XXXXXX")"
+  rmdir "$eval_v5_old"
+  if ! mv "$EVAL_V5_PACK_DEST" "$eval_v5_old"; then
+    rm -rf "$eval_v5_stage"
+    echo "error: cannot move existing $EVAL_V5_PACK_DEST aside — pack left untouched" >&2
+    exit 1
+  fi
+fi
+if ! mv "$eval_v5_stage" "$EVAL_V5_PACK_DEST"; then
+  if [ -n "$eval_v5_old" ]; then
+    rm -rf "$eval_v5_stage"
+    mv "$eval_v5_old" "$EVAL_V5_PACK_DEST"
+    echo "error: failed to install the v5 evaluation pack — previous tree restored" >&2
+  else
+    rm -rf "$eval_v5_stage"
+    echo "error: failed to install the v5 evaluation pack" >&2
+  fi
+  exit 1
+fi
+[ -z "$eval_v5_old" ] || rm -rf "$eval_v5_old"
+echo "Dipylon AI jury v5 evaluation pack -> $EVAL_V5_PACK_DEST (${#eval_v5_files[@]} exact JSON files)"
+
 if [ "$do_claude" = 1 ]; then
   echo "Claude Code -> $CLAUDE_HOME"
   mkdir -p "$CLAUDE_HOME/agents" "$CLAUDE_HOME/skills"
