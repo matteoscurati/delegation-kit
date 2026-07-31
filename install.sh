@@ -108,6 +108,20 @@ cp "$KIT/config/kimi-k3-routing.json" "$DATA_HOME/config/kimi-k3-routing.json"
 chmod 755 "$DATA_HOME/bin/delegation-kimi"
 ln -sfn "$DATA_HOME/bin/delegation-kimi" "$BIN_HOME/delegation-kimi"
 echo "Kimi bridge -> $BIN_HOME/delegation-kimi (routing gate: $DATA_HOME/config/kimi-k3-routing.json)"
+# Kimi Code itself remains vendor-managed and is never updated here. Archive the
+# currently selected ripgrep bytes for the Grep-only process allowlist. A
+# different existing archive is retained unless the owner explicitly uses
+# `delegation-kimi pin-rg --force`.
+if command -v rg >/dev/null 2>&1; then
+  if kimi_pin_out="$(DELEGATION_DATA_HOME="$DATA_HOME" \
+      "$DATA_HOME/bin/delegation-kimi" pin-rg --from "$(command -v rg)" 2>&1)"; then
+    printf '%s\n' "$kimi_pin_out" | sed 's/^/  + /'
+  else
+    echo "  ! verified ripgrep not pinned — inspect with 'delegation-kimi check --json'; replace deliberately with 'delegation-kimi pin-rg --force'"
+  fi
+else
+  echo "  ! rg not on PATH — install ripgrep, then run 'delegation-kimi pin-rg'"
+fi
 
 cp "$KIT/bin/delegation-gemini" "$DATA_HOME/bin/delegation-gemini"
 cp "$KIT/config/gemini-3.6-flash-routing.json" "$DATA_HOME/config/gemini-3.6-flash-routing.json"

@@ -8,7 +8,8 @@
 #   --ping   also does a live round-trip (real API calls, costs a few tokens per
 #            side). Off by default; static checks are free.
 #   --ping-glm does a separate paid GLM-5.2 ping, but only for a qualified lane.
-#   --ping-kimi does a separate Kimi K3 ping, but only for a qualified lane.
+#   --ping-kimi does a separate Kimi K3 ping through a qualified lane, or an
+#               explicitly selected provisional read-only lane when no lane is qualified.
 #   --ping-grok does a paid Grok 4.5 ping through its provisional builder gate.
 # Env overrides (for testing): CLAUDE_HOME (default ~/.claude), CODEX_HOME (~/.codex),
 #   DELEGATION_DATA_HOME (~/.local/share/delegation-kit)
@@ -360,6 +361,7 @@ elif have delegation-kimi; then
   kimi_check="$(delegation-kimi check --json 2>/dev/null || true)"
   if [ -n "$kimi_check" ] && printf '%s' "$kimi_check" | jq -e '
       .model == "kimi-k3" and
+      .runtime_cli_compatibility == "capability-probed" and
       (.selected_backend == "native" or .selected_backend == "none") and
       (.backends.native.available == (.selected_backend == "native")) and
       (if .selected_backend == "native"
@@ -371,13 +373,27 @@ elif have delegation-kimi; then
       .backends.native.isolated_home == true and
       .backends.native.environment_mode == "allowlist" and
       .backends.native.ambient_home_read == false and
-      .backends.native.process_exec == false and
+      .terminal == false and .web_tools == false and
+      .subagents == false and .skills == false and
+      .process_exec.mode == "allowlist" and
+      .process_exec.allowed == ["rg"] and
+      .process_exec.attested == (.selected_backend == "native") and
+      .search_runtime.identity == "ripgrep" and
+      (if .selected_backend == "native" then
+        (.search_runtime.sha256 | test("^[0-9a-f]{64}$")) and
+        (.search_runtime.dependencies_sha256 | test("^[0-9a-f]{64}$"))
+       else true end) and
+      .backends.native.process_exec == .process_exec and
+      .backends.native.terminal == false and
+      .backends.native.web_tools == false and
+      .backends.native.subagents == false and
+      .backends.native.skills == false and
       .backends.native.hooks == false and
       .backends.native.services == false and
       .backends.native.builder_write_scope == "workdir" and
       .backends.native.read_only_write_scope == "scratch"
     ' >/dev/null 2>&1; then
-    ok "delegation-kimi installed for kimi-k3/max with sandboxed runtime controls"
+    ok "delegation-kimi installed for kimi-k3/max with agent-file, pinned Grep, and sandboxed runtime controls"
     kimi_selected="$(printf '%s' "$kimi_check" | jq -r '.selected_backend')"
     kimi_lanes="$(printf '%s' "$kimi_check" | jq -r '.qualified_lanes | join(",")')"
     kimi_provisional="$(printf '%s' "$kimi_check" | jq -r '.provisional_lanes | join(",")')"
@@ -513,7 +529,8 @@ if [ "$DO_KIMI_PING" = 1 ]; then
   else
     kimi_check="$(delegation-kimi check --json 2>/dev/null || true)"
     kimi_lane="$(printf '%s' "$kimi_check" | jq -r '
-      ([.qualified_lanes[] | select(. != "builder")][0] // .qualified_lanes[0] // empty)
+      ([.qualified_lanes[] | select(. == "scout" or . == "clerk")][0] //
+       [.provisional_lanes[] | select(. == "scout" or . == "clerk")][0] // empty)
     ' 2>/dev/null)"
     if [ -z "$kimi_lane" ]; then
       info "skipped — no Kimi lane has passed the evaluation gate"
@@ -521,10 +538,25 @@ if [ "$DO_KIMI_PING" = 1 ]; then
       ping_dir="$(mktemp -d "${TMPDIR:-/tmp}/delegation-kimi-ping.XXXXXX")"
       mkdir -p "$ping_dir/work"
       printf 'Reply with exactly PONG and do not edit files.\n' >"$ping_dir/prompt.txt"
-      if delegation-kimi run --lane "$kimi_lane" --effort auto --backend auto \
-          --prompt-file "$ping_dir/prompt.txt" --output "$ping_dir/out.txt" --workdir "$ping_dir/work" \
-          >/dev/null 2>&1 && grep -Fxq PONG "$ping_dir/out.txt"; then
-        ok "Kimi K3 qualified-lane ping returned PONG"
+      kimi_ping_provisional=0
+      printf '%s' "$kimi_check" | jq -e --arg lane "$kimi_lane" \
+        '.provisional_lanes | index($lane) != null' >/dev/null 2>&1 \
+        && kimi_ping_provisional=1
+      if {
+        { [ "$kimi_ping_provisional" = 0 ] &&
+          delegation-kimi run --lane "$kimi_lane" --effort auto --backend auto \
+            --prompt-file "$ping_dir/prompt.txt" --output "$ping_dir/out.txt" \
+            --workdir "$ping_dir/work"; } ||
+        { [ "$kimi_ping_provisional" = 1 ] &&
+          delegation-kimi run --lane "$kimi_lane" --allow-provisional \
+            --effort auto --backend auto --prompt-file "$ping_dir/prompt.txt" \
+            --output "$ping_dir/out.txt" --workdir "$ping_dir/work"; }
+      } >/dev/null 2>&1; then
+        if grep -Fxq PONG "$ping_dir/out.txt"; then
+          ok "Kimi K3 ping returned PONG"
+        else
+          bad "Kimi K3 ping returned unexpected output"
+        fi
       else
         bad "Kimi K3 ping failed"
       fi
