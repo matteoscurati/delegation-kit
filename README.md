@@ -9,14 +9,12 @@ It ships as a **reference implementation**: the author's concrete models
 external-evidence snapshot, and fail-closed local gates. Swap the models for your own tiers with
 [`ADAPTING.md`](./ADAPTING.md) — the *structure* is the transferable part.
 
-## Current release: 0.8.0
+## Current release: 0.8.1
 
-Version 0.8.0 adds manifest-bound qualification for the exact
-`glm-5.2` / `claude-zai` / `high` tuple and refreshes the dated external model
-evidence. A frozen, repeated comparison against the Codex and Claude incumbents
-qualifies GLM clerk and scout as explicit-only routes; builder moves only to
-provisional and still requires `--allow-provisional`. Reviewer, judgement,
-frontend-builder, and policy annotation are unchanged. See
+Version 0.8.1 raises the maximum manifest-bound Kimi evaluation timeout to 1200
+seconds for large frozen annotation workloads, while ordinary operational runs
+remain capped at 900 seconds. Routing qualifications and lane selections are
+unchanged. See
 [`docs/compatibility.md`](./docs/compatibility.md) and
 [`CHANGELOG.md`](./CHANGELOG.md).
 
@@ -125,7 +123,7 @@ Kimi store. `INT`/`TERM` stop the child, perform the final sync, release the loc
 and return 130. Do not run an external `kimi login` concurrently; a conflicting
 credential change is a temporary failure. Operational runs are capped at 900
 seconds and emit content-free heartbeats every 30 seconds; evaluation runs keep
-their immutable manifest timeout.
+their immutable manifest timeout, up to 1200 seconds.
 
 On failure, `<output>.error.json` is canonical. `<output>.stderr` remains a
 sanitized one-line receipt; detailed stderr/events are retained only under an

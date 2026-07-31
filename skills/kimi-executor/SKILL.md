@@ -80,8 +80,8 @@ boundary, not a claim that model output is trusted; inspect every result and dif
 
 Operational runs time out after 900 seconds and emit sanitized heartbeats every
 30 seconds with duration, event count, and last tool only. Evaluation runs keep
-the timeout bound by their immutable manifest. `INT`/`TERM` stop the child,
-perform the final OAuth sync, release the lock, and return 130.
+the timeout bound by their immutable manifest, up to 1200 seconds. `INT`/`TERM`
+stop the child, perform the final OAuth sync, release the lock, and return 130.
 
 Exit 69 means runtime, login, entitlement, or quota is unavailable; exit 70
 means sandbox, output, or unclassified dispatch failure; exit 75 means overload,

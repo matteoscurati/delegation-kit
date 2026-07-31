@@ -23,6 +23,7 @@ NATIVE_MODEL="kimi-code/k3"
 NATIVE_EFFORT="max"
 EFFORTS='["max"]'
 OPERATIONAL_TIMEOUT_SECONDS=900
+EVALUATION_TIMEOUT_MAX_SECONDS=1200
 HEARTBEAT_SECONDS="${DELEGATION_KIMI_HEARTBEAT_SECONDS:-30}"
 case "$HEARTBEAT_SECONDS" in ""|*[!0-9]*|0) HEARTBEAT_SECONDS=30 ;; esac
 CANCEL_GRACE_SECONDS="${DELEGATION_KIMI_CANCEL_GRACE_SECONDS:-10}"
@@ -527,7 +528,8 @@ evaluation_manifest() {
   git -C "$ROOT" diff --quiet && git -C "$ROOT" diff --cached --quiet &&
     [ -z "$(git -C "$ROOT" ls-files --others --exclude-standard)" ] || die 78 "runner source checkout is dirty"
   jq -e --arg lane "$lane" --arg model "$NATIVE_MODEL" --arg effort "$expected_effort" \
-    --arg prompt_sha256 "$expected_hash" --arg runner_sha256 "$runner_hash" '
+    --arg prompt_sha256 "$expected_hash" --arg runner_sha256 "$runner_hash" \
+    --argjson evaluation_timeout_max "$EVALUATION_TIMEOUT_MAX_SECONDS" '
       (keys | sort) == ["backend","contract_path","contract_sha256","effort","lane","max_output_chars","model","output_schema_path","output_schema_sha256","profile","prompt_sha256","runner_sha256","runner_source_commit","schema","timeout_seconds"] and
       .schema == "delegation_policy_annotation_evaluation_v1" and
       .profile == "kimi-k3" and .lane == $lane and .model == $model and
@@ -537,7 +539,7 @@ evaluation_manifest() {
       (.runner_source_commit | test("^[0-9a-f]{40}$")) and
       (.contract_path | type == "string" and test("^(?!/)(?!.*(^|/)\\.\\.(/|$)).+")) and
       (.output_schema_path | type == "string" and test("^(?!/)(?!.*(^|/)\\.\\.(/|$)).+")) and
-      (.timeout_seconds | type == "number" and floor == . and . >= 1 and . <= 600) and
+      (.timeout_seconds | type == "number" and floor == . and . >= 1 and . <= $evaluation_timeout_max) and
       (.max_output_chars | type == "number" and floor == . and . >= 1 and . <= 65536)
     ' "$manifest" >/dev/null 2>&1 || die 78 "evaluation manifest is malformed or does not bind this exact run"
   git -C "$ROOT" merge-base --is-ancestor "$(jq -r '.runner_source_commit' "$manifest")" "$source_head" \

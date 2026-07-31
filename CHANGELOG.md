@@ -2,6 +2,13 @@
 
 All notable changes to delegation-kit are documented here.
 
+## [0.8.1] — 2026-07-31
+
+### Changed
+
+- Raised the maximum manifest-bound Kimi evaluation timeout from 600 to 1200
+  seconds. Operational Kimi runs remain capped at 900 seconds.
+
 ## [0.8.0] — 2026-07-31
 
 ### Added
