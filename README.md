@@ -9,12 +9,12 @@ It ships as a **reference implementation**: the author's concrete models
 external-evidence snapshot, and fail-closed local gates. Swap the models for your own tiers with
 [`ADAPTING.md`](./ADAPTING.md) — the *structure* is the transferable part.
 
-## Current release: 0.8.1
+## Current release: 0.9.0
 
-Version 0.8.1 raises the maximum manifest-bound Kimi evaluation timeout to 1200
-seconds for large frozen annotation workloads, while ordinary operational runs
-remain capped at 900 seconds. Routing qualifications and lane selections are
-unchanged. See
+Version 0.9.0 adds deterministic Claude/Codex structured-output schema
+compilation and verification, uses the Claude transport form for manifest-bound
+GLM evaluations, and strengthens auth, model-usage, and schema preflight
+guidance. Normative schemas and routing qualifications remain unchanged. See
 [`docs/compatibility.md`](./docs/compatibility.md) and
 [`CHANGELOG.md`](./CHANGELOG.md).
 
@@ -46,7 +46,8 @@ unchanged. See
 | blocked Qwen skill | `skills/qwen-executor/` | same fail-closed Qwen3.8 preview candidate path |
 | config snippet | printed for manual merge | `[agents]` fan-out caps + lead defaults |
 
-The universal installer also adds `delegation-glm`, `delegation-gemini`, `delegation-kimi`,
+The universal installer also adds `delegation-schema`, `delegation-glm`,
+`delegation-gemini`, `delegation-kimi`,
 `delegation-grok`, `delegation-qwen`,
 `delegation-evidence`, the ZIP-only `delegation-epoch` importer, and the read-only
 central router `delegation-route` under
@@ -66,6 +67,29 @@ runtime exit, malformed streams, model mismatch, missing/empty results, auth, an
 rate limits. Raw events and stderr are deleted unless an existing private
 directory is explicitly supplied with `--debug-dir`; those artifacts are
 sensitive and must not be committed.
+
+Structured-output schemas have two explicit layers: the checked-in normative
+schema and a provider transport schema derived without editing the source.
+`delegation-schema` removes unsupported dialect declarations for Claude and,
+for Codex, infers only unambiguous literal types while enforcing strict object
+requirements, the documented
+[Structured Outputs subset](https://developers.openai.com/api/docs/guides/structured-outputs#supported-schemas),
+and size/depth limits. It parses
+strict JSON, preserves property order and literal data, and fails with exit 65
+when a safe derivation is impossible. The Codex contract targets standard
+Codex models; fine-tuned-model restrictions are outside this command.
+
+```sh
+delegation-schema check --provider claude --schema contract.json
+delegation-schema compile --provider codex --schema contract.json >transport.json
+delegation-schema verify --provider codex --schema contract.json \
+  --transport transport.json
+```
+
+The GLM qualification runner uses the Claude compilation in memory before
+dispatch. Historical schemas and frozen evaluation protocols are never
+rewritten; a manifest still binds the normative file and the committed runner
+source binds the compiler implementation.
 
 Qualification of the normal GLM lanes uses the public
 [`glm-lane-qualification-v1` contract](./evaluation/glm-lane-qualification-v1/README.md).

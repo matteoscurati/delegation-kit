@@ -274,9 +274,15 @@ static int exec_is_denied(const char *path) {
 
 int main(int argc, char **argv) {
   const char *mode = getenv("FAKE_CLAUDE_CASE");
+  int i;
   if (argc > 1 && strcmp(argv[1], "--help") == 0) {
     puts("usage: claude --effort <level>");
     return 0;
+  }
+  for (i = 1; i + 1 < argc; i++) {
+    if (strcmp(argv[i], "--json-schema") == 0 && strstr(argv[i + 1], "\"$schema\"") != NULL) {
+      return 88;
+    }
   }
   if (!mode || !*mode || strcmp(mode, "success") == 0) return emit_success();
   if (strcmp(mode, "structured_success") == 0) return emit_structured("PONG");
@@ -406,6 +412,11 @@ LANE_EVAL_ROOT="$TEST_TMP/lane-eval-repo"
 cp -R "$ROOT/." "$LANE_EVAL_ROOT"
 rm -rf -- "$LANE_EVAL_ROOT/.git"
 rm -f -- "$LANE_EVAL_ROOT/.claude/settings.local.json"
+jq '. + {"$schema":"https://json-schema.org/draft/2020-12/schema"}' \
+  "$LANE_EVAL_ROOT/evaluation/glm-lane-qualification-v1/output-schema.json" \
+  >"$TEST_TMP/lane-schema-with-dialect.json"
+mv "$TEST_TMP/lane-schema-with-dialect.json" \
+  "$LANE_EVAL_ROOT/evaluation/glm-lane-qualification-v1/output-schema.json"
 git -C "$LANE_EVAL_ROOT" init -q
 git -C "$LANE_EVAL_ROOT" config user.email test@example.invalid
 git -C "$LANE_EVAL_ROOT" config user.name delegation-runner-test

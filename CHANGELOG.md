@@ -2,6 +2,33 @@
 
 All notable changes to delegation-kit are documented here.
 
+## [0.9.0] — 2026-08-01
+
+### Added
+
+- Added `delegation-schema`, a read-only deterministic compiler and verifier for
+  Claude Code and Codex structured-output transport schemas.
+
+### Fixed
+
+- Made GLM lane evaluation compile its manifest-bound schema for Claude before
+  dispatch, while leaving the normative schema and frozen protocols unchanged.
+- Made schema compilation preserve literal objects and property order, reject
+  non-standard JSON, and fail closed on unsupported Codex keywords, unions, and
+  documented Structured Outputs limits.
+- Made `doctor.sh` use Claude's provider-free auth status and warn when a
+  sanitized macOS environment drops `USER` and therefore Keychain resolution.
+- Made `doctor.sh` exercise both the Claude and Codex compiler paths before
+  reporting the installed schema transport helper healthy.
+
+### Documentation
+
+- Defined separate requested, effective, and observed-usage model evidence for
+  Claude safety fallback and internal classifier telemetry, including aggregate
+  token/cost accounting and exact-identity `VOID` behavior.
+- Documented provider-specific schema preflights for raw Claude and Codex
+  bridges; `--help` checks alone are not semantic compatibility checks.
+
 ## [0.8.1] — 2026-07-31
 
 ### Changed

@@ -205,6 +205,12 @@ effort**, don't inherit the Codex default:
   it edit; always redirect stdin from `/dev/null`.
 - Machine-readable return: add `--json` (JSONL events) or `-o <file>` (final message
   only) — **raw stdout is polluted with hook chatter**, so don't parse it directly.
+- Structured return: compile the normative schema first with
+  `delegation-schema compile --provider codex --schema <schema.json>` and pass
+  the derived file to `--output-schema`. The compiler removes dialect metadata,
+  adds only unambiguous enum/const types, and refuses non-strict objects (every
+  property required, `additionalProperties: false`). A `codex exec --help`
+  check proves flag availability only; it is not a semantic schema preflight.
 - Inside Workflow scripts, wrap it in a thin `{model:'sonnet', effort:'low'}` agent
   that shells out and returns the cleaned output.
 
@@ -226,6 +232,10 @@ effort**, don't inherit the Codex default:
 - **One output file per parallel worker, read in dispatch order.** N calls sharing one
   stdout hand you interleaved output; give each its own `-o <file>`. (A Workflow's
   per-agent return already does this — the note is for raw parallel `codex exec`.)
+- **Treat JSONL as telemetry, not the final payload.** Intermediate agent
+  messages may not satisfy the final output schema. Validate the final `-o`
+  artifact, and keep the model banner/structured events as separate routing
+  evidence.
 
 **Context (each `codex exec` starts fresh):** it shares your working tree but not
 your conversation. Run it from the repo root (it auto-loads that repo's `AGENTS.md`)
