@@ -46,6 +46,10 @@ append_guarded() { # $1=file  $2=content
 # Shared optional external-model bridges. Installing a command does not make its
 # model routable: the runtime check and versioned evaluation manifest must pass.
 mkdir -p "$BIN_HOME" "$DATA_HOME/bin" "$DATA_HOME/config"
+cp "$KIT/bin/delegation-schema" "$DATA_HOME/bin/delegation-schema"
+chmod 755 "$DATA_HOME/bin/delegation-schema"
+ln -sfn "$DATA_HOME/bin/delegation-schema" "$BIN_HOME/delegation-schema"
+echo "Schema transport compiler -> $BIN_HOME/delegation-schema (Claude/Codex, read-only)"
 cp "$KIT/bin/delegation-glm" "$DATA_HOME/bin/delegation-glm"
 cp "$KIT/config/glm-5.2-routing.json" "$DATA_HOME/config/glm-5.2-routing.json"
 chmod 755 "$DATA_HOME/bin/delegation-glm"

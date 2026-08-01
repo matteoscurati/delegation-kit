@@ -159,6 +159,13 @@ claude -p "<prompt>" --model claude-opus-5 --effort high --permission-mode plan 
   with `--add-dir <path>`; reference files **by path** instead of pasting them.
   There is **no Codex→Claude history handoff** (the `codex@openai-codex` plugin is
   Claude→Codex only), so put everything else the task needs into the prompt.
+- **Preflight auth and structured output semantically:** run the provider-free
+  `claude auth status` before a paid dispatch. On macOS, if a sanitized
+  environment relies on Keychain credentials, retain `USER`; an allowlist that
+  drops it can look logged out even when the interactive CLI works. Before
+  passing `--json-schema`, run `delegation-schema compile --provider claude
+  --schema <normative.json>` and pass that derived JSON. `claude --help` proves
+  only that a flag exists, not that auth or the actual schema will work.
 - **Harden each dispatch:** a prompt carries quotes, backticks, and newlines — write
   it to a temp file and pass `"$(cat "$f")"`, never splice it raw into the command
   (shell injection, arg-mangling). A run that exits non-zero *or* returns empty
@@ -169,3 +176,11 @@ claude -p "<prompt>" --model claude-opus-5 --effort high --permission-mode plan 
 - **Discipline:** don't claim the bridge is cheaper unless the target Claude model
   actually fits the task. Treat its output as **unverified until checked**, same as
   any delegation.
+- **Identity and usage are separate evidence:** record the requested model, any
+  explicitly surfaced effective content model, and every entry under
+  `modelUsage` separately. The keys of `modelUsage` are observed billing/usage
+  participants, not proof that each model authored the answer; safety fallback
+  and internal classifiers may add models. Sum tokens and cost across all
+  entries. If the provider does not distinguish the content model from internal
+  models, exact model identity is unavailable; a strict identity evaluation is
+  `VOID`, even if the prose answer looks valid.

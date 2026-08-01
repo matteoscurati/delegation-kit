@@ -14,6 +14,7 @@ ROOT="$(cd "$(dirname "$SOURCE")/.." && pwd)"
 ROUTING_FILE="${DELEGATION_GLM_ROUTING_FILE:-$ROOT/config/glm-5.2-routing.json}"
 CENTRAL_GATES="${DELEGATION_ROUTING_GATES_FILE:-$ROOT/config/routing-gates.json}"
 ROUTER="$ROOT/bin/delegation-route"
+SCHEMA_COMPILER="$ROOT/bin/delegation-schema"
 # Derived from $ROOT exactly like ROUTING_FILE, so the key and the gate can never
 # disagree about where the install lives — a DELEGATION_DATA_HOME install used to
 # store the key where the runner never looked. This reads, never writes, so no key
@@ -201,8 +202,16 @@ evaluation_manifest() {
     ' "$manifest" >/dev/null 2>&1 || die 78 "evaluation manifest is malformed or does not bind this exact run"
     EVALUATION_MAX_COST_USD="$(jq -r '.max_cost_usd' "$manifest")"
     EVALUATION_TASK_COUNT="$(jq -r '.task_count' "$manifest")"
-    EVALUATION_OUTPUT_SCHEMA_JSON="$(jq -c . "$schema")" \
-      || die 78 "evaluation output schema is invalid"
+    if [ ! -x "$SCHEMA_COMPILER" ] || ! have python3; then
+      die 69 "delegation-schema and python3 are required for structured evaluation output"
+    fi
+    # The manifest binds the normative schema. Compile only the provider transport
+    # representation in memory; never rewrite or silently replace the bound file.
+    if ! EVALUATION_OUTPUT_SCHEMA_JSON="$(
+      "$SCHEMA_COMPILER" compile --provider claude --schema "$schema"
+    )"; then
+      die 78 "evaluation output schema is incompatible with Claude transport"
+    fi
     EVALUATION_GIT_DIR="$git_dir"
   else
     die 78 "unsupported evaluation manifest schema"

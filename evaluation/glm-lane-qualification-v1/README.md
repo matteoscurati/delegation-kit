@@ -17,6 +17,10 @@ preregistered decision rule.
 The three `output-schema-<lane>.json` files are the portable schemas used by
 real comparisons. `output-schema.json` is the minimal common shape used by the
 runner's transport test. All provider outputs are checked again by the scorer.
+The runner derives Claude's transport representation in memory with
+`delegation-schema`; the manifest continues to hash the normative file. A
+semantic preflight must compile the actual schema for each provider—checking
+only CLI help or flag presence is not a valid transport preflight.
 
 The comparison uses three independent attempts for GLM and both incumbents in
 each lane. Clerk compares with Codex `luna-clerk`/`low` and Claude

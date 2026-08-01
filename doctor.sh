@@ -68,11 +68,15 @@ hdr "Auth"
 if [ -f "$CODEX_HOME/auth.json" ]; then ok "codex authenticated ($CODEX_HOME/auth.json)"
 elif [ -n "${OPENAI_API_KEY:-}" ]; then ok "codex authenticated (OPENAI_API_KEY in env)"
 else warn "no $CODEX_HOME/auth.json and no \$OPENAI_API_KEY — run: codex login (if the bridge 401s)"; fi
-if [ -f "$CLAUDE_HOME/.credentials.json" ]; then ok "claude credentials present (file)"
+if have claude && claude auth status >/dev/null 2>&1; then ok "claude authenticated (CLI auth status)"
+elif [ -f "$CLAUDE_HOME/.credentials.json" ]; then ok "claude credentials present (file)"
 elif [ -n "${ANTHROPIC_API_KEY:-}" ]; then ok "claude authenticated (ANTHROPIC_API_KEY in env)"
 elif [ "$(uname)" = Darwin ] && security find-generic-password -s "Claude Code-credentials" >/dev/null 2>&1; then
   ok "claude credentials present (macOS Keychain)"
 else warn "no $CLAUDE_HOME/.credentials.json, no \$ANTHROPIC_API_KEY, and no Keychain item — run 'claude' to log in if the bridge fails"; fi
+if [ "$(uname)" = Darwin ] && [ -z "${USER:-}" ] && [ -z "${ANTHROPIC_API_KEY:-}" ]; then
+  warn "USER is missing — a sanitized environment cannot resolve Claude's macOS Keychain credentials"
+fi
 
 # ---- Claude side install (direct dir OR plugin cache) ----
 hdr "Claude Code install ($CLAUDE_HOME)"
@@ -217,6 +221,25 @@ elif have delegation-epoch; then
   ok "Epoch ZIP advisory importer installed (live download not run by doctor)"
 else
   warn "delegation-epoch not installed — re-run ./install.sh"
+fi
+if ! have python3; then
+  warn "python3 not on PATH — structured-output schemas cannot be compiled"
+elif have delegation-schema; then
+  schema_claude_ok=0
+  schema_codex_ok=0
+  delegation-schema check --provider claude \
+      --schema "$KIT/evaluation/glm-lane-qualification-v1/output-schema.json" \
+      >/dev/null 2>&1 && schema_claude_ok=1
+  delegation-schema check --provider codex \
+      --schema "$KIT/evaluation/policy-annotation-qualification-v3/output-schema.json" \
+      >/dev/null 2>&1 && schema_codex_ok=1
+  if [ "$schema_claude_ok" = 1 ] && [ "$schema_codex_ok" = 1 ]; then
+    ok "Claude/Codex schema transport compiler installed"
+  else
+    bad "delegation-schema cannot compile both shipped Claude and Codex transport fixtures"
+  fi
+else
+  warn "delegation-schema not installed — re-run ./install.sh"
 fi
 
 hdr "Central routing gates"

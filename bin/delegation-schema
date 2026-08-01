@@ -1,0 +1,468 @@
+#!/usr/bin/env python3
+"""Compile and verify provider transport schemas without changing source files."""
+
+from __future__ import annotations
+
+import argparse
+import copy
+import json
+import sys
+from dataclasses import dataclass, field
+from pathlib import Path
+from typing import Any
+from urllib.parse import unquote
+
+
+class SchemaError(ValueError):
+    pass
+
+
+def pointer(parts: list[str]) -> str:
+    if not parts:
+        return "/"
+    return "/" + "/".join(part.replace("~", "~0").replace("/", "~1") for part in parts)
+
+
+def fail(parts: list[str], message: str) -> None:
+    raise SchemaError(f"{pointer(parts)}: {message}")
+
+
+def reject_constant(value: str) -> None:
+    raise SchemaError(f"non-standard JSON constant {value!r} is not allowed")
+
+
+def reject_duplicate_keys(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
+    result: dict[str, Any] = {}
+    for key, value in pairs:
+        if key in result:
+            raise SchemaError(f"duplicate JSON object key {key!r} is not allowed")
+        result[key] = value
+    return result
+
+
+def load_schema(path: str) -> Any:
+    try:
+        options = {
+            "parse_constant": reject_constant,
+            "object_pairs_hook": reject_duplicate_keys,
+        }
+        if path == "-":
+            return json.load(sys.stdin, **options)
+        with Path(path).open(encoding="utf-8") as handle:
+            return json.load(handle, **options)
+    except (OSError, json.JSONDecodeError) as exc:
+        raise SchemaError(f"could not read JSON schema {path!r}: {exc}") from exc
+
+
+def json_type(value: Any) -> str | None:
+    if value is None:
+        return "null"
+    if isinstance(value, bool):
+        return "boolean"
+    if isinstance(value, str):
+        return "string"
+    if isinstance(value, int):
+        return "integer"
+    if isinstance(value, float):
+        return "number"
+    return None
+
+
+def literal_types(node: dict[str, Any], parts: list[str]) -> set[str] | None:
+    values: list[Any] = []
+    if "const" in node:
+        values.append(node["const"])
+    if "enum" in node:
+        if not isinstance(node["enum"], list) or not node["enum"]:
+            fail(parts + ["enum"], "must be a non-empty array")
+        values.extend(node["enum"])
+    if not values:
+        return None
+
+    types = {json_type(value) for value in values}
+    if None in types:
+        fail(parts, "Codex transport literals cannot be objects or arrays")
+    return {value for value in types if value is not None}
+
+
+def inferred_literal_type(types: set[str] | None, parts: list[str]) -> str | None:
+    if types is None:
+        return None
+    if "null" in types:
+        fail(parts, "cannot infer one Codex type from null; declare an explicit nullable type")
+    if types <= {"integer", "number"}:
+        return "number" if "number" in types else "integer"
+    if len(types) != 1:
+        fail(parts, "cannot infer one Codex transport type from mixed enum/const literals")
+    return next(iter(types))
+
+
+SCHEMA_MAP_KEYWORDS = {
+    "$defs",
+    "definitions",
+    "dependentSchemas",
+    "patternProperties",
+    "properties",
+}
+SCHEMA_SINGLE_KEYWORDS = {
+    "additionalItems",
+    "contains",
+    "else",
+    "if",
+    "items",
+    "not",
+    "propertyNames",
+    "then",
+    "unevaluatedItems",
+}
+SCHEMA_OR_BOOLEAN_KEYWORDS = {"additionalProperties", "unevaluatedProperties"}
+SCHEMA_ARRAY_KEYWORDS = {"allOf", "anyOf", "oneOf", "prefixItems"}
+
+
+def strip_dialect(node: Any, parts: list[str], changes: list[str]) -> Any:
+    if not isinstance(node, dict):
+        return copy.deepcopy(node)
+    result: dict[str, Any] = {}
+    for key, value in node.items():
+        child_parts = parts + [key]
+        if key == "$schema":
+            changes.append(f"removed {pointer(child_parts)}")
+        elif key in SCHEMA_MAP_KEYWORDS and isinstance(value, dict):
+            result[key] = {
+                name: strip_dialect(child, child_parts + [name], changes)
+                for name, child in value.items()
+            }
+        elif key in SCHEMA_SINGLE_KEYWORDS and isinstance(value, dict):
+            result[key] = strip_dialect(value, child_parts, changes)
+        elif key in SCHEMA_OR_BOOLEAN_KEYWORDS and isinstance(value, dict):
+            result[key] = strip_dialect(value, child_parts, changes)
+        elif key in SCHEMA_ARRAY_KEYWORDS and isinstance(value, list):
+            result[key] = [
+                strip_dialect(child, child_parts + [str(index)], changes)
+                for index, child in enumerate(value)
+            ]
+        else:
+            # const/enum/default/examples are data, not schemas. Preserve them
+            # value-semantically even when a literal object contains "$schema".
+            result[key] = copy.deepcopy(value)
+    return result
+
+
+def validate_common(node: Any, parts: list[str]) -> None:
+    if not isinstance(node, dict):
+        fail(parts, "schema node must be an object")
+    schema_type = node.get("type")
+    if schema_type is not None and not (
+        isinstance(schema_type, str)
+        or (isinstance(schema_type, list) and schema_type and all(isinstance(item, str) for item in schema_type))
+    ):
+        fail(parts + ["type"], "must be a string or a non-empty array of strings")
+    if "required" in node:
+        required = node["required"]
+        if not isinstance(required, list) or not all(isinstance(item, str) for item in required):
+            fail(parts + ["required"], "must be an array of strings")
+        if len(required) != len(set(required)):
+            fail(parts + ["required"], "must not contain duplicates")
+    for keyword in SCHEMA_MAP_KEYWORDS:
+        if keyword not in node:
+            continue
+        children = node[keyword]
+        if not isinstance(children, dict):
+            fail(parts + [keyword], "must be an object")
+        for name, child in children.items():
+            validate_common(child, parts + [keyword, name])
+    for keyword in SCHEMA_SINGLE_KEYWORDS:
+        if keyword in node:
+            validate_common(node[keyword], parts + [keyword])
+    for keyword in SCHEMA_OR_BOOLEAN_KEYWORDS:
+        if keyword in node and not isinstance(node[keyword], bool):
+            validate_common(node[keyword], parts + [keyword])
+    for keyword in SCHEMA_ARRAY_KEYWORDS:
+        if keyword in node:
+            branches = node[keyword]
+            if not isinstance(branches, list) or not branches:
+                fail(parts + [keyword], "must be a non-empty array")
+            for index, child in enumerate(branches):
+                validate_common(child, parts + [keyword, str(index)])
+
+
+CODEX_KEYWORDS = {
+    "$defs",
+    "$ref",
+    "additionalProperties",
+    "anyOf",
+    "const",
+    "description",
+    "enum",
+    "exclusiveMaximum",
+    "exclusiveMinimum",
+    "format",
+    "items",
+    "maxItems",
+    "maxLength",
+    "maximum",
+    "minItems",
+    "minLength",
+    "minimum",
+    "multipleOf",
+    "pattern",
+    "patternProperties",
+    "properties",
+    "required",
+    "title",
+    "type",
+}
+# Base Codex models use OpenAI's documented Structured Outputs subset. Fine-tuned
+# models have additional restrictions and are intentionally outside this command.
+CODEX_FORMATS = {
+    "date",
+    "date-time",
+    "duration",
+    "email",
+    "hostname",
+    "ipv4",
+    "ipv6",
+    "time",
+    "uuid",
+}
+
+
+@dataclass
+class CodexStats:
+    properties: int = 0
+    enum_values: int = 0
+    constrained_string_chars: int = 0
+    refs: list[tuple[list[str], str]] = field(default_factory=list)
+
+
+def add_codex_literal_limits(
+    node: dict[str, Any], parts: list[str], stats: CodexStats
+) -> None:
+    if "const" in node and isinstance(node["const"], str):
+        stats.constrained_string_chars += len(node["const"])
+    if "enum" not in node:
+        return
+    values = node["enum"]
+    if not isinstance(values, list) or not values:
+        fail(parts + ["enum"], "must be a non-empty array")
+    stats.enum_values += len(values)
+    encoded_values = [compact(value) for value in values]
+    if len(encoded_values) != len(set(encoded_values)):
+        fail(parts + ["enum"], "must not contain duplicate values")
+    string_chars = sum(len(value) for value in values if isinstance(value, str))
+    stats.constrained_string_chars += string_chars
+    if len(values) > 250 and string_chars > 15000:
+        fail(parts + ["enum"], "string values exceed 15000 characters for an enum larger than 250 items")
+
+
+def validate_codex_keyword_values(
+    node: dict[str, Any], parts: list[str], types: list[str]
+) -> None:
+    for keyword in ("title", "description", "pattern"):
+        if keyword in node and not isinstance(node[keyword], str):
+            fail(parts + [keyword], "must be a string")
+    if "format" in node:
+        if not isinstance(node["format"], str) or node["format"] not in CODEX_FORMATS:
+            fail(parts + ["format"], "is not a supported Codex string format")
+    for keyword in ("minLength", "maxLength", "minItems", "maxItems"):
+        value = node.get(keyword)
+        if value is not None and (isinstance(value, bool) or not isinstance(value, int) or value < 0):
+            fail(parts + [keyword], "must be a non-negative integer")
+    for keyword in ("multipleOf", "minimum", "maximum", "exclusiveMinimum", "exclusiveMaximum"):
+        value = node.get(keyword)
+        if value is not None and (isinstance(value, bool) or not isinstance(value, (int, float))):
+            fail(parts + [keyword], "must be a finite JSON number")
+    if "multipleOf" in node and node["multipleOf"] <= 0:
+        fail(parts + ["multipleOf"], "must be greater than zero")
+    if any(keyword in node for keyword in ("pattern", "format", "minLength", "maxLength")) \
+        and "string" not in types:
+        fail(parts, "string constraints require type string")
+    if any(keyword in node for keyword in ("multipleOf", "minimum", "maximum", "exclusiveMinimum", "exclusiveMaximum")) \
+        and not ({"integer", "number"} & set(types)):
+        fail(parts, "numeric constraints require type integer or number")
+    if any(keyword in node for keyword in ("minItems", "maxItems")) and "array" not in types:
+        fail(parts, "array constraints require type array")
+    if any(keyword in node for keyword in ("properties", "required", "additionalProperties", "patternProperties")) \
+        and "object" not in types:
+        fail(parts, "object keywords require type object")
+    if "items" in node and "array" not in types:
+        fail(parts + ["items"], "requires type array")
+
+
+def resolve_local_ref(root: dict[str, Any], parts: list[str], reference: str) -> None:
+    if reference == "#":
+        return
+    if not reference.startswith("#/"):
+        fail(parts + ["$ref"], "must be # or a local JSON Pointer")
+    target: Any = root
+    for raw_part in unquote(reference[2:]).split("/"):
+        part = raw_part.replace("~1", "/").replace("~0", "~")
+        if not isinstance(target, dict) or part not in target:
+            fail(parts + ["$ref"], f"does not resolve: {reference}")
+        target = target[part]
+    if not isinstance(target, dict):
+        fail(parts + ["$ref"], "must resolve to a schema object")
+
+
+def validate_codex(
+    node: dict[str, Any],
+    parts: list[str],
+    changes: list[str],
+    stats: CodexStats,
+    container_depth: int,
+) -> None:
+    unsupported = [key for key in node if key not in CODEX_KEYWORDS]
+    if unsupported:
+        fail(parts + [unsupported[0]], "is not supported by the Codex structured-output subset")
+    if "$ref" in node:
+        if len(node) != 1 or not isinstance(node["$ref"], str) or not node["$ref"].startswith("#"):
+            fail(parts, "a Codex $ref node must contain only a local string $ref")
+        stats.refs.append((list(parts), node["$ref"]))
+        return
+
+    observed_literal_types = literal_types(node, parts)
+    inferred = inferred_literal_type(observed_literal_types, parts) if "type" not in node else None
+    if "type" not in node:
+        if "anyOf" in node:
+            allowed_any_of_keys = {"$defs", "anyOf", "description", "title"}
+            incompatible = [key for key in node if key not in allowed_any_of_keys]
+            if incompatible:
+                fail(parts + [incompatible[0]], "requires an explicit type beside anyOf")
+            validate_codex_keyword_values(node, parts, [])
+            for index, child in enumerate(node["anyOf"]):
+                validate_codex(
+                    child,
+                    parts + ["anyOf", str(index)],
+                    changes,
+                    stats,
+                    container_depth,
+                )
+            if "$defs" in node:
+                stats.constrained_string_chars += sum(len(name) for name in node["$defs"])
+                for name, child in node["$defs"].items():
+                    validate_codex(child, parts + ["$defs", name], changes, stats, container_depth)
+            return
+        if inferred is None:
+            fail(parts, "Codex requires an explicit type unless it can be inferred from enum or const")
+        node["type"] = inferred
+        changes.append(f"added {pointer(parts + ['type'])}={inferred}")
+
+    schema_type = node["type"]
+    types = [schema_type] if isinstance(schema_type, str) else schema_type
+    supported = {"object", "array", "string", "number", "integer", "boolean", "null"}
+    if not isinstance(types, list) or not types or not all(item in supported for item in types):
+        fail(parts + ["type"], "contains a type outside the Codex structured-output subset")
+
+    if len(types) != len(set(types)):
+        fail(parts + ["type"], "must not contain duplicates")
+    if len(types) > 1 and (len(types) != 2 or "null" not in types):
+        fail(parts + ["type"], "Codex unions must contain exactly one value type plus null; use anyOf otherwise")
+    if observed_literal_types is not None:
+        for observed in observed_literal_types:
+            if observed not in types and not (observed == "integer" and "number" in types):
+                fail(parts, f"literal values do not match declared type {schema_type!r}")
+
+    add_codex_literal_limits(node, parts, stats)
+    validate_codex_keyword_values(node, parts, types)
+
+    next_depth = container_depth + (1 if {"object", "array"} & set(types) else 0)
+    if next_depth > 10:
+        fail(parts, "Codex schemas support at most 10 object/array nesting levels")
+
+    if "object" in types:
+        properties = node.get("properties")
+        if not isinstance(properties, dict):
+            fail(parts + ["properties"], "Codex object schemas require a properties object")
+        if node.get("additionalProperties") is not False:
+            fail(parts + ["additionalProperties"], "Codex object schemas require false")
+        required = node.get("required")
+        if not isinstance(required, list) or set(required) != set(properties) or len(required) != len(properties):
+            fail(parts + ["required"], "Codex object schemas must require every property exactly once")
+        stats.properties += len(properties)
+        stats.constrained_string_chars += sum(len(name) for name in properties)
+        for name, child in properties.items():
+            validate_codex(child, parts + ["properties", name], changes, stats, next_depth)
+        patterns = node.get("patternProperties", {})
+        if not isinstance(patterns, dict):
+            fail(parts + ["patternProperties"], "must be an object")
+        stats.properties += len(patterns)
+        stats.constrained_string_chars += sum(len(name) for name in patterns)
+        for name, child in patterns.items():
+            validate_codex(child, parts + ["patternProperties", name], changes, stats, next_depth)
+
+    if "array" in types:
+        if not isinstance(node.get("items"), dict):
+            fail(parts + ["items"], "Codex array schemas require one object schema in items")
+        validate_codex(node["items"], parts + ["items"], changes, stats, next_depth)
+
+    if "anyOf" in node:
+        for index, child in enumerate(node["anyOf"]):
+            validate_codex(child, parts + ["anyOf", str(index)], changes, stats, next_depth)
+    if "$defs" in node:
+        stats.constrained_string_chars += sum(len(name) for name in node["$defs"])
+        for name, child in node["$defs"].items():
+            validate_codex(child, parts + ["$defs", name], changes, stats, container_depth)
+
+
+def compile_schema(provider: str, source: Any) -> tuple[dict[str, Any], list[str]]:
+    changes: list[str] = []
+    compiled = strip_dialect(copy.deepcopy(source), [], changes)
+    validate_common(compiled, [])
+    if compiled.get("type") != "object":
+        fail(["type"], "structured output requires an object at the root")
+    if provider == "codex":
+        stats = CodexStats()
+        validate_codex(compiled, [], changes, stats, 0)
+        for ref_parts, reference in stats.refs:
+            resolve_local_ref(compiled, ref_parts, reference)
+        if stats.properties > 5000:
+            fail(["properties"], "Codex schemas support at most 5000 object properties")
+        if stats.enum_values > 1000:
+            fail(["enum"], "Codex schemas support at most 1000 enum values")
+        if stats.constrained_string_chars > 120000:
+            fail([], "Codex property, definition, enum, and const strings exceed 120000 characters")
+    return compiled, changes
+
+
+def compact(value: Any) -> str:
+    return json.dumps(value, ensure_ascii=False, allow_nan=False, separators=(",", ":"))
+
+
+def parser() -> argparse.ArgumentParser:
+    result = argparse.ArgumentParser(prog="delegation-schema")
+    subparsers = result.add_subparsers(dest="command", required=True)
+    for command in ("compile", "check"):
+        sub = subparsers.add_parser(command)
+        sub.add_argument("--provider", choices=("claude", "codex"), required=True)
+        sub.add_argument("--schema", required=True, help="source schema path, or - for stdin")
+    verify = subparsers.add_parser("verify")
+    verify.add_argument("--provider", choices=("claude", "codex"), required=True)
+    verify.add_argument("--schema", required=True, help="normative source schema")
+    verify.add_argument("--transport", required=True, help="derived transport schema")
+    return result
+
+
+def main() -> int:
+    args = parser().parse_args()
+    source = load_schema(args.schema)
+    compiled, changes = compile_schema(args.provider, source)
+    if args.command == "compile":
+        print(compact(compiled))
+        return 0
+    if args.command == "check":
+        print(compact({"changes": changes, "provider": args.provider, "valid": True}))
+        return 0
+
+    transport = load_schema(args.transport)
+    if compact(transport) != compact(compiled):
+        raise SchemaError("transport schema does not exactly match the deterministic compilation")
+    print(compact({"changes": changes, "provider": args.provider, "valid": True, "verified": True}))
+    return 0
+
+
+if __name__ == "__main__":
+    try:
+        raise SystemExit(main())
+    except SchemaError as exc:
+        print(f"delegation-schema: {exc}", file=sys.stderr)
+        raise SystemExit(65)
