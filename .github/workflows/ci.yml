@@ -53,11 +53,19 @@ jobs:
     timeout-minutes: 25
     steps:
       - uses: actions/checkout@v4
+      # A bare macOS runner has neither. The kit needs both: delegation-glm,
+      # -kimi and -grok refuse to run without gtimeout/timeout, and the Kimi
+      # sandbox pins a ripgrep binary. install.sh tells users to install
+      # ripgrep for the same reason.
+      - name: Install prerequisites
+        run: brew install --quiet coreutils ripgrep
       - name: Verify prerequisites
         run: |
-          for tool in jq python3 git shasum; do
+          for tool in jq python3 git shasum rg; do
             command -v "$tool" >/dev/null || { echo "missing: $tool"; exit 1; }
           done
+          command -v gtimeout >/dev/null || command -v timeout >/dev/null \
+            || { echo "missing: gtimeout/timeout"; exit 1; }
           [ -x /usr/bin/sandbox-exec ] || { echo "missing: sandbox-exec"; exit 1; }
           bash --version | head -1
       - name: Routing gates and evidence snapshot
