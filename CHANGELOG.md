@@ -16,6 +16,10 @@ All notable changes to delegation-kit are documented here.
 - Added `tests/install-version-marker.sh`, which installs into isolated homes
   and asserts both the marker's contents and that doctor detects version drift,
   commit drift, a missing marker, and a missing install.
+- Added `run-tests.sh`, which runs every suite in parallel on one machine and
+  prints the full log of any that fails. CI uses it, cutting the macOS job's
+  test step from ~116s to well under half without allocating a second runner.
+  `--sequential` restores one-at-a-time output for debugging.
 
 - Added `.github/workflows/ci.yml`. Until now nothing verified a release except
   the person cutting it. Every pull request and push to `main` now runs

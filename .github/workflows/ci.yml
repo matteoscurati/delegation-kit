@@ -50,7 +50,7 @@ jobs:
     # runner requires /usr/bin/sandbox-exec and the Grok suite asserts BSD
     # `stat -f` modes. Running these on Linux would mean rewriting the kit.
     runs-on: macos-latest
-    timeout-minutes: 25
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
       # A bare macOS runner has neither. The kit needs both: delegation-glm,
@@ -58,6 +58,11 @@ jobs:
       # sandbox pins a ripgrep binary. install.sh tells users to install
       # ripgrep for the same reason.
       - name: Install prerequisites
+        # HOMEBREW_NO_AUTO_UPDATE keeps a future `brew update` from turning a
+        # 5-second step into a minute of tap refreshing.
+        env:
+          HOMEBREW_NO_AUTO_UPDATE: 1
+          HOMEBREW_NO_INSTALL_CLEANUP: 1
         run: brew install --quiet coreutils ripgrep
       - name: Verify prerequisites
         run: |
@@ -72,14 +77,12 @@ jobs:
         run: |
           bin/delegation-route check
           bin/delegation-evidence check
+      # Parallel on one runner: the suites are independent, and running them
+      # concurrently cuts this step from ~116s to well under half without
+      # allocating a second machine. run-tests.sh prints the full log of any
+      # suite that fails, since parallel output is otherwise interleaved.
       - name: Regression suites
-        run: |
-          rc=0
-          for t in tests/*.sh; do
-            printf '\n===== %s =====\n' "$t"
-            if bash "$t"; then echo "PASS $t"; else echo "FAIL $t"; rc=1; fi
-          done
-          exit "$rc"
+        run: ./run-tests.sh
       # A suite that mutates the checkout is a bug: they must restore whatever
       # they touch. This catches it rather than letting it leak into a release.
       - name: Suites left the checkout clean
