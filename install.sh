@@ -261,6 +261,39 @@ if [ "$do_codex" = 1 ]; then
   echo "  ------------------------------------------------------------------"
 fi
 
+# Written last, so the marker exists only if the install reached the end. It is
+# what lets doctor.sh answer "is this machine running the current kit?" without
+# a manual byte-for-byte comparison of every installed file.
+VERSION_FILE="$DATA_HOME/installed-version.json"
+kit_version="$(sed -n 's/.*"version"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' \
+  "$KIT/.claude-plugin/plugin.json" | head -1)"
+kit_commit=""; kit_dirty=false
+if git -C "$KIT" rev-parse --git-dir >/dev/null 2>&1; then
+  kit_commit="$(git -C "$KIT" rev-parse HEAD 2>/dev/null || true)"
+  # A dirty source means the commit does not fully describe what was installed.
+  [ -z "$(git -C "$KIT" status --porcelain 2>/dev/null)" ] || kit_dirty=true
+fi
+install_scope=claude+codex
+[ "$do_claude" = 1 ] || install_scope=codex-only
+[ "$do_codex" = 1 ] || install_scope=claude-only
+if command -v jq >/dev/null 2>&1; then
+  jq -n --arg version "$kit_version" --arg commit "$kit_commit" \
+    --arg source "$KIT" --arg scope "$install_scope" \
+    --arg at "$(date -u +%Y-%m-%dT%H:%M:%SZ)" --argjson dirty "$kit_dirty" \
+    '{schema_version:1,version:$version,
+      commit:(if $commit == "" then null else $commit end),
+      commit_dirty:$dirty,source:$source,scope:$scope,installed_at:$at}' \
+    >"$VERSION_FILE"
+else
+  printf '{"schema_version":1,"version":"%s","commit":%s,"commit_dirty":%s,"source":"%s","scope":"%s","installed_at":"%s"}\n' \
+    "$kit_version" \
+    "$([ -n "$kit_commit" ] && printf '"%s"' "$kit_commit" || printf 'null')" \
+    "$kit_dirty" "$KIT" "$install_scope" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+    >"$VERSION_FILE"
+fi
+echo
+echo "Installed version marker -> $VERSION_FILE (${kit_version:-unknown}$([ "$kit_dirty" = true ] && echo ', from a dirty checkout'))"
+
 echo
 echo "Done. Restart Claude Code / open a new Codex session to pick up the changes."
 echo "Verify the bridge is wired:  $KIT/doctor.sh   (add --ping for a live round-trip)"

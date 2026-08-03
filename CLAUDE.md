@@ -80,6 +80,21 @@ tests/version-consistency.sh
 tests/version-consistency.sh --tag delegation-kit--v<VERSION>
 ```
 
+### Is this machine running the current kit?
+
+`install.sh` records what it installed in
+`$DELEGATION_DATA_HOME/installed-version.json`, and `doctor.sh` compares it
+against the checkout. Ask it rather than diffing files by hand:
+
+```sh
+./doctor.sh          # the "Installed version" section answers this
+```
+
+A version mismatch is a FAIL. A matching version with a different commit is a
+warning — normal while unreleased work sits on `main`, and the fix is the same:
+re-run `./install.sh`. The marker is written last, so it exists only if the
+install reached the end.
+
 ## Routing gates
 
 Never promote a lane, widen a selection, or edit `config/routing-gates.json` and
