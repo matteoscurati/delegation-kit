@@ -9,7 +9,13 @@ It ships as a **reference implementation**: the author's concrete models
 external-evidence snapshot, and fail-closed local gates. Swap the models for your own tiers with
 [`ADAPTING.md`](./ADAPTING.md) — the *structure* is the transferable part.
 
-## Current release: 0.11.0
+## Current release: 0.11.1
+
+Version 0.11.1 fixes the CI release-tag check, which failed 0.11.0's tag run by
+inspecting a ref `actions/checkout` had flattened to a lightweight tag rather
+than the annotated tag that was pushed, and stops
+`tests/version-consistency.sh --tag` from silently skipping that rule when the
+tag object is absent. No routing decision changes.
 
 Version 0.11.0 makes the repository verify itself. Until now nothing checked a
 pull request and nothing checked a release except the person cutting it. CI now

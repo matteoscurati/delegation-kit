@@ -25,9 +25,10 @@ wherever the runner uses capability probing.
 
 The full doctor result for this snapshot was `44 OK, 0 WARN, 0 FAIL` with
 `--ping`, and both live round trips returned. The ten regression suites passed
-in 47s of wall clock through `./run-tests.sh`, including 37 central routing
-checks, 14 install-marker checks, 8 version-surface checks, and 6 Epoch ZIP
-checks. Every suite except `doctor.sh --ping` also runs in CI on each pull
+through `./run-tests.sh` in 42-73s of wall clock across repeated runs — the
+figure moves with machine load, so treat the range rather than any single
+number as the observation. They include 37 central routing checks, 14
+install-marker checks, 8 version-surface checks, and 6 Epoch ZIP checks. Every suite except `doctor.sh --ping` also runs in CI on each pull
 request; the ping stays local because it needs authenticated Claude and Codex
 CLIs. A two-pass installation into empty temporary Claude/Codex
 homes produced one guarded policy block per host and byte-identical agents,

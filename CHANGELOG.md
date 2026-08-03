@@ -2,7 +2,7 @@
 
 All notable changes to delegation-kit are documented here.
 
-## [Unreleased]
+## [0.11.1] — 2026-08-03
 
 ### Fixed
 
