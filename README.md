@@ -9,15 +9,16 @@ It ships as a **reference implementation**: the author's concrete models
 external-evidence snapshot, and fail-closed local gates. Swap the models for your own tiers with
 [`ADAPTING.md`](./ADAPTING.md) — the *structure* is the transferable part.
 
-## Current release: 0.10.0
+## Current release: 0.11.0
 
-Version 0.10.0 repins the Qwen bridge to `qwen3.8-max` after the model left
-preview, and promotes its `builder` lane to provisional/explicit-only behind
-`--allow-provisional`. That promotion is an explicit owner decision, not
-measured capability: no DeepSWE or Terminal-Bench v2 row exists for the model,
-so both builder required metrics stay unmet and `exact_evidence_ids` stays
-empty. The lane is text-only and returns a patch rather than editing a worktree.
-Every other Qwen lane remains blocked. See
+Version 0.11.0 makes the repository verify itself. Until now nothing checked a
+pull request and nothing checked a release except the person cutting it. CI now
+runs shellcheck, a version-surface check, and the full regression suite on every
+pull request; `install.sh` records what it installed so `doctor.sh` can report a
+stale install; and `run-tests.sh` runs the suites in parallel on one machine.
+Routing decisions are unchanged from 0.10.0, which repinned the Qwen bridge to
+`qwen3.8-max` and promoted its text-only `builder` lane to
+provisional/explicit-only behind `--allow-provisional`. See
 [`docs/compatibility.md`](./docs/compatibility.md) and
 [`CHANGELOG.md`](./CHANGELOG.md).
 
