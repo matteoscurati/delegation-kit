@@ -72,16 +72,7 @@ Semantic smoke results never mutate a routing gate.
 ## Reproduce the integration gates
 
 ```sh
-tests/routing-gates.sh
-tests/version-consistency.sh
-tests/install-version-marker.sh
-tests/epoch-zip.sh
-tests/schema-transport.sh
-tests/glm-runner-diagnostics.sh
-tests/gemini-runner-diagnostics.sh
-tests/kimi-runner.sh
-tests/grok-runner.sh
-tests/qwen-runner.sh
+./run-tests.sh          # every suite under tests/, in parallel
 ./doctor.sh --ping
 git diff --check
 ```
