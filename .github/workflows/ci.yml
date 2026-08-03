@@ -1,0 +1,82 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+    tags: ['delegation-kit--v*']
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  lint:
+    name: shellcheck
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Collect tracked shell files
+        run: |
+          git ls-files '*.sh' 'bin/*' | while read -r f; do
+            head -1 "$f" | grep -q '^#!.*\(bash\|sh\)' && printf '%s\n' "$f"
+          done >shfiles.txt
+          echo "checking $(wc -l <shfiles.txt) files"
+      # -S warning is the level the repository already meets; `style` reports
+      # only informational findings and is deliberately not a gate.
+      - name: shellcheck
+        run: tr '\n' '\0' <shfiles.txt | xargs -0 shellcheck -S warning
+
+  version:
+    name: version consistency
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check the five version surfaces
+        run: bash tests/version-consistency.sh
+      # On a tag push, also enforce the CLAUDE.md tag convention.
+      - name: Check release tag convention
+        if: startsWith(github.ref, 'refs/tags/')
+        run: bash tests/version-consistency.sh --tag "${GITHUB_REF_NAME}"
+
+  tests:
+    name: regression suites (macOS)
+    # macOS is the platform this kit targets and the suites assume: the Kimi
+    # runner requires /usr/bin/sandbox-exec and the Grok suite asserts BSD
+    # `stat -f` modes. Running these on Linux would mean rewriting the kit.
+    runs-on: macos-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify prerequisites
+        run: |
+          for tool in jq python3 git shasum; do
+            command -v "$tool" >/dev/null || { echo "missing: $tool"; exit 1; }
+          done
+          [ -x /usr/bin/sandbox-exec ] || { echo "missing: sandbox-exec"; exit 1; }
+          bash --version | head -1
+      - name: Routing gates and evidence snapshot
+        run: |
+          bin/delegation-route check
+          bin/delegation-evidence check
+      - name: Regression suites
+        run: |
+          rc=0
+          for t in tests/*.sh; do
+            printf '\n===== %s =====\n' "$t"
+            if bash "$t"; then echo "PASS $t"; else echo "FAIL $t"; rc=1; fi
+          done
+          exit "$rc"
+      # A suite that mutates the checkout is a bug: they must restore whatever
+      # they touch. This catches it rather than letting it leak into a release.
+      - name: Suites left the checkout clean
+        run: |
+          dirty="$(git status --porcelain)"
+          if [ -n "$dirty" ]; then
+            echo "test run dirtied the worktree:"; echo "$dirty"; exit 1
+          fi

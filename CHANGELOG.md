@@ -2,6 +2,21 @@
 
 All notable changes to delegation-kit are documented here.
 
+## [Unreleased]
+
+### Added
+
+- Added `.github/workflows/ci.yml`. Until now nothing verified a release except
+  the person cutting it. Every pull request and push to `main` now runs
+  shellcheck at `-S warning`, the version-surface check, and the regression
+  suites on macOS; a tag push additionally validates the tag against the
+  manifest version. Suites run on macOS because the Kimi runner requires
+  `/usr/bin/sandbox-exec` and the Grok suite asserts BSD `stat -f` modes.
+- Added `tests/version-consistency.sh`, which enforces the CLAUDE.md release
+  rules: the five version surfaces must agree, the newest changelog section must
+  be the shipped version, and `--tag` validates the
+  `delegation-kit--v<semver>` annotated-tag convention.
+
 ## [0.10.0] — 2026-08-03
 
 ### Changed
