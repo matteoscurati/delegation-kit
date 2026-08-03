@@ -23,11 +23,13 @@ wherever the runner uses capability probing.
 | Qwen3.8-Max | `builder` | `GET /models` listed both `qwen3.8-max` and `qwen3.8-max-preview`, and a completion pinned to the unsuffixed id returned `.model == "qwen3.8-max"` at `xhigh`. A 20-check smoke passed: six gate refusals with the documented exit codes and no artifact, then a real dispatch whose unified diff applied with `git apply`, stayed inside its assigned file, and turned a red acceptance suite green. The lane is provisional explicit-only and requires `--allow-provisional`; every other lane still fails closed with exit `78`. |
 | Claude↔Codex bridge | both directions | `doctor.sh --ping` completed both real round trips. |
 
-The full doctor result for this snapshot was `42 OK, 0 WARN, 0 FAIL` with
-`--ping`. The ten documented regression suites passed, including 37 central
-routing checks and 6 Epoch ZIP checks. Every suite except `doctor.sh --ping`
-also runs in CI on each pull request; the ping stays local because it needs
-authenticated Claude and Codex CLIs. A two-pass installation into empty temporary Claude/Codex
+The full doctor result for this snapshot was `44 OK, 0 WARN, 0 FAIL` with
+`--ping`, and both live round trips returned. The ten regression suites passed
+in 47s of wall clock through `./run-tests.sh`, including 37 central routing
+checks, 14 install-marker checks, 8 version-surface checks, and 6 Epoch ZIP
+checks. Every suite except `doctor.sh --ping` also runs in CI on each pull
+request; the ping stays local because it needs authenticated Claude and Codex
+CLIs. A two-pass installation into empty temporary Claude/Codex
 homes produced one guarded policy block per host and byte-identical agents,
 profiles, skills, runners, and gates.
 
