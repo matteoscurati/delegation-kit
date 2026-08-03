@@ -1,6 +1,6 @@
 {
   "name": "delegation-kit",
-  "version": "0.11.0",
+  "version": "0.11.1",
   "description": "Teach Claude Code how and when to delegate coding work across lanes — cheap execution, Claude Opus 5 senior review, expensive judgement — with guarded bridges and deterministic Claude/Codex schema transport.",
   "author": { "name": "Matteo Scurati", "url": "https://github.com/matteoscurati" },
   "homepage": "https://github.com/matteoscurati/delegation-kit",
