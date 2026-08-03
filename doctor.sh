@@ -56,6 +56,51 @@ found_path() { [ -d "$1" ] && [ -n "$(find "$1" -path "$2" 2>/dev/null)" ]; }
 if have timeout; then _TO="timeout 120"; elif have gtimeout; then _TO="gtimeout 120"; else _TO=""; fi
 run_to() { if [ -n "$_TO" ]; then $_TO "$@"; else "$@"; fi; }
 
+# ---- installed kit vs this checkout ----
+# Without this, a stale install is invisible: every other check inspects the
+# installed copy against itself and passes while it lags the repository.
+hdr "Installed version"
+DATA_HOME="${DELEGATION_DATA_HOME:-$HOME/.local/share/delegation-kit}"
+version_file="$DATA_HOME/installed-version.json"
+kit_version="$(sed -n 's/.*"version"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' \
+  "$KIT/.claude-plugin/plugin.json" 2>/dev/null | head -1)"
+kit_commit=""; kit_dirty_now=0
+if git -C "$KIT" rev-parse --git-dir >/dev/null 2>&1; then
+  kit_commit="$(git -C "$KIT" rev-parse HEAD 2>/dev/null || true)"
+  [ -z "$(git -C "$KIT" status --porcelain 2>/dev/null)" ] || kit_dirty_now=1
+fi
+if [ ! -f "$version_file" ]; then
+  if [ -d "$DATA_HOME/bin" ]; then
+    warn "installed kit has no version marker — re-run ./install.sh so staleness becomes detectable"
+  else
+    bad "delegation-kit is not installed under $DATA_HOME — run ./install.sh"
+  fi
+elif ! have jq; then
+  warn "jq not on PATH — cannot read $version_file"
+else
+  inst_version="$(jq -r '.version // ""' "$version_file")"
+  inst_commit="$(jq -r '.commit // ""' "$version_file")"
+  inst_dirty="$(jq -r '.commit_dirty // false' "$version_file")"
+  inst_scope="$(jq -r '.scope // "?"' "$version_file")"
+  if [ -n "$kit_version" ] && [ "$inst_version" != "$kit_version" ]; then
+    bad "installed $inst_version but this checkout is $kit_version — re-run ./install.sh"
+  else
+    ok "installed version $inst_version matches this checkout"
+  fi
+  if [ -n "$kit_commit" ] && [ -n "$inst_commit" ] && [ "$inst_commit" != "$kit_commit" ]; then
+    # Same version, different commit: unreleased changes have not been installed.
+    warn "installed from commit ${inst_commit:0:8}, checkout is at ${kit_commit:0:8} — re-run ./install.sh to pick up the difference"
+  elif [ -n "$inst_commit" ]; then
+    ok "installed commit matches this checkout (${inst_commit:0:8})"
+  fi
+  [ "$inst_dirty" != true ] \
+    || info "installed from a dirty checkout — the recorded commit does not fully describe the installed bytes"
+  [ "$kit_dirty_now" = 0 ] \
+    || info "this checkout is dirty now — uncommitted changes are not installed until you re-run ./install.sh"
+  [ "$inst_scope" = claude+codex ] \
+    || info "installed with scope '$inst_scope'"
+fi
+
 # ---- CLIs on PATH + versions ----
 hdr "CLIs"
 have codex && ok "codex on PATH ($(codex --version 2>&1 | head -1))" \

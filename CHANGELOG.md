@@ -6,6 +6,17 @@ All notable changes to delegation-kit are documented here.
 
 ### Added
 
+- `install.sh` now writes `installed-version.json` into the data home, and
+  `doctor.sh` compares it against the checkout. Until now a stale install was
+  undetectable: every other doctor check inspects the installed copy against
+  itself and passes while it lags the repository. A version mismatch is a FAIL,
+  a same-version commit mismatch is a warning, and installs from a dirty
+  checkout or with `--claude-only`/`--codex-only` scope are recorded so the
+  marker never overstates what was installed.
+- Added `tests/install-version-marker.sh`, which installs into isolated homes
+  and asserts both the marker's contents and that doctor detects version drift,
+  commit drift, a missing marker, and a missing install.
+
 - Added `.github/workflows/ci.yml`. Until now nothing verified a release except
   the person cutting it. Every pull request and push to `main` now runs
   shellcheck at `-S warning`, the version-surface check, and the regression

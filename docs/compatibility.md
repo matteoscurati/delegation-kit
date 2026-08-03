@@ -24,7 +24,7 @@ wherever the runner uses capability probing.
 | Claude↔Codex bridge | both directions | `doctor.sh --ping` completed both real round trips. |
 
 The full doctor result for this snapshot was `42 OK, 0 WARN, 0 FAIL` with
-`--ping`. The nine documented regression suites passed, including 37 central
+`--ping`. The ten documented regression suites passed, including 37 central
 routing checks and 6 Epoch ZIP checks. Every suite except `doctor.sh --ping`
 also runs in CI on each pull request; the ping stays local because it needs
 authenticated Claude and Codex CLIs. A two-pass installation into empty temporary Claude/Codex
@@ -74,6 +74,7 @@ Semantic smoke results never mutate a routing gate.
 ```sh
 tests/routing-gates.sh
 tests/version-consistency.sh
+tests/install-version-marker.sh
 tests/epoch-zip.sh
 tests/schema-transport.sh
 tests/glm-runner-diagnostics.sh
