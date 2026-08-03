@@ -49,8 +49,11 @@ Kimi K3 is provisional for `clerk`, `scout`, `builder`, and `frontend-builder` a
 Provisional dispatch requires `--allow-provisional`. Provider quota failures are
 runtime-availability failures, not quality evidence.
 
-Qwen3.8 Max Preview is a blocked candidate. Token Plan availability is only a
-runtime fact; it cannot enter a candidate set until exact local lane evidence
+Qwen3.8-Max is provisional for `builder` only, explicit-only at `xhigh`, and
+requires `--allow-provisional`. That promotion is an owner decision, not
+measured capability: no DeepSWE or Terminal-Bench v2 row exists for the model.
+The lane is text-only — it returns a patch the lead applies, and cannot edit a
+worktree. Every other Qwen lane stays blocked until exact local lane evidence
 promotes both the central and executable gates.
 Its `policy-annotation` entry, like the corresponding Kimi, GLM, and Grok
 entries, is an allowlisted evaluation-only candidate and not an operational

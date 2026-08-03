@@ -42,23 +42,23 @@ if [ -n "${FAKE_QWEN_REQUEST_CAPTURE:-}" ]; then
 fi
 case "${FAKE_QWEN_CASE:-success}" in
   success)
-    printf '%s\n' '{"model":"qwen3.8-max-preview","choices":[{"message":{"content":"PONG"}}],"usage":{"prompt_tokens":7,"completion_tokens":3}}' >"$output"
+    printf '%s\n' '{"model":"qwen3.8-max","choices":[{"message":{"content":"PONG"}}],"usage":{"prompt_tokens":7,"completion_tokens":3}}' >"$output"
     printf '200'
     ;;
   auth)
-    printf '%s\n' '{"model":"qwen3.8-max-preview","error":{"message":"SECRET_PROVIDER_RESPONSE"}}' >"$output"
+    printf '%s\n' '{"model":"qwen3.8-max","error":{"message":"SECRET_PROVIDER_RESPONSE"}}' >"$output"
     printf '401'
     ;;
   rate)
-    printf '%s\n' '{"model":"qwen3.8-max-preview","error":{"message":"SECRET_PROVIDER_RESPONSE"}}' >"$output"
+    printf '%s\n' '{"model":"qwen3.8-max","error":{"message":"SECRET_PROVIDER_RESPONSE"}}' >"$output"
     printf '429'
     ;;
   server)
-    printf '%s\n' '{"model":"qwen3.8-max-preview","error":{"message":"SECRET_PROVIDER_RESPONSE"}}' >"$output"
+    printf '%s\n' '{"model":"qwen3.8-max","error":{"message":"SECRET_PROVIDER_RESPONSE"}}' >"$output"
     printf '503'
     ;;
   provider)
-    printf '%s\n' '{"model":"qwen3.8-max-preview","error":{"message":"SECRET_PROVIDER_RESPONSE"}}' >"$output"
+    printf '%s\n' '{"model":"qwen3.8-max","error":{"message":"SECRET_PROVIDER_RESPONSE"}}' >"$output"
     printf '400'
     ;;
   malformed)
@@ -66,11 +66,11 @@ case "${FAKE_QWEN_CASE:-success}" in
     printf '200'
     ;;
   empty)
-    printf '%s\n' '{"model":"qwen3.8-max-preview","choices":[{"message":{"content":""}}]}' >"$output"
+    printf '%s\n' '{"model":"qwen3.8-max","choices":[{"message":{"content":""}}]}' >"$output"
     printf '200'
     ;;
   identity)
-    printf '%s\n' '{"model":"qwen3.8-max-preview-fallback","choices":[{"message":{"content":"PONG"}}]}' >"$output"
+    printf '%s\n' '{"model":"qwen3.8-max-fallback","choices":[{"message":{"content":"PONG"}}]}' >"$output"
     printf '200'
     ;;
   transport)
@@ -99,20 +99,20 @@ write_manifest() {
     --arg contract_sha256 "$(sha256 "$ROOT/evaluation/test-fixtures/contract.txt")" \
     --arg output_schema_sha256 "$(sha256 "$ROOT/evaluation/test-fixtures/output-schema.json")" \
     --arg source_commit "$BASE_COMMIT" \
-    '{schema:"delegation_policy_annotation_evaluation_v1",profile:"qwen3.8-max-preview",lane:"policy-annotation",model:"qwen3.8-max-preview",backend:"token-plan-openai",effort:"xhigh",prompt_sha256:$prompt_sha256,runner_source_commit:$source_commit,runner_sha256:$runner_sha256,contract_path:"evaluation/test-fixtures/contract.txt",contract_sha256:$contract_sha256,output_schema_path:"evaluation/test-fixtures/output-schema.json",output_schema_sha256:$output_schema_sha256,timeout_seconds:60,max_output_chars:1024}' \
+    '{schema:"delegation_policy_annotation_evaluation_v1",profile:"qwen3.8-max",lane:"policy-annotation",model:"qwen3.8-max",backend:"token-plan-openai",effort:"xhigh",prompt_sha256:$prompt_sha256,runner_source_commit:$source_commit,runner_sha256:$runner_sha256,contract_path:"evaluation/test-fixtures/contract.txt",contract_sha256:$contract_sha256,output_schema_path:"evaluation/test-fixtures/output-schema.json",output_schema_sha256:$output_schema_sha256,timeout_seconds:60,max_output_chars:1024}' \
     >"$TMP/manifest.json"
 }
 write_manifest
 MANIFEST_SHA="$(sha256 "$TMP/manifest.json")"
 jq --arg hash "$MANIFEST_SHA" '
-  .profiles["qwen3.8-max-preview"].lanes["policy-annotation"].evaluation_manifest_sha256 = [$hash]
+  .profiles["qwen3.8-max"].lanes["policy-annotation"].evaluation_manifest_sha256 = [$hash]
 ' "$ROOT/config/routing-gates.json" >"$TMP/gates.json"
 mv "$TMP/gates.json" "$ROOT/config/routing-gates.json"
 jq --arg hash "$MANIFEST_SHA" '
   .lanes["policy-annotation"].backends["token-plan-openai"].evaluation_manifest_sha256 = [$hash]
-' "$ROOT/config/qwen3.8-max-preview-routing.json" >"$TMP/qwen-routing.json"
-mv "$TMP/qwen-routing.json" "$ROOT/config/qwen3.8-max-preview-routing.json"
-git -C "$ROOT" add config/routing-gates.json config/qwen3.8-max-preview-routing.json
+' "$ROOT/config/qwen3.8-max-routing.json" >"$TMP/qwen-routing.json"
+mv "$TMP/qwen-routing.json" "$ROOT/config/qwen3.8-max-routing.json"
+git -C "$ROOT" add config/routing-gates.json config/qwen3.8-max-routing.json
 git -C "$ROOT" commit -qm 'allowlist evaluation fixture'
 
 run_case() {
@@ -133,7 +133,40 @@ run_case() {
 PATH="$TMP/bin:$PATH" QWEN_TOKEN_PLAN_API_KEY=sk-sp-test \
   "$ROOT/bin/delegation-qwen" check --json >"$TMP/check.json"
 json "$TMP/check.json" \
-  '.model == "qwen3.8-max-preview" and .backends["token-plan-openai"].available == true'
+  '.model == "qwen3.8-max" and .backends["token-plan-openai"].available == true'
+
+# The real builder lane is provisional: it dispatches only behind an explicit
+# --allow-provisional decision, and the production gates stay untouched here.
+rc=0
+PATH="/usr/bin:/bin" QWEN_TOKEN_PLAN_API_KEY=sk-sp-test \
+  "$ROOT/bin/delegation-qwen" run --lane builder --prompt-file "$TMP/prompt" \
+  --output "$TMP/results/builder-refused.out" --workdir "$TMP/work" \
+  >/dev/null 2>&1 || rc=$?
+[ "$rc" = 78 ] || fail "provisional builder without --allow-provisional returned $rc"
+[ ! -e "$TMP/results/builder-refused.out" ] || fail 'refused builder wrote output'
+
+rc=0
+PATH="$TMP/bin:$PATH" TMPDIR="$TMP/runtime" \
+  QWEN_TOKEN_PLAN_API_KEY=sk-sp-test FAKE_QWEN_CASE=success \
+  FAKE_QWEN_REQUEST_CAPTURE="$TMP/results/builder.request.json" \
+  "$ROOT/bin/delegation-qwen" run --lane builder --allow-provisional \
+  --prompt-file "$TMP/prompt" --output "$TMP/results/builder.out" \
+  --workdir "$TMP/work" >/dev/null 2>&1 || rc=$?
+[ "$rc" = 0 ] || fail "provisional builder with --allow-provisional returned $rc"
+[ "$(cat "$TMP/results/builder.out")" = PONG ] || fail 'builder output mismatch'
+json "$TMP/results/builder.out.metrics.json" \
+  '.model == "qwen3.8-max" and .lane == "builder" and .effort == "xhigh"'
+json "$TMP/results/builder.out.metrics.json" 'has("evaluation_receipt") | not'
+json "$TMP/results/builder.request.json" '.max_tokens == 4096 and .reasoning_effort == "xhigh"'
+[ ! -e "$TMP/results/builder.out.commit.json" ] || fail 'builder run wrote commit marker'
+
+# The effort is pinned: builder cannot be dispatched at another tier.
+rc=0
+PATH="$TMP/bin:$PATH" QWEN_TOKEN_PLAN_API_KEY=sk-sp-test FAKE_QWEN_CASE=success \
+  "$ROOT/bin/delegation-qwen" run --lane builder --allow-provisional --effort high \
+  --prompt-file "$TMP/prompt" --output "$TMP/results/builder-effort.out" \
+  --workdir "$TMP/work" >/dev/null 2>&1 || rc=$?
+[ "$rc" = 78 ] || fail "builder at unpinned effort returned $rc"
 
 # Disabled lanes remain blocked even for controlled evaluations and must fail
 # before runtime/authentication inspection.
@@ -147,7 +180,7 @@ PATH="/usr/bin:/bin" QWEN_TOKEN_PLAN_API_KEY='' \
 run_case success 0
 [ "$(cat "$TMP/results/success.out")" = PONG ] || fail 'success output mismatch'
 json "$TMP/results/success.out.metrics.json" \
-  '.model == "qwen3.8-max-preview" and .effort == "xhigh" and
+  '.model == "qwen3.8-max" and .effort == "xhigh" and
    .tokens.input == 7 and .tokens.output == 3'
 [ ! -e "$TMP/results/success.out.error.json" ] || fail 'success left diagnostic'
 
@@ -313,7 +346,7 @@ jq -e --arg manifest_sha "$MANIFEST_SHA" \
       "runner_sha256","runner_source_commit","schema_version","status"] and
    .schema_version == "delegation_policy_annotation_preflight_receipt_v1" and
    .status == "READY_NO_PROVIDER_CALL" and
-   .profile == "qwen3.8-max-preview" and .model == "qwen3.8-max-preview" and
+   .profile == "qwen3.8-max" and .model == "qwen3.8-max" and
    .backend == "token-plan-openai" and .effort == "xhigh" and
    .lane == "policy-annotation" and
    .evaluation_manifest_sha256 == $manifest_sha and
@@ -358,14 +391,14 @@ PATH="$TMP/bin:$PATH" QWEN_TOKEN_PLAN_API_KEY=sk-sp-test \
 jq '.timeout_seconds = 900' "$TMP/manifest.json" >"$TMP/manifest-timeout900.json"
 TIMEOUT900_MANIFEST_SHA="$(sha256 "$TMP/manifest-timeout900.json")"
 jq --arg hash "$TIMEOUT900_MANIFEST_SHA" '
-  .profiles["qwen3.8-max-preview"].lanes["policy-annotation"].evaluation_manifest_sha256 += [$hash]
+  .profiles["qwen3.8-max"].lanes["policy-annotation"].evaluation_manifest_sha256 += [$hash]
 ' "$ROOT/config/routing-gates.json" >"$TMP/gates.json"
 mv "$TMP/gates.json" "$ROOT/config/routing-gates.json"
 jq --arg hash "$TIMEOUT900_MANIFEST_SHA" '
   .lanes["policy-annotation"].backends["token-plan-openai"].evaluation_manifest_sha256 += [$hash]
-' "$ROOT/config/qwen3.8-max-preview-routing.json" >"$TMP/qwen-routing.json"
-mv "$TMP/qwen-routing.json" "$ROOT/config/qwen3.8-max-preview-routing.json"
-git -C "$ROOT" add config/routing-gates.json config/qwen3.8-max-preview-routing.json
+' "$ROOT/config/qwen3.8-max-routing.json" >"$TMP/qwen-routing.json"
+mv "$TMP/qwen-routing.json" "$ROOT/config/qwen3.8-max-routing.json"
+git -C "$ROOT" add config/routing-gates.json config/qwen3.8-max-routing.json
 git -C "$ROOT" commit -qm 'allowlist ceiling timeout fixture'
 rc=0
 PATH="$TMP/bin:$PATH" TMPDIR="$TMP/runtime" QWEN_TOKEN_PLAN_API_KEY=sk-sp-test \
@@ -396,14 +429,14 @@ jq -e --arg manifest_sha "$TIMEOUT900_MANIFEST_SHA" \
 jq '.timeout_seconds = 901' "$TMP/manifest.json" >"$TMP/manifest-timeout901.json"
 TIMEOUT901_MANIFEST_SHA="$(sha256 "$TMP/manifest-timeout901.json")"
 jq --arg hash "$TIMEOUT901_MANIFEST_SHA" '
-  .profiles["qwen3.8-max-preview"].lanes["policy-annotation"].evaluation_manifest_sha256 += [$hash]
+  .profiles["qwen3.8-max"].lanes["policy-annotation"].evaluation_manifest_sha256 += [$hash]
 ' "$ROOT/config/routing-gates.json" >"$TMP/gates.json"
 mv "$TMP/gates.json" "$ROOT/config/routing-gates.json"
 jq --arg hash "$TIMEOUT901_MANIFEST_SHA" '
   .lanes["policy-annotation"].backends["token-plan-openai"].evaluation_manifest_sha256 += [$hash]
-' "$ROOT/config/qwen3.8-max-preview-routing.json" >"$TMP/qwen-routing.json"
-mv "$TMP/qwen-routing.json" "$ROOT/config/qwen3.8-max-preview-routing.json"
-git -C "$ROOT" add config/routing-gates.json config/qwen3.8-max-preview-routing.json
+' "$ROOT/config/qwen3.8-max-routing.json" >"$TMP/qwen-routing.json"
+mv "$TMP/qwen-routing.json" "$ROOT/config/qwen3.8-max-routing.json"
+git -C "$ROOT" add config/routing-gates.json config/qwen3.8-max-routing.json
 git -C "$ROOT" commit -qm 'allowlist out-of-bounds timeout fixture'
 rc=0
 PATH="$TMP/bin:$PATH" TMPDIR="$TMP/runtime" QWEN_TOKEN_PLAN_API_KEY=sk-sp-test \
@@ -422,9 +455,9 @@ PATH="$TMP/bin:$PATH" TMPDIR="$TMP/runtime" QWEN_TOKEN_PLAN_API_KEY=sk-sp-test \
 
 # Flip the throwaway lane to qualified in BOTH gates so ordinary (non-evaluation)
 # dispatch can be exercised; the production gates stay candidate and untouched.
-jq '.profiles["qwen3.8-max-preview"].lanes["policy-annotation"].status = "qualified" |
-    .profiles["qwen3.8-max-preview"].lanes["policy-annotation"].selection = "explicit-only" |
-    .profiles["qwen3.8-max-preview"].lanes["policy-annotation"].evaluation_manifest_sha256 = []' \
+jq '.profiles["qwen3.8-max"].lanes["policy-annotation"].status = "qualified" |
+    .profiles["qwen3.8-max"].lanes["policy-annotation"].selection = "explicit-only" |
+    .profiles["qwen3.8-max"].lanes["policy-annotation"].evaluation_manifest_sha256 = []' \
   "$ROOT/config/routing-gates.json" >"$TMP/gates.json"
 mv "$TMP/gates.json" "$ROOT/config/routing-gates.json"
 jq '.qualified_lanes = ["policy-annotation"] |
@@ -432,9 +465,9 @@ jq '.qualified_lanes = ["policy-annotation"] |
     .lanes["policy-annotation"].backends["token-plan-openai"].selection = "explicit-only" |
     .lanes["policy-annotation"].backends["token-plan-openai"].qualified = true |
     del(.lanes["policy-annotation"].backends["token-plan-openai"].evaluation_manifest_sha256)' \
-  "$ROOT/config/qwen3.8-max-preview-routing.json" >"$TMP/qwen-routing.json"
-mv "$TMP/qwen-routing.json" "$ROOT/config/qwen3.8-max-preview-routing.json"
-git -C "$ROOT" add config/routing-gates.json config/qwen3.8-max-preview-routing.json
+  "$ROOT/config/qwen3.8-max-routing.json" >"$TMP/qwen-routing.json"
+mv "$TMP/qwen-routing.json" "$ROOT/config/qwen3.8-max-routing.json"
+git -C "$ROOT" add config/routing-gates.json config/qwen3.8-max-routing.json
 git -C "$ROOT" commit -qm 'qualify policy-annotation for ordinary dispatch test'
 
 rc=0
@@ -448,7 +481,7 @@ PATH="$TMP/bin:$PATH" TMPDIR="$TMP/runtime" \
 [ "$rc" = 0 ] || fail "ordinary qualified run returned $rc"
 [ "$(cat "$TMP/results/ordinary.out")" = PONG ] || fail 'ordinary output mismatch'
 json "$TMP/results/ordinary.out.metrics.json" \
-  '.model == "qwen3.8-max-preview" and .tokens.input == 7 and .tokens.output == 3'
+  '.model == "qwen3.8-max" and .tokens.input == 7 and .tokens.output == 3'
 # Ordinary runs never claim the evaluation receipt and keep the 4096 ceiling.
 json "$TMP/results/ordinary.out.metrics.json" 'has("evaluation_receipt") | not'
 json "$TMP/results/ordinary.request.json" '.max_tokens == 4096'

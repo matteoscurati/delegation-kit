@@ -107,7 +107,7 @@ Effort levels each model exposes (Claude `effort:` / Codex `model_reasoning_effo
 | glm-5.2 | high (installed bridge maximum) · max (provider capability only) |
 | kimi-k3 | max |
 | gemini-3.6-flash | medium (scout provisional) · high (editing candidate) |
-| qwen3.8-max-preview | xhigh (candidate; evaluation only) |
+| qwen3.8-max | xhigh (builder provisional; every other lane candidate/disabled) |
 | grok-4.5 | high (builder/frontend-builder provisional; policy annotation evaluation-only) |
 
 Kimi K3 is provisional: the 2026-07-16 run was truncated by provider quota. Its
@@ -115,12 +115,26 @@ valid subset and exact public rows support controlled `clerk`, `scout`, `builder
 and `frontend-builder` use with `--allow-provisional`; `senior` is only a blocked
 candidate. The installed gate remains authoritative for the exact tuple.
 
-Qwen3.8 Max Preview is a blocked Token Plan candidate. The July 25 audit found
+Qwen3.8-Max left preview on 2026-08-02: Model Studio now lists the unsuffixed
+`qwen3.8-max` across five regions, and a local Token Plan probe on 2026-08-03
+confirmed the endpoint serves it at `xhigh` (the `-preview` id still resolves in
+parallel). The pin moved to `qwen3.8-max` on that runtime attestation.
+
+`builder` is **provisional and explicit-only** on an owner decision, not on
+measured capability. The evidence position is unchanged from the July audits:
 no exact row in Artificial Analysis, Arena, WebDev, OpenBench, or Epoch's ZIP,
-and the July 28 re-check of Agent Arena (42 models) and WebDev (19 labs) still
-found none — both boards list Qwen3.7, not 3.8. The subscription and runner
-establish availability only; there is no exact public benchmark or local lane
-evaluation in this repository yet. Normal dispatch is therefore refused.
+and the 2026-08-03 re-check of the Artificial Analysis coding-agent board and
+Terminal-Bench 2.1 still found none — so **both** builder required metrics
+(`coding.deep_swe_pass_pct`, `coding.terminal_bench_v2_pass_pct`) remain unmet.
+Alibaba has published no benchmark table for the model. Dispatch therefore needs
+`--allow-provisional`, and every other lane stays refused.
+
+Two limits ride with that lane. The Token Plan transport is chat-completions
+only: it cannot edit a worktree, so `builder` returns a patch the lead applies
+and verifies — it is not an autonomous editing agent like Grok Build or Kimi.
+And the previously allowlisted `policy-annotation` evaluation manifest was bound
+to the `qwen3.8-max-preview` tuple; it is void after the rename and must be
+regenerated before any evaluation run.
 
 Gemini 3.6 Flash is reachable through the authenticated Antigravity CLI. Its
 public evidence consists of CursorBench scores at `medium` (51.2) and `high`
@@ -255,5 +269,7 @@ preferred-explicit. The runner capability-probes the CLI and optionally archives
 the selected bytes privately with a digest, so a vendor update cannot silently
 replace them. CLI version is provenance only. No Grok reviewer, senior, or
 judgement lane exists.
-Qwen3.8 Max Preview remains blocked for every normal lane until a controlled
+Qwen3.8-Max is provisional for `builder` only, explicit-only at `xhigh`, and
+requires `--allow-provisional`. It is text-only and returns a patch rather than
+editing a worktree. Every other Qwen lane stays blocked until a controlled
 `--evaluation` run records lane-specific evidence and both gates are updated.

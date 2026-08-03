@@ -271,6 +271,17 @@
       "republished": "The archive was re-published since the 2026-07-28 record. Its 2026-07-31 shape is 75 CSVs, 5,984 rows, and 5,930 normalized advisory records; the hash is descriptive provenance and is not enforced by any check.",
       "scope": "75 benchmark CSVs, 5,984 rows, and 5,930 advisory normalized records spanning coding, agents, multimodal reasoning, and general capabilities.",
       "limitations": "Many imported rows have unknown harness or effort and remain contextual; ZIP evidence cannot mutate a routing gate or qualify a production lane by itself."
+    },
+    "qwen-3.8-max-ga-2026-08-03": {
+      "name": "Qwen3.8-Max general availability",
+      "url": "https://help.aliyun.com/en/model-studio/models",
+      "press_url": "https://www.scmp.com/tech/article/3362738/alibabas-ai-model-qwen38-max-made-widely-accessible-ahead-open-weights-release",
+      "announcement_url": "https://x.com/Alibaba_Qwen/status/2084100707423289643",
+      "observed_at": "2026-08-03",
+      "data_date": "2026-08-02",
+      "category": "first-party-release-evidence",
+      "scope": "Model Studio now lists the unsuffixed qwen3.8-max identifier across five regions with OpenAI-compatible, Anthropic-compatible, and DashScope APIs, and uses it in production documentation examples. A local Token Plan probe on 2026-08-03 confirmed GET /models returns both qwen3.8-max and qwen3.8-max-preview and that a chat completion pinned to qwen3.8-max returns .model == \"qwen3.8-max\" with reasoning_effort xhigh accepted.",
+      "limitations": "Leaving preview is an availability change, not a capability measurement. Alibaba has published no benchmark table for Qwen3.8-Max, and no DeepSWE or Terminal-Bench v2 row exists for it on any harness, so this source cannot satisfy builder required metrics. The announcement post could not be read directly (x.com returned HTTP 402); its pricing figures reached this record through a search-engine summary and are unverified. Open weights had not shipped when observed. The alibabacloud.com international documentation mirror still listed no qwen3.8 model."
     }
   },
   "lane_evidence": {
@@ -934,6 +945,26 @@
           "swe_marathon_pass_pct": 13.0,
           "mcp_atlas_pass_pct": 76.8,
           "tool_decathlon_pass_pct": 48.2
+        }
+      }
+    },
+    {
+      "id": "qwen-3.8-max-ga-launch",
+      "model": "qwen3.8-max",
+      "harness": "qwen-launch",
+      "effort": "reported-default",
+      "source": "qwen-3.8-max-ga-2026-08-03",
+      "contextual_only": true,
+      "metrics": {
+        "launch": {
+          "context_window_tokens": 1000000,
+          "parameters_trillions": 2.4,
+          "first_party_claim": "frontier-class coding and long-horizon autonomy",
+          "left_preview": true,
+          "unsuffixed_model_id_live": true,
+          "preview_id_still_resolves": true,
+          "open_weights_shipped": false,
+          "published_benchmark_table": false
         }
       }
     }

@@ -266,15 +266,16 @@
         }
       }
     },
-    "qwen3.8-max-preview": {
-      "model": "qwen3.8-max-preview", "harness": "token-plan-openai", "effort": "xhigh",
+    "qwen3.8-max": {
+      "model": "qwen3.8-max", "harness": "token-plan-openai", "effort": "xhigh",
       "lanes": {
+        "builder": {"status": "provisional", "selection": "explicit-only", "exact_evidence_ids": [], "context_evidence_ids": ["qwen-3.8-max-ga-launch"], "local_evaluation": {"run_id": "2026-08-03-qwen3.8-max-ga", "task_count": 1, "repeats": 1, "confidence": "low", "limitations": "Owner promotion on an explicit routing decision, not on measured builder capability. The only local check is a runtime identity probe confirming the endpoint serves qwen3.8-max at xhigh; no held-out implementation pack was run. The runner is text-only and cannot edit a worktree, so this lane returns a patch the lead applies and verifies."}, "evidence_gap": "No DeepSWE or Terminal-Bench v2 row exists for qwen3.8-max on any harness, so both builder required metrics are unmet. Promotion is an owner decision recorded as provisional and explicit-only.", "fallback": "sonnet-builder"},
         "clerk": {"status": "candidate", "selection": "blocked", "exact_evidence_ids": [], "context_evidence_ids": [], "evidence_gap": "No exact public benchmark or local clerk evaluation.", "fallback": "luna-clerk"},
         "scout": {"status": "candidate", "selection": "blocked", "exact_evidence_ids": [], "context_evidence_ids": [], "evidence_gap": "No exact public benchmark or local repository-navigation evaluation.", "fallback": "terra-scout"},
         "reviewer": {"status": "candidate", "selection": "blocked", "exact_evidence_ids": [], "context_evidence_ids": [], "evidence_gap": "No exact review precision/recall evaluation."},
         "senior": {"status": "candidate", "selection": "blocked", "exact_evidence_ids": [], "context_evidence_ids": [], "evidence_gap": "No exact high-risk judgement or steerability evaluation."},
-        "judgement": {"status": "disabled", "selection": "blocked", "exact_evidence_ids": [], "context_evidence_ids": [], "evidence_gap": "Preview marketing claims and runtime access cannot qualify judgement."},
-        "policy-annotation": {"status": "candidate", "selection": "blocked", "exact_evidence_ids": [], "context_evidence_ids": [], "evaluation_manifest_sha256": ["77a8cb43489ce1708f904d8aef1f27e5cc003a8216be32306c5cd50740ab5664"], "evidence_gap": "No frozen local policy-annotation result exists."}
+        "judgement": {"status": "disabled", "selection": "blocked", "exact_evidence_ids": [], "context_evidence_ids": [], "evidence_gap": "Launch claims and runtime access cannot qualify judgement."},
+        "policy-annotation": {"status": "candidate", "selection": "blocked", "exact_evidence_ids": [], "context_evidence_ids": [], "evaluation_manifest_sha256": [], "evidence_gap": "No frozen local policy-annotation result exists. The previous allowlisted manifest was bound to the qwen3.8-max-preview tuple and is void after the rename; regenerate it against qwen3.8-max before any evaluation run."}
       }
     }
   },

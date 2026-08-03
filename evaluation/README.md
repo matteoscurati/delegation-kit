@@ -21,10 +21,14 @@ decision graph and read their dispatch status from it before checking runtime or
 authentication. Their backend-specific JSON files retain transport and legacy
 measurement details but cannot widen the central gate.
 
-Qwen3.8 Max Preview is intentionally represented with empty exact/context
-evidence arrays. Its Token Plan runtime is available for controlled local
-evaluation, but availability, preview marketing, and a smoke response are not
-capability evidence and cannot promote a lane.
+Qwen3.8-Max carries an empty `exact_evidence_ids` array on every lane, including
+the provisional `builder`. Its only recorded row is the contextual
+`qwen-3.8-max-ga-launch` availability record, whose metrics live under
+`launch.*` precisely so they can never satisfy a lane's `required_metrics`.
+Builder was promoted by an explicit owner decision, not by evidence: leaving
+preview, Token Plan availability, and a smoke response are runtime facts, not
+capability measurements. Promotion to `qualified` still requires exact DeepSWE
+and Terminal-Bench v2 rows at the production tuple.
 
 The candidate/blocked `policy-annotation` lane may be invoked only with an
 explicit manifest-bound `--evaluation` mode for a pre-registered qualification
@@ -233,7 +237,7 @@ compares it against the snapshot, so a mismatch is a signal to re-read, not a
 failure. New relevant families include FrontierCode, FrontierSWE, APEX Agents,
 Blueprint-Bench 2, and Epoch Capabilities Index. Exact model-name records exist
 for Fable 5, Opus 5, Sonnet 5, GLM-5.2, all three GPT-5.6 tiers, Grok 4.5, and
-Kimi K3; Gemini 3.6 Flash and Qwen3.8 Max Preview have no exact model-name ZIP
+Kimi K3; Gemini 3.6 Flash and Qwen3.8-Max have no exact model-name ZIP
 record. Unknown harness or effort remains contextual, so the archive does not
 qualify a production lane by itself.
 

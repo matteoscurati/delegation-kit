@@ -2,6 +2,44 @@
 
 All notable changes to delegation-kit are documented here.
 
+## [0.10.0] — 2026-08-03
+
+### Changed
+
+- Repinned the Qwen bridge from `qwen3.8-max-preview` to `qwen3.8-max` after the
+  model left preview on 2026-08-02. The rename rests on a local Token Plan probe
+  confirming `GET /models` lists the unsuffixed id and that a chat completion
+  pinned to it returns `.model == "qwen3.8-max"` with `reasoning_effort: xhigh`
+  accepted; the `-preview` id still resolves in parallel. Renamed
+  `config/qwen3.8-max-preview-routing.json` to `config/qwen3.8-max-routing.json`
+  and the central gate profile to `qwen3.8-max`.
+- Promoted the Qwen `builder` lane to **provisional / explicit-only** at `xhigh`
+  on an explicit owner routing decision. `delegation-qwen run` now accepts
+  `--allow-provisional`, which is mutually exclusive with `--evaluation`; the
+  previous blanket refusal of every provisional lane is gone. Every other lane
+  stays a blocked candidate, and `judgement` stays disabled.
+- Cleared the Qwen `policy-annotation` manifest allowlist in both gates. The
+  frozen manifest was bound to the `qwen3.8-max-preview` profile, model, and
+  runner hash, so it can no longer validate; regenerate it against the new tuple
+  before any evaluation run. The frozen v2/v3 evaluation artifacts are
+  historical records and were deliberately left unrewritten.
+
+### Documentation
+
+- Recorded the promotion as an owner decision rather than measured capability.
+  A 2026-08-03 re-check of the Artificial Analysis coding-agent board and
+  Terminal-Bench 2.1 still found no `qwen3.8-max` row, so both builder required
+  metrics (`coding.deep_swe_pass_pct`, `coding.terminal_bench_v2_pass_pct`)
+  remain unmet and `exact_evidence_ids` stays empty. Alibaba has published no
+  benchmark table for the model.
+- Added the contextual `qwen-3.8-max-ga-launch` evidence row and its
+  `qwen-3.8-max-ga-2026-08-03` source. Its metrics live under `launch.*` so they
+  cannot satisfy any lane's `required_metrics`. The snapshot date stays
+  2026-07-31 because this was a targeted re-check, not a full refresh.
+- Documented that the Qwen builder lane is text-only: the chat-completions
+  transport exposes no tools and no terminal, so it returns a patch the lead
+  applies and verifies rather than editing a worktree, and it is prompt-only.
+
 ## [0.9.0] — 2026-08-01
 
 ### Added

@@ -166,19 +166,38 @@ expect_failure 78 env DELEGATION_ROUTING_GATES_FILE="$TMP/bad-pair.json" \
 expect_failure 78 env DELEGATION_ROUTING_GATES_FILE="$TMP/bad-pair.json" \
   bin/delegation-grok check --json
 
-# Qwen is installed as a blocked candidate and cannot dispatch normal work.
+# Every Qwen lane except builder is still a blocked candidate.
 expect_failure 78 bin/delegation-qwen run --lane clerk --effort auto --backend auto \
   --prompt-file README.md --output "$TMP/qwen.txt" --workdir "$ROOT"
+expect_failure 78 bin/delegation-qwen run --lane judgement --effort auto --backend auto \
+  --allow-provisional --prompt-file README.md --output "$TMP/qwen-judge.txt" --workdir "$ROOT"
+
+# Builder is provisional: explicit-only, and never dispatchable by default.
+expect_failure 78 bin/delegation-qwen run --lane builder --effort auto --backend auto \
+  --prompt-file README.md --output "$TMP/qwen-builder.txt" --workdir "$ROOT"
+# With the explicit decision the gate allows it through and the run stops only
+# at the runtime check (69), proving the refusal above was the gate and not a
+# missing key.
+expect_failure 69 env -u QWEN_TOKEN_PLAN_API_KEY \
+  DELEGATION_QWEN_KEY_FILE="$TMP/absent-qwen-key.env" \
+  bin/delegation-qwen run --lane builder --effort auto --backend auto \
+  --allow-provisional --prompt-file README.md \
+  --output "$TMP/qwen-builder-ok.txt" --workdir "$ROOT"
+# --evaluation is a separate path and never rides on the provisional decision.
+expect_failure 64 bin/delegation-qwen run --lane policy-annotation --effort auto \
+  --backend auto --allow-provisional --evaluation \
+  --evaluation-manifest "$TMP/absent-manifest.json" --prompt-file README.md \
+  --output "$TMP/qwen-eval.txt" --workdir "$ROOT"
 
 # Qwen bridge drift is checked in both directions.
 jq '.lanes.clerk.backends["token-plan-openai"].status = "provisional" |
     .lanes.clerk.backends["token-plan-openai"].selection = "explicit-only" |
-    .provisional_lanes = ["clerk"]' config/qwen3.8-max-preview-routing.json >"$TMP/bad-qwen.json"
+    .provisional_lanes = ["clerk"]' config/qwen3.8-max-routing.json >"$TMP/bad-qwen.json"
 expect_failure 65 env DELEGATION_QWEN_ROUTING_FILE="$TMP/bad-qwen.json" \
   bin/delegation-route check --json
 jq '.lanes["policy-annotation"].backends["token-plan-openai"].evaluation_manifest_sha256 =
       ["bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"]' \
-  config/qwen3.8-max-preview-routing.json >"$TMP/bad-qwen-manifest.json"
+  config/qwen3.8-max-routing.json >"$TMP/bad-qwen-manifest.json"
 expect_failure 65 env DELEGATION_QWEN_ROUTING_FILE="$TMP/bad-qwen-manifest.json" \
   bin/delegation-route check --json
 
@@ -228,7 +247,7 @@ expect_failure 65 env DELEGATION_GROK_ROUTING_FILE="$TMP/bad-grok-compatibility.
 bin/delegation-route resolve --lane judgement --json >"$TMP/judgement.json"
 jq -e '([.explicit[].profile] | sort) == ["fable-judge","sol-judge"] and
        ([.blocked[].profile] | index("kimi-k3") != null) and
-       ([.blocked[].profile] | index("qwen3.8-max-preview") != null)' "$TMP/judgement.json" >/dev/null
+       ([.blocked[].profile] | index("qwen3.8-max") != null)' "$TMP/judgement.json" >/dev/null
 pass=$((pass + 1))
 
 # Policy annotation is candidate/blocked only, including separate exact-variant
@@ -238,12 +257,12 @@ jq -e '
   (.defaults | length) == 0 and (.fallbacks | length) == 0 and (.explicit | length) == 0 and
   ([.blocked[].profile] | sort) ==
     ["fable-policy-annotator","glm-policy-annotation","grok-build","kimi-k3",
-     "opus-policy-annotator","qwen3.8-max-preview","sol-max-policy-annotator"]
+     "opus-policy-annotator","qwen3.8-max","sol-max-policy-annotator"]
 ' "$TMP/policy-annotation.json" >/dev/null
 jq -e '
   .profiles["kimi-k3"].lanes.reviewer.status == "disabled" and
   .profiles["kimi-k3"].lanes.judgement.status == "disabled" and
-  .profiles["qwen3.8-max-preview"].lanes.judgement.status == "disabled"
+  .profiles["qwen3.8-max"].lanes.judgement.status == "disabled"
 ' config/routing-gates.json >/dev/null
 pass=$((pass + 1))
 

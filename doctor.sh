@@ -150,10 +150,10 @@ elif found_path "$CLAUDE_HOME/plugins" '*kimi-executor/SKILL.md'; then
   ok "optional Kimi executor skill installed (via plugin cache; universal install still required for runner)"
 else warn "optional Kimi executor skill missing — Kimi cannot be selected even after evaluation"; fi
 if [ -f "$CLAUDE_HOME/skills/qwen-executor/SKILL.md" ]; then
-  ok "blocked Qwen candidate skill installed"
+  ok "provisional Qwen builder skill installed"
 elif found_path "$CLAUDE_HOME/plugins" '*qwen-executor/SKILL.md'; then
-  ok "blocked Qwen candidate skill installed (via plugin cache; universal install still required for runner)"
-else warn "Qwen candidate skill missing — re-run ./install.sh"; fi
+  ok "provisional Qwen builder skill installed (via plugin cache; universal install still required for runner)"
+else warn "Qwen builder skill missing — re-run ./install.sh"; fi
 if [ -f "$CLAUDE_HOME/skills/grok-executor/SKILL.md" ]; then
   ok "provisional Grok builder skill installed"
 elif found_path "$CLAUDE_HOME/plugins" '*grok-executor/SKILL.md'; then
@@ -193,8 +193,8 @@ if [ -f "$CODEX_HOME/skills/kimi-executor/SKILL.md" ]; then
   ok "optional Kimi executor skill installed for Codex"
 else warn "optional Kimi executor skill missing for Codex"; fi
 if [ -f "$CODEX_HOME/skills/qwen-executor/SKILL.md" ]; then
-  ok "blocked Qwen candidate skill installed for Codex"
-else warn "Qwen candidate skill missing for Codex"; fi
+  ok "provisional Qwen builder skill installed for Codex"
+else warn "Qwen builder skill missing for Codex"; fi
 if [ -f "$CODEX_HOME/skills/grok-executor/SKILL.md" ]; then
   ok "provisional Grok builder skill installed for Codex"
 else warn "Grok builder skill missing for Codex"; fi
@@ -403,25 +403,27 @@ else
   warn "delegation-grok not installed — re-run ./install.sh"
 fi
 
-# ---- Qwen3.8 Max Preview blocked candidate ----
-hdr "Qwen3.8 Max Preview candidate"
+# ---- Qwen3.8-Max provisional builder ----
+hdr "Qwen3.8-Max builder"
 if ! have jq; then
   warn "jq not on PATH — delegation-qwen cannot run"
 elif have delegation-qwen; then
   qwen_check="$(delegation-qwen check --json 2>/dev/null || true)"
-  if [ -n "$qwen_check" ] && printf '%s' "$qwen_check" | jq -e '.model == "qwen3.8-max-preview"' >/dev/null 2>&1; then
-    ok "delegation-qwen installed and pinned to qwen3.8-max-preview"
+  if [ -n "$qwen_check" ] && printf '%s' "$qwen_check" | jq -e '.model == "qwen3.8-max"' >/dev/null 2>&1; then
+    ok "delegation-qwen installed and pinned to qwen3.8-max"
     qwen_selected="$(printf '%s' "$qwen_check" | jq -r '.selected_backend')"
+    qwen_provisional="$(printf '%s' "$qwen_check" | jq -r '.provisional_lanes | join(",")')"
     qwen_candidates="$(printf '%s' "$qwen_check" | jq -r '.candidate_lanes | join(",")')"
     [ "$qwen_selected" = none ] \
       && info "Qwen Token Plan runtime unavailable" \
       || ok "Qwen Token Plan runtime available ($qwen_selected)"
-    info "Qwen remains blocked candidate: ${qwen_candidates:-none}; availability is not qualification"
+    info "Qwen provisional lanes: ${qwen_provisional:-none} — explicit-only, require --allow-provisional"
+    info "Qwen still-blocked candidates: ${qwen_candidates:-none}; availability is not qualification"
   else
-    bad "delegation-qwen check failed or is not pinned to qwen3.8-max-preview"
+    bad "delegation-qwen check failed or is not pinned to qwen3.8-max"
   fi
 else
-  warn "delegation-qwen not installed — re-run ./install.sh to install the blocked candidate"
+  warn "delegation-qwen not installed — re-run ./install.sh to install the Qwen bridge"
 fi
 
 # ---- Codex config: multi_agent + sandbox/network posture ----

@@ -1,0 +1,48 @@
+{
+  "model": "qwen3.8-max",
+  "status": "provisional",
+  "evaluated_at": "2026-08-03T00:00:00Z",
+  "promoted_at": "2026-08-03T00:00:00Z",
+  "source_run": "2026-08-03-qwen3.8-max-ga",
+  "external_evidence_file": "model-evidence.json",
+  "external_evidence_ids": ["qwen-3.8-max-ga-launch"],
+  "qualification_basis": "Owner promotion of the builder lane on an explicit routing decision after Qwen3.8-Max left preview, plus a local Token Plan identity probe confirming the endpoint serves qwen3.8-max at xhigh. This is not measured builder capability: no DeepSWE or Terminal-Bench v2 row exists for this model on any harness, so both builder required metrics are unmet. Use stays provisional and explicit-only, and every other lane remains blocked.",
+  "preferred_backends": ["token-plan-openai"],
+  "qualified_lanes": [],
+  "provisional_lanes": ["builder"],
+  "lanes": {
+    "builder": {
+      "default_effort": "xhigh",
+      "preferred_backends": ["token-plan-openai"],
+      "backends": {
+        "token-plan-openai": {
+          "qualified": false,
+          "status": "provisional",
+          "selection": "explicit-only",
+          "effort": "xhigh",
+          "runtime_model": "qwen3.8-max",
+          "runtime_controls": {
+            "transport": "chat-completions",
+            "worktree_edits": false,
+            "terminal": false,
+            "tools": []
+          },
+          "local_evaluation": {
+            "run_id": "2026-08-03-qwen3.8-max-ga",
+            "outcome": "passed-runtime-identity-probe",
+            "task_count": 1,
+            "repeats": 1,
+            "confidence": "low",
+            "limitations": "A runtime identity probe is not a held-out implementation evaluation. The runner is text-only and cannot edit a worktree, so the lane returns a patch the lead applies and verifies."
+          }
+        }
+      }
+    },
+    "clerk": {"default_effort": "xhigh", "backends": {"token-plan-openai": {"qualified": false, "status": "candidate", "selection": "blocked", "effort": "xhigh"}}},
+    "scout": {"default_effort": "xhigh", "backends": {"token-plan-openai": {"qualified": false, "status": "candidate", "selection": "blocked", "effort": "xhigh"}}},
+    "reviewer": {"default_effort": "xhigh", "backends": {"token-plan-openai": {"qualified": false, "status": "candidate", "selection": "blocked", "effort": "xhigh"}}},
+    "senior": {"default_effort": "xhigh", "backends": {"token-plan-openai": {"qualified": false, "status": "candidate", "selection": "blocked", "effort": "xhigh"}}},
+    "judgement": {"default_effort": "xhigh", "backends": {"token-plan-openai": {"qualified": false, "status": "disabled", "selection": "blocked", "effort": "xhigh"}}},
+    "policy-annotation": {"default_effort": "xhigh", "backends": {"token-plan-openai": {"qualified": false, "status": "candidate", "selection": "blocked", "effort": "xhigh", "evaluation_manifest_sha256": []}}}
+  }
+}

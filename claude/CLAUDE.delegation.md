@@ -104,16 +104,29 @@ effort, or neighboring lane. Exit 69 covers runtime/login/entitlement/quota,
 75 covers overload/5xx/timeout/OAuth conflict, 70 covers sandbox/output/
 unclassified failure, 78 covers authorization, and 130 is caller cancellation.
 
-### Optional blocked Qwen candidate
+### Optional provisional Qwen3.8-Max builder
 
-Qwen3.8 Max Preview is installed only through `qwen-executor` and
-`delegation-qwen`, pinned to the Qwen Cloud Token Plan OpenAI-compatible backend
-at `xhigh`. Subscription access, a valid key, or a smoke test is not
-qualification. Every normal lane remains blocked until exact local evaluation
-promotes both routing gates. Never use `--evaluation` for ordinary work.
-The only evaluation-capable lane is manifest-bound `policy-annotation` at the
-exact Qwen/xhigh tuple; it cannot promote or mutate a gate or qualify broad
-judgement.
+Qwen3.8-Max is installed only through `qwen-executor` and `delegation-qwen`,
+pinned to `qwen3.8-max` on the Qwen Cloud Token Plan OpenAI-compatible backend
+at `xhigh`. Only `builder` is promoted, as provisional and explicit-only:
+require an explicit routing decision and `--allow-provisional`. That promotion
+is an owner decision, not measured capability — no DeepSWE or Terminal-Bench v2
+row exists for this model, so both builder required metrics are unmet.
+
+The lane is text-only: the chat-completions transport has no tools, no terminal,
+and cannot edit a worktree, so it returns a patch the lead applies and verifies.
+It is also prompt-only — embed the relevant file excerpts in the brief, because
+paths alone reach nothing. Prefer an editing builder (Grok Build, Kimi Code) when
+the task genuinely needs autonomous edits.
+
+Subscription access, a valid key, or a smoke test is not qualification. Every
+other lane stays blocked until exact local evaluation promotes both routing
+gates, and a refused builder never justifies substituting a neighbouring lane.
+Never use `--evaluation` for ordinary work; it cannot be combined with
+`--allow-provisional`. The only evaluation-capable lane is manifest-bound
+`policy-annotation` at the exact Qwen/xhigh tuple; it cannot promote or mutate a
+gate or qualify broad judgement, and its previous manifest is void after the
+rename from `qwen3.8-max-preview`.
 
 ### Optional Grok 4.5 builder
 
