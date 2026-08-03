@@ -61,11 +61,24 @@ publishes automatically.
 
 ### Before tagging
 
-There is no CI and no `.github/workflows`, so nothing verifies a release except
-the person cutting it. Run the gates in
-[`docs/compatibility.md`](./docs/compatibility.md) — all eight suites plus
-`./doctor.sh --ping` — and refresh that page's verified snapshot with the real
-numbers you observed. Do not carry the previous release's numbers forward.
+`.github/workflows/ci.yml` runs on every pull request and on pushes to `main`:
+shellcheck at `-S warning`, the version-surface check, and the regression suites
+on macOS. A tag push additionally re-runs `tests/version-consistency.sh --tag`,
+which fails a tag that does not match `delegation-kit--v<the manifest version>`.
+
+CI is not the whole gate. It cannot run `./doctor.sh --ping`, which needs
+authenticated Claude and Codex CLIs, and it does not exercise any real external
+model. Before tagging, run the gates in
+[`docs/compatibility.md`](./docs/compatibility.md) locally and refresh that
+page's verified snapshot with the real numbers you observed. Do not carry the
+previous release's numbers forward.
+
+You can run either gate by hand:
+
+```sh
+tests/version-consistency.sh
+tests/version-consistency.sh --tag delegation-kit--v<VERSION>
+```
 
 ## Routing gates
 
