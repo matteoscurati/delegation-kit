@@ -1,7 +1,9 @@
 #!/usr/bin/env bash
-# Run Qwen3.8 Max Preview through the Qwen Cloud Token Plan OpenAI-compatible
-# endpoint. The model is a blocked candidate until exact local evaluation
-# promotes a lane in both the central and executable gates.
+# Run Qwen3.8-Max through the Qwen Cloud Token Plan OpenAI-compatible endpoint.
+# Only the builder lane is promoted, and only as provisional/explicit-only: it
+# requires --allow-provisional after an explicit routing decision. Every other
+# lane stays blocked until exact local evaluation promotes it in both the
+# central and executable gates.
 set -euo pipefail
 umask 077
 
@@ -12,11 +14,12 @@ while [ -L "$SOURCE" ]; do
   [[ "$SOURCE" = /* ]] || SOURCE="$SOURCE_DIR/$SOURCE"
 done
 ROOT="$(cd "$(dirname "$SOURCE")/.." && pwd)"
-ROUTING_FILE="${DELEGATION_QWEN_ROUTING_FILE:-$ROOT/config/qwen3.8-max-preview-routing.json}"
+ROUTING_FILE="${DELEGATION_QWEN_ROUTING_FILE:-$ROOT/config/qwen3.8-max-routing.json}"
 CENTRAL_GATES="${DELEGATION_ROUTING_GATES_FILE:-$ROOT/config/routing-gates.json}"
 ROUTER="$ROOT/bin/delegation-route"
 KEY_FILE="${DELEGATION_QWEN_KEY_FILE:-$ROOT/config/qwen-token-plan.env}"
-MODEL="qwen3.8-max-preview"
+MODEL="qwen3.8-max"
+PROFILE="qwen3.8-max"
 BACKEND="token-plan-openai"
 API_URL="https://token-plan.ap-southeast-1.maas.aliyuncs.com/compatible-mode/v1/chat/completions"
 RUN_TMP="" RUN_OUTPUT_TMP="" RUN_METRICS_TMP="" RUN_COMMIT_TMP=""
@@ -32,16 +35,21 @@ usage() {
   cat <<'EOF'
 Usage:
   delegation-qwen check [--json]
-  delegation-qwen run --lane <clerk|scout|reviewer|senior|judgement|policy-annotation> \
+  delegation-qwen run --lane <builder|clerk|scout|reviewer|senior|judgement|policy-annotation> \
     [--effort <auto|none|minimal|low|medium|high|xhigh|max>] \
     [--backend <auto|token-plan-openai>] --prompt-file <path> \
     --output <path> --workdir <path> [--metrics <path>] \
-    [--debug-dir <path>] [--evaluation --evaluation-manifest <path>] \
-    [--preflight-only]
+    [--debug-dir <path>] [--allow-provisional] \
+    [--evaluation --evaluation-manifest <path>] [--preflight-only]
 
-Normal dispatch is refused while lanes are candidate/disabled. --evaluation is
-reserved for allowlisted controlled qualification runs of candidate lanes, never
-promotes or mutates a gate, and adds no operational route. Policy-annotation
+The builder lane is provisional: pass --allow-provisional after an explicit
+routing decision. It is text-only — the Token Plan chat-completions transport
+cannot edit a worktree, so builder returns a patch the lead applies and
+verifies. Normal dispatch is refused while lanes are candidate/disabled.
+
+--evaluation is reserved for allowlisted controlled qualification runs of
+candidate lanes, never promotes or mutates a gate, and adds no operational
+route. It cannot be combined with --allow-provisional. Policy-annotation
 does not qualify broad architecture/trade-off judgement. --preflight-only is
 valid only with --evaluation and --evaluation-manifest: it traverses the same
 pre-provider validation path as the real evaluation run, prints a
@@ -94,11 +102,12 @@ validate_gate_graph() {
   DELEGATION_ROUTING_GATES_FILE="$CENTRAL_GATES" DELEGATION_QWEN_ROUTING_FILE="$ROUTING_FILE" "$ROUTER" check --json >/dev/null 2>&1
 }
 
-lane_status() { jq -r --arg lane "$1" '.profiles["qwen3.8-max-preview"].lanes[$lane].status // "disabled"' "$CENTRAL_GATES"; }
-lane_effort() { jq -r '.profiles["qwen3.8-max-preview"].effort // empty' "$CENTRAL_GATES"; }
-qualified_lanes() { jq -c '[.profiles["qwen3.8-max-preview"].lanes | to_entries[] | select(.value.status == "qualified") | .key] | sort' "$CENTRAL_GATES"; }
-provisional_lanes() { jq -c '[.profiles["qwen3.8-max-preview"].lanes | to_entries[] | select(.value.status == "provisional") | .key] | sort' "$CENTRAL_GATES"; }
-candidate_lanes() { jq -c '[.profiles["qwen3.8-max-preview"].lanes | to_entries[] | select(.value.status == "candidate") | .key] | sort' "$CENTRAL_GATES"; }
+lane_status() { jq -r --arg profile "$PROFILE" --arg lane "$1" '.profiles[$profile].lanes[$lane].status // "disabled"' "$CENTRAL_GATES"; }
+lane_selection() { jq -r --arg profile "$PROFILE" --arg lane "$1" '.profiles[$profile].lanes[$lane].selection // "blocked"' "$CENTRAL_GATES"; }
+lane_effort() { jq -r --arg profile "$PROFILE" '.profiles[$profile].effort // empty' "$CENTRAL_GATES"; }
+qualified_lanes() { jq -c --arg profile "$PROFILE" '[.profiles[$profile].lanes | to_entries[] | select(.value.status == "qualified") | .key] | sort' "$CENTRAL_GATES"; }
+provisional_lanes() { jq -c --arg profile "$PROFILE" '[.profiles[$profile].lanes | to_entries[] | select(.value.status == "provisional") | .key] | sort' "$CENTRAL_GATES"; }
+candidate_lanes() { jq -c --arg profile "$PROFILE" '[.profiles[$profile].lanes | to_entries[] | select(.value.status == "candidate") | .key] | sort' "$CENTRAL_GATES"; }
 
 sha256_file() {
   if have shasum; then shasum -a 256 "$1" | awk '{print $1}';
@@ -116,11 +125,11 @@ evaluation_manifest() {
   runner_hash="$(sha256_file "$SOURCE")" || die 69 "sha256 tool is required for evaluation"
   git -C "$ROOT" diff --quiet && git -C "$ROOT" diff --cached --quiet &&
     [ -z "$(git -C "$ROOT" ls-files --others --exclude-standard)" ] || die 78 "runner source checkout is dirty"
-  jq -e --arg lane "$lane" --arg model "$MODEL" --arg effort "$expected_effort" \
+  jq -e --arg lane "$lane" --arg model "$MODEL" --arg profile "$PROFILE" --arg effort "$expected_effort" \
     --arg prompt_sha256 "$expected_hash" --arg runner_sha256 "$runner_hash" '
       (keys | sort) == ["backend","contract_path","contract_sha256","effort","lane","max_output_chars","model","output_schema_path","output_schema_sha256","profile","prompt_sha256","runner_sha256","runner_source_commit","schema","timeout_seconds"] and
       .schema == "delegation_policy_annotation_evaluation_v1" and
-      .profile == "qwen3.8-max-preview" and .lane == $lane and .model == $model and
+      .profile == $profile and .lane == $lane and .model == $model and
       .backend == "token-plan-openai" and .effort == $effort and .prompt_sha256 == $prompt_sha256 and
       .runner_sha256 == $runner_sha256 and
       ([.prompt_sha256,.output_schema_sha256,.contract_sha256,.runner_sha256] | all(test("^[0-9a-f]{64}$"))) and
@@ -144,8 +153,8 @@ evaluation_manifest() {
     || die 78 "evaluation contract hash does not match its bound path"
   [ "$output_schema_hash" = "$(jq -r '.output_schema_sha256' "$manifest")" ] \
     || die 78 "evaluation output schema hash does not match its bound path"
-  jq -e --arg lane "$lane" --arg hash "$hash" '
-    .profiles["qwen3.8-max-preview"].lanes[$lane].evaluation_manifest_sha256 | type == "array" and index($hash) != null
+  jq -e --arg profile "$PROFILE" --arg lane "$lane" --arg hash "$hash" '
+    .profiles[$profile].lanes[$lane].evaluation_manifest_sha256 | type == "array" and index($hash) != null
   ' "$CENTRAL_GATES" >/dev/null 2>&1 || die 78 "evaluation manifest is not allowlisted by the central gate"
   jq -e --arg lane "$lane" --arg hash "$hash" '
     .lanes[$lane].backends["token-plan-openai"].evaluation_manifest_sha256 | type == "array" and index($hash) != null
@@ -165,7 +174,7 @@ evaluation_manifest() {
 # recomputed by the validation path above, never taken from caller input.
 print_preflight_receipt() {
   local lane="$1" effort="$2"
-  jq -n --arg profile "qwen3.8-max-preview" --arg model "$MODEL" --arg backend "$BACKEND" \
+  jq -n --arg profile "$PROFILE" --arg model "$MODEL" --arg backend "$BACKEND" \
     --arg effort "$effort" --arg lane "$lane" \
     --arg manifest_sha256 "$EVALUATION_MANIFEST_SHA256" \
     --arg prompt_sha256 "$EVALUATION_PROMPT_SHA256" \
@@ -231,31 +240,33 @@ print_check() {
       --argjson provisional "$(provisional_lanes)" --argjson candidate "$(candidate_lanes)" \
       '{model:$model,efforts:["xhigh"],selected_backend:$selected,qualified_lanes:$qualified,provisional_lanes:$provisional,candidate_lanes:$candidate,backends:{"token-plan-openai":{available:$available,reason:$reason}}}'
   else
-    printf 'Qwen3.8 Max Preview: selected=%s qualified=%s provisional=%s candidate=%s\n' "$selected" "$(qualified_lanes)" "$(provisional_lanes)" "$(candidate_lanes)"
+    printf 'Qwen3.8-Max: selected=%s qualified=%s provisional=%s candidate=%s\n' "$selected" "$(qualified_lanes)" "$(provisional_lanes)" "$(candidate_lanes)"
     printf '  token-plan-openai: %s (%s; effort=xhigh)\n' "$ready" "$QWEN_REASON"
   fi
 }
 
 run_command() {
-  local lane="" effort=auto backend=auto prompt_file="" output="" workdir="" metrics="" debug_dir="" evaluation=0 evaluation_manifest_path="" preflight_only=0
+  local lane="" effort=auto backend=auto prompt_file="" output="" workdir="" metrics="" debug_dir="" allow_provisional=0 evaluation=0 evaluation_manifest_path="" preflight_only=0
   while [ "$#" -gt 0 ]; do
     case "$1" in
       --lane) lane="${2:-}"; shift 2 ;; --effort) effort="${2:-}"; shift 2 ;;
       --backend) backend="${2:-}"; shift 2 ;; --prompt-file) prompt_file="${2:-}"; shift 2 ;;
       --output) output="${2:-}"; shift 2 ;; --workdir) workdir="${2:-}"; shift 2 ;;
       --metrics) metrics="${2:-}"; shift 2 ;; --debug-dir) debug_dir="${2:-}"; shift 2 ;;
+      --allow-provisional) allow_provisional=1; shift ;;
       --evaluation) evaluation=1; shift ;;
       --evaluation-manifest) evaluation_manifest_path="${2:-}"; shift 2 ;;
       --preflight-only) preflight_only=1; shift ;;
       -h|--help) usage; exit 0 ;; *) die 64 "unknown run argument: $1" ;;
     esac
   done
-  case "$lane" in clerk|scout|reviewer|senior|judgement|policy-annotation) ;; *) die 64 "invalid lane: $lane" ;; esac
+  case "$lane" in builder|clerk|scout|reviewer|senior|judgement|policy-annotation) ;; *) die 64 "invalid lane: $lane" ;; esac
   case "$effort" in auto|none|minimal|low|medium|high|xhigh|max) ;; *) die 64 "invalid effort: $effort" ;; esac
   case "$backend" in auto|token-plan-openai) ;; *) die 64 "invalid backend: $backend" ;; esac
   [ -f "$prompt_file" ] || die 64 "prompt file missing: $prompt_file"
   if [ "$evaluation" = 1 ]; then
     [ -n "$evaluation_manifest_path" ] || die 64 "--evaluation requires --evaluation-manifest"
+    [ "$allow_provisional" = 0 ] || die 64 "--evaluation and --allow-provisional are mutually exclusive"
   else
     [ -z "$evaluation_manifest_path" ] || die 64 "--evaluation-manifest requires --evaluation"
   fi
@@ -271,13 +282,24 @@ run_command() {
   backend="$BACKEND"
   local status; status="$(lane_status "$lane")"
   if [ "$evaluation" = 0 ]; then
-    case "$status" in qualified) ;; provisional) die 78 "lane '$lane' is provisional but this candidate runner requires an explicit future policy update" ;; *) die 78 "lane '$lane' has non-dispatchable status '$status'" ;; esac
+    case "$status" in
+      qualified) ;;
+      provisional)
+        [ "$allow_provisional" = 1 ] \
+          || die 78 "lane '$lane' is provisional; pass --allow-provisional after an explicit routing decision"
+        case "$(lane_selection "$lane")" in
+          explicit-only|preferred-explicit) ;;
+          *) die 78 "lane '$lane' is provisional but its selection is not explicit" ;;
+        esac
+        ;;
+      *) die 78 "lane '$lane' has non-dispatchable status '$status'" ;;
+    esac
   else
     [ "$status" = candidate ] || die 78 "lane '$lane' has status '$status'; --evaluation permits candidate lanes only"
   fi
   [ "$effort" != auto ] || effort="$(lane_effort)"
   if [ "$effort" != "$(lane_effort)" ]; then die 78 "lane '$lane' is pinned only at effort '$(lane_effort)'"; fi
-  [ "$effort" != none ] || die 64 "qwen3.8-max-preview requires thinking; effort 'none' is not supported"
+  [ "$effort" != none ] || die 64 "qwen3.8-max requires thinking; effort 'none' is not supported"
   local tmp dispatch_prompt="$prompt_file"
   tmp="$(mktemp -d "${TMPDIR:-/tmp}/delegation-qwen.XXXXXX")"
   RUN_TMP="$tmp"
@@ -305,7 +327,7 @@ run_command() {
   workdir="$(cd "$workdir" && pwd -P)"
   if [ -n "$debug_dir" ]; then
     case "$debug_dir" in
-      "$workdir"|"$workdir"/*) die 64 "read-only lane debug directory must be outside workdir" ;;
+      "$workdir"|"$workdir"/*) die 64 "non-editing runner debug directory must be outside workdir" ;;
     esac
   fi
   if [ -e "$output" ] || [ -e "$metrics" ] || [ -e "$diagnostic" ] ||
@@ -328,9 +350,9 @@ run_command() {
     [ "$norm_commit" != "$norm_output" ] && [ "$norm_commit" != "$norm_metrics" ] \
       && [ "$norm_commit" != "$norm_diagnostic" ] || die 64 "commit path collision"
   fi
-  case "$output" in "$workdir"/*) die 64 "read-only lane output must be outside workdir" ;; esac
-  case "$metrics" in "$workdir"/*) die 64 "read-only lane metrics must be outside workdir" ;; esac
-  case "$diagnostic" in "$workdir"/*) die 64 "read-only lane diagnostic must be outside workdir" ;; esac
+  case "$output" in "$workdir"/*) die 64 "non-editing runner output must be outside workdir" ;; esac
+  case "$metrics" in "$workdir"/*) die 64 "non-editing runner metrics must be outside workdir" ;; esac
+  case "$diagnostic" in "$workdir"/*) die 64 "non-editing runner diagnostic must be outside workdir" ;; esac
 
   # Preflight ends here: every pre-provider check the real evaluation run makes
   # has passed, and nothing caller-visible has been created. Exit before the
@@ -378,7 +400,7 @@ run_command() {
       *) phase=dispatch; reason=provider_error; final_rc=70 ;;
     esac
   fi
-  if [ "$final_rc" -eq 0 ] && ! provider_model="$(jq -er '.model | select(type == "string" and . == "qwen3.8-max-preview")' "$response")"; then
+  if [ "$final_rc" -eq 0 ] && ! provider_model="$(jq -er --arg model "$MODEL" '.model | select(type == "string" and . == $model)' "$response")"; then
     phase=extract; reason=provider_identity_mismatch; final_rc=70
   fi
   if [ "$final_rc" -eq 0 ] && ! jq -er \

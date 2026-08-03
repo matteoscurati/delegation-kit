@@ -14,7 +14,7 @@ GATES="${DELEGATION_ROUTING_GATES_FILE:-$ROOT/config/routing-gates.json}"
 EVIDENCE="${DELEGATION_EVIDENCE_FILE:-$ROOT/config/model-evidence.json}"
 GLM_GATE="${DELEGATION_GLM_ROUTING_FILE:-$ROOT/config/glm-5.2-routing.json}"
 KIMI_GATE="${DELEGATION_KIMI_ROUTING_FILE:-$ROOT/config/kimi-k3-routing.json}"
-QWEN_GATE="${DELEGATION_QWEN_ROUTING_FILE:-$ROOT/config/qwen3.8-max-preview-routing.json}"
+QWEN_GATE="${DELEGATION_QWEN_ROUTING_FILE:-$ROOT/config/qwen3.8-max-routing.json}"
 GEMINI_GATE="${DELEGATION_GEMINI_ROUTING_FILE:-$ROOT/config/gemini-3.6-flash-routing.json}"
 GROK_GATE="${DELEGATION_GROK_ROUTING_FILE:-$ROOT/config/grok-4.5-routing.json}"
 
@@ -147,10 +147,10 @@ validate() {
     all($bridge[0].lanes[]; (.backends.native.qualified == (.backends.native.status == "qualified")))
   ' >/dev/null || die 65 "central routing and Kimi executable gate disagree"
   jq -e -n --slurpfile central "$GATES" --slurpfile bridge "$QWEN_GATE" '
-    [$central[0].profiles | to_entries[] | select(.value.model == "qwen3.8-max-preview" and .value.harness == "token-plan-openai") as $p |
+    [$central[0].profiles | to_entries[] | select(.value.model == "qwen3.8-max" and .value.harness == "token-plan-openai") as $p |
      $p.value.lanes | to_entries[] | {key:.key,value:{status:.value.status,selection:.value.selection,effort:$p.value.effort,evaluation_manifest_sha256:(.value.evaluation_manifest_sha256 // [])}}] | from_entries as $expected |
     [$bridge[0].lanes | to_entries[] | {key:.key,value:{status:.value.backends["token-plan-openai"].status,selection:.value.backends["token-plan-openai"].selection,effort:(.value.backends["token-plan-openai"].effort // .value.default_effort),evaluation_manifest_sha256:(.value.backends["token-plan-openai"].evaluation_manifest_sha256 // [])}}] | from_entries as $actual |
-    ($bridge[0].model == "qwen3.8-max-preview") and (($expected | keys) == ($actual | keys)) and
+    ($bridge[0].model == "qwen3.8-max") and (($expected | keys) == ($actual | keys)) and
     all($expected | keys[]; $expected[.] == $actual[.]) and
     (($expected | to_entries | map(select(.value.status == "qualified") | .key) | sort) == (($bridge[0].qualified_lanes // []) | sort)) and
     (($expected | to_entries | map(select(.value.status == "provisional") | .key) | sort) == (($bridge[0].provisional_lanes // []) | sort)) and

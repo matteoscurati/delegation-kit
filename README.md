@@ -9,12 +9,15 @@ It ships as a **reference implementation**: the author's concrete models
 external-evidence snapshot, and fail-closed local gates. Swap the models for your own tiers with
 [`ADAPTING.md`](./ADAPTING.md) — the *structure* is the transferable part.
 
-## Current release: 0.9.0
+## Current release: 0.10.0
 
-Version 0.9.0 adds deterministic Claude/Codex structured-output schema
-compilation and verification, uses the Claude transport form for manifest-bound
-GLM evaluations, and strengthens auth, model-usage, and schema preflight
-guidance. Normative schemas and routing qualifications remain unchanged. See
+Version 0.10.0 repins the Qwen bridge to `qwen3.8-max` after the model left
+preview, and promotes its `builder` lane to provisional/explicit-only behind
+`--allow-provisional`. That promotion is an explicit owner decision, not
+measured capability: no DeepSWE or Terminal-Bench v2 row exists for the model,
+so both builder required metrics stay unmet and `exact_evidence_ids` stays
+empty. The lane is text-only and returns a patch rather than editing a worktree.
+Every other Qwen lane remains blocked. See
 [`docs/compatibility.md`](./docs/compatibility.md) and
 [`CHANGELOG.md`](./CHANGELOG.md).
 
@@ -30,7 +33,7 @@ guidance. Normative schemas and routing qualifications remain unchanged. See
 | optional Gemini skill | `skills/gemini-executor/` | Antigravity-backed Gemini 3.6 Flash scout; provisional use is explicit |
 | optional Kimi skill | `skills/kimi-executor/` | exposes only exact gate-allowed Kimi lane/backend/effort tuples |
 | provisional Grok skill | `skills/grok-executor/` | Grok Build-backed builder and frontend-builder at pinned high effort |
-| blocked Qwen skill | `skills/qwen-executor/` | Token Plan candidate; no normal dispatch before evaluation |
+| provisional Qwen skill | `skills/qwen-executor/` | Token Plan Qwen3.8-Max builder; text-only, provisional use is explicit |
 | lane discipline | `@import` in `CLAUDE.md` | always-loaded policy ([`claude/CLAUDE.delegation.md`](./claude/CLAUDE.delegation.md)) |
 
 **Codex** (`~/.codex/`)
@@ -43,7 +46,7 @@ guidance. Normative schemas and routing qualifications remain unchanged. See
 | optional Gemini skill | `skills/gemini-executor/` | same fail-closed Gemini 3.6 Flash executor path |
 | optional Kimi skill | `skills/kimi-executor/` | same fail-closed provisional Kimi K3 path |
 | provisional Grok skill | `skills/grok-executor/` | same fail-closed Grok 4.5 builder path |
-| blocked Qwen skill | `skills/qwen-executor/` | same fail-closed Qwen3.8 preview candidate path |
+| provisional Qwen skill | `skills/qwen-executor/` | same fail-closed Qwen3.8-Max builder path |
 | config snippet | printed for manual merge | `[agents]` fan-out caps + lead defaults |
 
 The universal installer also adds `delegation-schema`, `delegation-glm`,
@@ -202,12 +205,25 @@ delegation-grok run --lane builder --allow-provisional \
   --output "$result" --metrics "$metrics" --workdir "$repo"
 ```
 
-Qwen3.8 Max Preview is installed as a **blocked candidate**, pinned to the
-Qwen Cloud Token Plan OpenAI-compatible endpoint and `xhigh`. Its dedicated
-`sk-sp-` key is stored separately and never imported silently from another tool.
-Runtime availability is not qualification; `--evaluation` is reserved for a
-manifest-bound controlled local qualification run at the exact pinned tuple; it
-never promotes or mutates a gate.
+Qwen3.8-Max is pinned to the Qwen Cloud Token Plan OpenAI-compatible endpoint at
+`xhigh`. Its dedicated `sk-sp-` key is stored separately and never imported
+silently from another tool. Only `builder` is promoted, as
+**provisional / explicit-only** on an owner decision — no DeepSWE or
+Terminal-Bench v2 row exists for this model, so both builder required metrics
+are unmet and dispatch needs an explicit `--allow-provisional`:
+
+```sh
+delegation-qwen run --lane builder --allow-provisional \
+  --effort auto --backend auto --prompt-file "$brief" \
+  --output "$result" --metrics "$metrics" --workdir "$repo"
+```
+
+The transport is chat-completions only, so this lane **cannot edit a worktree**:
+it returns a patch the lead applies and verifies. Every other lane stays a
+blocked candidate — runtime availability is not qualification. `--evaluation` is
+reserved for a manifest-bound controlled local qualification run at the exact
+pinned tuple, cannot be combined with `--allow-provisional`, and never promotes
+or mutates a gate.
 
 The evidence-backed routing policy lives in [`model-routing.md`](./model-routing.md).
 Its raw, dated model+harness+effort snapshot is
@@ -282,7 +298,7 @@ git diff --check
 ```
 This installs the 6 agents plus the `model-routing`, `orchestrate`, and guarded
 `glm-executor`, `gemini-executor`, `kimi-executor`, provisional `grok-executor`,
-and blocked `qwen-executor` skills. It does not install any external model
+and provisional `qwen-executor` skills. It does not install any external model
 runner/gate, register the
 `CLAUDE.md` policy prose, or install the Codex side — run `./install.sh` for those.
 
