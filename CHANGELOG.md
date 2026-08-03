@@ -2,6 +2,19 @@
 
 All notable changes to delegation-kit are documented here.
 
+## [Unreleased]
+
+### Fixed
+
+- Made the CI release-tag check fetch the real tag object before validating it.
+  `actions/checkout` maps the commit SHA onto `refs/tags/<name>`, leaving a
+  lightweight ref even when the pushed tag is annotated, so the 0.11.0 tag run
+  failed with `tag is annotated: expected 'tag', got 'commit'` while the tag
+  itself was correct on both the server and locally.
+- Made `tests/version-consistency.sh --tag` fail when the tag object is absent
+  instead of silently skipping the annotation and subject checks. A silent skip
+  left the convention unenforced in exactly the environment it was written for.
+
 ## [0.11.0] — 2026-08-03
 
 ### Added
