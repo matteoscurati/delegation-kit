@@ -40,9 +40,15 @@ jobs:
       - name: Check the five version surfaces
         run: bash tests/version-consistency.sh
       # On a tag push, also enforce the CLAUDE.md tag convention.
+      # actions/checkout maps the commit SHA onto refs/tags/<name>, which leaves
+      # a lightweight ref even when the pushed tag is annotated — so the real
+      # tag object has to be fetched before the annotation rule can be checked.
       - name: Check release tag convention
         if: startsWith(github.ref, 'refs/tags/')
-        run: bash tests/version-consistency.sh --tag "${GITHUB_REF_NAME}"
+        run: |
+          git fetch --force --depth=1 origin \
+            "refs/tags/${GITHUB_REF_NAME}:refs/tags/${GITHUB_REF_NAME}"
+          bash tests/version-consistency.sh --tag "${GITHUB_REF_NAME}"
 
   tests:
     name: regression suites (macOS)

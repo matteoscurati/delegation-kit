@@ -67,11 +67,17 @@ if [ -n "$TAG" ]; then
   # CLAUDE.md: delegation-kit--v<semver>, annotated, matching the manifest.
   expected="delegation-kit--v$VERSION"
   same 'tag name' "$expected" "$TAG"
-  if git rev-parse -q --verify "refs/tags/$TAG" >/dev/null; then
-    same 'tag is annotated' tag "$(git cat-file -t "$TAG")"
-    subject="$(git tag -l --format='%(contents:subject)' "$TAG")"
-    same 'tag message subject' "delegation-kit $VERSION" "$subject"
-  fi
+  # Requiring the object rather than skipping when it is absent: a silent skip
+  # would let the annotation rule go unenforced exactly where it matters. Note
+  # that actions/checkout maps the commit SHA onto refs/tags/<name>, producing a
+  # lightweight ref, so CI must fetch the real tag object before calling this.
+  git rev-parse -q --verify "refs/tags/$TAG" >/dev/null \
+    || fail "tag '$TAG' is not present locally; fetch the tag object first:
+    git fetch --force origin \"refs/tags/$TAG:refs/tags/$TAG\""
+  ok
+  same 'tag is annotated' tag "$(git cat-file -t "$TAG")"
+  subject="$(git tag -l --format='%(contents:subject)' "$TAG")"
+  same 'tag message subject' "delegation-kit $VERSION" "$subject"
 fi
 
 printf 'version consistency: %s checks passed (version %s)\n' "$pass" "$VERSION"
