@@ -2,6 +2,44 @@
 
 All notable changes to delegation-kit are documented here.
 
+## [0.12.0] — 2026-08-04
+
+### Added
+
+- `delegation-kimi run --oauth shared` (or `DELEGATION_KIMI_OAUTH_MODE=shared`):
+  concurrent Kimi dispatches. Until now the kit lock spanned the whole run, so
+  a second agent died instantly with exit 75 — but the vendor supports ~30
+  concurrent instances when they share one `KIMI_CODE_HOME`, coordinating
+  refresh-token rotation through the CLI's own cross-process oauth lock. In
+  shared mode, OAuth state lives in a runner-owned *generation* under
+  `$DELEGATION_DATA_HOME/kimi-shared-oauth`; each run's isolated home symlinks
+  its `credentials/` and `oauth/` dirs at that generation so the vendor lock
+  coordinates the children, and the kit lock shrinks to two brief critical
+  sections (seeding the generation, publishing it back to the ambient home).
+  Generations — not hash markers — keep a dead token family from clobbering a
+  credential after an external `kimi login`; a busy kit lock at publish time
+  defers to the next run instead of failing. The serialized default and its
+  sandbox profile are byte-for-byte unchanged, `--evaluation` runs always
+  serialize, and the live two-parallel smoke against the real CLI passed on
+  2026-08-04 with a real mid-run rotation through the symlinked generation.
+- `DELEGATION_KIMI_OAUTH_WAIT_SECONDS` (default 5, 0 = fail immediately):
+  bounded wait on the kit lock for shared-mode seed and publish.
+- delegation-glm now distinguishes two 429 shapes in `<output>.error.json`:
+  reason `rate_limited` (retry with backoff) versus `quota_exhausted`, which
+  carries the window-reset epoch in the new `next_flush_time` field
+  (diagnostic `schema_version` 2). Z.AI's numeric body codes never reach the
+  runner — a captured stream shows `api_retry` carries only the HTTP status —
+  so quota detection keys on the `rate_limit_event` reset epoch instead.
+
+### Fixed
+
+- The delegation-glm stderr fallback grepped for Z.AI code `1312`, which does
+  not exist in the published error table, and missed `1302` — the actual
+  rate/concurrency code.
+- A stray 429 event in an otherwise-completed GLM stream no longer overwrites
+  an extract-phase reason (`empty_result`, `model_mismatch`, …) with
+  `rate_limited`: reclassification is now scoped to dispatch failures.
+
 ## [0.11.1] — 2026-08-03
 
 ### Fixed

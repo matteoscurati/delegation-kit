@@ -9,13 +9,16 @@ It ships as a **reference implementation**: the author's concrete models
 external-evidence snapshot, and fail-closed local gates. Swap the models for your own tiers with
 [`ADAPTING.md`](./ADAPTING.md) — the *structure* is the transferable part.
 
-## Current release: 0.11.1
+## Current release: 0.12.0
 
-Version 0.11.1 fixes the CI release-tag check, which failed 0.11.0's tag run by
-inspecting a ref `actions/checkout` had flattened to a lightweight tag rather
-than the annotated tag that was pushed, and stops
-`tests/version-consistency.sh --tag` from silently skipping that rule when the
-tag object is absent. No routing decision changes.
+Version 0.12.0 adds the opt-in `--oauth shared` mode to `delegation-kimi`,
+letting several agents dispatch Kimi lanes in parallel by sharing one
+runner-owned OAuth generation that the vendor CLI's own cross-process lock
+coordinates — verified live against the real CLI, including a mid-run token
+rotation — while the serialized default stays byte-for-byte unchanged. It also
+teaches `delegation-glm` to distinguish retryable 429s (`rate_limited`) from
+exhausted quota windows (`quota_exhausted`, with the reset epoch in
+`next_flush_time`). No routing gate changes.
 
 Version 0.11.0 makes the repository verify itself. Until now nothing checked a
 pull request and nothing checked a release except the person cutting it. CI now
