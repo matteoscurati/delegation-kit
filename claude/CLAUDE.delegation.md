@@ -100,8 +100,12 @@ adds an operational route or qualifies broad judgement.
 Require an explicit decision and `--allow-provisional` before dispatch.
 Kimi K3 is not scored or qualified merely because a CLI can reach it. If the gate
 or runtime is absent, keep the incumbent; never silently substitute a model,
-effort, or neighboring lane. Exit 69 covers runtime/login/entitlement/quota,
-75 covers overload/5xx/timeout/OAuth conflict, 70 covers sandbox/output/
+effort, or neighboring lane. Dispatches serialize by default; parallel Kimi
+workers each need the explicit `--oauth shared` flag, which shares one
+runner-owned OAuth generation so the vendor CLI's own lock coordinates
+refreshes. Exit 69 covers runtime/login/entitlement/quota,
+75 covers overload/5xx/timeout/OAuth conflict (including a busy or superseded
+shared OAuth session), 70 covers sandbox/output/
 unclassified failure, 78 covers authorization, and 130 is caller cancellation.
 
 ### Optional provisional Qwen3.8-Max builder

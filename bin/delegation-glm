@@ -61,7 +61,9 @@ Usage:
     [--allow-provisional] [--evaluation --evaluation-manifest <path>]
 
 Exit codes: 64 invalid input, 69 unavailable, 70 dispatch failure,
-75 temporary/rate-limit failure, 78 lane not qualified.
+75 temporary/rate-limit failure, 78 lane not qualified. A 75 with reason
+`rate_limited` is worth a backed-off retry; reason `quota_exhausted` is not
+until the epoch in the diagnostic's `next_flush_time` has passed.
 
 Failures write a sanitized diagnostic to <output>.error.json. --debug-dir
 additionally preserves the raw event stream and stderr in a private subdirectory.
@@ -384,6 +386,7 @@ print_check() {
 EXTRACT_REASON=""
 RESULT_SUBTYPE=""
 OBSERVED_MODELS_JSON="[]"
+NEXT_FLUSH_TIME=""
 
 extract_claude() {
   local events="$1" output="$2" metrics="$3" started="$4" backend="$5" effort="$6" lane="$7"
@@ -521,13 +524,15 @@ write_failure_diagnostic() {
     --argjson cli_exit "$cli_exit" --argjson stream_valid "$stream_valid" \
     --argjson event_bytes "$event_bytes" --argjson stderr_bytes "$stderr_bytes" \
     --argjson event_counts "$counts" --argjson observed_models "$observed_models" \
+    --argjson next_flush_time "${NEXT_FLUSH_TIME:-null}" \
     --argjson elapsed_seconds "$((finished - started))" '
-    {schema_version:1,model:$model,backend:$backend,effort:$effort,lane:$lane,
+    {schema_version:2,model:$model,backend:$backend,effort:$effort,lane:$lane,
      phase:$phase,reason:$reason,cli_exit_code:$cli_exit,
      result_subtype:(if $result_subtype == "" then null else $result_subtype end),
      observed_models:$observed_models,
      event_stream:{valid:$stream_valid,bytes:$event_bytes,counts:$event_counts},
      stderr_bytes:$stderr_bytes,elapsed_seconds:$elapsed_seconds,
+     next_flush_time:$next_flush_time,
      debug_dir:(if $debug_dir == "" then null else $debug_dir end)}
   ' >"$diagnostic_tmp"
   chmod 600 "$diagnostic_tmp"
@@ -873,17 +878,40 @@ run_command() {
     # nothing auth-shaped in stderr, so there is no keyword to grep for. Grepping
     # the raw stream would also misfire — an ordinary `EACCES: permission denied`
     # from a tool call would masquerade as an auth failure.
-    if jq -se 'any(.[]; .type == "system" and .subtype == "api_retry"
-                       and (.error_status // 0) == 401)' "$events" >/dev/null 2>&1; then
-      reason="authentication_failed"
-      final_rc=69
-    elif jq -se 'any(.[]; .type == "system" and .subtype == "api_retry"
-                         and (.error_status // 0) == 429)' "$events" >/dev/null 2>&1; then
-      reason="rate_limited"
-      final_rc=75
-    elif grep -Eqi 'rate.?limit|too many requests|1312|1305' "$stderr_file" 2>/dev/null; then
-      reason="rate_limited"
-      final_rc=75
+    #
+    # Only a dispatch failure gets reclassified: an extract-phase reason
+    # (empty_result, model_mismatch, …) already names the real defect, and a
+    # stray 429 earlier in an otherwise-completed stream must not overwrite it.
+    if [ "$phase" = dispatch ]; then
+      if jq -se 'any(.[]; .type == "system" and .subtype == "api_retry"
+                         and (.error_status // 0) == 401)' "$events" >/dev/null 2>&1; then
+        reason="authentication_failed"
+        final_rc=69
+      elif jq -se 'any(.[]; .type == "system" and .subtype == "api_retry"
+                           and (.error_status // 0) == 429)' "$events" >/dev/null 2>&1; then
+        # Z.AI's numeric body codes (1302 rate/concurrency vs 1308/1310/1316/
+        # 1317 quota-window) never reach this runner: a captured api_retry
+        # event carries only the HTTP status and a normalized error string
+        # (verified 2026-08-04). The one observable quota signal is a
+        # rate_limit_event carrying an epoch reset; when present, the 429 is
+        # quota exhaustion and retrying before that instant is guaranteed
+        # waste, so surface the timestamp and a distinct reason. Both stay
+        # exit 75: the retry/stop split lives in reason + next_flush_time.
+        NEXT_FLUSH_TIME="$(jq -rs '
+          [.[] | select(.type == "rate_limit_event")] | last // {} |
+          (.resets_at // .rate_limit.resets_at // .info.resets_at // empty) |
+          select(type == "number") | floor
+        ' "$events" 2>/dev/null)"
+        if [ -n "$NEXT_FLUSH_TIME" ]; then
+          reason="quota_exhausted"
+        else
+          reason="rate_limited"
+        fi
+        final_rc=75
+      elif grep -Eqi 'rate.?limit|too many requests|1302|1305' "$stderr_file" 2>/dev/null; then
+        reason="rate_limited"
+        final_rc=75
+      fi
     fi
 
     DEBUG_RUN_DIR=""

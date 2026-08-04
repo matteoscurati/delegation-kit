@@ -84,8 +84,11 @@ at the exact Kimi K3/max tuple; it never adds an operational route or qualifies
 broad judgement. Installed
 runtimes and visible model names are not qualification. If the exact gate is
 absent, keep the incumbent profile; never silently substitute another model,
-effort, or lane. Treat exit 69 as runtime/login/entitlement/quota unavailable,
-75 as overload/5xx/timeout/OAuth conflict, 70 as sandbox/output/unclassified
+effort, or lane. Dispatches serialize by default; parallel Kimi workers each
+need the explicit `--oauth shared` flag. Treat exit 69 as
+runtime/login/entitlement/quota unavailable,
+75 as overload/5xx/timeout/OAuth conflict (including a busy or superseded
+shared OAuth session), 70 as sandbox/output/unclassified
 failure, 78 as an unauthorized lane, and 130 as caller cancellation.
 
 ## Optional provisional Qwen3.8-Max builder

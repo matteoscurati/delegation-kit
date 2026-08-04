@@ -56,13 +56,23 @@ sandbox permits process execution only for Kimi, `/usr/bin/true`, and that
 precise `rg`. Shells, Git, and arbitrary executables remain blocked.
 The child environment is an allowlist, ambient HOME file contents are
 unreadable, and project `AGENTS.md` instructions remain part of the base prompt.
-Because Kimi may rotate OAuth refresh tokens, native dispatches serialize access
-to the credential snapshot. After the child exits, the parent validates and
-atomically persists a changed `credentials/kimi-code.json`; it does not expose
-the ambient file to the model process. Do not run `kimi login` concurrently
-with dispatch. If the parent observes an external credential replacement, it
-refuses to overwrite it and returns exit 75; callers should retry after login
-finishes.
+Because Kimi rotates the OAuth refresh token on every refresh, the default
+mode serializes dispatches: the kit lock spans the whole run, and a concurrent
+invocation fails fast with exit 75. For parallel workers, pass
+`--oauth shared` (or set DELEGATION_KIMI_OAUTH_MODE=shared): OAuth state then
+lives in a runner-owned generation under
+`$DELEGATION_DATA_HOME/kimi-shared-oauth`, concurrent children coordinate
+refreshes through the vendor CLI's own cross-process oauth lock — the
+vendor-supported layout, account cap ~30 concurrent, one shared quota pool —
+and the kit lock is held only briefly to seed the generation and publish it
+back. In either mode the parent validates and atomically persists a changed
+`credentials/kimi-code.json` and never exposes the ambient file to the model
+process. Do not run `kimi login` concurrently with dispatch, and avoid driving
+the ambient `kimi` CLI during shared-mode bursts: an external credential
+replacement wins — the run returns exit 75 without publishing, and the next
+shared dispatch reseeds from the ambient state. A shared-mode publish that
+finds the kit lock busy is deferred to the next run, which is a success, not a
+failure. Evaluation runs are always serialized.
 CLI compatibility is determined from capabilities: the runtime must
 expose `--agent-file`, `stream-json`, the exact `kimi-code/k3` model, OAuth
 credentials, a valid isolated configuration, and `max` as both supported and
@@ -85,7 +95,8 @@ stop the child, perform the final OAuth sync, release the lock, and return 130.
 
 Exit 69 means runtime, login, entitlement, or quota is unavailable; exit 70
 means sandbox, output, or unclassified dispatch failure; exit 75 means overload,
-5xx, timeout, or a temporary OAuth conflict; exit 78 means the lane is not
+5xx, timeout, or a temporary OAuth conflict (including a busy or superseded
+shared OAuth session); exit 78 means the lane is not
 authorized; and exit 130 is caller cancellation. Route deliberately to a
 documented incumbent after any failure. Treat K3 output as unverified and
 exercise the deliverable before accepting it.
