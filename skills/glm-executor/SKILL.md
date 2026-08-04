@@ -18,6 +18,15 @@ first exact local pack; use it only after an explicit decision and pass
 pre-registered allowlisted evaluation manifest. It is read-only, cannot promote
 itself, and does not qualify the general judgement lane.
 
+Builder scope limit: the bridge dispatches the delegate at
+`--permission-mode acceptEdits` with no settings sources, so it can only apply
+in-workdir Edit/Write changes. It cannot execute shell commands — `pnpm`,
+`node`, or any Bash call is denied in print mode — and the harness refuses
+writes to files it treats as sensitive, such as `.npmrc`. Environment or
+toolchain fixes that need exactly those actions are not routable to this lane;
+the lead closes them. Observed 2026-08-04: a toolchain dispatch returned
+analysis only (checks honestly marked unexecuted) for $0.88 and ~6.6 minutes.
+
 The frozen 2026-07-31 comparison ran three no-retry attempts for GLM and both
 incumbents per lane. Clerk and scout matched the best incumbent; builder passed
 all deterministic checkers but stops at provisional. Reviewer is not dispatchable. The installed routing JSON remains

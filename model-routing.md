@@ -260,7 +260,12 @@ prices for the keystrokes in between.
 The frozen 2026-07-31 exact comparison qualifies GLM `clerk` and `scout` while
 retaining explicit-only selection. Builder passed its first repeated pack and
 moves only from candidate to provisional; it still requires
-`--allow-provisional`. Reviewer remains disabled. Kimi K3 is provisional for `clerk`, `scout`, `builder`, and
+`--allow-provisional`. Reviewer remains disabled. Builder runs at
+`--permission-mode acceptEdits` with no settings sources: the delegate can only
+apply in-workdir Edit/Write changes — it cannot run shell commands, and the
+harness refuses writes to sensitive files such as `.npmrc`. Environment and
+toolchain fixes are therefore not routable to GLM builder; the lead closes them
+(observed 2026-08-04, when such a dispatch returned analysis only). Kimi K3 is provisional for `clerk`, `scout`, `builder`, and
 `frontend-builder`; senior is a blocked candidate, while reviewer and judgement
 remain disabled. Other provisional bridge runs require `--allow-provisional`.
 Grok 4.5 is provisional for `builder` and `frontend-builder` through Grok Build
