@@ -74,7 +74,9 @@ for the Z.AI API key and stores it in `~/.local/share/delegation-kit/config/zai.
 (mode 600); an explicit `ZAI_API_KEY` in the environment overrides it.
 Failed GLM dispatches write a sanitized `<output>.error.json` that distinguishes
 runtime exit, malformed streams, model mismatch, missing/empty results, auth, and
-rate limits. Raw events and stderr are deleted unless an existing private
+rate limits — including `rate_limited` (retry with backoff) versus
+`quota_exhausted`, which carries the window-reset epoch in `next_flush_time`.
+Raw events and stderr are deleted unless an existing private
 directory is explicitly supplied with `--debug-dir`; those artifacts are
 sensitive and must not be committed.
 
@@ -151,11 +153,18 @@ ambient HOME reads remain denied. `install.sh` attempts the initial archive but
 never replaces different bytes without an explicit `--force`.
 
 Native invocations use an isolated `KIMI_CODE_HOME`, an allowlisted environment,
-and an atomic OAuth lock. After the child rotates a token, the parent validates
+and an atomic OAuth lock. By default the lock spans the whole dispatch, so
+concurrent runs serialize; `--oauth shared` instead keeps OAuth state in a
+runner-owned generation under `$DELEGATION_DATA_HOME/kimi-shared-oauth`, lets
+concurrent children coordinate refreshes through the vendor CLI's own oauth
+lock, and holds the kit lock only to seed the generation and publish it back —
+enabling parallel Kimi workers up to the account's own concurrency and quota.
+After the child rotates a token, the parent validates
 and atomically syncs only `credentials/kimi-code.json` back to the user-managed
 Kimi store. `INT`/`TERM` stop the child, perform the final sync, release the lock,
 and return 130. Do not run an external `kimi login` concurrently; a conflicting
-credential change is a temporary failure. Operational runs are capped at 900
+credential change is a temporary failure that wins over any in-flight
+delegation state. Operational runs are capped at 900
 seconds and emit content-free heartbeats every 30 seconds; evaluation runs keep
 their immutable manifest timeout, up to 1200 seconds.
 

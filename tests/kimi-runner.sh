@@ -52,26 +52,33 @@ cat >"$TMP/bin/sandbox-exec" <<'EOF'
 set -euo pipefail
 root="$(cd "$(dirname "$0")/.." && pwd)"
 profile=""
-: >"$root/sandbox-defines.txt"
+# Per-invocation staging plus an atomic publish: concurrent shared-mode runs
+# must not truncate each other's define capture mid-assertion. Serial tests
+# still read the canonical paths, which hold the last finished invocation.
+defines="$root/sandbox-defines.$$.txt"
+profile_file="$root/sandbox.profile.$$"
+: >"$defines"
 while [ "$#" -gt 0 ]; do
   case "$1" in
-    -D) printf '%s\n' "${2:-}" >>"$root/sandbox-defines.txt"; shift 2 ;;
+    -D) printf '%s\n' "${2:-}" >>"$defines"; shift 2 ;;
     -p) profile="${2:-}"; shift 2; break ;;
     *) exit 64 ;;
   esac
 done
-printf '%s\n' "$profile" >"$root/sandbox.profile"
-grep -q 'deny process-exec' "$root/sandbox.profile"
-grep -q 'literal "/usr/bin/true"' "$root/sandbox.profile"
-grep -q 'param "RG_BIN"' "$root/sandbox.profile"
-grep -q 'deny file-read-data' "$root/sandbox.profile"
-grep -q 'deny file-write' "$root/sandbox.profile"
-grep -q '^SCRATCH=' "$root/sandbox-defines.txt"
-grep -q '^WORKDIR=' "$root/sandbox-defines.txt"
-grep -q '^REAL_HOME=' "$root/sandbox-defines.txt"
-grep -q '^KIMI_BIN=' "$root/sandbox-defines.txt"
-grep -q '^RG_BIN=' "$root/sandbox-defines.txt"
-grep -q '^RG_DIR=' "$root/sandbox-defines.txt"
+printf '%s\n' "$profile" >"$profile_file"
+grep -q 'deny process-exec' "$profile_file"
+grep -q 'literal "/usr/bin/true"' "$profile_file"
+grep -q 'param "RG_BIN"' "$profile_file"
+grep -q 'deny file-read-data' "$profile_file"
+grep -q 'deny file-write' "$profile_file"
+grep -q '^SCRATCH=' "$defines"
+grep -q '^WORKDIR=' "$defines"
+grep -q '^REAL_HOME=' "$defines"
+grep -q '^KIMI_BIN=' "$defines"
+grep -q '^RG_BIN=' "$defines"
+grep -q '^RG_DIR=' "$defines"
+mv -f "$defines" "$root/sandbox-defines.txt"
+mv -f "$profile_file" "$root/sandbox.profile"
 exec "$@"
 EOF
 
@@ -278,6 +285,37 @@ case "$prompt" in
     jq -n '{access_token:"short-lived-access",refresh_token:"",expires_at:4102444800}' \
       >"$HOME/.kimi-code/credentials/kimi-code.json"
     ;;
+  *WAIT_FOR_PEER_A*)
+    : >"$root/peer-a-started"
+    peer_seen=0
+    for _ in 1 2 3 4 5 6 7 8 9 10; do
+      if [ -e "$root/peer-b-started" ]; then peer_seen=1; break; fi
+      /bin/sleep 1
+    done
+    [ "$peer_seen" = 1 ] || { printf 'peer B never started\n' >&2; exit 90; }
+    ;;
+  *WAIT_FOR_PEER_B*)
+    : >"$root/peer-b-started"
+    peer_seen=0
+    for _ in 1 2 3 4 5 6 7 8 9 10; do
+      if [ -e "$root/peer-a-started" ]; then peer_seen=1; break; fi
+      /bin/sleep 1
+    done
+    [ "$peer_seen" = 1 ] || { printf 'peer A never started\n' >&2; exit 90; }
+    ;;
+  *HOLD_KIT_LOCK_ROTATE*)
+    # $PPID is the runner process, still alive when it later attempts the
+    # publish: a deterministic busy kit lock at publish time.
+    printf '%s\n' "$PPID" >"$root/kimi-home/.delegation-kit-oauth.lock"
+    jq -n '{access_token:"deferred-access",refresh_token:"deferred-refresh",expires_at:4102444800}' \
+      >"$HOME/.kimi-code/credentials/kimi-code.json"
+    ;;
+  *REQUIRE_DEFERRED_OAUTH*)
+    jq -e '
+      .access_token == "deferred-access" and .refresh_token == "deferred-refresh"
+    ' "$HOME/.kimi-code/credentials/kimi-code.json" >/dev/null \
+      || { printf 'deferred OAuth credential missing\n' >&2; exit 99; }
+    ;;
   *INTERRUPT_ROTATE_OAUTH*)
     jq -n '{access_token:"interrupt-access",refresh_token:"interrupt-refresh",expires_at:4102444800}' \
       >"$HOME/.kimi-code/credentials/kimi-code.json"
@@ -367,6 +405,22 @@ start_kimi_background() {
   KIMI_BACKGROUND_PID=$!
 }
 
+# Like start_kimi_background, but with per-name output files so two concurrent
+# runners never clobber each other; the caller must capture the PID immediately.
+start_kimi_background_named() {
+  local name="$1"; shift
+  HOME="$TMP/ambient-home" KIMI_CODE_HOME="$TMP/kimi-home" \
+    TMPDIR="$TMP/runtime" DELEGATION_DATA_HOME="$TMP/runtime" PATH="$TMP/bin:$PATH" \
+    DELEGATION_KIMI_PLATFORM=Darwin \
+    DELEGATION_KIMI_SANDBOX_BIN="$TMP/bin/sandbox-exec" \
+    DELEGATION_KIMI_SHLOCK_BIN="$TMP/bin/shlock" \
+    DELEGATION_KIMI_CANCEL_GRACE_SECONDS="${DELEGATION_KIMI_CANCEL_GRACE_SECONDS:-1}" \
+    LEAK_ME=secret ZAI_API_KEY=secret \
+    "$ROOT/bin/delegation-kimi" "$@" \
+    >"$TMP/$name.stdout" 2>"$TMP/$name.stderr" &
+  KIMI_BACKGROUND_PID=$!
+}
+
 run_kimi pin-rg --from "$TMP/bin/rg" >"$TMP/pin-rg.out"
 [ -x "$TMP/runtime/kimi-rg/current/rg" ] \
   || fail "pin-rg did not archive the search runtime"
@@ -399,6 +453,7 @@ jq -e '
   .backends.native.hooks == false and
   .backends.native.services == false and
   .backends.native.oauth_refresh_persistence == "serialized-atomic-sync" and
+  .backends.native.oauth_modes == ["serialized","shared"] and
   .backends.native.builder_write_scope == "workdir" and
   .backends.native.read_only_write_scope == "scratch"
 ' "$TMP/check.json" >/dev/null || fail "check contract mismatch"
@@ -1016,6 +1071,177 @@ run_kimi run --lane scout --allow-provisional --prompt-file "$TMP/prompt" \
   [ ! -L "$TMP/kimi-home/.delegation-kit-oauth.lock" ] \
   || fail "stale OAuth lock was not recovered"
 
+# --- Shared OAuth mode: concurrent dispatches against one generation. ---
+SHARED_ROOT="$TMP/runtime/kimi-shared-oauth"
+
+# Solo success: shared metrics, sandbox carve-out, marker bookkeeping.
+run_kimi run --lane scout --allow-provisional --oauth shared \
+  --prompt-file "$TMP/prompt" \
+  --output "$TMP/results/shared-solo.txt" --workdir "$TMP/work"
+[ "$(cat "$TMP/results/shared-solo.txt")" = PONG ] || fail "shared solo output mismatch"
+jq -e '
+  .oauth_refresh_persistence == "shared-vendor-lock" and .oauth_mode == "shared"
+' "$TMP/results/shared-solo.txt.metrics.json" >/dev/null \
+  || fail "shared solo metrics mismatch"
+grep -q '^SHARED_OAUTH=' "$TMP/sandbox-defines.txt" \
+  || fail "shared dispatch did not define SHARED_OAUTH for the sandbox"
+grep -q 'param "SHARED_OAUTH"' "$TMP/sandbox.profile" \
+  || fail "shared dispatch profile did not carve out SHARED_OAUTH"
+[ -f "$SHARED_ROOT/sync-marker.json" ] || fail "shared marker was not written"
+SHARED_GEN_1="$(jq -r '.generation' "$SHARED_ROOT/sync-marker.json")"
+case "$SHARED_GEN_1" in gen-*) ;; *) fail "shared marker generation malformed" ;; esac
+[ "$(jq -r '.synced_sha256' "$SHARED_ROOT/sync-marker.json")" = \
+  "$(sha256 "$TMP/kimi-home/credentials/kimi-code.json")" ] \
+  || fail "shared marker does not fingerprint the ambient credential"
+[ "$(file_mode "$SHARED_ROOT/$SHARED_GEN_1/credentials/kimi-code.json")" = 600 ] \
+  || fail "shared generation credential mode is not 600"
+[ ! -e "$TMP/kimi-home/.delegation-kit-oauth.lock" ] \
+  || fail "kit OAuth lock survived a shared run"
+
+# Two shared runs must overlap: each fixture waits for the other's start
+# marker before answering, so serial execution would time out and fail.
+rm -f -- "$TMP/peer-a-started" "$TMP/peer-b-started"
+printf '%s\n' 'WAIT_FOR_PEER_A' >"$TMP/peer-a-prompt"
+printf '%s\n' 'WAIT_FOR_PEER_B' >"$TMP/peer-b-prompt"
+start_kimi_background_named shared-peer-a run --lane scout --allow-provisional \
+  --oauth shared --prompt-file "$TMP/peer-a-prompt" \
+  --output "$TMP/results/shared-peer-a.txt" --workdir "$TMP/work"
+peer_a_pid="$KIMI_BACKGROUND_PID"
+start_kimi_background_named shared-peer-b run --lane scout --allow-provisional \
+  --oauth shared --prompt-file "$TMP/peer-b-prompt" \
+  --output "$TMP/results/shared-peer-b.txt" --workdir "$TMP/work"
+peer_b_pid="$KIMI_BACKGROUND_PID"
+rc=0
+wait "$peer_a_pid" || rc=$?
+[ "$rc" = 0 ] || fail "concurrent shared run A failed with $rc"
+rc=0
+wait "$peer_b_pid" || rc=$?
+[ "$rc" = 0 ] || fail "concurrent shared run B failed with $rc"
+[ "$(cat "$TMP/results/shared-peer-a.txt")" = PONG ] &&
+  [ "$(cat "$TMP/results/shared-peer-b.txt")" = PONG ] \
+  || fail "concurrent shared runs did not both answer"
+rm -f -- "$TMP/peer-a-started" "$TMP/peer-b-started"
+
+# A rotation inside the shared generation publishes back to the ambient home.
+run_kimi run --lane scout --allow-provisional --oauth shared \
+  --prompt-file "$TMP/rotate-oauth-prompt" \
+  --output "$TMP/results/shared-rotate.txt" --workdir "$TMP/work"
+jq -e '
+  .access_token == "rotated-access" and .refresh_token == "rotated-refresh"
+' "$TMP/kimi-home/credentials/kimi-code.json" >/dev/null \
+  || fail "shared rotation was not published to the ambient credential"
+[ "$(file_mode "$TMP/kimi-home/credentials/kimi-code.json")" = 600 ] \
+  || fail "shared-published ambient credential mode is not 600"
+run_kimi run --lane scout --allow-provisional --oauth shared \
+  --prompt-file "$TMP/require-rotated-oauth-prompt" \
+  --output "$TMP/results/shared-require-rotated.txt" --workdir "$TMP/work"
+[ "$(cat "$TMP/results/shared-require-rotated.txt")" = PONG ] \
+  || fail "the next shared run did not see the rotated shared credential"
+
+# An external `kimi login` mid-run still wins in shared mode, and the next
+# seed abandons the superseded generation.
+SHARED_GEN_BEFORE_CONFLICT="$(jq -r '.generation' "$SHARED_ROOT/sync-marker.json")"
+rc=0
+run_kimi run --lane scout --allow-provisional --oauth shared \
+  --prompt-file "$TMP/concurrent-login-prompt" \
+  --output "$TMP/results/shared-concurrent-login.txt" --workdir "$TMP/work" \
+  >/dev/null 2>&1 || rc=$?
+[ "$rc" = 75 ] || fail "shared concurrent external login returned $rc"
+[ ! -e "$TMP/results/shared-concurrent-login.txt" ] \
+  || fail "shared concurrent external login published output"
+jq -e '
+  .reason == "oauth_conflict" and .oauth_mode == "shared"
+' "$TMP/results/shared-concurrent-login.txt.error.json" >/dev/null \
+  || fail "shared concurrent login diagnostic mismatch"
+jq -e '
+  .access_token == "external-access" and .refresh_token == "external-refresh"
+' "$TMP/kimi-home/credentials/kimi-code.json" >/dev/null \
+  || fail "shared publish overwrote a concurrent external login"
+run_kimi run --lane scout --allow-provisional --oauth shared \
+  --prompt-file "$TMP/prompt" \
+  --output "$TMP/results/shared-after-conflict.txt" --workdir "$TMP/work"
+[ "$(jq -r '.generation' "$SHARED_ROOT/sync-marker.json")" != "$SHARED_GEN_BEFORE_CONFLICT" ] \
+  || fail "external login did not force a new shared generation"
+
+# Corrupt OAuth state in the shared generation fails the run, never reaches
+# the ambient credential, and the next seed reseeds a valid generation.
+cp "$TMP/kimi-home/credentials/kimi-code.json" "$TMP/shared-oauth-before-corruption.json"
+rc=0
+run_kimi run --lane scout --allow-provisional --oauth shared \
+  --prompt-file "$TMP/corrupt-oauth-prompt" \
+  --output "$TMP/results/shared-corrupt.txt" --workdir "$TMP/work" \
+  >/dev/null 2>&1 || rc=$?
+[ "$rc" = 70 ] || fail "shared corrupt OAuth state returned $rc"
+jq -e '
+  .reason == "oauth_sync_failed" and .oauth_mode == "shared"
+' "$TMP/results/shared-corrupt.txt.error.json" >/dev/null \
+  || fail "shared corrupt OAuth diagnostic mismatch"
+cmp -s "$TMP/shared-oauth-before-corruption.json" "$TMP/kimi-home/credentials/kimi-code.json" \
+  || fail "shared corrupt OAuth state replaced the ambient credential"
+run_kimi run --lane scout --allow-provisional --oauth shared \
+  --prompt-file "$TMP/prompt" \
+  --output "$TMP/results/shared-heal.txt" --workdir "$TMP/work"
+[ "$(cat "$TMP/results/shared-heal.txt")" = PONG ] \
+  || fail "shared mode did not heal a corrupt generation"
+
+# A busy kit lock at seed time with a zero wait budget fails fast.
+printf '%s\n' "$$" >"$TMP/kimi-home/.delegation-kit-oauth.lock"
+rc=0
+DELEGATION_KIMI_OAUTH_WAIT_SECONDS=0 run_kimi run --lane scout --allow-provisional \
+  --oauth shared --prompt-file "$TMP/prompt" \
+  --output "$TMP/results/shared-lock-busy.txt" --workdir "$TMP/work" \
+  >/dev/null 2>&1 || rc=$?
+[ "$rc" = 75 ] || fail "busy kit lock at shared seed returned $rc"
+rm -f -- "$TMP/kimi-home/.delegation-kit-oauth.lock"
+
+# Evaluation runs are always serialized, and the mode itself is validated.
+rc=0
+run_kimi run --lane policy-annotation --oauth shared --evaluation \
+  --evaluation-manifest "$TMP/manifest.json" --prompt-file "$TMP/prompt" \
+  --output "$TMP/results/shared-evaluation.txt" --workdir "$ROOT" \
+  >/dev/null 2>&1 || rc=$?
+[ "$rc" = 64 ] || fail "shared evaluation run returned $rc"
+[ ! -e "$TMP/results/shared-evaluation.txt" ] &&
+  [ ! -e "$TMP/results/shared-evaluation.txt.error.json" ] \
+  || fail "refused shared evaluation left artifacts"
+rc=0
+run_kimi run --lane scout --allow-provisional --oauth bogus \
+  --prompt-file "$TMP/prompt" \
+  --output "$TMP/results/shared-bogus.txt" --workdir "$TMP/work" \
+  >/dev/null 2>&1 || rc=$?
+[ "$rc" = 64 ] || fail "invalid oauth mode returned $rc"
+
+# A busy kit lock at publish time defers: the run succeeds, ambient and marker
+# stay untouched, and the next shared run catches up the publication.
+printf '%s\n' 'HOLD_KIT_LOCK_ROTATE' >"$TMP/hold-lock-prompt"
+SHARED_MARKER_BEFORE_DEFER="$(sha256 "$SHARED_ROOT/sync-marker.json")"
+cp "$TMP/kimi-home/credentials/kimi-code.json" "$TMP/ambient-before-defer.json"
+DELEGATION_KIMI_OAUTH_WAIT_SECONDS=0 run_kimi run --lane scout --allow-provisional \
+  --oauth shared --prompt-file "$TMP/hold-lock-prompt" \
+  --output "$TMP/results/shared-deferred.txt" --workdir "$TMP/work"
+[ "$(cat "$TMP/results/shared-deferred.txt")" = PONG ] \
+  || fail "deferred shared publish failed the run"
+cmp -s "$TMP/ambient-before-defer.json" "$TMP/kimi-home/credentials/kimi-code.json" \
+  || fail "deferred publish still touched the ambient credential"
+[ "$(sha256 "$SHARED_ROOT/sync-marker.json")" = "$SHARED_MARKER_BEFORE_DEFER" ] \
+  || fail "deferred publish advanced the shared marker"
+SHARED_GEN_DEFER="$(jq -r '.generation' "$SHARED_ROOT/sync-marker.json")"
+jq -e '
+  .access_token == "deferred-access" and .refresh_token == "deferred-refresh"
+' "$SHARED_ROOT/$SHARED_GEN_DEFER/credentials/kimi-code.json" >/dev/null \
+  || fail "deferred rotation is missing from the shared generation"
+rm -f -- "$TMP/kimi-home/.delegation-kit-oauth.lock"
+printf '%s\n' 'REQUIRE_DEFERRED_OAUTH' >"$TMP/require-deferred-prompt"
+run_kimi run --lane scout --allow-provisional --oauth shared \
+  --prompt-file "$TMP/require-deferred-prompt" \
+  --output "$TMP/results/shared-catchup.txt" --workdir "$TMP/work"
+[ "$(cat "$TMP/results/shared-catchup.txt")" = PONG ] \
+  || fail "catch-up shared run did not see the deferred rotation"
+jq -e '
+  .access_token == "deferred-access" and .refresh_token == "deferred-refresh"
+' "$TMP/kimi-home/credentials/kimi-code.json" >/dev/null \
+  || fail "catch-up shared run did not publish the deferred rotation"
+
 printf '%s\n' 'WRITE_BUILDER' >"$TMP/builder-prompt"
 run_kimi run --lane builder --allow-provisional --prompt-file "$TMP/builder-prompt" \
   --output "$TMP/results/builder.txt" --workdir "$TMP/work"
@@ -1139,6 +1365,60 @@ if [ "$(command uname)" = Darwin ] && command -v sandbox-exec >/dev/null 2>&1; t
     -p "$policy" "$TMP/os-rg/rg" secret "$TMP/ambient-home" \
     >/dev/null 2>&1 || rc=$?
   [ "$rc" != 0 ] || fail "OS sandbox allowed rg to read ambient HOME"
+
+  # Shared-mode profile: the SHARED_OAUTH generation is carved out of both
+  # denies even though it sits under REAL_HOME, and — load-bearing for the
+  # symlinked credentials/ layout — subpath rules match RESOLVED paths, so a
+  # write through a SCRATCH symlink into SHARED_OAUTH must pass while one
+  # into the rest of REAL_HOME must not.
+  shared_policy='(version 1)
+    (allow default)
+    (deny process-exec
+      (require-all
+        (require-not (literal (param "KIMI_BIN")))
+        (require-not (literal "/usr/bin/true"))
+        (require-not (literal (param "RG_BIN")))))
+    (deny file-read-data
+      (require-all
+        (subpath (param "REAL_HOME"))
+        (require-not (subpath (param "WORKDIR")))
+        (require-not (subpath (param "SCRATCH")))
+        (require-not (subpath (param "SHARED_OAUTH")))
+        (require-not (literal (param "KIMI_BIN")))))
+    (deny file-write* (require-all (require-not (subpath (param "SCRATCH"))) (require-not (subpath (param "SHARED_OAUTH")))))
+    (deny file-write* (subpath (param "RG_DIR")))'
+  mkdir -p "$TMP/ambient-home/os-shared-oauth/credentials"
+  printf '%s\n' '{"access_token":"os","refresh_token":"os"}' \
+    >"$TMP/ambient-home/os-shared-oauth/credentials/kimi-code.json"
+  ln -s "$TMP/ambient-home/os-shared-oauth/credentials" "$TMP/os-scratch/credentials"
+  ln -s "$TMP/ambient-home" "$TMP/os-scratch/ambient-link"
+  os_shared() {
+    sandbox-exec -D "SCRATCH=$TMP/os-scratch" -D "WORKDIR=$TMP/work" \
+      -D "REAL_HOME=$TMP/ambient-home" \
+      -D "SHARED_OAUTH=$TMP/ambient-home/os-shared-oauth" \
+      -D "KIMI_BIN=$1" \
+      -D "RG_BIN=$TMP/os-rg/rg" -D "RG_DIR=$TMP/os-rg" \
+      -p "$shared_policy" "$@"
+  }
+  os_shared /usr/bin/touch "$TMP/ambient-home/os-shared-oauth/credentials/kimi-code.lock" \
+    || fail "shared OS sandbox blocked a write inside SHARED_OAUTH"
+  os_shared /bin/cat "$TMP/ambient-home/os-shared-oauth/credentials/kimi-code.json" >/dev/null \
+    || fail "shared OS sandbox blocked a read inside SHARED_OAUTH"
+  rc=0
+  os_shared /bin/cat "$TMP/ambient-home/secret.txt" >/dev/null 2>&1 || rc=$?
+  [ "$rc" != 0 ] || fail "shared OS sandbox allowed ambient-home data read"
+  rc=0
+  os_shared /usr/bin/touch "$TMP/ambient-home/os-outside-shared" >/dev/null 2>&1 || rc=$?
+  [ "$rc" != 0 ] && [ ! -e "$TMP/ambient-home/os-outside-shared" ] \
+    || fail "shared OS sandbox allowed a write outside SHARED_OAUTH"
+  os_shared /usr/bin/touch "$TMP/os-scratch/credentials/os-through-symlink" \
+    || fail "shared OS sandbox blocked a resolved-path write into SHARED_OAUTH"
+  [ -e "$TMP/ambient-home/os-shared-oauth/credentials/os-through-symlink" ] \
+    || fail "resolved-path write did not land inside SHARED_OAUTH"
+  rc=0
+  os_shared /usr/bin/touch "$TMP/os-scratch/ambient-link/os-hostile" >/dev/null 2>&1 || rc=$?
+  [ "$rc" != 0 ] && [ ! -e "$TMP/ambient-home/os-hostile" ] \
+    || fail "shared OS sandbox allowed a symlinked write into REAL_HOME"
 fi
 
 printf 'Kimi runner tests passed.\n'

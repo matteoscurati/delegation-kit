@@ -135,6 +135,28 @@ case "${FAKE_CLAUDE_CASE:-success}" in
       '{"type":"result","subtype":"error_during_execution","is_error":true,"result":""}'
     exit 1
     ;;
+  quota)
+    printf '%s\n' \
+      '{"type":"system","subtype":"init","model":"glm-5.2"}' \
+      '{"type":"system","subtype":"api_retry","error_status":429}' \
+      '{"type":"rate_limit_event","resets_at":1754400000,"message":"SECRET_PAYLOAD"}' \
+      '{"type":"result","subtype":"error_during_execution","is_error":true,"result":""}'
+    printf '%s\n' 'SECRET_PAYLOAD' >&2
+    exit 1
+    ;;
+  rate_stderr)
+    printf '%s\n' \
+      '{"type":"system","subtype":"init","model":"glm-5.2"}' \
+      '{"type":"result","subtype":"error_during_execution","is_error":true,"result":""}'
+    printf '%s\n' 'Too Many Requests SECRET_PAYLOAD' >&2
+    exit 1
+    ;;
+  extract_no_reclassify)
+    printf '%s\n' \
+      '{"type":"system","subtype":"init","model":"glm-5.2"}' \
+      '{"type":"system","subtype":"api_retry","error_status":429}' \
+      '{"type":"result","subtype":"success","is_error":false,"result":""}'
+    ;;
   *)
     printf 'unknown fake case: %s\n' "$FAKE_CLAUDE_CASE" >&2
     exit 64
@@ -226,6 +248,15 @@ run_case auth_mixed 69
 assert_failed_case auth_mixed authentication_failed dispatch 1
 run_case rate 75
 assert_failed_case rate rate_limited dispatch 1
+
+run_case quota 75
+assert_failed_case quota quota_exhausted dispatch 1
+assert_json "$TEST_TMP/results/quota.out.error.json" \
+  '.next_flush_time == 1754400000 and .schema_version == 2'
+run_case rate_stderr 75
+assert_failed_case rate_stderr rate_limited dispatch 1
+run_case extract_no_reclassify 70
+assert_failed_case extract_no_reclassify empty_result extract null
 
 # Evaluation deliberately refuses script launchers: permitting a general-purpose
 # shebang interpreter would let a model-launched subprocess inherit the provider

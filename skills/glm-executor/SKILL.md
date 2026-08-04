@@ -47,7 +47,14 @@ evaluation. Exit 70 means dispatch or result extraction failed; exit 75 means a
 temporary provider or rate-limit failure. Every attempted dispatch failure writes
 a sanitized `<output>.error.json` with a stable `phase` and `reason`, without
 prompt, response, tool, or provider-message content. Inspect that file before
-deciding whether to retry or escalate.
+deciding whether to retry or escalate. Two 429 shapes are distinguished:
+reason `rate_limited` (concurrency or request-rate pressure) is worth a
+backed-off retry, while reason `quota_exhausted` carries the window-reset
+epoch in `next_flush_time` and retrying before that instant is guaranteed
+waste. Assume the coding-plan key allows roughly one in-flight request:
+Z.AI publishes no concurrency number, community measurements on Pro found a
+cap of 1, and the plan's own tiers only promise Max > Pro > Lite — so cap
+parallel GLM workers at one per key unless you have measured your own tier.
 
 Raw events and stderr are deleted by default. For a deliberate local diagnostic
 run, pass an existing, non-symlink `--debug-dir <path>`; on failure the runner

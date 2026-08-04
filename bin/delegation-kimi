@@ -28,6 +28,9 @@ HEARTBEAT_SECONDS="${DELEGATION_KIMI_HEARTBEAT_SECONDS:-30}"
 case "$HEARTBEAT_SECONDS" in ""|*[!0-9]*|0) HEARTBEAT_SECONDS=30 ;; esac
 CANCEL_GRACE_SECONDS="${DELEGATION_KIMI_CANCEL_GRACE_SECONDS:-10}"
 case "$CANCEL_GRACE_SECONDS" in ""|*[!0-9]*|0) CANCEL_GRACE_SECONDS=10 ;; esac
+# Zero is legal: it means "fail immediately when the kit OAuth lock is busy".
+OAUTH_WAIT_SECONDS="${DELEGATION_KIMI_OAUTH_WAIT_SECONDS:-5}"
+case "$OAUTH_WAIT_SECONDS" in ""|*[!0-9]*) OAUTH_WAIT_SECONDS=5 ;; esac
 NATIVE_BIN=""
 NATIVE_VERSION=""
 NATIVE_REASON=""
@@ -45,6 +48,9 @@ RG_RUN_DIR=""
 OAUTH_LOCK_PATH=""
 OAUTH_LOCK_HELD=0
 OAUTH_BASELINE_HASH=""
+OAUTH_MODE="serialized"
+SHARED_OAUTH_DIR=""
+SHARED_OAUTH_GEN=""
 CHILD_PID=""
 HEARTBEAT_PID=""
 CANCEL_REQUESTED=0
@@ -57,6 +63,7 @@ Usage:
   delegation-kimi pin-rg [--from <path>] [--force]
   delegation-kimi run --lane <clerk|scout|builder|frontend-builder|reviewer|senior|judgement|policy-annotation> \
     [--effort <auto|low|high|max>] [--backend <auto|native>] \
+    [--oauth <serialized|shared>] \
     (--prompt-file <path> | --prompt <text>) --output <path> --workdir <path> \
     [--metrics <path>] [--allow-provisional] [--evaluation --evaluation-manifest <path>] \
     [--preflight-only] [--debug-dir <private-existing-directory>]
@@ -70,9 +77,18 @@ validation path as the real evaluation run, prints a
 delegation_policy_annotation_preflight_receipt_v1 receipt on stdout, and exits
 zero before provider dispatch and before any caller-visible artifact exists.
 
+`--oauth shared` (or DELEGATION_KIMI_OAUTH_MODE=shared) allows concurrent
+delegation-kimi dispatches: OAuth state lives in a runner-owned generation
+under $DELEGATION_DATA_HOME/kimi-shared-oauth, concurrent children coordinate
+refresh through the vendor CLI's own oauth lock, and the kit lock is held only
+briefly to seed that generation and to publish it back to the ambient home.
+The default, serialized, holds the kit lock for the whole dispatch, exactly as
+before. --evaluation runs are always serialized.
+
 Exit codes: 64 invalid input; 69 runtime, login, entitlement, or quota unavailable;
 70 sandbox, output, or unclassified dispatch failure; 75 overload, 5xx, timeout,
-or temporary OAuth conflict; 78 lane not qualified; 130 caller cancellation.
+or temporary OAuth conflict (including a busy or superseded shared OAuth
+session); 78 lane not qualified; 130 caller cancellation.
 EOF
 }
 
@@ -107,6 +123,171 @@ acquire_oauth_lock() {
   [ ! -L "$OAUTH_LOCK_PATH" ] || return 1
   "$KIMI_SHLOCK_BIN" -p "$$" -f "$OAUTH_LOCK_PATH" >/dev/null 2>&1 || return 2
   OAUTH_LOCK_HELD=1
+}
+
+# Same return contract as acquire_oauth_lock, but a busy lock (rc 2) is retried
+# once a second until OAUTH_WAIT_SECONDS expires. A symlinked lock path (rc 1)
+# is never retried: that is tampering, not contention.
+acquire_oauth_lock_wait() {
+  local deadline rc
+  deadline="$(( $(date +%s) + OAUTH_WAIT_SECONDS ))"
+  while :; do
+    rc=0
+    acquire_oauth_lock || rc=$?
+    [ "$rc" -eq 2 ] || return "$rc"
+    [ "$(date +%s)" -lt "$deadline" ] || return 2
+    sleep 1
+  done
+}
+
+shared_oauth_root() { printf '%s/kimi-shared-oauth' "$DATA_HOME"; }
+
+credential_tokens_valid() {
+  local credential="$1"
+  [ -f "$credential" ] && [ ! -L "$credential" ] || return 1
+  jq -e '
+    type == "object" and
+    ((.access_token // "") | type == "string" and length > 0) and
+    ((.refresh_token // "") | type == "string" and length > 0)
+  ' "$credential" >/dev/null 2>&1
+}
+
+# The marker records which generation is current and the sha256 the ambient and
+# shared credentials last agreed on. It lives at the shared root, outside every
+# generation, so the sandboxed child can never read or write it.
+read_shared_marker() {
+  local marker
+  marker="$(shared_oauth_root)/sync-marker.json"
+  [ -f "$marker" ] && [ ! -L "$marker" ] || return 1
+  jq -re '
+    select(.schema == "delegation_kimi_shared_oauth_marker_v1") |
+    select((.generation | type == "string" and test("^gen-[0-9]+-[0-9]+$")) and
+           (.synced_sha256 | type == "string" and test("^[0-9a-f]{64}$"))) |
+    "\(.generation) \(.synced_sha256)"
+  ' "$marker" 2>/dev/null
+}
+
+write_shared_marker() {
+  local generation="$1" synced_sha256="$2" root candidate
+  root="$(shared_oauth_root)"
+  candidate="$(mktemp "$root/.sync-marker.json.XXXXXX")" || return 1
+  if ! jq -n --arg generation "$generation" --arg synced_sha256 "$synced_sha256" \
+      '{schema:"delegation_kimi_shared_oauth_marker_v1",
+        generation:$generation,synced_sha256:$synced_sha256}' >"$candidate" ||
+      ! chmod 600 "$candidate" || ! mv -f "$candidate" "$root/sync-marker.json"; then
+    rm -f -- "$candidate"
+    return 1
+  fi
+}
+
+# Seed (or adopt) the shared OAuth generation, holding the kit lock only for
+# this bookkeeping. Children of concurrent runs then share one credentials/ and
+# oauth/ tree, so the vendor CLI's own cross-process lock coordinates
+# refresh-token rotation between them. An external `kimi login` always wins: a
+# changed ambient credential forces a fresh generation, and old generations are
+# never adopted again. Dies on failure; on success sets SHARED_OAUTH_DIR/_GEN.
+seed_shared_oauth() {
+  local root marker marker_generation="" marker_sha="" ambient_hash generation
+  local gen_dir stale lock_rc=0
+  root="$(shared_oauth_root)"
+  mkdir -p "$root" && chmod 700 "$root" \
+    || die 69 "could not create the shared Kimi OAuth root"
+  acquire_oauth_lock_wait || lock_rc=$?
+  if [ "$lock_rc" -eq 2 ]; then
+    die 75 "another Kimi invocation is using the OAuth refresh session; retry after it finishes"
+  elif [ "$lock_rc" -ne 0 ]; then
+    die 69 "could not secure the Kimi OAuth credential for isolated dispatch"
+  fi
+  ambient_hash="$(sha256_file "$CREDENTIAL_FILE")" \
+    || die 69 "could not fingerprint the ambient Kimi OAuth credential"
+  if marker="$(read_shared_marker)"; then
+    marker_generation="${marker%% *}"
+    marker_sha="${marker##* }"
+  fi
+  if [ -n "$marker_generation" ] && [ "$marker_sha" = "$ambient_hash" ] &&
+      credential_tokens_valid "$root/$marker_generation/credentials/kimi-code.json"; then
+    SHARED_OAUTH_GEN="$marker_generation"
+  else
+    generation="gen-$(date +%s)-$$"
+    gen_dir="$root/$generation"
+    mkdir -p "$gen_dir/credentials" "$gen_dir/oauth" \
+      || die 69 "could not create the shared Kimi OAuth generation"
+    cp "$CREDENTIAL_FILE" "$gen_dir/credentials/kimi-code.json" &&
+      chmod 600 "$gen_dir/credentials/kimi-code.json" \
+      || die 69 "could not seed the shared Kimi OAuth generation"
+    if [ -f "$KIMI_HOME/oauth/kimi-code" ] && [ ! -L "$KIMI_HOME/oauth/kimi-code" ]; then
+      cp "$KIMI_HOME/oauth/kimi-code" "$gen_dir/oauth/kimi-code" &&
+        chmod 600 "$gen_dir/oauth/kimi-code" \
+        || die 69 "could not seed the shared Kimi OAuth generation"
+    fi
+    write_shared_marker "$generation" "$ambient_hash" \
+      || die 69 "could not record the shared Kimi OAuth generation"
+    # Bounded cleanup: keep the new generation plus the immediately superseded
+    # one (a still-running child may hold it); anything older is dead state.
+    for stale in "$root"/gen-*; do
+      [ -d "$stale" ] || continue
+      case "$(basename "$stale")" in
+        "$generation"|"$marker_generation") ;;
+        *) rm -rf -- "$stale" ;;
+      esac
+    done
+    SHARED_OAUTH_GEN="$generation"
+  fi
+  release_oauth_lock
+  SHARED_OAUTH_DIR="$(cd "$root/$SHARED_OAUTH_GEN" && pwd -P)" \
+    || die 69 "could not resolve the shared Kimi OAuth generation"
+}
+
+# Publish the shared credential back to the ambient home, holding the kit lock
+# only for the copy. Returns 0 published-or-nothing-to-publish, 1 failed,
+# 2 external conflict (an external `kimi login` wins, exactly as in serialized
+# mode), 3 deferred (the kit lock stayed busy; the shared state is durable and
+# a concurrent delegation run will publish instead). Never dies; the lock is
+# released on every path.
+publish_shared_oauth() {
+  local marker marker_generation marker_sha shared_credential shared_hash
+  local ambient_hash target_dir candidate lock_rc=0 rc=0
+  shared_credential="$(shared_oauth_root)/$SHARED_OAUTH_GEN/credentials/kimi-code.json"
+  acquire_oauth_lock_wait || lock_rc=$?
+  [ "$lock_rc" -ne 2 ] || return 3
+  [ "$lock_rc" -eq 0 ] || return 1
+  if ! marker="$(read_shared_marker)"; then
+    rc=1
+  else
+    marker_generation="${marker%% *}"
+    marker_sha="${marker##* }"
+    if [ "$marker_generation" != "$SHARED_OAUTH_GEN" ]; then
+      rc=2
+    elif ! shared_hash="$(sha256_file "$shared_credential")"; then
+      rc=1
+    elif [ "$shared_hash" = "$marker_sha" ]; then
+      rc=0
+    elif ! credential_tokens_valid "$shared_credential"; then
+      rc=1
+    elif [ ! -f "$CREDENTIAL_FILE" ] || [ -L "$CREDENTIAL_FILE" ]; then
+      rc=2
+    elif ! ambient_hash="$(sha256_file "$CREDENTIAL_FILE")"; then
+      rc=1
+    elif [ "$ambient_hash" != "$marker_sha" ]; then
+      rc=2
+    else
+      target_dir="$(dirname "$CREDENTIAL_FILE")"
+      # Publish before advancing the marker: a crash in between leaves the
+      # ambient credential newest and the marker stale, and the next seed
+      # reseeds from ambient — the newest state. The reverse order could
+      # strand the newest token.
+      if candidate="$(mktemp "$target_dir/.kimi-code.json.delegation-kimi.XXXXXX")" &&
+          cp "$shared_credential" "$candidate" && chmod 600 "$candidate" &&
+          mv -f "$candidate" "$CREDENTIAL_FILE"; then
+        write_shared_marker "$SHARED_OAUTH_GEN" "$shared_hash" || rc=1
+      else
+        rm -f -- "${candidate:-}"
+        rc=1
+      fi
+    fi
+  fi
+  release_oauth_lock
+  return "$rc"
 }
 
 sandbox_status() {
@@ -492,17 +673,15 @@ sync_native_credentials() {
   [ -f "$scratch_credential" ] && [ ! -L "$scratch_credential" ] || return 1
   scratch_hash="$(sha256_file "$scratch_credential")" || return 1
   [ "$scratch_hash" != "$OAUTH_BASELINE_HASH" ] || return 0
-  jq -e '
-    type == "object" and
-    ((.access_token // "") | type == "string" and length > 0) and
-    ((.refresh_token // "") | type == "string" and length > 0)
-  ' "$scratch_credential" >/dev/null 2>&1 || return 1
+  credential_tokens_valid "$scratch_credential" || return 1
 
   # A normal `kimi login` or another non-delegation client may have replaced
   # the ambient credential while this run was active. Refuse to publish this
   # run instead of knowingly overwriting that newer external state. Callers
   # must not run login concurrently: no lock can coordinate a client that does
-  # not participate in this runner's locking protocol.
+  # not participate in this runner's locking protocol. (Serialized mode only —
+  # shared mode publishes through publish_shared_oauth, whose generation marker
+  # provides the equivalent protection.)
   if [ ! -f "$CREDENTIAL_FILE" ] || [ -L "$CREDENTIAL_FILE" ]; then
     return 2
   fi
@@ -746,10 +925,11 @@ publish_failure_diagnostic() {
     --argjson event_summary "$summary" --argjson allowed_tools "$tools" \
     --arg write_scope "$write_scope" --arg rg_sha256 "$RG_SHA256" \
     --arg rg_dependencies_sha256 "$RG_DEPENDENCIES_SHA256" \
-    --arg debug_path "$debug_run_path" --arg oauth_sync "$OAUTH_SYNC_STATUS" '
+    --arg debug_path "$debug_run_path" --arg oauth_sync "$OAUTH_SYNC_STATUS" \
+    --arg oauth_mode "$OAUTH_MODE" '
       {schema:$schema,phase:$phase,reason:$reason,exit_code:$exit_code,
        vendor_exit_code:$vendor_exit_code,duration_seconds:$duration_seconds,
-       oauth_sync:$oauth_sync,
+       oauth_sync:$oauth_sync,oauth_mode:$oauth_mode,
        captured_bytes:{events:$events_bytes,vendor_stderr:$stderr_bytes},
        event_summary:$event_summary,
        tool_policy:{allowed:$allowed_tools,terminal:false,web_tools:false,
@@ -764,15 +944,27 @@ publish_failure_diagnostic() {
 }
 
 prepare_native_home() {
-  local scratch="$1" lane="${2:-scout}" item source target source_path target_path
-  local max_steps allowed_toml disabled_toml agent_file
+  local scratch="$1" lane="${2:-scout}" oauth_layout="${3:-copy}" item source target source_path target_path
+  local max_steps allowed_toml disabled_toml agent_file oauth_items
   source="$KIMI_HOME"
   target="$scratch/home/.kimi-code"
   mkdir -p "$target" "$scratch/home-tmp" "$scratch/empty-skills"
   # Do not import the ambient config: it may contain hooks, plugins, services,
   # or a weaker thinking effort. Keep only the authentication material and a
   # minimal, capability-constrained provider/model definition.
-  for item in credentials/kimi-code.json oauth/kimi-code device_id; do
+  oauth_items="credentials/kimi-code.json oauth/kimi-code device_id"
+  if [ "$oauth_layout" = shared ]; then
+    # Concurrent dispatches share one OAuth generation, so the vendor CLI's own
+    # cross-process lock (oauth/kimi-code.lock) coordinates refresh-token
+    # rotation between them. device_id stays a per-run copy of the ambient
+    # value: every instance presents the same device identity, exactly like
+    # vendor-parallel instances sharing one home.
+    [ -n "$SHARED_OAUTH_DIR" ] || return 1
+    ln -s "$SHARED_OAUTH_DIR/credentials" "$target/credentials" || return 1
+    ln -s "$SHARED_OAUTH_DIR/oauth" "$target/oauth" || return 1
+    oauth_items="device_id"
+  fi
+  for item in $oauth_items; do
     source_path="$source/$item"
     target_path="$target/$item"
     [ ! -e "$source_path" ] || {
@@ -954,6 +1146,7 @@ print_check() {
             terminal:false,web_tools:false,subagents:false,skills:false,
             hooks:false,services:false,
             oauth_refresh_persistence:"serialized-atomic-sync",
+            oauth_modes:["serialized","shared"],
             builder_write_scope:"workdir",read_only_write_scope:"scratch"}}}'
   else
     printf 'Kimi K3: selected=%s qualified=%s provisional=%s\n' "$selected" "$lanes" "$provisional"
@@ -977,6 +1170,7 @@ extract_native() {
     --arg cli_version "$NATIVE_VERSION" --arg write_scope "$write_scope" \
     --arg rg_version "$RG_VERSION" --arg rg_sha256 "$RG_SHA256" \
     --arg rg_dependencies_sha256 "$RG_DEPENDENCIES_SHA256" \
+    --arg oauth_mode "$OAUTH_MODE" \
     --argjson started "$started" '
     {model:$model,backend:"native",effort:$effort,lane:$lane,runtime_cli_version:$cli_version,
      runtime_cli_compatibility:"capability-probed",
@@ -986,7 +1180,9 @@ extract_native() {
      search_runtime:{identity:"ripgrep",version:$rg_version,sha256:$rg_sha256,
        dependencies_sha256:$rg_dependencies_sha256,copied_per_run:true},
      terminal:false,web_tools:false,subagents:false,skills:false,hooks:false,services:false,
-     oauth_refresh_persistence:"serialized-atomic-sync",
+     oauth_refresh_persistence:(if $oauth_mode == "shared"
+       then "shared-vendor-lock" else "serialized-atomic-sync" end),
+     oauth_mode:$oauth_mode,
      write_scope:$write_scope,
      started_at_epoch:$started,finished_at_epoch:now,usage_reported:false,
      tokens:{input:0,output:0,reasoning:0,cache_read:0,cache_write:0},
@@ -1005,11 +1201,13 @@ run_command() {
   local lane="" effort="auto" backend="auto" prompt_file="" prompt="" output="" workdir="" metrics="" evaluation_manifest_path=""
   local debug_dir="" debug_run_path=""
   local prompt_source="" backend_checked=0 expected_effort="" allow_provisional=0 evaluation=0 preflight_only=0
+  local oauth_mode="${DELEGATION_KIMI_OAUTH_MODE:-serialized}"
   while [ "$#" -gt 0 ]; do
     case "$1" in
       --lane) lane="${2:-}"; shift 2 ;;
       --effort) effort="${2:-}"; shift 2 ;;
       --backend) backend="${2:-}"; shift 2 ;;
+      --oauth) oauth_mode="${2:-}"; shift 2 ;;
       --prompt-file) prompt_file="${2:-}"; shift 2 ;;
       --prompt) prompt="${2:-}"; prompt_source="literal"; shift 2 ;;
       --output) output="${2:-}"; shift 2 ;;
@@ -1027,6 +1225,8 @@ run_command() {
   case "$lane" in clerk|scout|builder|frontend-builder|reviewer|senior|judgement|policy-annotation) ;; *) die 64 "invalid lane: $lane" ;; esac
   case "$effort" in auto|low|high|max) ;; *) die 64 "invalid effort: $effort" ;; esac
   case "$backend" in auto|native) ;; *) die 64 "invalid backend: $backend" ;; esac
+  case "$oauth_mode" in serialized|shared) ;; *) die 64 "invalid oauth mode: $oauth_mode" ;; esac
+  OAUTH_MODE="$oauth_mode"
   [ -z "$prompt_file" ] || [ -z "$prompt_source" ] || die 64 "use only one of --prompt-file or --prompt"
   if [ -n "$prompt_file" ]; then
     [ -f "$prompt_file" ] || die 64 "prompt file missing: $prompt_file"
@@ -1039,6 +1239,7 @@ run_command() {
     [ -n "$evaluation_manifest_path" ] || die 64 "--evaluation requires --evaluation-manifest"
     [ -n "$prompt_file" ] || die 64 "--evaluation requires --prompt-file to bind its raw hash"
     [ "$allow_provisional" = 0 ] || die 64 "--evaluation and --allow-provisional are mutually exclusive"
+    [ "$oauth_mode" = serialized ] || die 64 "--evaluation runs are always serialized"
   else
     [ -z "$evaluation_manifest_path" ] || die 64 "--evaluation-manifest requires --evaluation"
   fi
@@ -1190,30 +1391,65 @@ run_command() {
   fi
   local sandbox_profile write_scope scratch_rg
   local lock_rc=0 sync_rc=0 ambient_credential_hash=""
-  acquire_oauth_lock || lock_rc=$?
-  if [ "$lock_rc" -eq 2 ]; then
-    die 75 "another Kimi invocation is using the OAuth refresh session; retry after it finishes"
-  elif [ "$lock_rc" -ne 0 ]; then
-    die 69 "could not secure the Kimi OAuth credential for isolated dispatch"
+  if [ "$oauth_mode" = shared ]; then
+    # The kit lock is held only inside seed_shared_oauth; concurrent dispatches
+    # then proceed in parallel against the shared generation, and the vendor
+    # CLI's own oauth lock coordinates their refreshes.
+    seed_shared_oauth
+    prepare_native_home "$tmp" "$lane" shared || die 69 "could not prepare isolated Kimi home"
+  else
+    acquire_oauth_lock || lock_rc=$?
+    if [ "$lock_rc" -eq 2 ]; then
+      die 75 "another Kimi invocation is using the OAuth refresh session; retry after it finishes"
+    elif [ "$lock_rc" -ne 0 ]; then
+      die 69 "could not secure the Kimi OAuth credential for isolated dispatch"
+    fi
+    prepare_native_home "$tmp" "$lane" || die 69 "could not prepare isolated Kimi home"
   fi
-  prepare_native_home "$tmp" "$lane" || die 69 "could not prepare isolated Kimi home"
   RG_RUN_DIR="$(mktemp -d "${TMPDIR:-/tmp}/delegation-kimi-rg-run.XXXXXX")" \
     || die 70 "could not create protected ripgrep run directory"
   RG_RUN_DIR="$(cd "$RG_RUN_DIR" && pwd -P)"
   chmod 700 "$RG_RUN_DIR"
   scratch_rg="$RG_RUN_DIR/rg"
   copy_verified_rg "$scratch_rg" || die 69 "$NATIVE_REASON"
-  OAUTH_BASELINE_HASH="$(sha256_file "$tmp/home/.kimi-code/credentials/kimi-code.json")" \
-    || die 69 "could not fingerprint the isolated Kimi OAuth credential"
-  ambient_credential_hash="$(sha256_file "$CREDENTIAL_FILE")" \
-    || die 69 "could not fingerprint the ambient Kimi OAuth credential"
-  [ "$OAUTH_BASELINE_HASH" = "$ambient_credential_hash" ] \
-    || die 75 "Kimi OAuth credentials changed while isolated dispatch was being prepared; retry"
+  if [ "$oauth_mode" != shared ]; then
+    # Shared mode has no per-run baseline: the "copy" is the live shared file
+    # that peers may legitimately rotate mid-run. Start-consistency and
+    # external-login detection are done by seed_shared_oauth under the kit
+    # lock and by publish_shared_oauth afterwards.
+    OAUTH_BASELINE_HASH="$(sha256_file "$tmp/home/.kimi-code/credentials/kimi-code.json")" \
+      || die 69 "could not fingerprint the isolated Kimi OAuth credential"
+    ambient_credential_hash="$(sha256_file "$CREDENTIAL_FILE")" \
+      || die 69 "could not fingerprint the ambient Kimi OAuth credential"
+    [ "$OAUTH_BASELINE_HASH" = "$ambient_credential_hash" ] \
+      || die 75 "Kimi OAuth credentials changed while isolated dispatch was being prepared; retry"
+  fi
   if [ -n "$debug_dir" ]; then
     debug_run_path="$debug_dir/delegation-kimi-$(date -u +%Y%m%dT%H%M%SZ)-$$"
     mkdir -m 700 "$debug_run_path" || die 70 "could not create private debug run directory"
   fi
-  sandbox_profile='(version 1)
+  # Shared mode carves the shared OAuth generation out of both denies: the
+  # child's credential reads and refresh writes go through symlinks whose
+  # resolved paths land inside SHARED_OAUTH, under REAL_HOME and outside
+  # SCRATCH, where the serialized profile would deny them. The serialized
+  # profile stays byte-identical to before.
+  if [ "$oauth_mode" = shared ]; then
+    sandbox_profile='(version 1)
+    (allow default)
+    (deny process-exec
+      (require-all
+        (require-not (literal (param "KIMI_BIN")))
+        (require-not (literal "/usr/bin/true"))
+        (require-not (literal (param "RG_BIN")))))
+    (deny file-read-data
+      (require-all
+        (subpath (param "REAL_HOME"))
+        (require-not (subpath (param "WORKDIR")))
+        (require-not (subpath (param "SCRATCH")))
+        (require-not (subpath (param "SHARED_OAUTH")))
+        (require-not (literal (param "KIMI_BIN")))))'
+  else
+    sandbox_profile='(version 1)
     (allow default)
     (deny process-exec
       (require-all
@@ -1226,15 +1462,28 @@ run_command() {
         (require-not (subpath (param "WORKDIR")))
         (require-not (subpath (param "SCRATCH")))
         (require-not (literal (param "KIMI_BIN")))))'
+  fi
   if [ "$lane" = builder ] || [ "$lane" = frontend-builder ]; then
     write_scope="workdir"
-    sandbox_profile+=$'\n    (deny file-write* (require-all (require-not (subpath (param "SCRATCH"))) (require-not (subpath (param "WORKDIR")))))'
+    if [ "$oauth_mode" = shared ]; then
+      sandbox_profile+=$'\n    (deny file-write* (require-all (require-not (subpath (param "SCRATCH"))) (require-not (subpath (param "WORKDIR"))) (require-not (subpath (param "SHARED_OAUTH")))))'
+    else
+      sandbox_profile+=$'\n    (deny file-write* (require-all (require-not (subpath (param "SCRATCH"))) (require-not (subpath (param "WORKDIR")))))'
+    fi
   else
     write_scope="scratch"
-    sandbox_profile+=$'\n    (deny file-write* (require-not (subpath (param "SCRATCH"))))'
+    if [ "$oauth_mode" = shared ]; then
+      sandbox_profile+=$'\n    (deny file-write* (require-all (require-not (subpath (param "SCRATCH"))) (require-not (subpath (param "SHARED_OAUTH")))))'
+    else
+      sandbox_profile+=$'\n    (deny file-write* (require-not (subpath (param "SCRATCH"))))'
+    fi
   fi
   sandbox_profile+=$'\n    (deny file-write* (subpath (param "RG_DIR")))'
   sandbox_profile+=$'\n'
+  local -a sandbox_defines=(-D "SCRATCH=$tmp" -D "WORKDIR=$workdir"
+    -D "REAL_HOME=$ambient_home" -D "KIMI_BIN=$NATIVE_BIN" -D "RG_BIN=$scratch_rg"
+    -D "RG_DIR=$RG_RUN_DIR")
+  [ "$oauth_mode" != shared ] || sandbox_defines+=(-D "SHARED_OAUTH=$SHARED_OAUTH_DIR")
   : >"$events"
   : >"$tmp/stderr"
   CANCEL_REQUESTED=0
@@ -1248,9 +1497,7 @@ run_command() {
       LANG="${LANG:-C}" NO_COLOR=1 CI=1 \
       KIMI_DISABLE_TELEMETRY=1 KIMI_CODE_NO_AUTO_UPDATE=1 KIMI_DISABLE_CRON=1 \
       "$KIMI_TIMEOUT_BIN" -k 10 "$timeout_seconds" \
-      "$sandbox_bin" -D "SCRATCH=$tmp" -D "WORKDIR=$workdir" \
-        -D "REAL_HOME=$ambient_home" -D "KIMI_BIN=$NATIVE_BIN" -D "RG_BIN=$scratch_rg" \
-        -D "RG_DIR=$RG_RUN_DIR" \
+      "$sandbox_bin" "${sandbox_defines[@]}" \
         -p "$sandbox_profile" "$NATIVE_BIN" \
         --prompt "$prompt" --model "$NATIVE_MODEL" \
         --agent-file "$tmp/agent.md" --skills-dir "$tmp/empty-skills" \
@@ -1276,10 +1523,15 @@ run_command() {
     wait "$HEARTBEAT_PID" 2>/dev/null || true
     HEARTBEAT_PID=""
   fi
-  sync_native_credentials "$tmp" || sync_rc=$?
+  if [ "$oauth_mode" = shared ]; then
+    publish_shared_oauth || sync_rc=$?
+  else
+    sync_native_credentials "$tmp" || sync_rc=$?
+  fi
   case "$sync_rc" in
     0) OAUTH_SYNC_STATUS="ok" ;;
     2) OAUTH_SYNC_STATUS="conflict" ;;
+    3) OAUTH_SYNC_STATUS="deferred" ;;
     *) OAUTH_SYNC_STATUS="failed" ;;
   esac
   release_oauth_lock
@@ -1295,7 +1547,9 @@ run_command() {
     final_rc=75
     failure_reason="oauth_conflict"
     failure_phase="oauth-sync"
-  elif [ "$sync_rc" -ne 0 ]; then
+  elif [ "$sync_rc" -ne 0 ] && [ "$sync_rc" -ne 3 ]; then
+    # 3 (deferred) is a success: the shared state is durable and the busy kit
+    # lock means a concurrent delegation run will publish it instead.
     final_rc=70
     failure_reason="oauth_sync_failed"
     failure_phase="oauth-sync"
