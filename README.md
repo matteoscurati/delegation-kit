@@ -9,7 +9,16 @@ It ships as a **reference implementation**: the author's concrete models
 external-evidence snapshot, and fail-closed local gates. Swap the models for your own tiers with
 [`ADAPTING.md`](./ADAPTING.md) — the *structure* is the transferable part.
 
-## Current release: 0.13.0
+## Current release: 0.13.1
+
+Version 0.13.1 makes the Gemini lane reachable over SSH. `agy` abandons the
+macOS Keychain for a file-based token store whenever it sees the SSH session
+markers, while `delegation-gemini` supplies credentials the other way — by
+symlinking the user's Keychain into the isolated home — so from an SSH session a
+signed-in user was reported as signed out and the lane failed closed with exit
+69 no matter how many times they logged in. The runner now clears those markers
+for every `agy` call that can touch credentials; on a local session they are
+unset already, so nothing changes there. No routing decision moves.
 
 Version 0.13.0 re-pins the three Codex executor lanes above the effort cliff and
 orders the external builders by evidence. A probe of the provider showed the
