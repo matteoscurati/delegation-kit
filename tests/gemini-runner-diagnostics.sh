@@ -4,16 +4,30 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 TMP="$(mktemp -d "${TMPDIR:-/tmp}/delegation-gemini-test.XXXXXX")"
 trap 'rm -rf -- "$TMP"' EXIT
 export HOME="$TMP/home"
+# Run the whole suite as if it were launched over SSH, so the stub's marker
+# assertion is exercised rather than passing for lack of anything to catch.
+export SSH_CLIENT='203.0.113.7 51234 22' SSH_CONNECTION='203.0.113.7 51234 198.51.100.9 22' SSH_TTY=/dev/ttys999
 mkdir -p "$TMP/bin" "$TMP/work" "$TMP/results" "$TMP/runtime" "$TMP/debug" "$HOME/Library/Keychains"
 printf 'Respond with PONG.\n' >"$TMP/prompt"
 cat >"$TMP/bin/agy" <<'EOF'
 #!/usr/bin/env bash
+# The real agy abandons the macOS Keychain for a file-based token store whenever
+# it sees these markers, which would make a signed-in user look signed out. The
+# runner must clear them before every call that can touch credentials.
+no_ssh_markers() {
+  [ -z "${SSH_CLIENT:-}${SSH_CONNECTION:-}${SSH_TTY:-}" ] && return 0
+  printf 'SSH markers reached agy: client=%s connection=%s tty=%s\n' \
+    "${SSH_CLIENT:-}" "${SSH_CONNECTION:-}" "${SSH_TTY:-}" >&2
+  exit 90
+}
 if [ "${1:-}" = --help ]; then printf '%s\n' 'agy --print --model --effort --mode --sandbox --print-timeout'; exit 0; fi
-if [ "${1:-}" = plugin ] && [ "${2:-}" = list ]; then printf '%s\n' "${FAKE_AGY_PLUGINS:-No imported plugins.}"; exit 0; fi
+if [ "${1:-}" = plugin ] && [ "${2:-}" = list ]; then no_ssh_markers; printf '%s\n' "${FAKE_AGY_PLUGINS:-No imported plugins.}"; exit 0; fi
 if [ "${1:-}" = models ]; then
+  no_ssh_markers
   printf '%s\n' ${FAKE_AGY_MODELS:-gemini-3.6-flash-medium}
   exit 0
 fi
+no_ssh_markers
 case "${FAKE_AGY_CASE:-success}" in
  success)
    expected_model="${FAKE_EXPECT_MODEL:-gemini-3.6-flash-medium}"

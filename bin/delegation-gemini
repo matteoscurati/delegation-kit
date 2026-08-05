@@ -43,6 +43,15 @@ EOF
 
 normalized_destination() { local parent name; parent="$(cd "$(dirname "$1")" && pwd -P)" || return 1; name="$(basename "$1")"; printf '%s/%s' "$parent" "$name"; }
 
+# agy chooses its credential store from the environment: when it sees the SSH
+# session markers it switches to a file-based token store and never consults the
+# macOS Keychain. This runner supplies credentials the other way, by symlinking
+# the user's Keychain into the isolated home, so over SSH the CLI would look in a
+# store that was never written and report a logged-in user as logged out. Clear
+# the markers for every agy call that can touch credentials. On a local session
+# they are unset already, so this is a no-op there.
+agy_env() { env -u SSH_CLIENT -u SSH_CONNECTION -u SSH_TTY "$@"; }
+
 prepare_isolated_home() {
   local isolated_home="$1"
   [ -d "$USER_KEYCHAINS" ] || return 1
@@ -80,7 +89,7 @@ agy_status() {
     AGY_REASON="cannot create isolated Antigravity home with macOS Keychain access"
     return 1
   fi
-  if ! plugins="$(HOME="$status_tmp/home" agy plugin list 2>&1)"; then
+  if ! plugins="$(agy_env HOME="$status_tmp/home" agy plugin list 2>&1)"; then
     rm -rf -- "$status_tmp"
     AGY_REASON="Antigravity plugin inventory unavailable"
     return 1
@@ -90,9 +99,9 @@ agy_status() {
     AGY_REASON="isolated Antigravity home unexpectedly imports plugins"
     return 1
   fi
-  if ! models="$(HOME="$status_tmp/home" agy models 2>&1)"; then
+  if ! models="$(agy_env HOME="$status_tmp/home" agy models 2>&1)"; then
     rm -rf -- "$status_tmp"
-    AGY_REASON="agy model inventory unavailable; authenticate interactively"
+    AGY_REASON="agy model inventory unavailable; sign in interactively with agy, and keep the login keychain unlocked because this runner reads the OAuth session from it"
     return 1
   fi
   rm -rf -- "$status_tmp"
@@ -222,7 +231,7 @@ $user_prompt"
   prepare_isolated_home "$tmp/home" || die 69 "cannot create isolated Antigravity home with macOS Keychain access"
   stdout_file="$tmp/stdout"; stderr_file="$tmp/stderr"; : >"$stdout_file"; : >"$stderr_file"
   RUN_OUTPUT_TMP="$(mktemp "$(dirname "$output")/.$(basename "$output").XXXXXX")"; RUN_METRICS_TMP="$(mktemp "$(dirname "$metrics")/.$(basename "$metrics").XXXXXX")"; started="$(date +%s)"
-  (cd "$tmp/workspace" && HOME="$tmp/home" agy -p "$dispatch_prompt" --model "$runtime_model" --effort "$effort" --mode "$permission" --sandbox --print-timeout 5m) >"$stdout_file" 2>"$stderr_file" || rc=$?
+  (cd "$tmp/workspace" && agy_env HOME="$tmp/home" agy -p "$dispatch_prompt" --model "$runtime_model" --effort "$effort" --mode "$permission" --sandbox --print-timeout 5m) >"$stdout_file" 2>"$stderr_file" || rc=$?
   if [ "$rc" -ne 0 ]; then phase=dispatch; read -r reason final_rc <<<"$(classify_failure "$stderr_file")"; cli_exit="$rc"
   elif grep -Eqi 'no output produced|permission.+auto-denied|tool required the .+ permission' "$stderr_file"; then phase=dispatch; reason=tool_permission_denied; final_rc=70; cli_exit=0
   elif [ ! -s "$stdout_file" ] || ! grep -q '[^[:space:]]' "$stdout_file"; then phase=extract; reason=empty_output; final_rc=70

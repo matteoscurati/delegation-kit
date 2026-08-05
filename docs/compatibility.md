@@ -11,14 +11,17 @@ The matrix below was verified on macOS 26.5.1 with Codex CLI `0.146.0` and
 Claude Code `2.1.220`. Numeric vendor versions are provenance only wherever the
 runner uses capability probing.
 
-It carries two dates. The rows the 0.13.0 effort re-pin touched — the Codex
-ephemeral and native profiles, plus the bridge — were re-verified on
-**2026-08-05**. Every other row is carried from **2026-08-03** because 0.13.0
-changed nothing in its runner, transport, or pinned tuple; each such row states
-its own date where the run itself was dated. The Gemini 3.6 Flash row could not
-be re-run at all: the `agy` OAuth session has expired, `delegation-gemini check`
-reports the backend unavailable, and the lane is not dispatchable until someone
-signs in interactively.
+It carries two dates. The rows 0.13.0 and 0.13.1 touched — the Codex ephemeral
+and native profiles, Gemini 3.6 Flash, and the bridge — were re-verified on
+**2026-08-05**. Every other row is carried from **2026-08-03** because neither
+release changed its runner, transport, or pinned tuple; each such row states its
+own date where the run itself was dated.
+
+The Gemini row was previously recorded as unverifiable on the belief that the
+`agy` OAuth session had expired. It had not: the session was valid in the login
+keychain the whole time, and `agy` was ignoring it because this machine drives
+the kit over SSH. That is what 0.13.1 fixes, and the row is now a real passing
+run rather than an absence.
 
 | Surface | Profiles or lanes | Result |
 |---|---|---|
@@ -26,7 +29,7 @@ signs in interactively.
 | Codex ephemeral profiles | `luna-clerk`, `terra-scout`, `terra-builder`, `sol-reviewer`, `sol-judge` | Re-verified 2026-08-05 for the three profiles 0.13.0 re-pinned, after reinstalling so the installed bytes carried the new efforts. `luna-clerk` at `max` aggregated a five-line inventory to the correct per-item totals in the requested order; `terra-scout` at `medium` mapped `src/` and named the `app → util` import direction; `terra-builder` at `max` turned a red acceptance check green and its diff touched **only** `target.py`. Both read-only profiles left the fixture clean. `sol-reviewer` and `sol-judge` are unchanged at `high` and carry their 2026-08-03 result. |
 | Codex native profiles | the same five roles under `~/.codex/agents/` | Model, effort, sandbox, role declarations, and installed bytes match the shipped definitions; re-checked 2026-08-05 after the re-pin, with `luna-clerk` at `max`, `terra-scout` at `medium`, and `terra-builder` at `max` in both the agent and the ephemeral-profile copies. |
 | GLM-5.2 | `clerk`, `scout`, `builder` | The exact `claude-zai/high` comparison completed three no-retry attempts per provider and lane. Clerk and scout are qualified explicit-only; builder passed all checkers and is provisional explicit-only. |
-| Gemini 3.6 Flash | `scout` | The prompt-only semantic smoke passed. The lane remains provisional and requires `--allow-provisional`; builder lanes remain blocked. |
+| Gemini 3.6 Flash | `scout` | Re-verified 2026-08-05 from an SSH session, after 0.13.1 stopped the SSH markers from diverting `agy` off the Keychain: `check` reports `ready`, and two prompt-only `scout` dispatches returned correct answers at exit 0 through the ordinary invocation, with no output file or partial artifact left behind on the earlier refusals. Before the fix the same lane failed closed with exit 69 regardless of how often the user signed in. The lane remains provisional and requires `--allow-provisional`; builder lanes remain blocked. The runner reads the OAuth session from the login keychain, so it needs that keychain unlocked. |
 | Kimi K3 | `clerk`, `scout`, `builder`, `frontend-builder` | Capability, sandbox, pin/tamper, signal, timeout, OAuth-finalization, and diagnostics regressions passed, including the shared-OAuth concurrency cases (parallel overlap, deferred publish, external-login conflict). The live two-parallel `--oauth shared` smoke against the real CLI passed on 2026-08-04: two concurrent scouts completed, the vendor rotated the OAuth token through the symlinked shared generation mid-run, and the publish restored a valid ambient credential. All operational lanes remain provisional; `builder` and `frontend-builder` are `preferred-explicit` as of 0.13.0 and `clerk`/`scout` stay `explicit-only`, and every one of them still requires `--allow-provisional`. |
 | Grok 4.5 | `builder`, `frontend-builder` | Both semantic edit smokes passed in disposable repositories and stayed within assigned files. Both lanes remain provisional and `preferred-explicit` as of 0.13.0, and both still require `--allow-provisional`. |
 | Qwen3.8-Max | `builder` | `GET /models` listed both `qwen3.8-max` and `qwen3.8-max-preview`, and a completion pinned to the unsuffixed id returned `.model == "qwen3.8-max"` at `xhigh`. A 20-check smoke passed: six gate refusals with the documented exit codes and no artifact, then a real dispatch whose unified diff applied with `git apply`, stayed inside its assigned file, and turned a red acceptance suite green. The lane is provisional explicit-only and requires `--allow-provisional`; every other lane still fails closed with exit `78`. |

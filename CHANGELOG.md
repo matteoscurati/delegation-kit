@@ -2,6 +2,33 @@
 
 All notable changes to delegation-kit are documented here.
 
+## [0.13.1] — 2026-08-05
+
+### Fixed
+
+- **The Gemini lane was unreachable from an SSH session, whatever the user did.**
+  `agy` picks its credential store from the environment: seeing `SSH_CLIENT`,
+  `SSH_CONNECTION`, or `SSH_TTY` it switches to a file-based token store and
+  never consults the macOS Keychain. `delegation-gemini` supplies credentials the
+  opposite way — `prepare_isolated_home` symlinks the user's
+  `~/Library/Keychains` into the isolated home and carries nothing else — so over
+  SSH the CLI looked in a store that was never written, `agy_status` reported
+  `agy model inventory unavailable`, and every dispatch failed closed with exit
+  69. Signing in again could not help: the login landed in the Keychain that the
+  CLI had already decided to ignore. The runner now clears the three markers for
+  every `agy` call that can touch credentials — the plugin inventory, the model
+  inventory, and the dispatch itself. On a local session they are unset already,
+  so this is a no-op there, and it grants nothing new: no additional tools, no
+  filesystem access, only which credential store the CLI consults. Verified end
+  to end from an SSH session: `check` reports `ready` and a real `scout` dispatch
+  returned a correct answer at exit 0.
+- The unavailable-runtime reason now says to keep the login keychain unlocked,
+  since that is the only store this runner can read; the previous text sent the
+  reader to an interactive sign-in that would not have fixed the SSH case.
+- `tests/gemini-runner-diagnostics.sh` now runs its whole suite with SSH markers
+  exported, and its `agy` stub exits 90 if any of them reaches the CLI. Neutering
+  the fix makes the suite fail, so the regression is real rather than vacuous.
+
 ## [0.13.0] — 2026-08-05
 
 ### Changed
