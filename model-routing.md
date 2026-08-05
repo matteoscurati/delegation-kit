@@ -95,15 +95,22 @@ output contracts for the exact production runner.
 
 Effort levels each model exposes (Claude `effort:` / Codex `model_reasoning_effort`). Author's mapping — verify for your models; the deeper tiers live only on the frontier reasoners.
 
+The Codex rows were corrected on 2026-08-05: they previously stopped at `high`.
+The enum is **per model**, not global — the provider rejects an unknown value by
+enumerating that model's own accepted set. Verified by probe: `gpt-5.6-terra`
+enumerates `none · minimal · low · medium · high · xhigh · max` and ran at
+`high`, `xhigh`, and `max`; `gpt-5.6-sol` and `gpt-5.6-luna` both ran at `xhigh`
+and `max`; `gpt-5.5` **refuses** `max` and enumerates a shorter set of its own.
+
 | model | supported effort |
 |---|---|
 | fable-5 | low · medium · high · xhigh · max |
 | opus-5 | low · medium · high · xhigh · max |
-| gpt-5.6-sol | low · medium · high |
-| gpt-5.6-terra | low · medium · high |
-| gpt-5.6-luna | low · medium · high |
+| gpt-5.6-sol | low · medium · high · xhigh · max |
+| gpt-5.6-terra | none · minimal · low · medium · high · xhigh · max |
+| gpt-5.6-luna | low · medium · high · xhigh · max |
 | sonnet-5 | low · medium · high |
-| gpt-5.5 | low · medium · high |
+| gpt-5.5 | none · low · medium · high · xhigh (no `max`) |
 | glm-5.2 | high (installed bridge maximum) · max (provider capability only) |
 | kimi-k3 | max |
 | gemini-3.6-flash | medium (scout provisional) · high (editing candidate) |

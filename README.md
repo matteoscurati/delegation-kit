@@ -9,7 +9,20 @@ It ships as a **reference implementation**: the author's concrete models
 external-evidence snapshot, and fail-closed local gates. Swap the models for your own tiers with
 [`ADAPTING.md`](./ADAPTING.md) — the *structure* is the transferable part.
 
-## Current release: 0.12.0
+## Current release: 0.13.0
+
+Version 0.13.0 re-pins the three Codex executor lanes above the effort cliff and
+orders the external builders by evidence. A probe of the provider showed the
+reasoning-effort enum is per model and reaches `max` on the GPT-5.6 family, so
+`luna-clerk` moves to `max`, `terra-scout` to `medium`, and `terra-builder` to
+`max` — each landing on an effort that already has an exact benchmark row, and
+each fixing a lane that was pinned where the model collapses (`gpt-5.6-luna` at
+`low` scores 15% on the clerk required metric). Kimi K3 and Grok 4.5 become
+`preferred-explicit` on `builder`, the only two carrying both builder required
+metrics on an exact production tuple; `preferred-explicit` now actually orders
+first in `delegation-route resolve`, which it previously did not. The evidence
+snapshot gains 65 dated rows, and `delegation-evidence check` no longer swallows
+a schema or reference failure.
 
 Version 0.12.0 adds the opt-in `--oauth shared` mode to `delegation-kimi`,
 letting several agents dispatch Kimi lanes in parallel by sharing one

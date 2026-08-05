@@ -4,13 +4,13 @@
   "owner": { "name": "Matteo Scurati", "url": "https://github.com/matteoscurati" },
   "metadata": {
     "description": "Cross-tool delegation kit with model-routing profiles, guarded external-model bridges, and deterministic Claude/Codex schema transport.",
-    "version": "0.12.0"
+    "version": "0.13.0"
   },
   "plugins": [
     {
       "name": "delegation-kit",
       "description": "Model-routing profiles, orchestration, guarded external-model executor skills, and deterministic Claude/Codex schema transport.",
-      "version": "0.12.0",
+      "version": "0.13.0",
       "author": { "name": "Matteo Scurati" },
       "homepage": "https://github.com/matteoscurati/delegation-kit",
       "license": "MIT",

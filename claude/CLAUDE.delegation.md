@@ -168,14 +168,28 @@ central graph directly before runtime/auth checks.
 
 ## Rules
 
-- **Effort:** executor low for well-specified mechanical work, medium when
-  ambiguous or for routine review; senior medium by default, high for
-  security/hard design, low for triage. Scale to ambiguity and blast radius, never
-  to prestige.
+- **Effort:** scale to ambiguity and blast radius, never to prestige — but read
+  the model's own effort ladder before picking the bottom rung. Cheap models do
+  not degrade gracefully: on the 2026-08-05 snapshot `gpt-5.6-luna` at `low`
+  scores 15% SWE-Atlas-QnA and 1.5% DeepSWE, and `gpt-5.6-terra` at `low` scores
+  23%, so a lane pinned there is not cheap, it is broken. The Codex profiles are
+  therefore pinned above the cliff (`luna-clerk` max, `terra-scout` medium,
+  `terra-builder` max) where the exact benchmark row still costs cents per task.
+  The Claude profiles keep low/medium, where the same ladder falls off far more
+  gently. Senior stays medium by default, high for security/hard design, low for
+  triage.
 - **Route review by content, not habit** — security/auth/payments/migrations/
   user-facing → senior; routine bug-hunting stays on the executor (often cheaper
   *and* higher-recall there). Size the reviewer to the work, not to the top of the
   evidence for that lane.
+- **Picking among the external builders:** they are not interchangeable. Kimi K3
+  and Grok 4.5 are `preferred-explicit` because they are the only two carrying
+  both builder required metrics on an exact production tuple; GLM-5.2 and
+  Qwen3.8-Max stay plain `explicit-only` because they carry neither. Preference
+  is not qualification — every one of them still needs an explicit decision and
+  `--allow-provisional`. For frontend work prefer Kimi over Grok on WebDev
+  (1676 against 1549), and prefer any editing runner over Qwen, whose text-only
+  transport returns a patch the lead must apply itself.
 - **Escalation ladder:** executor miss/ambiguity → senior → judgement. Never retry
   the same failure on the executor twice — escalate. Security never delegates
   downward: it starts on the senior lane. (Standing rule: judge the output, not the

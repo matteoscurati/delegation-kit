@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "snapshot_at": "2026-07-31T00:00:00Z",
+  "snapshot_at": "2026-08-05T00:00:00Z",
   "max_snapshot_age_days": 45,
   "policy": {
     "external_evidence_never_auto_qualifies": true,
@@ -282,6 +282,35 @@
       "category": "first-party-release-evidence",
       "scope": "Model Studio now lists the unsuffixed qwen3.8-max identifier across five regions with OpenAI-compatible, Anthropic-compatible, and DashScope APIs, and uses it in production documentation examples. A local Token Plan probe on 2026-08-03 confirmed GET /models returns both qwen3.8-max and qwen3.8-max-preview and that a chat completion pinned to qwen3.8-max returns .model == \"qwen3.8-max\" with reasoning_effort xhigh accepted.",
       "limitations": "Leaving preview is an availability change, not a capability measurement. Alibaba has published no benchmark table for Qwen3.8-Max, and no DeepSWE or Terminal-Bench v2 row exists for it on any harness, so this source cannot satisfy builder required metrics. The announcement post could not be read directly (x.com returned HTTP 402); its pricing figures reached this record through a search-engine summary and are unverified. Open weights had not shipped when observed. The alibabacloud.com international documentation mirror still listed no qwen3.8 model."
+    },
+    "agent-arena-2026-08-03": {
+      "name": "Arena Agent Arena",
+      "url": "https://arena.ai/leaderboard/agent",
+      "methodology_url": "https://arena.ai/blog/agent-arena-methodology/",
+      "observed_at": "2026-08-05",
+      "data_date": "2026-08-03",
+      "scope": "1,607,993 in-the-wild sessions across 45 ranked models with causal estimates for confirmed success, user feedback, steerability, bash recovery, and tool hallucination; first Claude Opus 5 rows, which enter at ranks 1 and 3",
+      "limitations": "The board is sorted by descending net improvement and the rendered page does not expose the sign to an automated capture; rows below the rank-25 inflection carry sign_inferred and must be confirmed visually before they move a lane. Still no Qwen3.8-Max row"
+    },
+    "code-arena-webdev-2026-08-01": {
+      "name": "Arena Code Arena WebDev",
+      "url": "https://arena.ai/leaderboard/code/webdev",
+      "methodology_url": "https://arena.ai/blog/new-categories-code-arena/",
+      "observed_at": "2026-08-05",
+      "data_date": "2026-08-01",
+      "scope": "510,194 human-preference WebDev votes across 110 ranked models; first qwen3.8-max row at rank 4 on 1,563 votes",
+      "limitations": "Frontend preference only; it never qualifies general builder, reviewer, or judgement work. The board reports its own harness and effort labels, which usually differ from an installed production tuple"
+    },
+    "epoch-zip-2026-08-04": {
+      "name": "Epoch AI benchmark data ZIP",
+      "url": "https://epoch.ai/benchmarks/use-this-data",
+      "data_url": "https://epoch.ai/data/benchmark_data.zip",
+      "observed_at": "2026-08-05",
+      "archive_sha256": "3803c45f356410bb754c59176f235c00548dc47f5dd6c7a0b887d4bf53585c1c",
+      "previous_archive_sha256": "fa42ce8e17bacd56885032891dfd1073894ba09c424bf540ab51d0469e9c2850",
+      "republished": "The archive was re-published since the 2026-07-31 record. Its 2026-08-04 shape is 75 CSVs, 6,113 rows, and 6,056 normalized advisory records; the hash is descriptive provenance and is not enforced by any check",
+      "scope": "First import of the DeepSWE effort ladder. Every imported row runs the mini-swe-agent harness at one reported effort, which makes efforts comparable to each other within a model",
+      "limitations": "mini-swe-agent is not an installed production harness, so no imported row is exact for any profile in config/routing-gates.json. Costs are API-priced and are not comparable with subscription buckets. The archive still contains no qwen3.8-max record"
     }
   },
   "lane_evidence": {
@@ -967,6 +996,673 @@
           "published_benchmark_table": false
         }
       }
+    },
+    {
+      "id": "arena-agent-opus-5-high-2026-08-03",
+      "model": "claude-opus-5",
+      "harness": "arena-agent-mode",
+      "effort": "high",
+      "source": "agent-arena-2026-08-03",
+      "contextual_only": true,
+      "metrics": {"agent": {"rank": 1, "models_ranked": 45, "net_improvement_pct": 12.1, "confirmed_success_effect_pct": 16.42, "praise_vs_complaint_effect_pct": 21.37, "steerability_effect_pct": 9.08, "bash_recovery_effect_pct": 12.53, "tool_hallucination_effect_pct": 1.09, "sessions": 19135, "total_sessions": 1607993}}
+    },
+    {
+      "id": "arena-agent-fable-5-high-2026-08-03",
+      "model": "claude-fable-5",
+      "harness": "arena-agent-mode",
+      "effort": "high",
+      "source": "agent-arena-2026-08-03",
+      "contextual_only": true,
+      "metrics": {"agent": {"rank": 2, "models_ranked": 45, "net_improvement_pct": 11.69, "confirmed_success_effect_pct": 11.24, "praise_vs_complaint_effect_pct": 23.14, "steerability_effect_pct": 10.21, "bash_recovery_effect_pct": 12.71, "tool_hallucination_effect_pct": 1.17, "sessions": 24070, "total_sessions": 1607993}}
+    },
+    {
+      "id": "arena-agent-opus-5-max-2026-08-03",
+      "model": "claude-opus-5",
+      "harness": "arena-agent-mode",
+      "effort": "max",
+      "source": "agent-arena-2026-08-03",
+      "contextual_only": true,
+      "metrics": {"agent": {"rank": 3, "models_ranked": 45, "net_improvement_pct": 11.5, "confirmed_success_effect_pct": 16.39, "praise_vs_complaint_effect_pct": 20.28, "steerability_effect_pct": 6.39, "bash_recovery_effect_pct": 13.31, "tool_hallucination_effect_pct": 1.13, "sessions": 14959, "total_sessions": 1607993}}
+    },
+    {
+      "id": "arena-agent-kimi-k3-2026-08-03",
+      "model": "kimi-k3",
+      "harness": "arena-agent-mode",
+      "effort": "max",
+      "source": "agent-arena-2026-08-03",
+      "contextual_only": true,
+      "metrics": {"agent": {"rank": 4, "models_ranked": 45, "net_improvement_pct": 10.18, "confirmed_success_effect_pct": 15.49, "praise_vs_complaint_effect_pct": 19.71, "steerability_effect_pct": 7.5, "bash_recovery_effect_pct": 7.04, "tool_hallucination_effect_pct": 1.17, "sessions": 24617, "total_sessions": 1607993}}
+    },
+    {
+      "id": "arena-agent-gpt-5.6-sol-xhigh-2026-08-03",
+      "model": "gpt-5.6-sol",
+      "harness": "arena-agent-mode",
+      "effort": "xhigh",
+      "source": "agent-arena-2026-08-03",
+      "contextual_only": true,
+      "metrics": {"agent": {"rank": 5, "models_ranked": 45, "net_improvement_pct": 10.09, "confirmed_success_effect_pct": 8.97, "praise_vs_complaint_effect_pct": 21.32, "steerability_effect_pct": 9.28, "bash_recovery_effect_pct": 9.73, "tool_hallucination_effect_pct": 1.17, "sessions": 17508, "total_sessions": 1607993}}
+    },
+    {
+      "id": "arena-agent-opus-4.8-thinking-2026-08-03",
+      "model": "claude-opus-4.8",
+      "harness": "arena-agent-mode",
+      "effort": "thinking",
+      "source": "agent-arena-2026-08-03",
+      "contextual_only": true,
+      "metrics": {"agent": {"rank": 6, "models_ranked": 45, "net_improvement_pct": 9.21, "confirmed_success_effect_pct": 8.25, "praise_vs_complaint_effect_pct": 21.18, "steerability_effect_pct": 9.04, "bash_recovery_effect_pct": 8.91, "tool_hallucination_effect_pct": 1.35, "sessions": 34811, "total_sessions": 1607993}}
+    },
+    {
+      "id": "arena-agent-sonnet-5-high-2026-08-03",
+      "model": "claude-sonnet-5",
+      "harness": "arena-agent-mode",
+      "effort": "high",
+      "source": "agent-arena-2026-08-03",
+      "contextual_only": true,
+      "metrics": {"agent": {"rank": 10, "models_ranked": 45, "net_improvement_pct": 7.5, "confirmed_success_effect_pct": 6.61, "praise_vs_complaint_effect_pct": 14.0, "steerability_effect_pct": 5.67, "bash_recovery_effect_pct": 10.21, "tool_hallucination_effect_pct": 1.01, "sessions": 25071, "total_sessions": 1607993}}
+    },
+    {
+      "id": "arena-agent-glm-5.2-max-2026-08-03",
+      "model": "glm-5.2",
+      "harness": "arena-agent-mode",
+      "effort": "max",
+      "source": "agent-arena-2026-08-03",
+      "contextual_only": true,
+      "metrics": {"agent": {"rank": 12, "models_ranked": 45, "net_improvement_pct": 6.66, "confirmed_success_effect_pct": 9.06, "praise_vs_complaint_effect_pct": 12.63, "steerability_effect_pct": 5.64, "bash_recovery_effect_pct": 4.83, "tool_hallucination_effect_pct": 1.17, "sessions": 48329, "total_sessions": 1607993}}
+    },
+    {
+      "id": "arena-agent-grok-4.5-2026-08-03",
+      "model": "grok-4.5",
+      "harness": "arena-agent-mode",
+      "effort": "reported-default",
+      "source": "agent-arena-2026-08-03",
+      "contextual_only": true,
+      "metrics": {"agent": {"rank": 14, "models_ranked": 45, "net_improvement_pct": 5.56, "confirmed_success_effect_pct": 4.22, "praise_vs_complaint_effect_pct": 6.06, "steerability_effect_pct": 4.97, "bash_recovery_effect_pct": 11.36, "tool_hallucination_effect_pct": 1.17, "sessions": 26702, "total_sessions": 1607993}}
+    },
+    {
+      "id": "arena-agent-gpt-5.6-luna-xhigh-2026-08-03",
+      "model": "gpt-5.6-luna",
+      "harness": "arena-agent-mode",
+      "effort": "xhigh",
+      "source": "agent-arena-2026-08-03",
+      "contextual_only": true,
+      "metrics": {"agent": {"rank": 17, "models_ranked": 45, "net_improvement_pct": 4.08, "confirmed_success_effect_pct": 0.35, "praise_vs_complaint_effect_pct": 6.0, "steerability_effect_pct": 2.23, "bash_recovery_effect_pct": 10.65, "tool_hallucination_effect_pct": 1.17, "sessions": 8227, "total_sessions": 1607993}}
+    },
+    {
+      "id": "arena-agent-gpt-5.6-terra-xhigh-2026-08-03",
+      "model": "gpt-5.6-terra",
+      "harness": "arena-agent-mode",
+      "effort": "xhigh",
+      "source": "agent-arena-2026-08-03",
+      "contextual_only": true,
+      "metrics": {"agent": {"rank": 18, "models_ranked": 45, "net_improvement_pct": 3.51, "confirmed_success_effect_pct": 1.44, "praise_vs_complaint_effect_pct": 3.87, "steerability_effect_pct": 4.64, "bash_recovery_effect_pct": 9.33, "tool_hallucination_effect_pct": 1.17, "sessions": 11662, "total_sessions": 1607993}}
+    },
+    {
+      "id": "arena-agent-gemini-3.6-flash-2026-08-03",
+      "model": "gemini-3.6-flash",
+      "harness": "arena-agent-mode",
+      "effort": "reported-default",
+      "source": "agent-arena-2026-08-03",
+      "contextual_only": true,
+      "sign_inferred": true,
+      "note": "The board is sorted by descending net improvement and its values turn negative below the rank-25 inflection, but the automated capture could not read the minus sign. The magnitude is as published; the sign is inferred from the ordering and must be confirmed visually before it carries a routing decision.",
+      "metrics": {"agent": {"rank": 35, "models_ranked": 45, "net_improvement_pct": -3.01, "confirmed_success_effect_pct": 1.63, "praise_vs_complaint_effect_pct": 5.19, "steerability_effect_pct": 6.7, "bash_recovery_effect_pct": 2.69, "tool_hallucination_effect_pct": 1.17, "sessions": 7601, "total_sessions": 1607993}}
+    },
+    {
+      "id": "webdev-opus-5-max-2026-08-01",
+      "model": "claude-opus-5",
+      "harness": "arena-code-webdev",
+      "effort": "max",
+      "source": "code-arena-webdev-2026-08-01",
+      "contextual_only": true,
+      "metrics": {"webdev": {"rank": 1, "models_ranked": 110, "elo": 1705, "ci_low": 1690, "ci_high": 1720, "margin": 15, "votes": 2192, "total_votes": 510194}}
+    },
+    {
+      "id": "webdev-kimi-k3-2026-08-01",
+      "model": "kimi-k3",
+      "harness": "arena-code-webdev",
+      "effort": "max",
+      "source": "code-arena-webdev-2026-08-01",
+      "contextual_only": true,
+      "metrics": {"webdev": {"rank": 2, "models_ranked": 110, "elo": 1676, "ci_low": 1664, "ci_high": 1688, "margin": 12, "votes": 4366, "total_votes": 510194}}
+    },
+    {
+      "id": "webdev-opus-5-high-2026-08-01",
+      "model": "claude-opus-5",
+      "harness": "arena-code-webdev",
+      "effort": "high",
+      "source": "code-arena-webdev-2026-08-01",
+      "contextual_only": true,
+      "metrics": {"webdev": {"rank": 3, "models_ranked": 110, "elo": 1669, "ci_low": 1658, "ci_high": 1680, "margin": 11, "votes": 3873, "total_votes": 510194}}
+    },
+    {
+      "id": "webdev-qwen3.8-max-2026-08-01",
+      "model": "qwen3.8-max",
+      "harness": "arena-code-webdev",
+      "effort": "reported-default",
+      "source": "code-arena-webdev-2026-08-01",
+      "contextual_only": true,
+      "metrics": {"webdev": {"rank": 4, "models_ranked": 110, "elo": 1668, "ci_low": 1650, "ci_high": 1686, "margin": 18, "votes": 1563, "total_votes": 510194}}
+    },
+    {
+      "id": "webdev-fable-5-2026-08-01",
+      "model": "claude-fable-5",
+      "harness": "arena-code-webdev",
+      "effort": "reported-default",
+      "source": "code-arena-webdev-2026-08-01",
+      "contextual_only": true,
+      "metrics": {"webdev": {"rank": 5, "models_ranked": 110, "elo": 1630, "ci_low": 1621, "ci_high": 1639, "margin": 9, "votes": 6310, "total_votes": 510194}}
+    },
+    {
+      "id": "webdev-gpt-5.6-sol-xhigh-2026-08-01",
+      "model": "gpt-5.6-sol",
+      "harness": "codex-harness",
+      "effort": "xhigh",
+      "source": "code-arena-webdev-2026-08-01",
+      "contextual_only": true,
+      "metrics": {"webdev": {"rank": 6, "models_ranked": 110, "elo": 1620, "ci_low": 1611, "ci_high": 1629, "margin": 9, "votes": 6000, "total_votes": 510194}}
+    },
+    {
+      "id": "webdev-glm-5.2-max-2026-08-01",
+      "model": "glm-5.2",
+      "harness": "arena-code-webdev",
+      "effort": "max",
+      "source": "code-arena-webdev-2026-08-01",
+      "contextual_only": true,
+      "metrics": {"webdev": {"rank": 7, "models_ranked": 110, "elo": 1586, "ci_low": 1577, "ci_high": 1595, "margin": 9, "votes": 6361, "total_votes": 510194}}
+    },
+    {
+      "id": "webdev-opus-4.8-thinking-2026-08-01",
+      "model": "claude-opus-4.8",
+      "harness": "arena-code-webdev",
+      "effort": "thinking",
+      "source": "code-arena-webdev-2026-08-01",
+      "contextual_only": true,
+      "metrics": {"webdev": {"rank": 9, "models_ranked": 110, "elo": 1566, "ci_low": 1558, "ci_high": 1574, "margin": 8, "votes": 8934, "total_votes": 510194}}
+    },
+    {
+      "id": "webdev-grok-4.5-2026-08-01",
+      "model": "grok-4.5",
+      "harness": "arena-code-webdev",
+      "effort": "reported-default",
+      "source": "code-arena-webdev-2026-08-01",
+      "contextual_only": true,
+      "metrics": {"webdev": {"rank": 12, "models_ranked": 110, "elo": 1549, "ci_low": 1539, "ci_high": 1559, "margin": 10, "votes": 3992, "total_votes": 510194}}
+    },
+    {
+      "id": "webdev-sonnet-5-high-2026-08-01",
+      "model": "claude-sonnet-5",
+      "harness": "arena-code-webdev",
+      "effort": "high",
+      "source": "code-arena-webdev-2026-08-01",
+      "contextual_only": true,
+      "metrics": {"webdev": {"rank": 14, "models_ranked": 110, "elo": 1542, "ci_low": 1532, "ci_high": 1552, "margin": 10, "votes": 4722, "total_votes": 510194}}
+    },
+    {
+      "id": "webdev-gemini-3.6-flash-2026-08-01",
+      "model": "gemini-3.6-flash",
+      "harness": "arena-code-webdev",
+      "effort": "reported-default",
+      "source": "code-arena-webdev-2026-08-01",
+      "contextual_only": true,
+      "metrics": {"webdev": {"rank": 18, "models_ranked": 110, "elo": 1533, "ci_low": 1522, "ci_high": 1544, "margin": 11, "votes": 3314, "total_votes": 510194}}
+    },
+    {
+      "id": "webdev-gpt-5.6-luna-xhigh-2026-08-01",
+      "model": "gpt-5.6-luna",
+      "harness": "codex-harness",
+      "effort": "xhigh",
+      "source": "code-arena-webdev-2026-08-01",
+      "contextual_only": true,
+      "metrics": {"webdev": {"rank": 20, "models_ranked": 110, "elo": 1523, "ci_low": 1512, "ci_high": 1534, "margin": 11, "votes": 3212, "total_votes": 510194}}
+    },
+    {
+      "id": "webdev-gpt-5.6-terra-xhigh-2026-08-01",
+      "model": "gpt-5.6-terra",
+      "harness": "codex-harness",
+      "effort": "xhigh",
+      "source": "code-arena-webdev-2026-08-01",
+      "contextual_only": true,
+      "metrics": {"webdev": {"rank": 22, "models_ranked": 110, "elo": 1522, "ci_low": 1510, "ci_high": 1534, "margin": 12, "votes": 3162, "total_votes": 510194}}
+    },
+    {
+      "id": "epoch-deepswe-claude-fable-5-mini-swe-agent-high",
+      "model": "claude-fable-5",
+      "harness": "mini-swe-agent",
+      "effort": "high",
+      "source": "epoch-zip-2026-08-04",
+      "contextual_only": true,
+      "provenance": {"dataset": "deepswe_external.csv", "source_url": "https://deepswe.datacurve.ai/", "dataset_license": "upstream-original; external-project data retains its original license"},
+      "note": "mini-swe-agent is not an installed production harness, so this row is comparable across efforts of the same model but is never exact for a routing profile.",
+      "metrics": {"coding": {"deep_swe_pass_pct": 68.6, "cost_per_task_usd": 9.1776}}
+    },
+    {
+      "id": "epoch-deepswe-claude-fable-5-mini-swe-agent-low",
+      "model": "claude-fable-5",
+      "harness": "mini-swe-agent",
+      "effort": "low",
+      "source": "epoch-zip-2026-08-04",
+      "contextual_only": true,
+      "provenance": {"dataset": "deepswe_external.csv", "source_url": "https://deepswe.datacurve.ai/", "dataset_license": "upstream-original; external-project data retains its original license"},
+      "note": "mini-swe-agent is not an installed production harness, so this row is comparable across efforts of the same model but is never exact for a routing profile.",
+      "metrics": {"coding": {"deep_swe_pass_pct": 59.58, "cost_per_task_usd": 3.7579}}
+    },
+    {
+      "id": "epoch-deepswe-claude-fable-5-mini-swe-agent-max",
+      "model": "claude-fable-5",
+      "harness": "mini-swe-agent",
+      "effort": "max",
+      "source": "epoch-zip-2026-08-04",
+      "contextual_only": true,
+      "provenance": {"dataset": "deepswe_external.csv", "source_url": "https://deepswe.datacurve.ai/", "dataset_license": "upstream-original; external-project data retains its original license"},
+      "note": "mini-swe-agent is not an installed production harness, so this row is comparable across efforts of the same model but is never exact for a routing profile.",
+      "metrics": {"coding": {"deep_swe_pass_pct": 69.72, "cost_per_task_usd": 21.6347}}
+    },
+    {
+      "id": "epoch-deepswe-claude-fable-5-mini-swe-agent-medium",
+      "model": "claude-fable-5",
+      "harness": "mini-swe-agent",
+      "effort": "medium",
+      "source": "epoch-zip-2026-08-04",
+      "contextual_only": true,
+      "provenance": {"dataset": "deepswe_external.csv", "source_url": "https://deepswe.datacurve.ai/", "dataset_license": "upstream-original; external-project data retains its original license"},
+      "note": "mini-swe-agent is not an installed production harness, so this row is comparable across efforts of the same model but is never exact for a routing profile.",
+      "metrics": {"coding": {"deep_swe_pass_pct": 65.37, "cost_per_task_usd": 6.0882}}
+    },
+    {
+      "id": "epoch-deepswe-claude-fable-5-mini-swe-agent-xhigh",
+      "model": "claude-fable-5",
+      "harness": "mini-swe-agent",
+      "effort": "xhigh",
+      "source": "epoch-zip-2026-08-04",
+      "contextual_only": true,
+      "provenance": {"dataset": "deepswe_external.csv", "source_url": "https://deepswe.datacurve.ai/", "dataset_license": "upstream-original; external-project data retains its original license"},
+      "note": "mini-swe-agent is not an installed production harness, so this row is comparable across efforts of the same model but is never exact for a routing profile.",
+      "metrics": {"coding": {"deep_swe_pass_pct": 69.91, "cost_per_task_usd": 13.4145}}
+    },
+    {
+      "id": "epoch-deepswe-claude-opus-4-8-mini-swe-agent-high",
+      "model": "claude-opus-4.8",
+      "harness": "mini-swe-agent",
+      "effort": "high",
+      "source": "epoch-zip-2026-08-04",
+      "contextual_only": true,
+      "provenance": {"dataset": "deepswe_external.csv", "source_url": "https://deepswe.datacurve.ai/", "dataset_license": "upstream-original; external-project data retains its original license"},
+      "note": "mini-swe-agent is not an installed production harness, so this row is comparable across efforts of the same model but is never exact for a routing profile.",
+      "metrics": {"coding": {"deep_swe_pass_pct": 51.77, "cost_per_task_usd": 4.2819}}
+    },
+    {
+      "id": "epoch-deepswe-claude-opus-4-8-mini-swe-agent-low",
+      "model": "claude-opus-4.8",
+      "harness": "mini-swe-agent",
+      "effort": "low",
+      "source": "epoch-zip-2026-08-04",
+      "contextual_only": true,
+      "provenance": {"dataset": "deepswe_external.csv", "source_url": "https://deepswe.datacurve.ai/", "dataset_license": "upstream-original; external-project data retains its original license"},
+      "note": "mini-swe-agent is not an installed production harness, so this row is comparable across efforts of the same model but is never exact for a routing profile.",
+      "metrics": {"coding": {"deep_swe_pass_pct": 40.8, "cost_per_task_usd": 2.2934}}
+    },
+    {
+      "id": "epoch-deepswe-claude-opus-4-8-mini-swe-agent-max",
+      "model": "claude-opus-4.8",
+      "harness": "mini-swe-agent",
+      "effort": "max",
+      "source": "epoch-zip-2026-08-04",
+      "contextual_only": true,
+      "provenance": {"dataset": "deepswe_external.csv", "source_url": "https://deepswe.datacurve.ai/", "dataset_license": "upstream-original; external-project data retains its original license"},
+      "note": "mini-swe-agent is not an installed production harness, so this row is comparable across efforts of the same model but is never exact for a routing profile.",
+      "metrics": {"coding": {"deep_swe_pass_pct": 58.97, "cost_per_task_usd": 13.2226}}
+    },
+    {
+      "id": "epoch-deepswe-claude-opus-4-8-mini-swe-agent-medium",
+      "model": "claude-opus-4.8",
+      "harness": "mini-swe-agent",
+      "effort": "medium",
+      "source": "epoch-zip-2026-08-04",
+      "contextual_only": true,
+      "provenance": {"dataset": "deepswe_external.csv", "source_url": "https://deepswe.datacurve.ai/", "dataset_license": "upstream-original; external-project data retains its original license"},
+      "note": "mini-swe-agent is not an installed production harness, so this row is comparable across efforts of the same model but is never exact for a routing profile.",
+      "metrics": {"coding": {"deep_swe_pass_pct": 48.67, "cost_per_task_usd": 3.4439}}
+    },
+    {
+      "id": "epoch-deepswe-claude-opus-4-8-mini-swe-agent-xhigh",
+      "model": "claude-opus-4.8",
+      "harness": "mini-swe-agent",
+      "effort": "xhigh",
+      "source": "epoch-zip-2026-08-04",
+      "contextual_only": true,
+      "provenance": {"dataset": "deepswe_external.csv", "source_url": "https://deepswe.datacurve.ai/", "dataset_license": "upstream-original; external-project data retains its original license"},
+      "note": "mini-swe-agent is not an installed production harness, so this row is comparable across efforts of the same model but is never exact for a routing profile.",
+      "metrics": {"coding": {"deep_swe_pass_pct": 54.36, "cost_per_task_usd": 8.0064}}
+    },
+    {
+      "id": "epoch-deepswe-claude-opus-5-mini-swe-agent-high",
+      "model": "claude-opus-5",
+      "harness": "mini-swe-agent",
+      "effort": "high",
+      "source": "epoch-zip-2026-08-04",
+      "contextual_only": true,
+      "provenance": {"dataset": "deepswe_external.csv", "source_url": "https://deepswe.datacurve.ai/", "dataset_license": "upstream-original; external-project data retains its original license"},
+      "note": "mini-swe-agent is not an installed production harness, so this row is comparable across efforts of the same model but is never exact for a routing profile.",
+      "metrics": {"coding": {"deep_swe_pass_pct": 72.83, "cost_per_task_usd": 6.0761}}
+    },
+    {
+      "id": "epoch-deepswe-claude-opus-5-mini-swe-agent-low",
+      "model": "claude-opus-5",
+      "harness": "mini-swe-agent",
+      "effort": "low",
+      "source": "epoch-zip-2026-08-04",
+      "contextual_only": true,
+      "provenance": {"dataset": "deepswe_external.csv", "source_url": "https://deepswe.datacurve.ai/", "dataset_license": "upstream-original; external-project data retains its original license"},
+      "note": "mini-swe-agent is not an installed production harness, so this row is comparable across efforts of the same model but is never exact for a routing profile.",
+      "metrics": {"coding": {"deep_swe_pass_pct": 58.13, "cost_per_task_usd": 1.6626}}
+    },
+    {
+      "id": "epoch-deepswe-claude-opus-5-mini-swe-agent-max",
+      "model": "claude-opus-5",
+      "harness": "mini-swe-agent",
+      "effort": "max",
+      "source": "epoch-zip-2026-08-04",
+      "contextual_only": true,
+      "provenance": {"dataset": "deepswe_external.csv", "source_url": "https://deepswe.datacurve.ai/", "dataset_license": "upstream-original; external-project data retains its original license"},
+      "note": "mini-swe-agent is not an installed production harness, so this row is comparable across efforts of the same model but is never exact for a routing profile.",
+      "metrics": {"coding": {"deep_swe_pass_pct": 73.65, "cost_per_task_usd": 11.8376}}
+    },
+    {
+      "id": "epoch-deepswe-claude-opus-5-mini-swe-agent-medium",
+      "model": "claude-opus-5",
+      "harness": "mini-swe-agent",
+      "effort": "medium",
+      "source": "epoch-zip-2026-08-04",
+      "contextual_only": true,
+      "provenance": {"dataset": "deepswe_external.csv", "source_url": "https://deepswe.datacurve.ai/", "dataset_license": "upstream-original; external-project data retains its original license"},
+      "note": "mini-swe-agent is not an installed production harness, so this row is comparable across efforts of the same model but is never exact for a routing profile.",
+      "metrics": {"coding": {"deep_swe_pass_pct": 68.9, "cost_per_task_usd": 3.2898}}
+    },
+    {
+      "id": "epoch-deepswe-claude-opus-5-mini-swe-agent-xhigh",
+      "model": "claude-opus-5",
+      "harness": "mini-swe-agent",
+      "effort": "xhigh",
+      "source": "epoch-zip-2026-08-04",
+      "contextual_only": true,
+      "provenance": {"dataset": "deepswe_external.csv", "source_url": "https://deepswe.datacurve.ai/", "dataset_license": "upstream-original; external-project data retains its original license"},
+      "note": "mini-swe-agent is not an installed production harness, so this row is comparable across efforts of the same model but is never exact for a routing profile.",
+      "metrics": {"coding": {"deep_swe_pass_pct": 73.15, "cost_per_task_usd": 9.0722}}
+    },
+    {
+      "id": "epoch-deepswe-claude-sonnet-5-mini-swe-agent-high",
+      "model": "claude-sonnet-5",
+      "harness": "mini-swe-agent",
+      "effort": "high",
+      "source": "epoch-zip-2026-08-04",
+      "contextual_only": true,
+      "provenance": {"dataset": "deepswe_external.csv", "source_url": "https://deepswe.datacurve.ai/", "dataset_license": "upstream-original; external-project data retains its original license"},
+      "note": "mini-swe-agent is not an installed production harness, so this row is comparable across efforts of the same model but is never exact for a routing profile.",
+      "metrics": {"coding": {"deep_swe_pass_pct": 48.23, "cost_per_task_usd": 7.4256}}
+    },
+    {
+      "id": "epoch-deepswe-claude-sonnet-5-mini-swe-agent-low",
+      "model": "claude-sonnet-5",
+      "harness": "mini-swe-agent",
+      "effort": "low",
+      "source": "epoch-zip-2026-08-04",
+      "contextual_only": true,
+      "provenance": {"dataset": "deepswe_external.csv", "source_url": "https://deepswe.datacurve.ai/", "dataset_license": "upstream-original; external-project data retains its original license"},
+      "note": "mini-swe-agent is not an installed production harness, so this row is comparable across efforts of the same model but is never exact for a routing profile.",
+      "metrics": {"coding": {"deep_swe_pass_pct": 30.51, "cost_per_task_usd": 2.1866}}
+    },
+    {
+      "id": "epoch-deepswe-claude-sonnet-5-mini-swe-agent-max",
+      "model": "claude-sonnet-5",
+      "harness": "mini-swe-agent",
+      "effort": "max",
+      "source": "epoch-zip-2026-08-04",
+      "contextual_only": true,
+      "provenance": {"dataset": "deepswe_external.csv", "source_url": "https://deepswe.datacurve.ai/", "dataset_license": "upstream-original; external-project data retains its original license"},
+      "note": "mini-swe-agent is not an installed production harness, so this row is comparable across efforts of the same model but is never exact for a routing profile.",
+      "metrics": {"coding": {"deep_swe_pass_pct": 53.85, "cost_per_task_usd": 26.3999}}
+    },
+    {
+      "id": "epoch-deepswe-claude-sonnet-5-mini-swe-agent-medium",
+      "model": "claude-sonnet-5",
+      "harness": "mini-swe-agent",
+      "effort": "medium",
+      "source": "epoch-zip-2026-08-04",
+      "contextual_only": true,
+      "provenance": {"dataset": "deepswe_external.csv", "source_url": "https://deepswe.datacurve.ai/", "dataset_license": "upstream-original; external-project data retains its original license"},
+      "note": "mini-swe-agent is not an installed production harness, so this row is comparable across efforts of the same model but is never exact for a routing profile.",
+      "metrics": {"coding": {"deep_swe_pass_pct": 39.78, "cost_per_task_usd": 4.079}}
+    },
+    {
+      "id": "epoch-deepswe-claude-sonnet-5-mini-swe-agent-xhigh",
+      "model": "claude-sonnet-5",
+      "harness": "mini-swe-agent",
+      "effort": "xhigh",
+      "source": "epoch-zip-2026-08-04",
+      "contextual_only": true,
+      "provenance": {"dataset": "deepswe_external.csv", "source_url": "https://deepswe.datacurve.ai/", "dataset_license": "upstream-original; external-project data retains its original license"},
+      "note": "mini-swe-agent is not an installed production harness, so this row is comparable across efforts of the same model but is never exact for a routing profile.",
+      "metrics": {"coding": {"deep_swe_pass_pct": 49.67, "cost_per_task_usd": 11.8906}}
+    },
+    {
+      "id": "epoch-deepswe-gemini-3-6-flash-mini-swe-agent-high",
+      "model": "gemini-3.6-flash",
+      "harness": "mini-swe-agent",
+      "effort": "high",
+      "source": "epoch-zip-2026-08-04",
+      "contextual_only": true,
+      "provenance": {"dataset": "deepswe_external.csv", "source_url": "https://deepswe.datacurve.ai/", "dataset_license": "upstream-original; external-project data retains its original license"},
+      "note": "mini-swe-agent is not an installed production harness, so this row is comparable across efforts of the same model but is never exact for a routing profile.",
+      "metrics": {"coding": {"deep_swe_pass_pct": 48.56, "cost_per_task_usd": 3.5324}}
+    },
+    {
+      "id": "epoch-deepswe-glm-5-2-mini-swe-agent-high",
+      "model": "glm-5.2",
+      "harness": "mini-swe-agent",
+      "effort": "high",
+      "source": "epoch-zip-2026-08-04",
+      "contextual_only": true,
+      "provenance": {"dataset": "deepswe_external.csv", "source_url": "https://deepswe.datacurve.ai/", "dataset_license": "upstream-original; external-project data retains its original license"},
+      "note": "mini-swe-agent is not an installed production harness, so this row is comparable across efforts of the same model but is never exact for a routing profile.",
+      "metrics": {"coding": {"deep_swe_pass_pct": 36.28, "cost_per_task_usd": 2.8355}}
+    },
+    {
+      "id": "epoch-deepswe-glm-5-2-mini-swe-agent-max",
+      "model": "glm-5.2",
+      "harness": "mini-swe-agent",
+      "effort": "max",
+      "source": "epoch-zip-2026-08-04",
+      "contextual_only": true,
+      "provenance": {"dataset": "deepswe_external.csv", "source_url": "https://deepswe.datacurve.ai/", "dataset_license": "upstream-original; external-project data retains its original license"},
+      "note": "mini-swe-agent is not an installed production harness, so this row is comparable across efforts of the same model but is never exact for a routing profile.",
+      "metrics": {"coding": {"deep_swe_pass_pct": 43.78, "cost_per_task_usd": 3.9199}}
+    },
+    {
+      "id": "epoch-deepswe-gpt-5-6-luna-mini-swe-agent-high",
+      "model": "gpt-5.6-luna",
+      "harness": "mini-swe-agent",
+      "effort": "high",
+      "source": "epoch-zip-2026-08-04",
+      "contextual_only": true,
+      "provenance": {"dataset": "deepswe_external.csv", "source_url": "https://deepswe.datacurve.ai/", "dataset_license": "upstream-original; external-project data retains its original license"},
+      "note": "mini-swe-agent is not an installed production harness, so this row is comparable across efforts of the same model but is never exact for a routing profile.",
+      "metrics": {"coding": {"deep_swe_pass_pct": 44.25, "cost_per_task_usd": 0.7779}}
+    },
+    {
+      "id": "epoch-deepswe-gpt-5-6-luna-mini-swe-agent-low",
+      "model": "gpt-5.6-luna",
+      "harness": "mini-swe-agent",
+      "effort": "low",
+      "source": "epoch-zip-2026-08-04",
+      "contextual_only": true,
+      "provenance": {"dataset": "deepswe_external.csv", "source_url": "https://deepswe.datacurve.ai/", "dataset_license": "upstream-original; external-project data retains its original license"},
+      "note": "mini-swe-agent is not an installed production harness, so this row is comparable across efforts of the same model but is never exact for a routing profile.",
+      "metrics": {"coding": {"deep_swe_pass_pct": 1.55, "cost_per_task_usd": 0.0724}}
+    },
+    {
+      "id": "epoch-deepswe-gpt-5-6-luna-mini-swe-agent-max",
+      "model": "gpt-5.6-luna",
+      "harness": "mini-swe-agent",
+      "effort": "max",
+      "source": "epoch-zip-2026-08-04",
+      "contextual_only": true,
+      "provenance": {"dataset": "deepswe_external.csv", "source_url": "https://deepswe.datacurve.ai/", "dataset_license": "upstream-original; external-project data retains its original license"},
+      "note": "mini-swe-agent is not an installed production harness, so this row is comparable across efforts of the same model but is never exact for a routing profile.",
+      "metrics": {"coding": {"deep_swe_pass_pct": 67.19, "cost_per_task_usd": 3.0281}}
+    },
+    {
+      "id": "epoch-deepswe-gpt-5-6-luna-mini-swe-agent-medium",
+      "model": "gpt-5.6-luna",
+      "harness": "mini-swe-agent",
+      "effort": "medium",
+      "source": "epoch-zip-2026-08-04",
+      "contextual_only": true,
+      "provenance": {"dataset": "deepswe_external.csv", "source_url": "https://deepswe.datacurve.ai/", "dataset_license": "upstream-original; external-project data retains its original license"},
+      "note": "mini-swe-agent is not an installed production harness, so this row is comparable across efforts of the same model but is never exact for a routing profile.",
+      "metrics": {"coding": {"deep_swe_pass_pct": 11.28, "cost_per_task_usd": 0.2163}}
+    },
+    {
+      "id": "epoch-deepswe-gpt-5-6-luna-mini-swe-agent-xhigh",
+      "model": "gpt-5.6-luna",
+      "harness": "mini-swe-agent",
+      "effort": "xhigh",
+      "source": "epoch-zip-2026-08-04",
+      "contextual_only": true,
+      "provenance": {"dataset": "deepswe_external.csv", "source_url": "https://deepswe.datacurve.ai/", "dataset_license": "upstream-original; external-project data retains its original license"},
+      "note": "mini-swe-agent is not an installed production harness, so this row is comparable across efforts of the same model but is never exact for a routing profile.",
+      "metrics": {"coding": {"deep_swe_pass_pct": 56.86, "cost_per_task_usd": 1.5356}}
+    },
+    {
+      "id": "epoch-deepswe-gpt-5-6-sol-mini-swe-agent-high",
+      "model": "gpt-5.6-sol",
+      "harness": "mini-swe-agent",
+      "effort": "high",
+      "source": "epoch-zip-2026-08-04",
+      "contextual_only": true,
+      "provenance": {"dataset": "deepswe_external.csv", "source_url": "https://deepswe.datacurve.ai/", "dataset_license": "upstream-original; external-project data retains its original license"},
+      "note": "mini-swe-agent is not an installed production harness, so this row is comparable across efforts of the same model but is never exact for a routing profile.",
+      "metrics": {"coding": {"deep_swe_pass_pct": 69.4, "cost_per_task_usd": 3.4698}}
+    },
+    {
+      "id": "epoch-deepswe-gpt-5-6-sol-mini-swe-agent-low",
+      "model": "gpt-5.6-sol",
+      "harness": "mini-swe-agent",
+      "effort": "low",
+      "source": "epoch-zip-2026-08-04",
+      "contextual_only": true,
+      "provenance": {"dataset": "deepswe_external.csv", "source_url": "https://deepswe.datacurve.ai/", "dataset_license": "upstream-original; external-project data retains its original license"},
+      "note": "mini-swe-agent is not an installed production harness, so this row is comparable across efforts of the same model but is never exact for a routing profile.",
+      "metrics": {"coding": {"deep_swe_pass_pct": 45.35, "cost_per_task_usd": 1.0743}}
+    },
+    {
+      "id": "epoch-deepswe-gpt-5-6-sol-mini-swe-agent-max",
+      "model": "gpt-5.6-sol",
+      "harness": "mini-swe-agent",
+      "effort": "max",
+      "source": "epoch-zip-2026-08-04",
+      "contextual_only": true,
+      "provenance": {"dataset": "deepswe_external.csv", "source_url": "https://deepswe.datacurve.ai/", "dataset_license": "upstream-original; external-project data retains its original license"},
+      "note": "mini-swe-agent is not an installed production harness, so this row is comparable across efforts of the same model but is never exact for a routing profile.",
+      "metrics": {"coding": {"deep_swe_pass_pct": 72.67, "cost_per_task_usd": 8.3864}}
+    },
+    {
+      "id": "epoch-deepswe-gpt-5-6-sol-mini-swe-agent-medium",
+      "model": "gpt-5.6-sol",
+      "harness": "mini-swe-agent",
+      "effort": "medium",
+      "source": "epoch-zip-2026-08-04",
+      "contextual_only": true,
+      "provenance": {"dataset": "deepswe_external.csv", "source_url": "https://deepswe.datacurve.ai/", "dataset_license": "upstream-original; external-project data retains its original license"},
+      "note": "mini-swe-agent is not an installed production harness, so this row is comparable across efforts of the same model but is never exact for a routing profile.",
+      "metrics": {"coding": {"deep_swe_pass_pct": 61.06, "cost_per_task_usd": 1.862}}
+    },
+    {
+      "id": "epoch-deepswe-gpt-5-6-sol-mini-swe-agent-xhigh",
+      "model": "gpt-5.6-sol",
+      "harness": "mini-swe-agent",
+      "effort": "xhigh",
+      "source": "epoch-zip-2026-08-04",
+      "contextual_only": true,
+      "provenance": {"dataset": "deepswe_external.csv", "source_url": "https://deepswe.datacurve.ai/", "dataset_license": "upstream-original; external-project data retains its original license"},
+      "note": "mini-swe-agent is not an installed production harness, so this row is comparable across efforts of the same model but is never exact for a routing profile.",
+      "metrics": {"coding": {"deep_swe_pass_pct": 70.73, "cost_per_task_usd": 4.7037}}
+    },
+    {
+      "id": "epoch-deepswe-gpt-5-6-terra-mini-swe-agent-high",
+      "model": "gpt-5.6-terra",
+      "harness": "mini-swe-agent",
+      "effort": "high",
+      "source": "epoch-zip-2026-08-04",
+      "contextual_only": true,
+      "provenance": {"dataset": "deepswe_external.csv", "source_url": "https://deepswe.datacurve.ai/", "dataset_license": "upstream-original; external-project data retains its original license"},
+      "note": "mini-swe-agent is not an installed production harness, so this row is comparable across efforts of the same model but is never exact for a routing profile.",
+      "metrics": {"coding": {"deep_swe_pass_pct": 53.76, "cost_per_task_usd": 1.1344}}
+    },
+    {
+      "id": "epoch-deepswe-gpt-5-6-terra-mini-swe-agent-low",
+      "model": "gpt-5.6-terra",
+      "harness": "mini-swe-agent",
+      "effort": "low",
+      "source": "epoch-zip-2026-08-04",
+      "contextual_only": true,
+      "provenance": {"dataset": "deepswe_external.csv", "source_url": "https://deepswe.datacurve.ai/", "dataset_license": "upstream-original; external-project data retains its original license"},
+      "note": "mini-swe-agent is not an installed production harness, so this row is comparable across efforts of the same model but is never exact for a routing profile.",
+      "metrics": {"coding": {"deep_swe_pass_pct": 24.05, "cost_per_task_usd": 0.4277}}
+    },
+    {
+      "id": "epoch-deepswe-gpt-5-6-terra-mini-swe-agent-max",
+      "model": "gpt-5.6-terra",
+      "harness": "mini-swe-agent",
+      "effort": "max",
+      "source": "epoch-zip-2026-08-04",
+      "contextual_only": true,
+      "provenance": {"dataset": "deepswe_external.csv", "source_url": "https://deepswe.datacurve.ai/", "dataset_license": "upstream-original; external-project data retains its original license"},
+      "note": "mini-swe-agent is not an installed production harness, so this row is comparable across efforts of the same model but is never exact for a routing profile.",
+      "metrics": {"coding": {"deep_swe_pass_pct": 69.62, "cost_per_task_usd": 4.9458}}
+    },
+    {
+      "id": "epoch-deepswe-gpt-5-6-terra-mini-swe-agent-medium",
+      "model": "gpt-5.6-terra",
+      "harness": "mini-swe-agent",
+      "effort": "medium",
+      "source": "epoch-zip-2026-08-04",
+      "contextual_only": true,
+      "provenance": {"dataset": "deepswe_external.csv", "source_url": "https://deepswe.datacurve.ai/", "dataset_license": "upstream-original; external-project data retains its original license"},
+      "note": "mini-swe-agent is not an installed production harness, so this row is comparable across efforts of the same model but is never exact for a routing profile.",
+      "metrics": {"coding": {"deep_swe_pass_pct": 35.11, "cost_per_task_usd": 0.5832}}
+    },
+    {
+      "id": "epoch-deepswe-gpt-5-6-terra-mini-swe-agent-xhigh",
+      "model": "gpt-5.6-terra",
+      "harness": "mini-swe-agent",
+      "effort": "xhigh",
+      "source": "epoch-zip-2026-08-04",
+      "contextual_only": true,
+      "provenance": {"dataset": "deepswe_external.csv", "source_url": "https://deepswe.datacurve.ai/", "dataset_license": "upstream-original; external-project data retains its original license"},
+      "note": "mini-swe-agent is not an installed production harness, so this row is comparable across efforts of the same model but is never exact for a routing profile.",
+      "metrics": {"coding": {"deep_swe_pass_pct": 60.18, "cost_per_task_usd": 2.1272}}
+    },
+    {
+      "id": "epoch-deepswe-grok-4-5-mini-swe-agent-high",
+      "model": "grok-4.5",
+      "harness": "mini-swe-agent",
+      "effort": "high",
+      "source": "epoch-zip-2026-08-04",
+      "contextual_only": true,
+      "provenance": {"dataset": "deepswe_external.csv", "source_url": "https://deepswe.datacurve.ai/", "dataset_license": "upstream-original; external-project data retains its original license"},
+      "note": "mini-swe-agent is not an installed production harness, so this row is comparable across efforts of the same model but is never exact for a routing profile.",
+      "metrics": {"coding": {"deep_swe_pass_pct": 53.76, "cost_per_task_usd": 2.4157}}
+    },
+    {
+      "id": "epoch-deepswe-kimi-k3-mini-swe-agent-max",
+      "model": "kimi-k3",
+      "harness": "mini-swe-agent",
+      "effort": "max",
+      "source": "epoch-zip-2026-08-04",
+      "contextual_only": true,
+      "provenance": {"dataset": "deepswe_external.csv", "source_url": "https://deepswe.datacurve.ai/", "dataset_license": "upstream-original; external-project data retains its original license"},
+      "note": "mini-swe-agent is not an installed production harness, so this row is comparable across efforts of the same model but is never exact for a routing profile.",
+      "metrics": {"coding": {"deep_swe_pass_pct": 68.51, "cost_per_task_usd": 4.6547}}
     }
   ]
 }

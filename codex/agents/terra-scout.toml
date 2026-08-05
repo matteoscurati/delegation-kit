@@ -1,7 +1,7 @@
 name = "terra-scout"
 description = "Read-only codebase explorer for execution paths, dependencies, impact maps, and implementation evidence."
 model = "gpt-5.6-terra"
-model_reasoning_effort = "low"
+model_reasoning_effort = "medium"
 sandbox_mode = "read-only"
 developer_instructions = """
 Trace the real runtime path with targeted searches. Cite files and symbols. Stop after gathering the requested evidence; do not edit or delegate.

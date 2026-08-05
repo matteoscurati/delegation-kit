@@ -1,21 +1,21 @@
 {
   "schema_version": 1,
-  "updated_at": "2026-07-25T00:00:00Z",
+  "updated_at": "2026-08-05T00:00:00Z",
   "evidence_file": "model-evidence.json",
   "status_values": ["disabled", "candidate", "provisional", "qualified", "manual-qualified"],
   "selection_values": ["default", "fallback", "preferred-explicit", "explicit-only", "blocked"],
   "profiles": {
     "luna-clerk": {
-      "model": "gpt-5.6-luna", "harness": "codex", "effort": "low",
-      "lanes": {"clerk": {"status": "provisional", "selection": "default", "exact_evidence_ids": ["aa-codex-gpt-5.6-luna-low"], "context_evidence_ids": [], "fallback": "sonnet-clerk"}}
+      "model": "gpt-5.6-luna", "harness": "codex", "effort": "max",
+      "lanes": {"clerk": {"status": "provisional", "selection": "default", "exact_evidence_ids": ["aa-codex-gpt-5.6-luna-max"], "context_evidence_ids": ["epoch-deepswe-gpt-5-6-luna-mini-swe-agent-low", "epoch-deepswe-gpt-5-6-luna-mini-swe-agent-max"], "qualification_basis": "Owner effort decision on measured evidence, 2026-08-05. The lane is unchanged; only its pinned effort moved from low to max. At low the exact AA row scores 15% SWE-Atlas-QnA, the clerk required metric, and the Epoch effort ladder puts the same model at 1.5% DeepSWE; at max the exact AA row scores 33% and 63%. Codex accepts none/minimal/low/medium/high/xhigh/max, verified against the provider on 2026-08-05. AA publishes no luna row between low and max, so max is the only better effort that keeps an exact row.", "fallback": "sonnet-clerk"}}
     },
     "terra-scout": {
-      "model": "gpt-5.6-terra", "harness": "codex", "effort": "low",
-      "lanes": {"scout": {"status": "provisional", "selection": "default", "exact_evidence_ids": ["aa-codex-gpt-5.6-terra-low"], "context_evidence_ids": [], "fallback": "sonnet-scout"}}
+      "model": "gpt-5.6-terra", "harness": "codex", "effort": "medium",
+      "lanes": {"scout": {"status": "provisional", "selection": "default", "exact_evidence_ids": ["aa-codex-gpt-5.6-terra-medium"], "context_evidence_ids": ["epoch-deepswe-gpt-5-6-terra-mini-swe-agent-low", "epoch-deepswe-gpt-5-6-terra-mini-swe-agent-medium"], "qualification_basis": "Owner effort decision on measured evidence, 2026-08-05. The lane is unchanged; only its pinned effort moved from low to medium, raising SWE-Atlas-QnA, the scout required metric, from 23% to 28% on the exact AA row for $0.90 rather than $0.48 per task.", "fallback": "sonnet-scout"}}
     },
     "terra-builder": {
-      "model": "gpt-5.6-terra", "harness": "codex", "effort": "medium",
-      "lanes": {"builder": {"status": "provisional", "selection": "default", "exact_evidence_ids": ["aa-codex-gpt-5.6-terra-medium"], "context_evidence_ids": [], "fallback": "sonnet-builder"}}
+      "model": "gpt-5.6-terra", "harness": "codex", "effort": "max",
+      "lanes": {"builder": {"status": "provisional", "selection": "default", "exact_evidence_ids": ["aa-codex-gpt-5.6-terra-max"], "context_evidence_ids": ["epoch-deepswe-gpt-5-6-terra-mini-swe-agent-medium", "epoch-deepswe-gpt-5-6-terra-mini-swe-agent-max"], "qualification_basis": "Owner effort decision on measured evidence, 2026-08-05. The lane is unchanged; only its pinned effort moved from medium to max. Both builder required metrics rise on the exact AA row: DeepSWE 46% to 67% and Terminal-Bench v2 69% to 84%, for $2.76 rather than $0.90 per task. Escalating to the sonnet-builder fallback instead would buy less: it has no exact AA row and the Epoch ladder puts Sonnet 5 at 39.8% DeepSWE at medium.", "fallback": "sonnet-builder"}}
     },
     "sol-reviewer": {
       "model": "gpt-5.6-sol", "harness": "codex", "effort": "high",
@@ -123,7 +123,7 @@
       "lanes": {
         "clerk": {"status": "provisional", "selection": "explicit-only", "exact_evidence_ids": ["aa-kimi-code-kimi-k3"], "context_evidence_ids": [], "local_evaluation": {"run_id": "2026-07-16-kimi-k3", "task_count": null, "repeats": null, "confidence": "low", "limitations": "Provider quota truncated the run; valid-subset size is not recorded in the published gate."}, "fallback": "luna-clerk"},
         "scout": {"status": "provisional", "selection": "explicit-only", "exact_evidence_ids": ["aa-kimi-code-kimi-k3"], "context_evidence_ids": ["arena-agent-kimi-k3"], "local_evaluation": {"run_id": "2026-07-16-kimi-k3", "task_count": null, "repeats": null, "confidence": "low", "limitations": "Provider quota truncated the run; valid-subset size is not recorded in the published gate."}, "fallback": "terra-scout"},
-        "builder": {"status": "provisional", "selection": "explicit-only", "exact_evidence_ids": ["aa-kimi-code-kimi-k3"], "context_evidence_ids": [], "local_evaluation": {"run_id": "2026-07-16-kimi-k3", "task_count": null, "repeats": null, "confidence": "low", "limitations": "Provider quota truncated the run; valid-subset size is not recorded in the published gate."}, "fallback": "terra-builder"},
+        "builder": {"status": "provisional", "selection": "preferred-explicit", "exact_evidence_ids": ["aa-kimi-code-kimi-k3"], "context_evidence_ids": ["arena-agent-kimi-k3-2026-08-03", "epoch-deepswe-kimi-k3-mini-swe-agent-max"], "local_evaluation": {"run_id": "2026-07-16-kimi-k3", "task_count": null, "repeats": null, "confidence": "low", "limitations": "Provider quota truncated the run; valid-subset size is not recorded in the published gate."}, "qualification_basis": "Owner selection decision on measured evidence, 2026-08-05. Status stays provisional and dispatch still requires an explicit decision plus --allow-provisional; only the ordering among external builders changed. Kimi K3 and Grok 4.5 are the only two that carry both builder required metrics on an exact production tuple, so they now rank above glm-builder and qwen3.8-max, which carry none. This records preference, not qualification: the local evaluation is still a quota-truncated run with no recorded valid-subset size.", "fallback": "terra-builder"},
         "frontend-builder": {"status": "provisional", "selection": "preferred-explicit", "exact_evidence_ids": [], "context_evidence_ids": ["webdev-kimi-k3", "aa-kimi-code-kimi-k3"], "local_evaluation": {"run_id": "2026-07-16-kimi-k3", "task_count": null, "repeats": null, "confidence": "low", "limitations": "No frontend-specific local pack; provider quota truncated the general run."}, "evidence_gap": "WebDev uses a different harness/default effort; coding evidence is supporting only.", "fallback": "sonnet-builder"},
         "senior": {"status": "candidate", "selection": "blocked", "exact_evidence_ids": [], "context_evidence_ids": ["arena-agent-kimi-k3"], "evidence_gap": "Steerability evidence is insufficient for promotion."},
         "judgement": {"status": "disabled", "selection": "blocked", "exact_evidence_ids": [], "context_evidence_ids": []},
@@ -229,9 +229,9 @@
       "lanes": {
         "builder": {
           "status": "provisional",
-          "selection": "explicit-only",
+          "selection": "preferred-explicit",
           "exact_evidence_ids": ["aa-grok-build-grok-4.5-high"],
-          "context_evidence_ids": ["openbench-grok-build-grok-4.5"],
+          "context_evidence_ids": ["openbench-grok-build-grok-4.5", "arena-agent-grok-4.5-2026-08-03", "epoch-deepswe-grok-4-5-mini-swe-agent-high"],
           "local_evaluation": {
             "run_id": "2026-07-24-grok-build",
             "task_count": 1,
@@ -239,6 +239,7 @@
             "confidence": "low",
             "limitations": "One transparent runtime and scoped-edit compatibility task; not a held-out comparative evaluation; the hardened runner is edit-only."
           },
+          "qualification_basis": "Owner selection decision on measured evidence, 2026-08-05. Status stays provisional and dispatch still requires an explicit decision plus --allow-provisional; only the ordering among external builders changed. Grok 4.5 and Kimi K3 are the only two that carry both builder required metrics on an exact production tuple, so they now rank above glm-builder and qwen3.8-max, which carry none. This records preference, not qualification: the local evaluation is still a single non-held-out compatibility task.",
           "fallback": "terra-builder"
         },
         "frontend-builder": {
