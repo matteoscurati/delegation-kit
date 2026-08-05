@@ -290,7 +290,7 @@
       "observed_at": "2026-08-05",
       "data_date": "2026-08-03",
       "scope": "1,607,993 in-the-wild sessions across 45 ranked models with causal estimates for confirmed success, user feedback, steerability, bash recovery, and tool hallucination; first Claude Opus 5 rows, which enter at ranks 1 and 3",
-      "limitations": "The board is sorted by descending net improvement and the rendered page does not expose the sign to an automated capture; rows below the rank-25 inflection carry sign_inferred and must be confirmed visually before they move a lane. Still no Qwen3.8-Max row"
+      "limitations": "The board encodes each effect's direction as a coloured triangle rather than a character, so an automated text capture reads every value as positive. Signs here were read visually on 2026-08-05 for the rows near or below the rank-25 inflection: gemini-3.6-flash (rank 35) is negative on every effect, while GPT 5.6 Sol, Luna, and Terra (ranks 5, 17, 18) are positive as recorded. Tool hallucination is published as a green downward 1.17% for every model in this set, so it discriminates nothing and is kept at its published magnitude. Still no Qwen3.8-Max row"
     },
     "code-arena-webdev-2026-08-01": {
       "name": "Arena Code Arena WebDev",
@@ -1103,9 +1103,8 @@
       "effort": "reported-default",
       "source": "agent-arena-2026-08-03",
       "contextual_only": true,
-      "sign_inferred": true,
-      "note": "The board is sorted by descending net improvement and its values turn negative below the rank-25 inflection, but the automated capture could not read the minus sign. The magnitude is as published; the sign is inferred from the ordering and must be confirmed visually before it carries a routing decision.",
-      "metrics": {"agent": {"rank": 35, "models_ranked": 45, "net_improvement_pct": -3.01, "confirmed_success_effect_pct": 1.63, "praise_vs_complaint_effect_pct": 5.19, "steerability_effect_pct": 6.7, "bash_recovery_effect_pct": 2.69, "tool_hallucination_effect_pct": 1.17, "sessions": 7601, "total_sessions": 1607993}}
+      "note": "Signs read visually from the rendered board on 2026-08-05, which settles the earlier sign_inferred flag: every effect except tool hallucination is negative, so this model is measurably worse than the baseline agent in real sessions, and steerability at -6.70% is the scout lane's supporting metric. The first automated capture recorded five of these as positive because the board encodes direction as a coloured triangle rather than a character, and the text conversion dropped it.",
+      "metrics": {"agent": {"rank": 35, "models_ranked": 45, "net_improvement_pct": -3.01, "confirmed_success_effect_pct": -1.63, "praise_vs_complaint_effect_pct": -5.19, "steerability_effect_pct": -6.7, "bash_recovery_effect_pct": -2.69, "tool_hallucination_effect_pct": 1.17, "sessions": 7601, "total_sessions": 1607993}}
     },
     {
       "id": "webdev-opus-5-max-2026-08-01",

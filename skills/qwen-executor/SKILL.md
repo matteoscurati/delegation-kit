@@ -31,6 +31,17 @@ Two constraints shape how you use it:
   tools and no terminal. Ask for a patch or complete file contents; the lead
   applies them and runs verification. Treat it as a strong text generator, not
   an autonomous editing agent like Grok Build or Kimi Code.
+  When you ask for a patch, **demand `a/` and `b/` header prefixes explicitly**:
+
+  > Return a unified diff whose headers are `--- a/<path>` and `+++ b/<path>`,
+  > paths relative to the repository root. No prose.
+
+  Left to itself the model emits `--- <path>` on both sides. `git apply`
+  defaults to `-p1` and strips one leading component precisely because of the
+  `a/`/`b/` convention, so an unprefixed header becomes a path that does not
+  exist and the apply fails on a patch that was actually correct — which reads
+  like a wrong answer and is not one. If you already hold such a patch, apply it
+  with `-p0` rather than re-running the lane.
 - **It is prompt-only.** Nothing about the repository reaches the model unless
   you put it in the brief. Embed the relevant file excerpts; paths alone are
   useless to it.

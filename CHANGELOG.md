@@ -2,6 +2,34 @@
 
 All notable changes to delegation-kit are documented here.
 
+## [0.13.2] — 2026-08-05
+
+### Fixed
+
+- **The Agent Arena row for Gemini 3.6 Flash had five of its six effects
+  recorded with the wrong sign.** The board encodes each effect's direction as a
+  coloured triangle rather than a character, so the automated capture that built
+  the 0.13.0 snapshot read every value as positive; the row was committed with
+  `sign_inferred` and only `net_improvement_pct` flipped, on an inference from
+  the sort order. Read visually from the rendered board, the model is negative
+  on **every** effect: net improvement `-3.01%`, confirmed success `-1.63%`,
+  praise vs complaint `-5.19%`, bash recovery `-2.69%`, and steerability
+  `-6.70%` — that last one being the scout lane's own supporting metric, which
+  makes this the difference between "unproven" and "measurably worse than the
+  baseline agent in real sessions". The flag is gone and the row now states that
+  its signs were read, not inferred. The rows near the boundary were re-read too:
+  GPT 5.6 Sol, Luna, and Terra at ranks 5, 17, and 18 are positive as recorded,
+  so the error was isolated to the one row below the inflection.
+- `skills/qwen-executor` now tells the brief to demand `a/` and `b/` diff header
+  prefixes. The text-only builder lane returns a patch the lead applies, and left
+  to itself the model emits `--- <path>` on both sides; `git apply` defaults to
+  `-p1` and strips one leading component precisely because of that convention, so
+  an unprefixed header resolves to a path that does not exist and a correct patch
+  fails to apply — which reads like a wrong answer and is not one. Re-dispatched
+  with the instruction, the model returned prefixed headers and the patch applied
+  with a bare `git apply`. The skill also records `-p0` as the recovery for a
+  patch already in hand.
+
 ## [0.13.1] — 2026-08-05
 
 ### Fixed

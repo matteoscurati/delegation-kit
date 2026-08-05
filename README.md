@@ -9,7 +9,16 @@ It ships as a **reference implementation**: the author's concrete models
 external-evidence snapshot, and fail-closed local gates. Swap the models for your own tiers with
 [`ADAPTING.md`](./ADAPTING.md) — the *structure* is the transferable part.
 
-## Current release: 0.13.1
+## Current release: 0.13.2
+
+Version 0.13.2 settles two loose ends from the 0.13.x pair. The Agent Arena row
+for Gemini 3.6 Flash was recorded from an automated capture that read every
+effect as positive, because the board encodes direction as a coloured triangle
+rather than a character; read visually, the model is negative on every effect,
+including **-6.70% steerability** — the scout lane's own supporting metric. And
+`skills/qwen-executor` now tells the brief to demand `a/` and `b/` diff header
+prefixes, because without them a correct patch fails a bare `git apply` and
+reads like a wrong answer. No routing decision moves.
 
 Version 0.13.1 makes the Gemini lane reachable over SSH. `agy` abandons the
 macOS Keychain for a file-based token store whenever it sees the SSH session
