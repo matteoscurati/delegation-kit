@@ -53,7 +53,10 @@ validate() {
     ([.evidence[].id] | length == (unique | length)) and
     ([.evidence[] | select((.model | type) != "string" or (.harness | type) != "string" or (.effort | type) != "string")] | length == 0) and
     ([.evidence[].source] - (.sources | keys) | length == 0)
-  ' "$DATA" >/dev/null
+  ' "$DATA" >/dev/null || {
+    echo "delegation-evidence: $DATA fails the snapshot schema or references an unknown source" >&2
+    return 65
+  }
 
   local config_dir gate
   config_dir="$(cd "$(dirname "$DATA")" && pwd)"

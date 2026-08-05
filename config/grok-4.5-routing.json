@@ -23,7 +23,7 @@
         "grok-build": {
           "qualified": false,
           "status": "provisional",
-          "selection": "explicit-only",
+          "selection": "preferred-explicit",
           "effort": "high",
           "runtime_model": "grok-4.5",
           "runtime_controls": {

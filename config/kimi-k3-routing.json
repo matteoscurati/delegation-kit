@@ -21,7 +21,7 @@
     },
     "builder": {
       "default_effort": "max", "preferred_backends": ["native"],
-      "backends": {"native": {"qualified": false, "status": "provisional", "selection": "explicit-only", "effort": "max", "legacy_local_result": {"run_id": "2026-07-16-kimi-k3", "outcome": "passed-valid-subset", "task_count": null, "repeats": null, "confidence": "low", "wall_clock_ms_per_task": 76543.125, "limitations": "Provider quota truncated the run; valid-subset size is not recorded."}}}
+      "backends": {"native": {"qualified": false, "status": "provisional", "selection": "preferred-explicit", "effort": "max", "legacy_local_result": {"run_id": "2026-07-16-kimi-k3", "outcome": "passed-valid-subset", "task_count": null, "repeats": null, "confidence": "low", "wall_clock_ms_per_task": 76543.125, "limitations": "Provider quota truncated the run; valid-subset size is not recorded."}}}
     },
     "frontend-builder": {
       "default_effort": "max", "preferred_backends": ["native"],

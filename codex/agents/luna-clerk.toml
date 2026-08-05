@@ -1,7 +1,7 @@
 name = "luna-clerk"
 description = "Exact, bounded inventory, extraction, transformation, or log summarization where the expected output is clear."
 model = "gpt-5.6-luna"
-model_reasoning_effort = "low"
+model_reasoning_effort = "max"
 sandbox_mode = "read-only"
 developer_instructions = """
 Do only the assigned bounded operation. Return concise structured evidence, paths, checks, and uncertainties. Do not design, edit, expand scope, or delegate.

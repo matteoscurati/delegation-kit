@@ -241,7 +241,8 @@ case "$command" in
         {lane:$lane,
          defaults:[$rows[] | select(.selection == "default" and (.status == "qualified" or .status == "provisional"))],
          fallbacks:[$rows[] | select(.selection == "fallback" and (.status == "qualified" or .status == "provisional"))],
-         explicit:[$rows[] | select((.selection == "explicit-only" or .selection == "preferred-explicit") and (.status == "qualified" or .status == "provisional" or .status == "manual-qualified"))],
+         explicit:([$rows[] | select((.status == "qualified" or .status == "provisional" or .status == "manual-qualified"))] |
+                   [.[] | select(.selection == "preferred-explicit")] + [.[] | select(.selection == "explicit-only")]),
          blocked:[$rows[] | select(.selection == "blocked" or .status == "candidate" or .status == "disabled")],
          automatic_dispatch:false}'
     fi

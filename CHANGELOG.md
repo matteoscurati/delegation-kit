@@ -2,6 +2,66 @@
 
 All notable changes to delegation-kit are documented here.
 
+## [0.13.0] — 2026-08-05
+
+### Changed
+
+- **Routing gate — the three Codex executor lanes are re-pinned above the effort
+  cliff.** `luna-clerk` moves `low` → `max`, `terra-scout` `low` → `medium`, and
+  `terra-builder` `medium` → `max`. Lanes, models, harnesses, sandboxes, and
+  statuses are unchanged; only the pinned effort moved. The reason is that the
+  cheap models do not degrade gracefully and the kit had its two highest-volume
+  lanes pinned where they collapse: on the exact Artificial Analysis rows
+  `gpt-5.6-luna` at `low` scores 15% SWE-Atlas-QnA — the clerk *required* metric
+  — against 33% at `max`, and the Epoch effort ladder puts the same model at
+  1.5% DeepSWE at `low` against 67.2% at `max`. `terra-builder` gains both
+  builder required metrics: DeepSWE 46% → 67% and Terminal-Bench v2 69% → 84%,
+  at $2.76 rather than $0.90 per task. Each new effort was chosen because it
+  already carries an *exact* benchmark row, so no lane trades measured evidence
+  for expected capability. Owner decision on measured evidence, recorded in each
+  lane's `qualification_basis`.
+- **Routing gate — Kimi K3 and Grok 4.5 become `preferred-explicit` on
+  `builder`** (they already were on `frontend-builder`). Both remain
+  `provisional` and still require an explicit decision plus
+  `--allow-provisional`; only the ordering among external builders changed. They
+  are the only two carrying both builder required metrics on an exact production
+  tuple, so they now rank above `glm-builder` and `qwen3.8-max`, which carry
+  none. This records preference, not qualification: Kimi's local evaluation is
+  still a quota-truncated run and Grok's a single non-held-out task.
+- Codex reasoning-effort support is per model, not global, and reaches further
+  than this repository claimed. Probed against the provider on 2026-08-05:
+  `gpt-5.6-terra` enumerates `none · minimal · low · medium · high · xhigh ·
+  max` and ran at `high`, `xhigh`, and `max`; `gpt-5.6-sol` and `gpt-5.6-luna`
+  ran at `xhigh` and `max`; `gpt-5.5` **refuses** `max`. The effort table in
+  `model-routing.md` previously stopped every Codex row at `high`.
+
+### Fixed
+
+- `delegation-evidence check` silently passed a broken snapshot. It ran
+  `age="$(validate)"`, and a command substitution does not inherit `set -e`, so
+  the `jq -e` covering schema, id uniqueness, and source references could fail
+  while `check` still printed `valid` and exited 0 — only the freshness check,
+  which uses an explicit `return`, was effective. The validation now fails with
+  exit 65 and a message naming the file. Caught when a snapshot whose rows
+  referenced three nonexistent sources was reported as valid.
+- `preferred-explicit` had no positional meaning: `delegation-route resolve`
+  emitted the `explicit` array in profile-insertion order, so a plain
+  `explicit-only` profile could be listed ahead of a preferred one. Preferred
+  entries now come first, insertion order preserved within each group.
+
+### Added
+
+- 65 dated evidence rows and three sources in `config/model-evidence.json`:
+  Agent Arena (data 2026-08-03, 1,607,993 sessions — first Claude Opus 5 rows,
+  entering at ranks 1 and 3), Code Arena WebDev (data 2026-08-01, 510,194 votes
+  — first `qwen3.8-max` row at rank 4, which is the `frontend-builder` required
+  metric for a model that has no such lane), and the Epoch AI ZIP of 2026-08-04,
+  whose first import of the DeepSWE effort ladder is what made the cliff visible.
+  Existing rows are untouched; the gates reference them by id. Every Epoch row is
+  `contextual_only` because `mini-swe-agent` is not a production harness, and the
+  Gemini Agent Arena row carries `sign_inferred` because the board's sign is not
+  machine-readable.
+
 ## [0.12.0] — 2026-08-04
 
 ### Added

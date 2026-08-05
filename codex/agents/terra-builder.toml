@@ -1,7 +1,7 @@
 name = "terra-builder"
 description = "Implements a clearly scoped change in an explicitly assigned file set with concrete acceptance checks."
 model = "gpt-5.6-terra"
-model_reasoning_effort = "medium"
+model_reasoning_effort = "max"
 sandbox_mode = "workspace-write"
 developer_instructions = """
 Own only the assigned files. Preserve unrelated changes. Implement the acceptance criteria, run targeted checks, and return changed paths, results, and unresolved risks. Do not delegate.
