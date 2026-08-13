@@ -28,18 +28,17 @@ bin/delegation-route resolve --lane judgement --json
 bin/delegation-route resolve --lane super-judgement --json
 ```
 
-The snapshot observed through 2026-07-28 uses Artificial Analysis Coding Agent
+The snapshot observed through 2026-08-12 uses Artificial Analysis Coding Agent
 Index v1.3 for end-to-end coding, Agent Arena for real-world reliability, Code
 Arena WebDev for frontend preference, SWE-PRBench/Martian for review, and
 CursorBench, FrontierCode, FrontierSWE, APEX-SWE, OpenBench, and Epoch's ZIP as
 separately labeled context. It stores raw metrics rather than compressing
 unrelated capabilities into subjective 1–10 scores.
 
-| current exact model + harness + effort | coding index | DeepSWE | Terminal-Bench | repo Q&A | API cost/task |
+| retained exact model + harness + effort | coding index | DeepSWE | Terminal-Bench | repo Q&A | API cost/task |
 |---|---:|---:|---:|---:|---:|
 | Claude Opus 5 + Claude Code, xhigh (lead) | 67 | 60% | 85% | 55% | $8.23 |
 | GPT-5.6 Sol + Codex, high | 64 | 65% | 83% | 45% | $4.14 |
-| Grok 4.5 + Grok Build, high | 64 | 60% | 85% | 48% | $2.59 |
 | Claude Opus 5 + Claude Code, high | 63 | 61% | 80% | 49% | $3.80 |
 | Kimi K3 + Kimi Code CLI, max | 61 | 64% | 84% | 37% | $3.18 |
 | GPT-5.6 Terra + Codex, medium | 48 | 46% | 69% | 28% | $0.90 |
@@ -57,9 +56,11 @@ requires the same model, harness, and effort and must be relevant to the lane;
 nearby variants and general coding scores for reviewer/judgement remain context.
 `delegation-route table` exposes both counts plus local sample confidence.
 
-The JSON now records current exact installed rows for Luna `low`, Terra
-`low`/`medium`, Sol `high`, Opus 5 `xhigh`/`high`, Kimi K3 `max`, and Grok 4.5
-`high`. The 2026-07-28 index adds the lead lane's own tuple: Opus 5 through
+The JSON retains exact observations for Luna `low`, Terra `low`/`medium`, Sol
+`high`, Opus 5 `xhigh`/`high`, Kimi K3 `max`, and the historical Grok 4.5
+`high` tuple. Grok 4.5 is no longer operational; Grok 4.6 currently has only
+contextual rows because CursorBench, FrontierCode, APEX, and WebDev use other
+harnesses. The 2026-07-28 index adds the lead lane's own tuple: Opus 5 through
 Claude Code at `xhigh` enters at 67, jointly ahead of Codex Sol `max`, with the
 highest repo-Q&A score on the board (55%) at $8.23 per task. Opus 5 `max` is
 recorded alongside it at 66 as non-installed context. Those rows measure coding,
@@ -115,7 +116,7 @@ and `max`; `gpt-5.5` **refuses** `max` and enumerates a shorter set of its own.
 | kimi-k3 | max |
 | gemini-3.6-flash | medium (scout provisional) · high (editing candidate) |
 | qwen3.8-max | xhigh (builder provisional; every other lane candidate/disabled) |
-| grok-4.5 | high (builder/frontend-builder provisional; policy annotation evaluation-only) |
+| grok-4.6 | high (builder/frontend-builder provisional; policy annotation evaluation-only) |
 
 Kimi K3 is provisional: the 2026-07-16 run was truncated by provider quota. Its
 valid subset and exact public rows support controlled `clerk`, `scout`, `builder`,
@@ -157,11 +158,10 @@ The Antigravity bridge is prompt-only: the lead supplies selected file excerpts
 in the brief. The runner uses an empty temporary workspace and home, retains
 only macOS Keychain access for OAuth, and explicitly denies every tool namespace.
 
-Grok 4.5 is provisional for `builder` and `frontend-builder` through Grok Build
-CLI at `high`. The exact Artificial Analysis coding row supports builder; the
-WebDev and OpenBench rows are contextual support. The owner promotion is
-explicit, and the local run proves only runtime, JSON extraction, scoped writes,
-and sandbox compatibility. Dispatch still requires `--allow-provisional`; the
+Grok 4.6 is provisional for `builder` and `frontend-builder` through Grok Build
+CLI at `high`. Current CursorBench, FrontierCode, APEX, and preliminary WebDev
+rows support the owner replacement decision, but all use non-production
+harnesses and remain contextual. Dispatch still requires `--allow-provisional`; the
 runner capability-probes the CLI, isolates HOME, disables plugins/MCP/imported
 config, requires an attested custom sandbox, and caps turns and wall time. The
 observed version is provenance only; an optional digest-checked private archive
@@ -275,9 +275,8 @@ toolchain fixes are therefore not routable to GLM builder; the lead closes them
 (observed 2026-08-04, when such a dispatch returned analysis only). Kimi K3 is provisional for `clerk`, `scout`, `builder`, and
 `frontend-builder`; senior is a blocked candidate, while reviewer and judgement
 remain disabled. Other provisional bridge runs require `--allow-provisional`.
-Grok 4.5 is provisional for `builder` and `frontend-builder` through Grok Build
-CLI at `high`; builder is explicit-only and frontend-builder is
-preferred-explicit. The runner capability-probes the CLI and optionally archives
+Grok 4.6 is provisional for `builder` and `frontend-builder` through Grok Build
+CLI at `high`; both lanes are `preferred-explicit`. The runner capability-probes the CLI and optionally archives
 the selected bytes privately with a digest, so a vendor update cannot silently
 replace them. CLI version is provenance only. No Grok reviewer, senior, or
 judgement lane exists.

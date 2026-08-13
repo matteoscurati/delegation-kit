@@ -28,7 +28,7 @@ case "${1:-}" in
       printf 'List available models and exit\n'
       exit 0
     fi
-    printf 'You are logged in with grok.com.\n\nAvailable models:\n  * grok-4.5 (default)\n'
+    printf 'You are logged in with grok.com.\n\nAvailable models:\n  * grok-4.6 (default)\n'
     exit 0
     ;;
   inspect)
@@ -54,7 +54,7 @@ case "${1:-}" in
 esac
 args=" $* "
 for required in \
-  '--model grok-4.5' '--reasoning-effort high' \
+  '--model grok-4.6' '--reasoning-effort high' \
   '--permission-mode dontAsk' \
   '--output-format json' '--no-memory' '--no-subagents' '--disable-web-search' \
   '--no-auto-update' '--max-turns 40' \
@@ -110,15 +110,24 @@ stop_reason=EndTurn
 [ "${GROK_FAKE_MODE:-success}" != max_turns ] || stop_reason=MaxTurns
 [ "${GROK_FAKE_MODE:-success}" != cancelled ] || stop_reason=Cancelled
 [ "${GROK_FAKE_MODE:-success}" != unexpected_stop ] || stop_reason=Unknown
-usage_model=grok-4.5-build
-[ "${GROK_FAKE_MODE:-success}" != model_mismatch ] || usage_model=grok-4.5-fallback-build
-jq -n --arg stop_reason "$stop_reason" --arg usage_model "$usage_model" '
-  {text:"PONG",thought:"SECRET_THOUGHT",stopReason:$stop_reason,num_turns:2,
+usage_model=grok-4.6-build
+[ "${GROK_FAKE_MODE:-success}" != model_mismatch ] || usage_model=grok-4.6-fallback-build
+content_model=grok-4.6
+[ "${GROK_FAKE_MODE:-success}" != content_model_missing ] || content_model=
+[ "${GROK_FAKE_MODE:-success}" != content_model_mismatch ] || content_model=grok-4.6-fallback
+multi_usage=false
+[ "${GROK_FAKE_MODE:-success}" != multi_usage ] || multi_usage=true
+jq -n --arg stop_reason "$stop_reason" --arg usage_model "$usage_model" \
+  --arg content_model "$content_model" --argjson multi_usage "$multi_usage" '
+  ({text:"PONG",thought:"SECRET_THOUGHT",stopReason:$stop_reason,num_turns:2,
    usage:{input_tokens:100,output_tokens:20,reasoning_tokens:7,
      cache_read_input_tokens:30,total_tokens:157},
    total_cost_usd:0.02,
-   modelUsage:{($usage_model):{inputTokens:100,outputTokens:20,
-     cacheReadInputTokens:30,modelCalls:1,costUSD:0.02}}}
+   modelUsage:({($usage_model):{inputTokens:100,outputTokens:20,
+     cacheReadInputTokens:30,modelCalls:1,costUSD:0.02}} +
+     (if $multi_usage then {"safety-classifier":{inputTokens:5,outputTokens:2,
+       cacheReadInputTokens:1,modelCalls:1,costUSD:0.001}} else {} end))} +
+   (if $content_model == "" then {} else {model:$content_model} end))
 '
 EOF
 chmod 755 "$TMP/bin/grok"
@@ -172,7 +181,7 @@ run_grok_updated() {
 
 run_grok check --json >"$TMP/check.json"
 jq -e '
-  .model == "grok-4.5" and
+  .model == "grok-4.6" and
   .runtime_cli_version == "user-build-a" and
   .runtime_cli_compatibility == "capability-probed" and
   .runtime_cli_source == "path" and
@@ -199,10 +208,16 @@ run_grok run --lane builder --allow-provisional --prompt-file "$TMP/prompt.txt" 
 [ "$(cat "$TMP/results/builder.txt")" = PONG ] || fail "text extraction mismatch"
 ! grep -q SECRET_THOUGHT "$TMP/results/builder.txt" || fail "thought leaked into output"
 jq -e '
-  .model == "grok-4.5" and .runtime_model == "grok-4.5" and
+  .model == "grok-4.6" and .runtime_model == "grok-4.6" and
+  .requested_model == "grok-4.6" and
+  .effective_content_model == "grok-4.6" and
+  .exact_model_identity_attested == true and
   .runtime_cli_version == "user-build-a" and
   .runtime_cli_compatibility == "capability-probed" and
-  .usage_model == "grok-4.5-build" and .effort == "high" and
+  .usage_model == "grok-4.6-build" and
+  .target_usage_participant_present == true and
+  (.usage_participants | length) == 1 and
+  .usage_participants[0].model == "grok-4.6-build" and .effort == "high" and
   .lane == "builder" and .tokens.reasoning == 7 and
   .provider_cost_usd == 0.02 and .sandbox == "delegation-kit" and
   .permission_mode == "dontAsk" and .max_turns == 40 and
@@ -214,12 +229,43 @@ jq -e 'has("evaluation_receipt") | not' "$TMP/results/builder.txt.metrics.json" 
 [ ! -e "$TMP/results/builder.txt.commit.json" ] \
   || fail "non-evaluation run wrote an evaluation commit marker"
 
+GROK_FAKE_MODE=multi_usage run_grok run --lane builder --allow-provisional \
+  --prompt-file "$TMP/prompt.txt" --output "$TMP/results/multi-usage.txt" \
+  --workdir "$TMP/work"
+jq -e '
+  (.usage_participants | map(.model) | sort) == ["grok-4.6-build","safety-classifier"] and
+  .tokens.input == 105 and .tokens.output == 22 and
+  .tokens.cache_read == 31 and .tokens.reasoning == 7 and .tokens.total == 165 and
+  .provider_cost_usd == 0.021
+' "$TMP/results/multi-usage.txt.metrics.json" >/dev/null \
+  || fail "multi-participant usage was not preserved and summed"
+
+GROK_FAKE_MODE=content_model_missing run_grok run --lane builder --allow-provisional \
+  --prompt-file "$TMP/prompt.txt" --output "$TMP/results/no-content-model.txt" \
+  --workdir "$TMP/work"
+jq -e '
+  .effective_content_model == null and .exact_model_identity_attested == false and
+  .target_usage_participant_present == true
+' "$TMP/results/no-content-model.txt.metrics.json" >/dev/null \
+  || fail "operational run conflated usage participation with content identity"
+
+rc=0
+GROK_FAKE_MODE=content_model_mismatch run_grok run --lane builder --allow-provisional \
+  --prompt-file "$TMP/prompt.txt" --output "$TMP/results/operational-mismatch.txt" \
+  --workdir "$TMP/work" >/dev/null 2>&1 || rc=$?
+[ "$rc" = 70 ] || fail "operational content identity mismatch returned $rc"
+[ ! -e "$TMP/results/operational-mismatch.txt" ] \
+  || fail "operational content identity mismatch published output"
+jq -e '.phase == "identity" and .reason == "provider_identity_mismatch"' \
+  "$TMP/results/operational-mismatch.txt.error.json" >/dev/null \
+  || fail "operational content identity mismatch diagnostic"
+
 run_grok run --lane frontend-builder --allow-provisional --prompt-file "$TMP/prompt.txt" \
   --output "$TMP/results/frontend.txt" --workdir "$TMP/work"
 [ "$(cat "$TMP/results/frontend.txt")" = PONG ] || fail "frontend lane failed"
 
 # Exercise the manifest gate, read-only tool surface, sandbox attestation, and
-# exact provider identity from a clean committed runner checkout.
+# separately surfaced effective content identity from a clean committed runner checkout.
 EVAL_ROOT="$TMP/eval-repo"
 cp -R "$ROOT/." "$EVAL_ROOT"
 rm -rf -- "$EVAL_ROOT/.git"
@@ -242,7 +288,7 @@ jq -n \
   --arg contract_sha256 "$(sha256 "$EVAL_ROOT/evaluation/test-fixtures/contract.txt")" \
   --arg output_schema_sha256 "$(sha256 "$EVAL_ROOT/evaluation/test-fixtures/output-schema.json")" \
   --arg source_commit "$EVAL_BASE_COMMIT" \
-  '{schema:"delegation_policy_annotation_evaluation_v1",profile:"grok-build",lane:"policy-annotation",model:"grok-4.5",backend:"grok-build",effort:"high",prompt_sha256:$prompt_sha256,runner_source_commit:$source_commit,runner_sha256:$runner_sha256,contract_path:"evaluation/test-fixtures/contract.txt",contract_sha256:$contract_sha256,output_schema_path:"evaluation/test-fixtures/output-schema.json",output_schema_sha256:$output_schema_sha256,timeout_seconds:60,max_output_chars:1024}' \
+  '{schema:"delegation_policy_annotation_evaluation_v1",profile:"grok-build",lane:"policy-annotation",model:"grok-4.6",backend:"grok-build",effort:"high",prompt_sha256:$prompt_sha256,runner_source_commit:$source_commit,runner_sha256:$runner_sha256,contract_path:"evaluation/test-fixtures/contract.txt",contract_sha256:$contract_sha256,output_schema_path:"evaluation/test-fixtures/output-schema.json",output_schema_sha256:$output_schema_sha256,timeout_seconds:60,max_output_chars:1024}' \
   >"$TMP/grok-evaluation-manifest.json"
 GROK_MANIFEST_SHA="$(sha256 "$TMP/grok-evaluation-manifest.json")"
 jq --arg hash "$GROK_MANIFEST_SHA" '
@@ -251,9 +297,9 @@ jq --arg hash "$GROK_MANIFEST_SHA" '
 mv "$TMP/grok-central.json" "$EVAL_ROOT/config/routing-gates.json"
 jq --arg hash "$GROK_MANIFEST_SHA" '
   .lanes["policy-annotation"].backends["grok-build"].evaluation_manifest_sha256 = [$hash]
-' "$EVAL_ROOT/config/grok-4.5-routing.json" >"$TMP/grok-routing.json"
-mv "$TMP/grok-routing.json" "$EVAL_ROOT/config/grok-4.5-routing.json"
-git -C "$EVAL_ROOT" add config/routing-gates.json config/grok-4.5-routing.json
+' "$EVAL_ROOT/config/grok-4.6-routing.json" >"$TMP/grok-routing.json"
+mv "$TMP/grok-routing.json" "$EVAL_ROOT/config/grok-4.6-routing.json"
+git -C "$EVAL_ROOT" add config/routing-gates.json config/grok-4.6-routing.json
 git -C "$EVAL_ROOT" commit -qm 'allowlist Grok evaluation fixture'
 EVAL_HEAD="$(git -C "$EVAL_ROOT" rev-parse HEAD)"
 
@@ -268,7 +314,7 @@ PATH="$TMP/bin:$PATH" "$EVAL_ROOT/bin/delegation-grok" run \
 [ "$(cat "$TMP/results/policy-annotation.txt")" = PONG ] \
   || fail "policy-annotation output mismatch"
 jq -e '
-  .lane == "policy-annotation" and .model == "grok-4.5" and
+  .lane == "policy-annotation" and .model == "grok-4.6" and
   .effort == "high" and .sandbox == "delegation-kit-read-only"
 ' "$TMP/results/policy-annotation.txt.metrics.json" >/dev/null \
   || fail "policy-annotation metrics mismatch"
@@ -333,7 +379,7 @@ jq -e --arg manifest_sha "$GROK_MANIFEST_SHA" \
       "runner_sha256","runner_source_commit","schema_version","status"] and
    .schema_version == "delegation_policy_annotation_preflight_receipt_v1" and
    .status == "READY_NO_PROVIDER_CALL" and
-   .profile == "grok-build" and .model == "grok-4.5" and
+   .profile == "grok-build" and .model == "grok-4.6" and
    .backend == "grok-build" and .effort == "high" and
    .lane == "policy-annotation" and
    .evaluation_manifest_sha256 == $manifest_sha and
@@ -481,16 +527,31 @@ rc=0
 DELEGATION_GROK_HOME="$TMP/grok-home" \
 DELEGATION_GROK_BIN_STORE="$TMP/eval-store" \
 DELEGATION_GROK_BIN="$TMP/bin/grok" \
-GROK_FAKE_MODE=model_mismatch PATH="$TMP/bin:$PATH" \
+GROK_FAKE_MODE=content_model_missing PATH="$TMP/bin:$PATH" \
   "$EVAL_ROOT/bin/delegation-grok" run \
   --lane policy-annotation --effort high --backend grok-build --evaluation \
   --evaluation-manifest "$TMP/grok-evaluation-manifest.json" \
   --prompt-file "$TMP/prompt.txt" --output "$TMP/results/policy-identity.txt" \
   --workdir "$TMP/work" >/dev/null 2>&1 || rc=$?
-[ "$rc" = 70 ] || fail "policy-annotation identity mismatch returned $rc"
-jq -e '.phase == "identity" and .reason == "provider_identity_not_attested"' \
+[ "$rc" = 70 ] || fail "policy-annotation missing content identity returned $rc"
+jq -e '.phase == "identity" and .reason == "strict_identity_evaluation_void"' \
   "$TMP/results/policy-identity.txt.error.json" >/dev/null \
-  || fail "policy-annotation identity mismatch diagnostic"
+  || fail "policy-annotation missing identity was not VOID"
+
+rc=0
+DELEGATION_GROK_HOME="$TMP/grok-home" \
+DELEGATION_GROK_BIN_STORE="$TMP/eval-store" \
+DELEGATION_GROK_BIN="$TMP/bin/grok" \
+GROK_FAKE_MODE=content_model_mismatch PATH="$TMP/bin:$PATH" \
+  "$EVAL_ROOT/bin/delegation-grok" run \
+  --lane policy-annotation --effort high --backend grok-build --evaluation \
+  --evaluation-manifest "$TMP/grok-evaluation-manifest.json" \
+  --prompt-file "$TMP/prompt.txt" --output "$TMP/results/policy-mismatch.txt" \
+  --workdir "$TMP/work" >/dev/null 2>&1 || rc=$?
+[ "$rc" = 70 ] || fail "policy-annotation content identity mismatch returned $rc"
+jq -e '.phase == "identity" and .reason == "provider_identity_mismatch"' \
+  "$TMP/results/policy-mismatch.txt.error.json" >/dev/null \
+  || fail "policy-annotation content identity mismatch diagnostic"
 
 # A receipt that cannot be merged fails closed: exit 70, no output, no metrics.
 # The shim refuses only the runner's receipt-merge jq invocation and delegates

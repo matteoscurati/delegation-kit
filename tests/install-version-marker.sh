@@ -17,12 +17,50 @@ fail() { printf 'FAIL: %s\n' "$*" >&2; exit 1; }
 ok() { pass=$((pass + 1)); }
 DATA="$TMP/data"
 MARKER="$DATA/installed-version.json"
+GROK_TEST_HOME="$TMP/grok-home"
+
+# Seed an upgrade-shaped install: a stale 4.5 gate plus a digest-valid archived
+# CLI that already exposes 4.6. The installer must replace the gate atomically
+# and recognize the retained archive only after current routing files exist.
+mkdir -p "$DATA/config" "$DATA/grok-cli/current" "$GROK_TEST_HOME"
+printf '%s\n' '{}' >"$GROK_TEST_HOME/auth.json"
+printf '%s\n' '{}' >"$DATA/config/grok-4.5-routing.json"
+cat >"$DATA/grok-cli/current/grok" <<'EOF'
+#!/usr/bin/env bash
+case "${1:-}" in
+  --version) printf 'grok test-build\n' ;;
+  models) printf 'You are logged in with grok.com.\n  * grok-4.6 (default)\n' ;;
+  inspect)
+    case " $* " in
+      *' --help '*) printf '%s\n' '--json' ;;
+      *) printf '%s\n' '{"sources":[],"compatibilityImports":[],"plugins":[],"mcpServers":[],"permissions":{"sources":[]},"hooks":[]}' ;;
+    esac
+    ;;
+  *) printf '%s\n' '  models' '  inspect' ;;
+esac
+EOF
+chmod 700 "$DATA/grok-cli/current/grok"
+if command -v shasum >/dev/null 2>&1; then
+  archive_sha="$(shasum -a 256 "$DATA/grok-cli/current/grok" | awk '{print $1}')"
+else
+  archive_sha="$(sha256sum "$DATA/grok-cli/current/grok" | awk '{print $1}')"
+fi
+printf '%s  grok\n' "$archive_sha" >"$DATA/grok-cli/current/grok.sha256"
 
 # Install into fully isolated homes; never touch the real ones.
 env CLAUDE_HOME="$TMP/claude" CODEX_HOME="$TMP/codex" \
     DELEGATION_BIN_HOME="$TMP/bin" DELEGATION_DATA_HOME="$DATA" \
+    DELEGATION_GROK_HOME="$GROK_TEST_HOME" \
     "$ROOT/install.sh" </dev/null >"$TMP/install.log" 2>&1 \
   || { sed 's/^/    /' "$TMP/install.log" >&2; fail 'install.sh exited non-zero'; }
+
+[ ! -e "$DATA/config/grok-4.5-routing.json" ] \
+  || fail 'upgrade retained the stale Grok 4.5 gate'
+[ -f "$DATA/config/grok-4.6-routing.json" ] \
+  || fail 'upgrade did not install the Grok 4.6 gate'
+grep -q 'existing compatible Grok Build CLI archive retained' "$TMP/install.log" \
+  || { sed 's/^/    /' "$TMP/install.log" >&2; fail 'upgrade falsely warned that the compatible Grok archive was unavailable'; }
+ok
 
 [ -f "$MARKER" ] || fail "install.sh wrote no marker at $MARKER"
 ok
@@ -57,6 +95,7 @@ fi
 # A partial install must say so rather than claim a full one.
 env CLAUDE_HOME="$TMP/claude2" CODEX_HOME="$TMP/codex2" \
     DELEGATION_BIN_HOME="$TMP/bin2" DELEGATION_DATA_HOME="$TMP/data2" \
+    DELEGATION_GROK_HOME="$GROK_TEST_HOME" \
     "$ROOT/install.sh" --claude-only </dev/null >"$TMP/install2.log" 2>&1 \
   || { sed 's/^/    /' "$TMP/install2.log" >&2; fail '--claude-only install failed'; }
 [ "$(jq -r '.scope' "$TMP/data2/installed-version.json")" = "claude-only" ] \

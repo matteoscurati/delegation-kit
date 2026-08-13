@@ -38,7 +38,7 @@ Five places — keep them in sync:
 5. **Executable bridges and sync surfaces** — for an external model, keep its
    `bin/delegation-*`, `config/*-routing.json`, `skills/*-executor/SKILL.md`,
    installer, uninstaller, doctor, routing-gate drift test, README, plugin
-   manifests, and `skills/orchestrate/*` in step. Grok 4.5 is the current worked
+   manifests, and `skills/orchestrate/*` in step. Grok 4.6 is the current worked
    example: only `builder` and `frontend-builder`, Grok Build CLI, effort `high`.
 
 Then re-run `./install.sh`; it refreshes copied files and replaces the guarded

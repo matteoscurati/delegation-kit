@@ -66,7 +66,7 @@ are disabled. Dispatch requires an explicit decision and
 excerpts into the brief. It uses an isolated temporary home/workspace, retains
 only macOS Keychain access for OAuth, and denies every tool namespace.
 
-Grok 4.5 is provisional for `builder` and `frontend-builder` at `high` through
+Grok 4.6 is provisional for `builder` and `frontend-builder` at `high` through
 Grok Build CLI. Dispatch requires an explicit decision and
 `--allow-provisional`. The runner capability-probes the CLI, pins model and
 effort, extracts only `.text`, uses an isolated HOME plus the attested custom

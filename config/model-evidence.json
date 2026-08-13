@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "snapshot_at": "2026-08-05T00:00:00Z",
+  "snapshot_at": "2026-08-12T00:00:00Z",
   "max_snapshot_age_days": 45,
   "policy": {
     "external_evidence_never_auto_qualifies": true,
@@ -311,6 +311,58 @@
       "republished": "The archive was re-published since the 2026-07-31 record. Its 2026-08-04 shape is 75 CSVs, 6,113 rows, and 6,056 normalized advisory records; the hash is descriptive provenance and is not enforced by any check",
       "scope": "First import of the DeepSWE effort ladder. Every imported row runs the mini-swe-agent harness at one reported effort, which makes efforts comparable to each other within a model",
       "limitations": "mini-swe-agent is not an installed production harness, so no imported row is exact for any profile in config/routing-gates.json. Costs are API-priced and are not comparable with subscription buckets. The archive still contains no qwen3.8-max record"
+    },
+    "xai-grok-4.6-launch-2026-08-12": {
+      "name": "xAI Grok 4.6 launch",
+      "url": "https://x.ai/news/grok-4-6",
+      "documentation_url": "https://docs.x.ai/developers/grok-4-6",
+      "observed_at": "2026-08-12",
+      "data_date": "2026-08-12",
+      "category": "first-party-release-evidence",
+      "scope": "Official model identity, Grok Build availability, high-effort benchmark claims, 500k-token context, and API pricing.",
+      "limitations": "First-party launch claims are contextual provenance, not independent evidence or an exact attestation of the hardened delegation-grok runner."
+    },
+    "cursorbench-3.2-2026-08-12": {
+      "name": "CursorBench 3.2",
+      "url": "https://cursor.com/cursorbench",
+      "observed_at": "2026-08-12",
+      "data_date": "2026-08-12",
+      "scope": "Current leaderboard for ambiguous multi-file repository work; Grok 4.6 high is 69.9% across the published task set.",
+      "limitations": "Cursor Agent differs from Grok Build CLI, so this is contextual builder evidence only."
+    },
+    "frontiercode-1.1-2026-08-12": {
+      "name": "Cognition FrontierCode 1.1",
+      "url": "https://cognition.com/frontiercode",
+      "methodology_url": "https://cognition.com/blog/frontier-code-1.1",
+      "observed_at": "2026-08-12",
+      "data_date": "2026-08-12",
+      "scope": "Current main leaderboard for maintainer-authored real-repository tasks; Grok 4.6 is 48.0%.",
+      "limitations": "The public main score is distinct from xAI's self-reported FrontierCode Extended result and does not use the installed production harness."
+    },
+    "apex-swe-2026-08-12": {
+      "name": "Mercor APEX-SWE",
+      "url": "https://www.mercor.com/apex/",
+      "observed_at": "2026-08-12",
+      "data_date": "2026-08-12",
+      "scope": "Current real-world software-engineering leaderboard; Grok 4.6 high with Terminus-2 scores 56.4% plus or minus 6.2 points.",
+      "limitations": "Terminus-2 is not the installed Grok Build CLI and the row is contextual only."
+    },
+    "apex-agents-2026-08-12": {
+      "name": "Mercor APEX Agents",
+      "url": "https://www.mercor.com/apex/",
+      "observed_at": "2026-08-12",
+      "data_date": "2026-08-12",
+      "scope": "Current long-horizon agent leaderboard; Grok 4.6 high with Loop scores 57.5% plus or minus 3.5 points.",
+      "limitations": "Loop is not the installed Grok Build CLI and the row is contextual only."
+    },
+    "code-arena-webdev-2026-08-12": {
+      "name": "Arena Code Arena WebDev",
+      "url": "https://arena.ai/leaderboard/code/webdev",
+      "methodology_url": "https://arena.ai/blog/new-categories-code-arena/",
+      "observed_at": "2026-08-12",
+      "data_date": "2026-08-12",
+      "scope": "Current WebDev leaderboard; Grok 4.6 high is rank 7 with rating 1617.94 on 1,005 votes.",
+      "limitations": "The row is marked pre-release and uses the Arena harness, so it is preliminary frontend context rather than exact production evidence."
     }
   },
   "lane_evidence": {
@@ -1662,6 +1714,60 @@
       "provenance": {"dataset": "deepswe_external.csv", "source_url": "https://deepswe.datacurve.ai/", "dataset_license": "upstream-original; external-project data retains its original license"},
       "note": "mini-swe-agent is not an installed production harness, so this row is comparable across efforts of the same model but is never exact for a routing profile.",
       "metrics": {"coding": {"deep_swe_pass_pct": 68.51, "cost_per_task_usd": 4.6547}}
+    },
+    {
+      "id": "xai-launch-grok-4.6-high-2026-08-12",
+      "model": "grok-4.6",
+      "harness": "xai-reported",
+      "effort": "high",
+      "source": "xai-grok-4.6-launch-2026-08-12",
+      "contextual_only": true,
+      "metrics": {"coding": {"deep_swe_pass_pct": 65.9, "terminal_bench_v3_pass_pct": 26.0}}
+    },
+    {
+      "id": "cursorbench-grok-4.6-high-2026-08-12",
+      "model": "grok-4.6",
+      "harness": "cursor-agent",
+      "effort": "high",
+      "source": "cursorbench-3.2-2026-08-12",
+      "contextual_only": true,
+      "metrics": {"coding": {"cursorbench_score": 69.9, "cost_per_task_usd": 2.34, "tokens_per_task": 32449, "steps_per_task": 39}}
+    },
+    {
+      "id": "frontiercode-grok-4.6-high-2026-08-12",
+      "model": "grok-4.6",
+      "harness": "devin",
+      "effort": "high",
+      "source": "frontiercode-1.1-2026-08-12",
+      "contextual_only": true,
+      "metrics": {"coding": {"frontiercode_mean_at_5": 0.48}}
+    },
+    {
+      "id": "apex-swe-grok-4.6-high-2026-08-12",
+      "model": "grok-4.6",
+      "harness": "terminus-2",
+      "effort": "high",
+      "source": "apex-swe-2026-08-12",
+      "contextual_only": true,
+      "metrics": {"coding": {"apex_swe_pass_pct": 56.4, "standard_error_pct": 6.2}}
+    },
+    {
+      "id": "apex-agents-grok-4.6-high-2026-08-12",
+      "model": "grok-4.6",
+      "harness": "loop",
+      "effort": "high",
+      "source": "apex-agents-2026-08-12",
+      "contextual_only": true,
+      "metrics": {"agent": {"apex_agents_pass_pct": 57.5, "standard_error_pct": 3.5}}
+    },
+    {
+      "id": "webdev-grok-4.6-high-2026-08-12",
+      "model": "grok-4.6",
+      "harness": "arena-code-webdev",
+      "effort": "high",
+      "source": "code-arena-webdev-2026-08-12",
+      "contextual_only": true,
+      "metrics": {"webdev": {"rank": 7, "elo": 1617.9367297526142, "ci_low": 1596.7515918685071, "ci_high": 1639.121867636721, "votes": 1005, "pre_release": true, "input_price_per_million_tokens_usd": 2, "output_price_per_million_tokens_usd": 6}}
     }
   ]
 }

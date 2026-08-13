@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
-# Run the gated Grok 4.5 model through Grok Build CLI. Fails closed: only the
-# capability-compatible builder lanes, exact model, effort, backend, and scoped workspace
-# sandbox can dispatch.
+# Run the gated Grok 4.6 model through Grok Build CLI. Fails closed: only the
+# capability-compatible builder lanes, requested model, target usage participant,
+# effort, backend, and scoped workspace sandbox can dispatch. Strict content-model
+# identity is required only for evaluation and must be surfaced separately.
 set -euo pipefail
 umask 077
 
@@ -12,12 +13,12 @@ while [ -L "$SOURCE" ]; do
   [[ "$SOURCE" = /* ]] || SOURCE="$SOURCE_DIR/$SOURCE"
 done
 ROOT="$(cd "$(dirname "$SOURCE")/.." && pwd)"
-ROUTING_FILE="${DELEGATION_GROK_ROUTING_FILE:-$ROOT/config/grok-4.5-routing.json}"
+ROUTING_FILE="${DELEGATION_GROK_ROUTING_FILE:-$ROOT/config/grok-4.6-routing.json}"
 CENTRAL_GATES="${DELEGATION_ROUTING_GATES_FILE:-$ROOT/config/routing-gates.json}"
 ROUTER="$ROOT/bin/delegation-route"
-MODEL="grok-4.5"
-RUNTIME_MODEL="grok-4.5"
-USAGE_MODEL="grok-4.5-build"
+MODEL="grok-4.6"
+RUNTIME_MODEL="grok-4.6"
+USAGE_MODEL="grok-4.6-build"
 BACKEND="grok-build"
 EFFORTS='["high"]'
 CLI_COMPATIBILITY="capability-probed"
@@ -78,7 +79,7 @@ evaluation_manifest() {
   schema_hash="$(file_digest "$schema")" || die 69 "sha256 tool is required for evaluation"
   jq -e --arg prompt_sha256 "$prompt_hash" --arg contract_sha256 "$contract_hash" --arg schema_sha256 "$schema_hash" --arg runner_sha256 "$runner_hash" '
     (keys | sort) == ["backend","contract_path","contract_sha256","effort","lane","max_output_chars","model","output_schema_path","output_schema_sha256","profile","prompt_sha256","runner_sha256","runner_source_commit","schema","timeout_seconds"] and
-    .schema == "delegation_policy_annotation_evaluation_v1" and .profile == "grok-build" and .lane == "policy-annotation" and .model == "grok-4.5" and .backend == "grok-build" and .effort == "high" and .prompt_sha256 == $prompt_sha256 and .contract_sha256 == $contract_sha256 and .output_schema_sha256 == $schema_sha256 and
+    .schema == "delegation_policy_annotation_evaluation_v1" and .profile == "grok-build" and .lane == "policy-annotation" and .model == "grok-4.6" and .backend == "grok-build" and .effort == "high" and .prompt_sha256 == $prompt_sha256 and .contract_sha256 == $contract_sha256 and .output_schema_sha256 == $schema_sha256 and
     .runner_sha256 == $runner_sha256 and ([.prompt_sha256,.contract_sha256,.output_schema_sha256,.runner_sha256] | all(test("^[0-9a-f]{64}$"))) and (.runner_source_commit | test("^[0-9a-f]{40}$")) and
     (.timeout_seconds | type == "number" and floor == . and . >= 1 and . <= 600) and (.max_output_chars | type == "number" and floor == . and . >= 1 and . <= 65536)
   ' "$manifest" >/dev/null 2>&1 || die 78 "evaluation manifest is malformed or does not bind this exact run"
@@ -326,8 +327,8 @@ runtime_status() {
     || { rm -rf -- "$status_tmp"; GROK_REASON="Grok Build model inventory unavailable; run: grok login"; return 1; }
   grep -Fq "You are logged in with grok.com." <<<"$models" \
     || { rm -rf -- "$status_tmp"; GROK_REASON="Grok Build is logged out; run: grok login"; return 1; }
-  grep -Eq '^[[:space:]]*\*?[[:space:]]*grok-4\.5([[:space:]]|$)' <<<"$models" \
-    || { rm -rf -- "$status_tmp"; GROK_REASON="Grok Build does not expose required model grok-4.5"; return 1; }
+  grep -Eq '^[[:space:]]*\*?[[:space:]]*grok-4\.6([[:space:]]|$)' <<<"$models" \
+    || { rm -rf -- "$status_tmp"; GROK_REASON="Grok Build does not expose required model grok-4.6"; return 1; }
   inspect_isolation "$status_tmp/home" "$status_tmp/inspect.json" \
     || { rm -rf -- "$status_tmp"; return 1; }
   rm -rf -- "$status_tmp"
@@ -389,7 +390,7 @@ print_check() {
           max_turns:$max_turns,timeout_seconds:$timeout_seconds,
           isolated_home:true,plugins:false,mcp:false,terminal:false}}}'
   else
-    printf 'Grok 4.5: selected=%s qualified=%s provisional=%s\n' "$selected" "$lanes" "$provisional"
+    printf 'Grok 4.6: selected=%s qualified=%s provisional=%s\n' "$selected" "$lanes" "$provisional"
     printf '  grok-build: %s (%s; model=%s; cli=%s from %s; effort=high; sandbox=%s; max-turns=%s; timeout=%ss)\n' \
       "$available" "$GROK_REASON" "$RUNTIME_MODEL" "$GROK_CLI_VERSION" \
       "$GROK_BIN_SOURCE" "$SANDBOX_PROFILE" "$MAX_TURNS" "$TIMEOUT_SECONDS"
@@ -415,8 +416,27 @@ extract_result() {
   jq -r '.text' "$response" >"$output" || return 1
   jq -e --arg model "$MODEL" --arg runtime_model "$RUNTIME_MODEL" \
     --arg usage_model "$USAGE_MODEL" --arg lane "$lane" --argjson started "$started" '
-    . as $r | ($r.modelUsage[$usage_model] // {}) as $u |
-    {model:$model,runtime_model:$runtime_model,usage_model:$usage_model,
+    . as $r |
+    ($r.modelUsage // {}) as $usage |
+    ($usage | to_entries | map({
+      model:.key,
+      input_tokens:(.value.inputTokens // 0),
+      output_tokens:(.value.outputTokens // 0),
+      cache_read_tokens:(.value.cacheReadInputTokens // 0),
+      model_calls:(.value.modelCalls // 0),
+      cost_usd:(.value.costUSD // 0)
+    })) as $participants |
+    ($participants | map(.input_tokens) | add // 0) as $input |
+    ($participants | map(.output_tokens) | add // 0) as $output |
+    ($participants | map(.cache_read_tokens) | add // 0) as $cache_read |
+    ($participants | map(.cost_usd) | add // 0) as $cost |
+    ($r.usage.reasoning_tokens // 0) as $reasoning |
+    {model:$model,requested_model:$model,runtime_model:$runtime_model,
+     effective_content_model:(if (($r.model | type) == "string" and ($r.model | length) > 0) then $r.model else null end),
+     exact_model_identity_attested:(($r.model // null) == $runtime_model),
+     usage_model:$usage_model,
+     target_usage_participant_present:(($usage[$usage_model] | type) == "object"),
+     usage_participants:$participants,
      backend:"grok-build",effort:"high",lane:$lane,
      runtime_cli_version:$cli_version,runtime_cli_compatibility:$cli_compatibility,
      runtime_cli_source:$cli_source,
@@ -427,12 +447,9 @@ extract_result() {
      started_at_epoch:$started,finished_at_epoch:now,
      duration_seconds:(now-$started),stop_reason:($r.stopReason // null),
      turns:($r.num_turns // null),
-     tokens:{input:($r.usage.input_tokens // $u.inputTokens // 0),
-       output:($r.usage.output_tokens // $u.outputTokens // 0),
-       reasoning:($r.usage.reasoning_tokens // 0),
-       cache_read:($r.usage.cache_read_input_tokens // $u.cacheReadInputTokens // 0),
-       total:($r.usage.total_tokens // 0)},
-     provider_cost_usd:($r.total_cost_usd // $u.costUSD // null)}
+     tokens:{input:$input,output:$output,reasoning:$reasoning,
+       cache_read:$cache_read,total:($input+$output+$reasoning+$cache_read)},
+     provider_cost_usd:$cost}
   ' --arg cli_version "$GROK_CLI_VERSION" --arg cli_compatibility "$CLI_COMPATIBILITY" \
     --arg cli_source "$GROK_BIN_SOURCE" \
     --arg sandbox "$sandbox" \
@@ -620,15 +637,23 @@ run_command() {
       "$response" "$stderr_file" "$DEBUG_PATH"
     die 70 "Grok Build sandbox enforcement was not attested; sanitized diagnostic: $diagnostic"
   }
+  # A missing content-model field is tolerated for provisional operational runs,
+  # but a separately surfaced mismatch is a known silent substitution and fails
+  # every lane closed.
+  if jq -e '.model | type == "string" and length > 0' "$response" >/dev/null 2>&1 &&
+     ! jq -e --arg runtime_model "$RUNTIME_MODEL" '.model == $runtime_model' "$response" >/dev/null 2>&1; then
+    preserve_debug "$debug_dir" "$response" "$stderr_file"
+    write_diagnostic "$diagnostic" "identity" "provider_identity_mismatch" 0 "$started" "$response" "$stderr_file" "$DEBUG_PATH"
+    die 70 "Grok Build surfaced a different effective content model; sanitized diagnostic: $diagnostic"
+  fi
   if [ "$evaluation" = 1 ]; then
-    # Grok Build 0.2.114 does not emit a top-level `.model`; its structured
-    # response identifies the selected provider route through modelUsage.
-    jq -e --arg usage_model "$USAGE_MODEL" '
-      .modelUsage[$usage_model] | type == "object"
-    ' "$response" >/dev/null 2>&1 || {
+    # modelUsage records billing/usage participants, not which model authored
+    # the content. A strict identity evaluation is VOID unless the provider
+    # separately surfaces an effective content model matching this tuple.
+    jq -e '.model | type == "string" and length > 0' "$response" >/dev/null 2>&1 || {
       preserve_debug "$debug_dir" "$response" "$stderr_file"
-      write_diagnostic "$diagnostic" "identity" "provider_identity_not_attested" 0 "$started" "$response" "$stderr_file" "$DEBUG_PATH"
-      die 70 "Grok Build did not attest exact provider model identity; sanitized diagnostic: $diagnostic"
+      write_diagnostic "$diagnostic" "identity" "strict_identity_evaluation_void" 0 "$started" "$response" "$stderr_file" "$DEBUG_PATH"
+      die 70 "Grok Build did not surface an effective content model; strict identity evaluation is VOID; sanitized diagnostic: $diagnostic"
     }
   fi
   if jq -e '.stopReason == "MaxTurns" or .stopReason == "max_turns"' "$response" >/dev/null 2>&1; then

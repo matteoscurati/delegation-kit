@@ -123,7 +123,7 @@
       "lanes": {
         "clerk": {"status": "provisional", "selection": "explicit-only", "exact_evidence_ids": ["aa-kimi-code-kimi-k3"], "context_evidence_ids": [], "local_evaluation": {"run_id": "2026-07-16-kimi-k3", "task_count": null, "repeats": null, "confidence": "low", "limitations": "Provider quota truncated the run; valid-subset size is not recorded in the published gate."}, "fallback": "luna-clerk"},
         "scout": {"status": "provisional", "selection": "explicit-only", "exact_evidence_ids": ["aa-kimi-code-kimi-k3"], "context_evidence_ids": ["arena-agent-kimi-k3"], "local_evaluation": {"run_id": "2026-07-16-kimi-k3", "task_count": null, "repeats": null, "confidence": "low", "limitations": "Provider quota truncated the run; valid-subset size is not recorded in the published gate."}, "fallback": "terra-scout"},
-        "builder": {"status": "provisional", "selection": "preferred-explicit", "exact_evidence_ids": ["aa-kimi-code-kimi-k3"], "context_evidence_ids": ["arena-agent-kimi-k3-2026-08-03", "epoch-deepswe-kimi-k3-mini-swe-agent-max"], "local_evaluation": {"run_id": "2026-07-16-kimi-k3", "task_count": null, "repeats": null, "confidence": "low", "limitations": "Provider quota truncated the run; valid-subset size is not recorded in the published gate."}, "qualification_basis": "Owner selection decision on measured evidence, 2026-08-05. Status stays provisional and dispatch still requires an explicit decision plus --allow-provisional; only the ordering among external builders changed. Kimi K3 and Grok 4.5 are the only two that carry both builder required metrics on an exact production tuple, so they now rank above glm-builder and qwen3.8-max, which carry none. This records preference, not qualification: the local evaluation is still a quota-truncated run with no recorded valid-subset size.", "fallback": "terra-builder"},
+        "builder": {"status": "provisional", "selection": "preferred-explicit", "exact_evidence_ids": ["aa-kimi-code-kimi-k3"], "context_evidence_ids": ["arena-agent-kimi-k3-2026-08-03", "epoch-deepswe-kimi-k3-mini-swe-agent-max"], "local_evaluation": {"run_id": "2026-07-16-kimi-k3", "task_count": null, "repeats": null, "confidence": "low", "limitations": "Provider quota truncated the run; valid-subset size is not recorded in the published gate."}, "qualification_basis": "Owner selection decision on measured evidence, 2026-08-05. Status stays provisional and dispatch still requires an explicit decision plus --allow-provisional. Kimi K3 carries both builder required metrics on an exact production tuple, while the other external builders remain owner-selected provisional alternatives. This records preference, not qualification: the local evaluation is still a quota-truncated run with no recorded valid-subset size.", "fallback": "terra-builder"},
         "frontend-builder": {"status": "provisional", "selection": "preferred-explicit", "exact_evidence_ids": [], "context_evidence_ids": ["webdev-kimi-k3", "aa-kimi-code-kimi-k3"], "local_evaluation": {"run_id": "2026-07-16-kimi-k3", "task_count": null, "repeats": null, "confidence": "low", "limitations": "No frontend-specific local pack; provider quota truncated the general run."}, "evidence_gap": "WebDev uses a different harness/default effort; coding evidence is supporting only.", "fallback": "sonnet-builder"},
         "senior": {"status": "candidate", "selection": "blocked", "exact_evidence_ids": [], "context_evidence_ids": ["arena-agent-kimi-k3"], "evidence_gap": "Steerability evidence is insufficient for promotion."},
         "judgement": {"status": "disabled", "selection": "blocked", "exact_evidence_ids": [], "context_evidence_ids": []},
@@ -212,7 +212,7 @@
       }
     },
     "grok-build": {
-      "model": "grok-4.5",
+      "model": "grok-4.6",
       "harness": "grok-build-cli",
       "effort": "high",
       "runtime_cli_compatibility": "capability-probed",
@@ -230,31 +230,31 @@
         "builder": {
           "status": "provisional",
           "selection": "preferred-explicit",
-          "exact_evidence_ids": ["aa-grok-build-grok-4.5-high"],
-          "context_evidence_ids": ["openbench-grok-build-grok-4.5", "arena-agent-grok-4.5-2026-08-03", "epoch-deepswe-grok-4-5-mini-swe-agent-high"],
+          "exact_evidence_ids": [],
+          "context_evidence_ids": ["cursorbench-grok-4.6-high-2026-08-12", "frontiercode-grok-4.6-high-2026-08-12", "apex-swe-grok-4.6-high-2026-08-12", "apex-agents-grok-4.6-high-2026-08-12"],
           "local_evaluation": {
-            "run_id": "2026-07-24-grok-build",
+            "run_id": "2026-08-12-grok-4.6-build",
             "task_count": 1,
             "repeats": 1,
             "confidence": "low",
-            "limitations": "One transparent runtime and scoped-edit compatibility task; not a held-out comparative evaluation; the hardened runner is edit-only."
+            "limitations": "One authenticated runtime compatibility smoke; not a held-out comparative evaluation. Current public results use other harnesses and the hardened runner is edit-only."
           },
-          "qualification_basis": "Owner selection decision on measured evidence, 2026-08-05. Status stays provisional and dispatch still requires an explicit decision plus --allow-provisional; only the ordering among external builders changed. Grok 4.5 and Kimi K3 are the only two that carry both builder required metrics on an exact production tuple, so they now rank above glm-builder and qwen3.8-max, which carry none. This records preference, not qualification: the local evaluation is still a single non-held-out compatibility task.",
+          "qualification_basis": "Owner replacement decision on 2026-08-12. Status stays provisional and dispatch still requires an explicit decision plus --allow-provisional. Current CursorBench, FrontierCode, and APEX results support the preference but use different harnesses, so they do not qualify the exact Grok Build CLI/high tuple.",
           "fallback": "terra-builder"
         },
         "frontend-builder": {
           "status": "provisional",
           "selection": "preferred-explicit",
           "exact_evidence_ids": [],
-          "context_evidence_ids": ["webdev-grok-4.5", "aa-grok-build-grok-4.5-high", "openbench-grok-build-grok-4.5"],
+          "context_evidence_ids": ["webdev-grok-4.6-high-2026-08-12", "cursorbench-grok-4.6-high-2026-08-12", "frontiercode-grok-4.6-high-2026-08-12"],
           "local_evaluation": {
-            "run_id": "2026-07-24-grok-build",
+            "run_id": "2026-08-12-grok-4.6-build",
             "task_count": 0,
             "repeats": 0,
             "confidence": "low",
             "limitations": "No frontend-specific local pack; the edit-only scoped runner is shared with builder."
           },
-          "evidence_gap": "WebDev uses a different harness and reported-default effort; frontend promotion is an explicit owner decision.",
+          "evidence_gap": "WebDev uses a different harness and its 4.6 row is preliminary; frontend preference is an explicit owner decision.",
           "fallback": "sonnet-builder"
         },
         "policy-annotation": {
@@ -262,8 +262,8 @@
           "selection": "blocked",
           "exact_evidence_ids": [],
           "context_evidence_ids": [],
-          "evaluation_manifest_sha256": ["e26ad93b5c06b92982f169e5e6236b42f47842bbbffa86c4fb3215541febc061", "14452ea9dee477b01a0c3933fa44f311cd340123e5c0546c205f69deb6d4a4c6"],
-          "evidence_gap": "No frozen local policy-annotation result exists for Grok Build at its highest supported effort."
+          "evaluation_manifest_sha256": [],
+          "evidence_gap": "No frozen Grok 4.6 policy-annotation manifest or local result exists. Historical Grok 4.5 manifests are not valid for this tuple."
         }
       }
     },

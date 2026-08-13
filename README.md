@@ -9,7 +9,18 @@ It ships as a **reference implementation**: the author's concrete models
 external-evidence snapshot, and fail-closed local gates. Swap the models for your own tiers with
 [`ADAPTING.md`](./ADAPTING.md) — the *structure* is the transferable part.
 
-## Current release: 0.13.2
+## Current release: 0.14.0
+
+Version 0.14.0 replaces the active Grok 4.5 route with Grok 4.6 at the same
+provisional `builder` and `frontend-builder` lanes and pinned `high` effort. The
+runner now keeps requested model, effective content model, and every
+`modelUsage` participant distinct: known substitutions fail closed, while a
+strict evaluation without separately surfaced content identity is `VOID`.
+Current CursorBench, FrontierCode, APEX, and preliminary WebDev results are
+recorded as contextual evidence only because none matches the hardened Grok
+Build tuple. The installer removes the stale 4.5 gate during upgrades, retains
+a compatible archived CLI only after the complete 4.6 gate graph is installed,
+and the authenticated installed runtime returned `PONG` on Grok Build 0.2.114.
 
 Version 0.13.2 settles two loose ends from the 0.13.x pair. The Agent Arena row
 for Gemini 3.6 Flash was recorded from an automated capture that read every
@@ -35,7 +46,8 @@ reasoning-effort enum is per model and reaches `max` on the GPT-5.6 family, so
 `luna-clerk` moves to `max`, `terra-scout` to `medium`, and `terra-builder` to
 `max` — each landing on an effort that already has an exact benchmark row, and
 each fixing a lane that was pinned where the model collapses (`gpt-5.6-luna` at
-`low` scores 15% on the clerk required metric). Kimi K3 and Grok 4.5 become
+`low` scores 15% on the clerk required metric). In that release, Kimi K3 and
+the then-current Grok 4.5 became
 `preferred-explicit` on `builder`, the only two carrying both builder required
 metrics on an exact production tuple; `preferred-explicit` now actually orders
 first in `delegation-route resolve`, which it previously did not. The evidence
@@ -86,7 +98,7 @@ provisional/explicit-only behind `--allow-provisional`. See
 | optional GLM skill | `skills/glm-executor/` | same fail-closed GLM-5.2 executor path |
 | optional Gemini skill | `skills/gemini-executor/` | same fail-closed Gemini 3.6 Flash executor path |
 | optional Kimi skill | `skills/kimi-executor/` | same fail-closed provisional Kimi K3 path |
-| provisional Grok skill | `skills/grok-executor/` | same fail-closed Grok 4.5 builder path |
+| provisional Grok skill | `skills/grok-executor/` | same fail-closed Grok 4.6 builder path |
 | provisional Qwen skill | `skills/qwen-executor/` | same fail-closed Qwen3.8-Max builder path |
 | config snippet | printed for manual merge | `[agents]` fan-out caps + lead defaults |
 
@@ -221,7 +233,7 @@ delegation-kimi run --lane scout --allow-provisional \
   --output "$result" --metrics "$metrics" --workdir "$repo"
 ```
 
-Grok 4.5 is installed as a **provisional builder** through Grok Build CLI.
+Grok 4.6 is installed as a **provisional builder** through Grok Build CLI.
 `builder` and `frontend-builder` are available only at effort `high`, after an
 explicit decision and `--allow-provisional`. The runner pins the model, extracts
 only the public `text` field from JSON output, capability-probes the resolved
@@ -242,7 +254,7 @@ Because the vendor CLI auto-updates and prunes its own download cache,
 `$DATA_HOME/grok-cli/current/` with a recorded SHA-256. The runner resolves
 `DELEGATION_GROK_BIN`, then that private archive, then `grok` on PATH. Any
 version is accepted when it exposes the required interface, authenticated
-`grok-4.5` inventory, isolation state, structured output, and sandbox
+`grok-4.6` inventory, isolation state, structured output, and sandbox
 attestation; the observed version is provenance only. `install.sh` archives the
 compatible build automatically when available. A digest mismatch fails closed
 rather than running changed bytes.

@@ -221,12 +221,12 @@ expect_failure 65 env DELEGATION_GEMINI_ROUTING_FILE="$TMP/bad-gemini.json" \
 
 # Grok bridge drift is checked in both directions.
 jq '.lanes.builder.backends["grok-build"].effort = "max"' \
-  config/grok-4.5-routing.json >"$TMP/bad-grok.json"
+  config/grok-4.6-routing.json >"$TMP/bad-grok.json"
 expect_failure 65 env DELEGATION_GROK_ROUTING_FILE="$TMP/bad-grok.json" \
   bin/delegation-route check --json
 jq '.lanes["policy-annotation"].backends["grok-build"].evaluation_manifest_sha256 =
       ["dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"]' \
-  config/grok-4.5-routing.json >"$TMP/bad-grok-manifest.json"
+  config/grok-4.6-routing.json >"$TMP/bad-grok-manifest.json"
 expect_failure 65 env DELEGATION_GROK_ROUTING_FILE="$TMP/bad-grok-manifest.json" \
   bin/delegation-route check --json
 
@@ -239,7 +239,7 @@ expect_failure 65 env DELEGATION_GLM_ROUTING_FILE="$TMP/bad-glm-manifest.json" \
 
 # Grok CLI compatibility policy is mirrored centrally without naming a version.
 jq '.runtime_cli_compatibility = "version-pinned"' \
-  config/grok-4.5-routing.json >"$TMP/bad-grok-compatibility.json"
+  config/grok-4.6-routing.json >"$TMP/bad-grok-compatibility.json"
 expect_failure 65 env DELEGATION_GROK_ROUTING_FILE="$TMP/bad-grok-compatibility.json" \
   bin/delegation-route check --json
 

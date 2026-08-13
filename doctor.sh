@@ -10,7 +10,7 @@
 #   --ping-glm does a separate paid GLM-5.2 ping, but only for a qualified lane.
 #   --ping-kimi does a separate Kimi K3 ping through a qualified lane, or an
 #               explicitly selected provisional read-only lane when no lane is qualified.
-#   --ping-grok does a paid Grok 4.5 ping through its provisional builder gate.
+#   --ping-grok does a paid Grok 4.6 ping through its provisional builder gate.
 # Env overrides (for testing): CLAUDE_HOME (default ~/.claude), CODEX_HOME (~/.codex)
 set -uo pipefail
 shopt -s nullglob   # unmatched globs vanish instead of staying literal
@@ -410,14 +410,14 @@ else
   warn "delegation-kimi not installed — re-run ./install.sh to install the gated candidate"
 fi
 
-# ---- optional Grok 4.5 builder executor ----
-hdr "Grok 4.5 builder executor"
+# ---- optional Grok 4.6 builder executor ----
+hdr "Grok 4.6 builder executor"
 if ! have jq; then
   warn "jq not on PATH — delegation-grok cannot run"
 elif have delegation-grok; then
   grok_check="$(delegation-grok check --json 2>/dev/null || true)"
   if [ -n "$grok_check" ] && printf '%s' "$grok_check" | jq -e '
-      .model == "grok-4.5" and
+      .model == "grok-4.6" and
       .runtime_cli_compatibility == "capability-probed" and
       (.runtime_cli_version | type == "string" and length > 0) and
       .backends["grok-build"].sandbox == "delegation-kit" and
@@ -429,7 +429,7 @@ elif have delegation-grok; then
       .backends["grok-build"].max_turns == 40 and
       .backends["grok-build"].timeout_seconds == 900
     ' >/dev/null 2>&1; then
-    ok "delegation-grok installed for grok-4.5/high with capability-probed runtime controls"
+    ok "delegation-grok installed for grok-4.6/high with capability-probed runtime controls"
     grok_selected="$(printf '%s' "$grok_check" | jq -r '.selected_backend')"
     grok_provisional="$(printf '%s' "$grok_check" | jq -r '.provisional_lanes | join(",")')"
     if [ "$grok_selected" = none ]; then
@@ -442,7 +442,7 @@ elif have delegation-grok; then
     fi
     [ -z "$grok_provisional" ] || info "Grok provisional lanes (explicit flag required): $grok_provisional"
   else
-    bad "delegation-grok check failed or is not capability-compatible with grok-4.5/high"
+    bad "delegation-grok check failed or is not capability-compatible with grok-4.6/high"
   fi
 else
   warn "delegation-grok not installed — re-run ./install.sh"
@@ -567,7 +567,7 @@ if [ "$DO_KIMI_PING" = 1 ]; then
 fi
 
 if [ "$DO_GROK_PING" = 1 ]; then
-  hdr "Grok 4.5 live ping (--ping-grok)"
+  hdr "Grok 4.6 live ping (--ping-grok)"
   if ! have delegation-grok; then
     bad "Grok ping unavailable — delegation-grok is not installed"
   else
@@ -582,9 +582,9 @@ if [ "$DO_GROK_PING" = 1 ]; then
           --effort auto --backend auto --prompt-file "$ping_dir/prompt.txt" \
           --output "$ping_dir/results/out.txt" --workdir "$ping_dir/work" \
           >/dev/null 2>&1 && grep -Fxq PONG "$ping_dir/results/out.txt"; then
-        ok "Grok 4.5 provisional builder ping returned PONG"
+        ok "Grok 4.6 provisional builder ping returned PONG"
       else
-        bad "Grok 4.5 ping failed"
+        bad "Grok 4.6 ping failed"
       fi
       rm -rf "$ping_dir"
     fi

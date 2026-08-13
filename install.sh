@@ -140,18 +140,11 @@ ln -sfn "$DATA_HOME/bin/delegation-qwen" "$BIN_HOME/delegation-qwen"
 echo "Qwen bridge -> $BIN_HOME/delegation-qwen (provisional builder gate: $DATA_HOME/config/qwen3.8-max-routing.json)"
 
 cp "$KIT/bin/delegation-grok" "$DATA_HOME/bin/delegation-grok"
-cp "$KIT/config/grok-4.5-routing.json" "$DATA_HOME/config/grok-4.5-routing.json"
+cp "$KIT/config/grok-4.6-routing.json" "$DATA_HOME/config/grok-4.6-routing.json"
+rm -f -- "$DATA_HOME/config/grok-4.5-routing.json"
 chmod 755 "$DATA_HOME/bin/delegation-grok"
 ln -sfn "$DATA_HOME/bin/delegation-grok" "$BIN_HOME/delegation-grok"
-echo "Grok bridge -> $BIN_HOME/delegation-grok (provisional builder gate: $DATA_HOME/config/grok-4.5-routing.json)"
-# A vendor auto-update replaces the ambient Grok CLI and prunes its own download
-# cache. Archive the currently compatible build so the selected bytes remain
-# available independently of PATH.
-if grok_pin_out="$(DELEGATION_DATA_HOME="$DATA_HOME" "$DATA_HOME/bin/delegation-grok" pin 2>&1)"; then
-  printf '  + %s\n' "$(printf '%s\n' "$grok_pin_out" | head -1)"
-else
-  echo "  ! compatible Grok Build CLI not archived — run 'delegation-grok pin --from <path>'"
-fi
+echo "Grok bridge -> $BIN_HOME/delegation-grok (provisional builder gate: $DATA_HOME/config/grok-4.6-routing.json)"
 
 # Qwen Token Plan credentials are isolated from DashScope and from ai-consultants.
 # Never copy a key from another tool silently; accept an explicit environment
@@ -210,6 +203,19 @@ cp "$KIT/config/routing-gates.json" "$DATA_HOME/config/routing-gates.json"
 chmod 755 "$DATA_HOME/bin/delegation-route"
 ln -sfn "$DATA_HOME/bin/delegation-route" "$BIN_HOME/delegation-route"
 echo "Routing gates -> $BIN_HOME/delegation-route (decisions: $DATA_HOME/config/routing-gates.json)"
+
+# A vendor auto-update replaces the ambient Grok CLI and prunes its own download
+# cache. Validate/retain the archive only after the current router, evidence,
+# central gate, and executable gate have all been installed atomically.
+if grok_pin_out="$(DELEGATION_DATA_HOME="$DATA_HOME" "$DATA_HOME/bin/delegation-grok" pin 2>&1)"; then
+  printf '  + %s\n' "$(printf '%s\n' "$grok_pin_out" | head -1)"
+elif grok_check_out="$(DELEGATION_DATA_HOME="$DATA_HOME" "$DATA_HOME/bin/delegation-grok" check --json 2>/dev/null)" \
+    && printf '%s' "$grok_check_out" | jq -e \
+      '.runtime_cli_source == "pinned" and .backends["grok-build"].available == true' >/dev/null 2>&1; then
+  echo "  + existing compatible Grok Build CLI archive retained"
+else
+  echo "  ! compatible Grok Build CLI not archived — run 'delegation-grok pin --from <path>'"
+fi
 
 if [ "$do_claude" = 1 ]; then
   echo "Claude Code -> $CLAUDE_HOME"
