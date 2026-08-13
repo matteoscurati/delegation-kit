@@ -115,9 +115,9 @@ Never use `--evaluation` for ordinary work; it cannot be combined with
 gate or qualify broad judgement, and its previous manifest is void after the
 rename from `qwen3.8-max-preview`.
 
-## Optional Grok 4.5 builder
+## Optional Grok 4.6 builder
 
-Grok 4.5 is provisionally usable for `builder` and `frontend-builder` only
+Grok 4.6 is provisionally usable for `builder` and `frontend-builder` only
 through the installed `grok-executor` skill and `delegation-grok`, using Grok
 Build CLI at effort `high`. Require an explicit decision and
 `--allow-provisional`. The runner capability-probes the CLI, pins model and

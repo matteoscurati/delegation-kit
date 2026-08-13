@@ -132,9 +132,9 @@ Never use `--evaluation` for ordinary work; it cannot be combined with
 gate or qualify broad judgement, and its previous manifest is void after the
 rename from `qwen3.8-max-preview`.
 
-### Optional Grok 4.5 builder
+### Optional Grok 4.6 builder
 
-Grok 4.5 is provisional for `builder` and `frontend-builder` only through
+Grok 4.6 is provisional for `builder` and `frontend-builder` only through
 `grok-executor` and `delegation-grok`, using Grok Build CLI at effort `high`.
 Require an explicit routing decision and `--allow-provisional`. The runner pins
 the exact model/effort tuple, capability-probes the CLI, extracts only `.text`,
@@ -183,12 +183,12 @@ central graph directly before runtime/auth checks.
   *and* higher-recall there). Size the reviewer to the work, not to the top of the
   evidence for that lane.
 - **Picking among the external builders:** they are not interchangeable. Kimi K3
-  and Grok 4.5 are `preferred-explicit` because they are the only two carrying
-  both builder required metrics on an exact production tuple; GLM-5.2 and
-  Qwen3.8-Max stay plain `explicit-only` because they carry neither. Preference
+  and Grok 4.6 are `preferred-explicit` by explicit owner decision; GLM-5.2 and
+  Qwen3.8-Max stay plain `explicit-only`. Grok 4.6's current public rows use
+  non-production harnesses, so they are contextual rather than exact. Preference
   is not qualification — every one of them still needs an explicit decision and
   `--allow-provisional`. For frontend work prefer Kimi over Grok on WebDev
-  (1676 against 1549), and prefer any editing runner over Qwen, whose text-only
+  when current evidence supports it, and prefer any editing runner over Qwen, whose text-only
   transport returns a patch the lead must apply itself.
 - **Escalation ladder:** executor miss/ambiguity → senior → judgement. Never retry
   the same failure on the executor twice — escalate. Security never delegates

@@ -1,14 +1,14 @@
 ---
 name: grok-executor
 description: >-
-  Dispatch the explicitly promoted Grok 4.5 builder or frontend-builder lane
+  Dispatch the explicitly promoted Grok 4.6 builder or frontend-builder lane
   through the installed Grok Build CLI. Never bypass its gate or silently
   change model, effort, backend, permissions, or lane.
 ---
 
-# Grok 4.5 builder executor
+# Grok 4.6 builder executor
 
-Grok 4.5 is provisionally available for `builder` and `frontend-builder` through
+Grok 4.6 is provisionally available for `builder` and `frontend-builder` through
 the native Grok Build CLI at reasoning effort `high`.
 
 Before every dispatch, run `delegation-grok check --json`. Require
@@ -29,7 +29,7 @@ delegation-grok run \
   --output "$result" --metrics "$metrics" --workdir "$repo"
 ```
 
-The runner capability-probes Grok Build CLI and pins `grok-4.5`, effort `high`,
+The runner capability-probes Grok Build CLI and pins `grok-4.6`, effort `high`,
 JSON output, 40 turns, and a 15-minute wall timeout. It uses an ephemeral HOME,
 disables memory, subagents, web tools, plugins, MCP, compatibility imports, and
 automatic updates, and requires the custom OS-enforced `delegation-kit` sandbox to attest
@@ -38,7 +38,7 @@ with only file edits explicitly allowed; the terminal tool is not exposed. The
 lead runs all tests and commands after inspecting the diff.
 
 Any CLI version is accepted when it exposes the required flags, authenticated
-`grok-4.5` inventory, isolation state, structured output, and sandbox
+`grok-4.6` inventory, isolation state, structured output, and sandbox
 attestation. The observed version is provenance only. `delegation-grok pin`
 optionally preserves the currently compatible bytes in a private store with a
 digest (add `--from <path>` to choose the binary); a digest mismatch means the

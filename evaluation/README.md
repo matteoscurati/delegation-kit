@@ -191,6 +191,14 @@ exact attestation of `delegation-grok`. The exact builder row comes from
 Artificial Analysis; WebDev remains frontend-only context. Neither result
 qualifies review, senior, judgement, or security work.
 
+Grok 4.6 replaces 4.5 only in the operational route. The 2026-08-12 snapshot
+adds separate high-effort rows from CursorBench 3.2 (69.9%), FrontierCode 1.1
+(48.0%), APEX-SWE (56.4% plus or minus 6.2), APEX Agents (57.5% plus or minus
+3.5), and the preliminary WebDev board (1617.94 on 1,005 votes). Every row is
+contextual because none uses the hardened `delegation-grok` tuple. xAI's launch
+figures are recorded separately as first-party claims and never treated as an
+independent qualification.
+
 OpenBench results remain coding evidence. They do not substitute for
 review-precision/recall evaluation and never qualify `reviewer`, `senior`,
 `judgement`, or security-sensitive work. Before recording a future run, retain

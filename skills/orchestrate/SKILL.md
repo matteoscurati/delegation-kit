@@ -63,7 +63,7 @@ background subshells:
   lane additionally requires the runner's explicit `--allow-provisional` flag.
   Qualification on one lane never promotes a neighboring one. This rule applies
   equally to operational workers, Senior, and Judgement.
-  Gemini is provisional only for scout/medium. Grok 4.5 is provisional only for
+  Gemini is provisional only for scout/medium. Grok 4.6 is provisional only for
   builder and frontend-builder at high. Qwen3.8-Max is provisional only for
   builder at xhigh, and returns a patch rather than editing a worktree. Manifest-bound
   `policy-annotation` candidates are evaluation-only and never count as

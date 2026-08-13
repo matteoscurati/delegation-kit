@@ -2,6 +2,45 @@
 
 All notable changes to delegation-kit are documented here.
 
+## [0.14.0] — 2026-08-13
+
+### Changed
+
+- **Grok 4.6 replaces Grok 4.5 across the active integration.** The runner,
+  central and executable gates, skills, installed Claude/Codex policy, doctor,
+  documentation, and regression fixtures now pin `grok-4.6` through Grok Build
+  at effort `high`. `builder` and `frontend-builder` remain provisional and
+  `preferred-explicit`, so every dispatch still requires an explicit decision
+  plus `--allow-provisional`; no reviewer, senior, or judgement lane was added.
+- The 2026-08-12 evidence snapshot adds separate Grok 4.6 observations from
+  CursorBench 3.2, FrontierCode 1.1, APEX-SWE, APEX Agents, Code Arena WebDev,
+  and xAI's launch material. Every row is contextual: the independent results
+  use non-production harnesses, WebDev is preliminary, and xAI's figures are
+  first-party claims. Grok 4.5 benchmark rows remain historical evidence and do
+  not support the new route.
+
+### Fixed
+
+- Grok metrics no longer mistake a `modelUsage` billing participant for the
+  model that authored the content. They record the requested model, any
+  separately surfaced effective content model, and all usage participants,
+  summing their tokens and cost. A surfaced mismatch fails every lane closed;
+  a strict evaluation with no content-model identity is `VOID` rather than a
+  false pass.
+- Upgrading removes the installed `grok-4.5-routing.json` and installs the 4.6
+  gate atomically with the current router and evidence snapshot before checking
+  a retained private CLI archive. A portable upgrade regression covers stale
+  gate removal, new-gate installation, and archive retention without depending
+  on the user's authentication state.
+
+### Verified
+
+- All ten regression suites, ShellCheck, JSON/evidence/gate validation, and the
+  version/tag consistency checks pass. After reinstalling the dirty release
+  candidate, `delegation-grok check --json` resolved Grok Build CLI `0.2.114`
+  with `grok-4.6-build`, and `./doctor.sh --ping-grok` returned `PONG` with
+  `42 OK, 0 WARN, 0 FAIL`.
+
 ## [0.13.2] — 2026-08-05
 
 ### Fixed
