@@ -12,7 +12,15 @@ done
 ROOT="$(cd "$(dirname "$SOURCE")/.." && pwd)"
 GATES="${DELEGATION_ROUTING_GATES_FILE:-$ROOT/config/routing-gates.json}"
 EVIDENCE="${DELEGATION_EVIDENCE_FILE:-$ROOT/config/model-evidence.json}"
-GLM_GATE="${DELEGATION_GLM_ROUTING_FILE:-$ROOT/config/glm-5.2-routing.json}"
+if [ -n "${DELEGATION_GLM_ROUTING_FILE:-}" ]; then
+  GLM_GATES=("$DELEGATION_GLM_ROUTING_FILE")
+else
+  GLM_GATES=(
+    "$ROOT/config/glm-5.2-routing.json"
+    "$ROOT/config/glm-5.3-high-routing.json"
+    "$ROOT/config/glm-5.3-max-routing.json"
+  )
+fi
 KIMI_GATE="${DELEGATION_KIMI_ROUTING_FILE:-$ROOT/config/kimi-k3-routing.json}"
 QWEN_GATE="${DELEGATION_QWEN_ROUTING_FILE:-$ROOT/config/qwen3.8-max-routing.json}"
 GEMINI_GATE="${DELEGATION_GEMINI_ROUTING_FILE:-$ROOT/config/gemini-3.6-flash-routing.json}"
@@ -76,7 +84,7 @@ validate() {
     ([.profiles | to_entries[] as $p | $p.value.lanes | to_entries[] as $lane |
       select($lane.value.evaluation_manifest_sha256? != null) |
       ($lane.key == "policy-annotation") or
-      ($p.value.model == "glm-5.2" and $p.value.harness == "claude-zai" and
+      (($p.value.model | test("^glm-5\\.[0-9]+$")) and $p.value.harness == "claude-zai" and
        (["clerk","scout","builder"] | index($lane.key)) != null and
        (($lane.value.status == "provisional" and $lane.value.selection == "explicit-only") or
         ($lane.value.status == "candidate" and $lane.value.selection == "blocked")))] | all) and
@@ -121,21 +129,34 @@ validate() {
   missing="$(jq -c --argjson known "$members" '[.compound_lanes[].members[]] | unique - $known' "$GATES")"
   [ "$missing" = "[]" ] || die 65 "unknown compound-lane members: $missing"
 
-  [ -r "$GLM_GATE" ] || die 66 "cannot read executable GLM gate $GLM_GATE"
+  local glm_gate
+  for glm_gate in "${GLM_GATES[@]}"; do
+    [ -r "$glm_gate" ] || die 66 "cannot read executable GLM gate $glm_gate"
+  done
   [ -r "$KIMI_GATE" ] || die 66 "cannot read executable Kimi gate $KIMI_GATE"
   [ -r "$QWEN_GATE" ] || die 66 "cannot read executable Qwen gate $QWEN_GATE"
   [ -r "$GEMINI_GATE" ] || die 66 "cannot read executable Gemini gate $GEMINI_GATE"
   [ -r "$GROK_GATE" ] || die 66 "cannot read executable Grok gate $GROK_GATE"
-  jq -e -n --slurpfile central "$GATES" --slurpfile bridge "$GLM_GATE" '
-    [$central[0].profiles | to_entries[] | select(.value.model == "glm-5.2" and .value.harness == "claude-zai") as $p |
-     $p.value.lanes | to_entries[] | {key:.key,value:{status:.value.status,selection:.value.selection,effort:$p.value.effort,evaluation_manifest_sha256:(.value.evaluation_manifest_sha256 // [])}}] | from_entries as $expected |
-    [$bridge[0].lanes | to_entries[] | {key:.key,value:{status:.value.backends["claude-zai"].status,selection:.value.backends["claude-zai"].selection,effort:(.value.backends["claude-zai"].effort // .value.default_effort),evaluation_manifest_sha256:(.value.backends["claude-zai"].evaluation_manifest_sha256 // [])}}] | from_entries as $actual |
-    ($bridge[0].model == "glm-5.2") and (($expected | keys) == ($actual | keys)) and
-    all($expected | keys[]; $expected[.] == $actual[.]) and
-    (($expected | to_entries | map(select(.value.status == "qualified") | .key) | sort) == (($bridge[0].qualified_lanes // []) | sort)) and
-    (($expected | to_entries | map(select(.value.status == "provisional") | .key) | sort) == (($bridge[0].provisional_lanes // []) | sort)) and
-    all($bridge[0].lanes[]; (.backends["claude-zai"].qualified == (.backends["claude-zai"].status == "qualified")))
-  ' >/dev/null || die 65 "central routing and GLM executable gate disagree"
+  for glm_gate in "${GLM_GATES[@]}"; do
+    jq -e -n --slurpfile central "$GATES" --slurpfile bridge "$glm_gate" '
+      $bridge[0] as $b | ($b.profile_prefix // "") as $prefix |
+      [$central[0].profiles | to_entries[] |
+       select(.key | startswith($prefix + "-")) as $p |
+       $p.value.lanes | to_entries[] |
+       {key:.key,value:{status:.value.status,selection:.value.selection,effort:$p.value.effort,evaluation_manifest_sha256:(.value.evaluation_manifest_sha256 // [])}}] | from_entries as $expected |
+      [$b.lanes | to_entries[] |
+       {key:.key,value:{status:.value.backends["claude-zai"].status,selection:.value.backends["claude-zai"].selection,effort:(.value.backends["claude-zai"].effort // .value.default_effort),evaluation_manifest_sha256:(.value.backends["claude-zai"].evaluation_manifest_sha256 // [])}}] | from_entries as $actual |
+      ($b.model | type == "string" and test("^glm-5\\.[0-9]+$")) and
+      ($prefix | type == "string" and length > 0) and
+      ([ $central[0].profiles | to_entries[] | select(.key | startswith($prefix + "-")) |
+         select(.value.model != $b.model or .value.harness != "claude-zai") ] | length == 0) and
+      (($expected | keys) == ($actual | keys)) and
+      all($expected | keys[]; $expected[.] == $actual[.]) and
+      (($expected | to_entries | map(select(.value.status == "qualified") | .key) | sort) == (($b.qualified_lanes // []) | sort)) and
+      (($expected | to_entries | map(select(.value.status == "provisional") | .key) | sort) == (($b.provisional_lanes // []) | sort)) and
+      all($b.lanes[]; (.backends["claude-zai"].qualified == (.backends["claude-zai"].status == "qualified")))
+    ' >/dev/null || die 65 "central routing and GLM executable gate disagree: $glm_gate"
+  done
   jq -e -n --slurpfile central "$GATES" --slurpfile bridge "$KIMI_GATE" '
     [$central[0].profiles | to_entries[] | select(.value.model == "kimi-k3" and .value.harness == "kimi-code-cli") as $p |
      $p.value.lanes | to_entries[] | {key:.key,value:{status:.value.status,selection:.value.selection,effort:$p.value.effort,evaluation_manifest_sha256:(.value.evaluation_manifest_sha256 // [])}}] | from_entries as $expected |

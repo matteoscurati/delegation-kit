@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "updated_at": "2026-08-05T00:00:00Z",
+  "updated_at": "2026-08-14T00:00:00Z",
   "evidence_file": "model-evidence.json",
   "status_values": ["disabled", "candidate", "provisional", "qualified", "manual-qualified"],
   "selection_values": ["default", "fallback", "preferred-explicit", "explicit-only", "blocked"],
@@ -117,6 +117,38 @@
     "glm-policy-annotation": {
       "model": "glm-5.2", "harness": "claude-zai", "effort": "high",
       "lanes": {"policy-annotation": {"status": "candidate", "selection": "blocked", "exact_evidence_ids": [], "context_evidence_ids": [], "evaluation_manifest_sha256": ["4adabaa2c6b4978b9dbfaa7088836805c738c28110a6309d0d05e2430b86eef7", "1fcb2882628c2a81801d177d40bb1859639d0fc97fd4176cc73d6b83a4fc4c57"], "evidence_gap": "No frozen local policy-annotation result exists for the highest supported claude-zai effort."}}
+    },
+    "glm53-high-clerk": {
+      "model": "glm-5.3", "harness": "claude-zai", "effort": "high",
+      "lanes": {"clerk": {"status": "candidate", "selection": "blocked", "exact_evidence_ids": [], "context_evidence_ids": ["zai-glm-5.3-launch-unspecified-2026-08-14"], "evaluation_manifest_sha256": [], "evidence_gap": "No exact local glm-5.3/claude-zai/high extraction result.", "fallback": "luna-clerk"}}
+    },
+    "glm53-high-scout": {
+      "model": "glm-5.3", "harness": "claude-zai", "effort": "high",
+      "lanes": {"scout": {"status": "candidate", "selection": "blocked", "exact_evidence_ids": [], "context_evidence_ids": ["zai-glm-5.3-launch-unspecified-2026-08-14"], "evaluation_manifest_sha256": [], "evidence_gap": "No exact local glm-5.3/claude-zai/high repository-tracing result.", "fallback": "terra-scout"}}
+    },
+    "glm53-high-builder": {
+      "model": "glm-5.3", "harness": "claude-zai", "effort": "high",
+      "lanes": {"builder": {"status": "candidate", "selection": "blocked", "exact_evidence_ids": [], "context_evidence_ids": ["zai-glm-5.3-launch-unspecified-2026-08-14"], "evaluation_manifest_sha256": [], "evidence_gap": "No exact local glm-5.3/claude-zai/high scoped-edit result.", "fallback": "terra-builder"}}
+    },
+    "glm53-high-reviewer": {
+      "model": "glm-5.3", "harness": "claude-zai", "effort": "high",
+      "lanes": {"reviewer": {"status": "disabled", "selection": "blocked", "exact_evidence_ids": [], "context_evidence_ids": [], "evidence_gap": "No exact review precision/recall result."}}
+    },
+    "glm53-max-clerk": {
+      "model": "glm-5.3", "harness": "claude-zai", "effort": "max",
+      "lanes": {"clerk": {"status": "candidate", "selection": "blocked", "exact_evidence_ids": [], "context_evidence_ids": ["zai-glm-5.3-launch-unspecified-2026-08-14"], "evaluation_manifest_sha256": [], "evidence_gap": "No exact local glm-5.3/claude-zai/max extraction result.", "fallback": "luna-clerk"}}
+    },
+    "glm53-max-scout": {
+      "model": "glm-5.3", "harness": "claude-zai", "effort": "max",
+      "lanes": {"scout": {"status": "candidate", "selection": "blocked", "exact_evidence_ids": [], "context_evidence_ids": ["zai-glm-5.3-launch-unspecified-2026-08-14"], "evaluation_manifest_sha256": [], "evidence_gap": "No exact local glm-5.3/claude-zai/max repository-tracing result.", "fallback": "terra-scout"}}
+    },
+    "glm53-max-builder": {
+      "model": "glm-5.3", "harness": "claude-zai", "effort": "max",
+      "lanes": {"builder": {"status": "candidate", "selection": "blocked", "exact_evidence_ids": [], "context_evidence_ids": ["zai-glm-5.3-launch-unspecified-2026-08-14"], "evaluation_manifest_sha256": [], "evidence_gap": "No exact local glm-5.3/claude-zai/max scoped-edit result.", "fallback": "terra-builder"}}
+    },
+    "glm53-max-reviewer": {
+      "model": "glm-5.3", "harness": "claude-zai", "effort": "max",
+      "lanes": {"reviewer": {"status": "disabled", "selection": "blocked", "exact_evidence_ids": [], "context_evidence_ids": [], "evidence_gap": "No exact review precision/recall result."}}
     },
     "kimi-k3": {
       "model": "kimi-k3", "harness": "kimi-code-cli", "effort": "max",

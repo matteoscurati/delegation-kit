@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Run GLM-5.2 as an external coding lane through an isolated Claude Code process
+# Run a gate-selected GLM model as an external coding lane through an isolated Claude Code process
 # configured for the Z.AI API. Fails closed: no fallback to another model,
 # effort, or provider is ever allowed.
 set -euo pipefail
@@ -21,7 +21,10 @@ SCHEMA_COMPILER="$ROOT/bin/delegation-schema"
 # is created inside a source checkout; running from one, point at the real key
 # with DELEGATION_GLM_KEY_FILE.
 KEY_FILE="${DELEGATION_GLM_KEY_FILE:-$ROOT/config/zai.env}"
-MODEL="glm-5.2"
+CLAUDE_BIN_OVERRIDE="${DELEGATION_GLM_CLAUDE_BIN:-}"
+MODEL=""
+PROFILE_PREFIX=""
+CLAUDE_BIN=""
 RUN_TMP=""
 RUN_OUTPUT_TMP=""
 RUN_METRICS_TMP=""
@@ -68,12 +71,44 @@ until the epoch in the diagnostic's `next_flush_time` has passed.
 Failures write a sanitized diagnostic to <output>.error.json. --debug-dir
 additionally preserves the raw event stream and stderr in a private subdirectory.
 Lane-qualification evaluation accepts only a hash-allowlisted manifest for the
-exact glm-5.2/claude-zai/high tuple and never changes a routing gate itself.
+exact model/claude-zai/effort tuple selected by the executable gate and never
+changes a routing gate itself.
 EOF
 }
 
 die() { local code="$1"; shift; printf 'delegation-glm: %s\n' "$*" >&2; exit "$code"; }
 have() { command -v "$1" >/dev/null 2>&1; }
+
+load_gate_identity() {
+  have jq || die 69 "jq is required"
+  [ -r "$ROUTING_FILE" ] || die 78 "cannot read executable GLM gate $ROUTING_FILE"
+  MODEL="$(jq -r '.model // empty' "$ROUTING_FILE" 2>/dev/null)"
+  PROFILE_PREFIX="$(jq -r '.profile_prefix // empty' "$ROUTING_FILE" 2>/dev/null)"
+  [[ "$MODEL" =~ ^glm-5\.[0-9]+$ ]] \
+    || die 78 "executable GLM gate has an invalid model identity"
+  [[ "$PROFILE_PREFIX" =~ ^[a-z0-9-]+$ ]] \
+    || die 78 "executable GLM gate has an invalid profile prefix"
+}
+
+resolve_claude_bin() {
+  local candidate="${CLAUDE_BIN_OVERRIDE:-}"
+  if [ -z "$candidate" ]; then
+    candidate="$(command -v claude 2>/dev/null || true)"
+  fi
+  [ -n "$candidate" ] && [ -x "$candidate" ] \
+    || { CLAUDE_ZAI_REASON="claude not on PATH and no executable DELEGATION_GLM_CLAUDE_BIN was provided"; return 1; }
+  candidate="$(cd "$(dirname "$candidate")" && pwd -P)/$(basename "$candidate")"
+  while [ -L "$candidate" ]; do
+    local target
+    target="$(readlink "$candidate")" || return 1
+    case "$target" in
+      /*) candidate="$target" ;;
+      *) candidate="$(cd "$(dirname "$candidate")" && cd "$(dirname "$target")" && pwd -P)/$(basename "$target")" ;;
+    esac
+  done
+  [ -x "$candidate" ] || { CLAUDE_ZAI_REASON="resolved Claude Code binary is not executable"; return 1; }
+  CLAUDE_BIN="$candidate"
+}
 
 sha256_file() {
   if have shasum; then shasum -a 256 "$1" | awk '{print $1}'
@@ -167,9 +202,9 @@ evaluation_manifest() {
   manifest_schema="$(jq -r '.schema // empty' "$manifest" 2>/dev/null)"
   if [ "$manifest_schema" = delegation_policy_annotation_evaluation_v1 ]; then
     [ "$lane" = policy-annotation ] || die 78 "policy-annotation manifest cannot evaluate another lane"
-    jq -e --arg prompt_sha256 "$prompt_hash" --arg contract_sha256 "$(sha256_file "$contract")" --arg schema_sha256 "$(sha256_file "$schema")" --arg runner_sha256 "$runner_hash" --arg effort "$effort" '
+    jq -e --arg prompt_sha256 "$prompt_hash" --arg contract_sha256 "$(sha256_file "$contract")" --arg schema_sha256 "$(sha256_file "$schema")" --arg runner_sha256 "$runner_hash" --arg effort "$effort" --arg model "$MODEL" --arg profile "$PROFILE_PREFIX-policy-annotation" '
       (keys | sort) == ["backend","contract_path","contract_sha256","effort","lane","max_output_chars","model","output_schema_path","output_schema_sha256","profile","prompt_sha256","runner_sha256","runner_source_commit","schema","timeout_seconds"] and
-      .schema == "delegation_policy_annotation_evaluation_v1" and .profile == "glm-policy-annotation" and .lane == "policy-annotation" and .model == "glm-5.2" and .backend == "claude-zai" and .effort == $effort and .prompt_sha256 == $prompt_sha256 and .contract_sha256 == $contract_sha256 and .output_schema_sha256 == $schema_sha256 and
+      .schema == "delegation_policy_annotation_evaluation_v1" and .profile == $profile and .lane == "policy-annotation" and .model == $model and .backend == "claude-zai" and .effort == $effort and .prompt_sha256 == $prompt_sha256 and .contract_sha256 == $contract_sha256 and .output_schema_sha256 == $schema_sha256 and
       .runner_sha256 == $runner_sha256 and ([.prompt_sha256,.contract_sha256,.output_schema_sha256,.runner_sha256] | all(test("^[0-9a-f]{64}$"))) and (.runner_source_commit | test("^[0-9a-f]{40}$")) and
       (.timeout_seconds | type == "number" and floor == . and . >= 1 and . <= 600) and (.max_output_chars | type == "number" and floor == . and . >= 1 and . <= 65536)
     ' "$manifest" >/dev/null 2>&1 || die 78 "evaluation manifest is malformed or does not bind this exact run"
@@ -190,9 +225,9 @@ evaluation_manifest() {
       || die 78 "evaluation workdir is dirty, including ignored paths"
     expected_permission=plan; expected_workdir_mode=read-only
     if [ "$lane" = builder ]; then expected_permission=acceptEdits; expected_workdir_mode=writable-fixture; fi
-    jq -e --arg prompt_sha256 "$prompt_hash" --arg contract_sha256 "$(sha256_file "$contract")" --arg schema_sha256 "$(sha256_file "$schema")" --arg runner_sha256 "$runner_hash" --arg source_head "$source_head" --arg workdir_head "$workdir_head" --arg effort "$effort" --arg lane "$lane" --arg permission "$expected_permission" --arg workdir_mode "$expected_workdir_mode" '
+    jq -e --arg prompt_sha256 "$prompt_hash" --arg contract_sha256 "$(sha256_file "$contract")" --arg schema_sha256 "$(sha256_file "$schema")" --arg runner_sha256 "$runner_hash" --arg source_head "$source_head" --arg workdir_head "$workdir_head" --arg effort "$effort" --arg lane "$lane" --arg permission "$expected_permission" --arg workdir_mode "$expected_workdir_mode" --arg model "$MODEL" --arg profile "$PROFILE_PREFIX-$lane" '
       (keys | sort) == ["backend","contract_path","contract_sha256","effort","lane","max_cost_usd","max_output_chars","model","output_schema_path","output_schema_sha256","permission_mode","profile","prompt_sha256","runner_sha256","runner_source_commit","schema","task_count","timeout_seconds","workdir_commit","workdir_mode"] and
-      .schema == "delegation_glm_lane_evaluation_v1" and .profile == ("glm-" + $lane) and .lane == $lane and .model == "glm-5.2" and .backend == "claude-zai" and .effort == $effort and
+      .schema == "delegation_glm_lane_evaluation_v1" and .profile == $profile and .lane == $lane and .model == $model and .backend == "claude-zai" and .effort == $effort and
       .permission_mode == $permission and .workdir_mode == $workdir_mode and .workdir_commit == $workdir_head and .runner_source_commit == $source_head and
       .prompt_sha256 == $prompt_sha256 and .contract_sha256 == $contract_sha256 and .output_schema_sha256 == $schema_sha256 and .runner_sha256 == $runner_sha256 and
       ([.prompt_sha256,.contract_sha256,.output_schema_sha256,.runner_sha256] | all(test("^[0-9a-f]{64}$"))) and
@@ -218,7 +253,7 @@ evaluation_manifest() {
   else
     die 78 "unsupported evaluation manifest schema"
   fi
-  jq -e --arg hash "$manifest_hash" --arg lane "$lane" --arg profile "glm-$lane" '.profiles[$profile].lanes[$lane].evaluation_manifest_sha256 | type == "array" and index($hash) != null' "$CENTRAL_GATES" >/dev/null 2>&1 || die 78 "evaluation manifest is not allowlisted by the central gate"
+  jq -e --arg hash "$manifest_hash" --arg lane "$lane" --arg profile "$PROFILE_PREFIX-$lane" '.profiles[$profile].lanes[$lane].evaluation_manifest_sha256 | type == "array" and index($hash) != null' "$CENTRAL_GATES" >/dev/null 2>&1 || die 78 "evaluation manifest is not allowlisted by the central gate"
   jq -e --arg hash "$manifest_hash" --arg lane "$lane" '.lanes[$lane].backends["claude-zai"].evaluation_manifest_sha256 | type == "array" and index($hash) != null' "$ROUTING_FILE" >/dev/null 2>&1 || die 78 "evaluation manifest is not allowlisted by the executable gate"
   EVALUATION_MANIFEST_SHA256="$manifest_hash"
   EVALUATION_PROMPT_SHA256="$prompt_hash"
@@ -231,7 +266,7 @@ evaluation_manifest() {
 
 host_status() {
   HOST_REASON=""
-  if have claude || have codex; then HOST_REASON="ready"; return 0; fi
+  if [ -n "$CLAUDE_BIN_OVERRIDE" ] || have claude || have codex; then HOST_REASON="ready"; return 0; fi
   HOST_REASON="neither Claude Code nor Codex is installed"
   return 1
 }
@@ -278,9 +313,18 @@ load_zai_key() {
 
 claude_zai_status() {
   CLAUDE_ZAI_REASON=""
-  have claude || { CLAUDE_ZAI_REASON="claude not on PATH"; return 1; }
-  local help
-  help="$(claude --help 2>&1 || true)"
+  resolve_claude_bin || return 1
+  local help timeout_bin rc=0
+  if have gtimeout; then timeout_bin="$(command -v gtimeout)"
+  elif have timeout; then timeout_bin="$(command -v timeout)"
+  else CLAUDE_ZAI_REASON="gtimeout or timeout is required for the Claude Code capability probe"; return 1
+  fi
+  help="$("$timeout_bin" 10 "$CLAUDE_BIN" --help 2>&1)" || rc=$?
+  if [ "$rc" -eq 124 ]; then
+    CLAUDE_ZAI_REASON="Claude Code capability probe timed out"
+    return 1
+  fi
+  [ "$rc" -eq 0 ] || { CLAUDE_ZAI_REASON="Claude Code capability probe failed"; return 1; }
   grep -q -- '--effort' <<<"$help" \
     || { CLAUDE_ZAI_REASON="claude lacks --effort"; return 1; }
   load_zai_key
@@ -294,7 +338,7 @@ claude_zai_status() {
 
 qualified_lanes() {
   if [ -f "$CENTRAL_GATES" ] && have jq; then
-    jq -c '[.profiles | to_entries[] | select(.value.model == "glm-5.2" and .value.harness == "claude-zai") |
+    jq -c --arg prefix "$PROFILE_PREFIX" '[.profiles | to_entries[] | select(.key | startswith($prefix + "-")) |
       .value.lanes | to_entries[] | select(.value.status == "qualified") | .key] | unique | sort' "$CENTRAL_GATES" 2>/dev/null || printf '[]'
   else
     printf '[]'
@@ -303,7 +347,7 @@ qualified_lanes() {
 
 provisional_lanes() {
   if [ -f "$CENTRAL_GATES" ] && have jq; then
-    jq -c '[.profiles | to_entries[] | select(.value.model == "glm-5.2" and .value.harness == "claude-zai") |
+    jq -c --arg prefix "$PROFILE_PREFIX" '[.profiles | to_entries[] | select(.key | startswith($prefix + "-")) |
       .value.lanes | to_entries[] | select(.value.status == "provisional") | .key] | unique | sort' "$CENTRAL_GATES" 2>/dev/null || printf '[]'
   else
     printf '[]'
@@ -315,7 +359,7 @@ provisional_lanes() {
 # into a 78 and reads it as "this lane failed evaluation".
 gate_efforts() {
   if [ -f "$CENTRAL_GATES" ] && have jq; then
-    jq -c '[.profiles[] | select(.model == "glm-5.2" and .harness == "claude-zai") as $p |
+    jq -c --arg prefix "$PROFILE_PREFIX" '[.profiles | to_entries[] | select(.key | startswith($prefix + "-")) | .value as $p |
       $p.lanes[] | select(.status == "qualified" or .status == "provisional") | $p.effort] | unique' "$CENTRAL_GATES" 2>/dev/null || printf '[]'
   else
     printf '[]'
@@ -325,13 +369,13 @@ gate_efforts() {
 default_effort() {
   local lane="$1" backend="$2"
   [ "$backend" = claude-zai ] || return 1
-  jq -r --arg profile "glm-$lane" '.profiles[$profile].effort // empty' "$CENTRAL_GATES" 2>/dev/null
+  jq -r --arg profile "$PROFILE_PREFIX-$lane" '.profiles[$profile].effort // empty' "$CENTRAL_GATES" 2>/dev/null
 }
 
 gate_status() {
   local lane="$1" backend="$2"
   [ "$backend" = claude-zai ] || { printf 'disabled\n'; return; }
-  jq -r --arg profile "glm-$lane" '.profiles[$profile].lanes[]?.status // "disabled"' \
+  jq -r --arg profile "$PROFILE_PREFIX-$lane" '.profiles[$profile].lanes[]?.status // "disabled"' \
     "$CENTRAL_GATES" 2>/dev/null || printf 'disabled\n'
 }
 
@@ -377,7 +421,7 @@ print_check() {
         qualified_lanes:$lanes,provisional_lanes:$provisional,backends:{
           "claude-zai":{available:$claude,reason:$claude_reason}}}'
   else
-    printf 'GLM-5.2: selected=%s efforts=%s qualified=%s provisional=%s\n' "$selected" "$efforts" "$lanes" "$provisional"
+    printf '%s: selected=%s efforts=%s qualified=%s provisional=%s\n' "$MODEL" "$selected" "$efforts" "$lanes" "$provisional"
     printf '  host: %s (%s)\n' "$host_ok" "$HOST_REASON"
     printf '  claude-zai: %s (%s)\n' "$claude_ok" "$CLAUDE_ZAI_REASON"
   fi
@@ -618,7 +662,7 @@ run_command() {
   if [ "$evaluation" = 1 ]; then
     status="$(gate_status "$lane" "$backend")"
     case "$lane:$status" in
-      policy-annotation:candidate|builder:candidate|clerk:provisional|scout:provisional) ;;
+      policy-annotation:candidate|builder:candidate|clerk:candidate|scout:candidate|clerk:provisional|scout:provisional) ;;
       *) die 78 "lane '$lane' with status '$status' is not eligible for GLM qualification evaluation" ;;
     esac
   fi
@@ -635,7 +679,7 @@ run_command() {
       || die 78 "lane '$lane' backend '$backend' is qualified only at effort '$expected_effort'"
   fi
   if [ "$evaluation" = 1 ]; then
-    [ "$effort" = high ] || die 78 "GLM qualification evaluation is pinned only at effort 'high'"
+    case "$effort" in high|max) ;; *) die 78 "GLM qualification evaluation supports only effort 'high' or 'max'" ;; esac
     evaluation_manifest "$evaluation_manifest_path" "$prompt_file" "$effort" "$lane" "$workdir"
     max_cost="$EVALUATION_MAX_COST_USD"
   fi
@@ -679,16 +723,7 @@ run_command() {
     if have gtimeout; then timeout_bin="$(command -v gtimeout)"
     elif have timeout; then timeout_bin="$(command -v timeout)"
     else die 69 "GLM evaluation requires gtimeout or timeout"; fi
-    claude_bin="$(command -v claude)" || die 69 "Claude Code is required"
-    claude_bin="$(cd "$(dirname "$claude_bin")" && pwd -P)/$(basename "$claude_bin")"
-    while [ -L "$claude_bin" ]; do
-      local claude_link
-      claude_link="$(readlink "$claude_bin")" || die 69 "could not resolve Claude Code"
-      case "$claude_link" in
-        /*) claude_bin="$claude_link" ;;
-        *) claude_bin="$(cd "$(dirname "$claude_bin")" && cd "$(dirname "$claude_link")" && pwd -P)/$(basename "$claude_link")" ;;
-      esac
-    done
+    claude_bin="$CLAUDE_BIN"
     if IFS= read -r shebang <"$claude_bin" 2>/dev/null && [[ "$shebang" == '#!'* ]]; then
       die 69 "GLM evaluation requires a native Claude Code executable, not a script launcher"
     fi
@@ -734,7 +769,7 @@ run_command() {
         FAKE_FORBIDDEN_HOST="${FAKE_FORBIDDEN_HOST:-}" \
         ANTHROPIC_AUTH_TOKEN="$ZAI_API_KEY" \
         ANTHROPIC_BASE_URL="https://api.z.ai/api/anthropic" \
-        ANTHROPIC_DEFAULT_OPUS_MODEL="glm-5.2" \
+        ANTHROPIC_DEFAULT_OPUS_MODEL="$MODEL" \
         HOME="$tmp/home" TMPDIR="$tmp" \
         CLAUDE_CONFIG_DIR="$tmp/claude-config" \
         CLAUDE_CODE_SIMPLE=1 CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1 \
@@ -753,10 +788,10 @@ run_command() {
         -u CLAUDE_CODE_USE_FOUNDRY \
         ANTHROPIC_AUTH_TOKEN="$ZAI_API_KEY" \
         ANTHROPIC_BASE_URL="https://api.z.ai/api/anthropic" \
-        ANTHROPIC_DEFAULT_OPUS_MODEL="glm-5.2" \
+        ANTHROPIC_DEFAULT_OPUS_MODEL="$MODEL" \
         CLAUDE_CONFIG_DIR="$tmp/claude-config" \
         CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1 API_TIMEOUT_MS=3000000 \
-        claude -p "$(<"$prompt_file")" --model opus --effort "$effort" \
+        "$CLAUDE_BIN" -p "$(<"$prompt_file")" --model opus --effort "$effort" \
         --permission-mode "$permission" --setting-sources '' --strict-mcp-config \
         --output-format stream-json --verbose --no-session-persistence \
         --max-budget-usd "$max_cost"
@@ -940,6 +975,8 @@ run_command() {
   rm -f -- "$output.error.json"
   return 0
 }
+
+load_gate_identity
 
 case "${1:-}" in
   check)

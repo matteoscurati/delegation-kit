@@ -1,5 +1,6 @@
 {
   "model": "glm-5.2",
+  "profile_prefix": "glm",
   "status": "provisional",
   "evaluated_at": "2026-07-31T13:55:22Z",
   "source_run": "2026-07-31-glm-lane-qualification-v6",

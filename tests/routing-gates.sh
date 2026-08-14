@@ -33,6 +33,32 @@ jq -e '
 ' "$TMP/glm-check.json" >/dev/null
 pass=$((pass + 1))
 
+# GLM-5.3 is registered as two exact effort candidates without weakening the
+# still-selected GLM-5.2 route. A candidate check can describe its identity but
+# must expose no dispatchable lane.
+env DELEGATION_GLM_ROUTING_FILE="$ROOT/config/glm-5.3-high-routing.json" \
+  DELEGATION_GLM_CLAUDE_BIN=/usr/bin/true \
+  bin/delegation-glm check --json >"$TMP/glm53-high-check.json"
+jq -e '
+  .model == "glm-5.3" and .qualified_lanes == [] and
+  .provisional_lanes == [] and .efforts == []
+' "$TMP/glm53-high-check.json" >/dev/null
+pass=$((pass + 1))
+env DELEGATION_GLM_ROUTING_FILE="$ROOT/config/glm-5.3-max-routing.json" \
+  DELEGATION_GLM_CLAUDE_BIN=/usr/bin/true \
+  bin/delegation-glm check --json >"$TMP/glm53-max-check.json"
+jq -e '
+  .model == "glm-5.3" and .qualified_lanes == [] and
+  .provisional_lanes == [] and .efforts == []
+' "$TMP/glm53-max-check.json" >/dev/null
+pass=$((pass + 1))
+bin/delegation-route lane builder --json >"$TMP/builder-candidates.json"
+jq -e '
+  any(.[]; .profile == "glm53-high-builder" and .status == "candidate" and .selection == "blocked") and
+  any(.[]; .profile == "glm53-max-builder" and .status == "candidate" and .selection == "blocked")
+' "$TMP/builder-candidates.json" >/dev/null
+pass=$((pass + 1))
+
 # The repository owns reusable qualification assets only. Downstream-project
 # packs stay in their owning repository, and every central allowlist hash must
 # resolve to a committed delegation-kit qualification manifest.

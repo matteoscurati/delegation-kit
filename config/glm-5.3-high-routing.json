@@ -1,0 +1,66 @@
+{
+  "model": "glm-5.3",
+  "profile_prefix": "glm53-high",
+  "status": "candidate",
+  "evaluated_at": null,
+  "source_run": null,
+  "promoted_at": null,
+  "external_evidence_file": "model-evidence.json",
+  "external_evidence_ids": ["zai-glm-5.3-launch-unspecified-2026-08-14"],
+  "qualification_basis": "Separate pre-registered candidate for the exact glm-5.3/claude-zai/high tuple. External launch evidence is contextual only; every operational lane remains blocked until the local exact comparison completes.",
+  "qualified_lanes": [],
+  "provisional_lanes": [],
+  "lanes": {
+    "clerk": {
+      "default_effort": "high",
+      "backends": {
+        "claude-zai": {
+          "qualified": false,
+          "status": "candidate",
+          "selection": "blocked",
+          "effort": "high",
+          "cost_per_task_usd": null,
+          "evaluation_manifest_sha256": []
+        }
+      }
+    },
+    "scout": {
+      "default_effort": "high",
+      "backends": {
+        "claude-zai": {
+          "qualified": false,
+          "status": "candidate",
+          "selection": "blocked",
+          "effort": "high",
+          "cost_per_task_usd": null,
+          "evaluation_manifest_sha256": []
+        }
+      }
+    },
+    "builder": {
+      "default_effort": "high",
+      "backends": {
+        "claude-zai": {
+          "qualified": false,
+          "status": "candidate",
+          "selection": "blocked",
+          "effort": "high",
+          "cost_per_task_usd": null,
+          "evaluation_manifest_sha256": []
+        }
+      }
+    },
+    "reviewer": {
+      "default_effort": "high",
+      "backends": {
+        "claude-zai": {
+          "qualified": false,
+          "status": "disabled",
+          "selection": "blocked",
+          "effort": "high",
+          "cost_per_task_usd": null
+        }
+      }
+    }
+  }
+}
