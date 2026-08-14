@@ -11,7 +11,7 @@ while [ -L "$SOURCE" ]; do
   [[ "$SOURCE" = /* ]] || SOURCE="$SOURCE_DIR/$SOURCE"
 done
 ROOT="$(cd "$(dirname "$SOURCE")/.." && pwd)"
-ROUTING_FILE="${DELEGATION_GLM_ROUTING_FILE:-$ROOT/config/glm-5.3-max-routing.json}"
+ROUTING_FILE="${DELEGATION_GLM_ROUTING_FILE:-$ROOT/config/glm-5.3-high-routing.json}"
 CENTRAL_GATES="${DELEGATION_ROUTING_GATES_FILE:-$ROOT/config/routing-gates.json}"
 ROUTER="$ROOT/bin/delegation-route"
 SCHEMA_COMPILER="$ROOT/bin/delegation-schema"

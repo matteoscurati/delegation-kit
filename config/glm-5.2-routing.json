@@ -7,7 +7,7 @@
   "promoted_at": "2026-07-31T13:55:22Z",
   "external_evidence_file": "model-evidence.json",
   "external_evidence_ids": ["aa-claude-glm-5.2", "arena-agent-glm-5.2-max-2026-07-28", "webdev-glm-5.2-max-2026-07-21", "zai-glm-5.2-launch"],
-  "qualification_basis": "Historical exact glm-5.2/claude-zai/high result retained for comparison. Operational lanes were disabled after glm-5.3/max passed the 2026-08-14 exact effort comparison.",
+  "qualification_basis": "Historical exact glm-5.2/claude-zai/high result retained for comparison. Operational lanes were disabled after glm-5.3/high passed the 2026-08-14 exact effort comparison.",
   "qualified_lanes": [],
   "provisional_lanes": [],
   "lanes": {

@@ -169,8 +169,9 @@ benchmarks remain separately labeled context.
   independent benchmark, local compatibility proof, or lane qualification.
 - [Z.ai's GLM-5.3 launch](https://z.ai/blog/glm-5.3), observed 2026-08-14, is
   first-party contextual provenance for Coding Plan availability, effort
-  mapping, and coding/agent/security claims. The exact local high/max comparison
-  selected max; no independent tracked source had a GLM-5.3 row on that date.
+mapping, and coding/agent/security claims. The exact local high/max comparison
+selected high by its preregistered efficiency rule; no independent tracked
+source had a GLM-5.3 row on that date.
 
 ### Local harness evaluation with OpenBench
 

@@ -453,7 +453,9 @@ git -C "$EVAL_ROOT" add config/routing-gates.json config/glm-5.3-max-routing.jso
 git -C "$EVAL_ROOT" commit -qm 'allowlist GLM evaluation fixture'
 
 PATH="$TEST_TMP/bin:$PATH" TMPDIR="$TEST_TMP/runtime" ZAI_API_KEY=fixture-key \
-  FAKE_CLAUDE_CASE=success "$EVAL_ROOT/bin/delegation-glm" run \
+  FAKE_CLAUDE_CASE=success \
+  DELEGATION_GLM_ROUTING_FILE="$EVAL_ROOT/config/glm-5.3-max-routing.json" \
+  "$EVAL_ROOT/bin/delegation-glm" run \
   --lane policy-annotation --effort max --backend claude-zai --evaluation \
   --evaluation-manifest "$TEST_TMP/glm-evaluation-manifest.json" \
   --prompt-file "$TEST_TMP/prompt" --output "$TEST_TMP/results/policy-annotation.out" \
@@ -478,7 +480,9 @@ git -C "$EVAL_ROOT" add config/routing-gates.json config/glm-5.3-max-routing.jso
 git -C "$EVAL_ROOT" commit -qm 'allowlist GLM output-limit fixture'
 rc=0
 PATH="$TEST_TMP/bin:$PATH" TMPDIR="$TEST_TMP/runtime" ZAI_API_KEY=fixture-key \
-  FAKE_CLAUDE_CASE=success "$EVAL_ROOT/bin/delegation-glm" run \
+  FAKE_CLAUDE_CASE=success \
+  DELEGATION_GLM_ROUTING_FILE="$EVAL_ROOT/config/glm-5.3-max-routing.json" \
+  "$EVAL_ROOT/bin/delegation-glm" run \
   --lane policy-annotation --effort max --backend claude-zai --evaluation \
   --evaluation-manifest "$TEST_TMP/glm-small-output-manifest.json" \
   --prompt-file "$TEST_TMP/prompt" --output "$TEST_TMP/results/policy-too-large.out" \
@@ -564,7 +568,8 @@ jq --arg scout "$LANE_SCOUT_MANIFEST_SHA" --arg builder "$LANE_BUILDER_MANIFEST_
   .profiles["glm53-max-builder"].lanes.builder.evaluation_manifest_sha256 = [$builder]
 ' "$LANE_EVAL_ROOT/config/routing-gates.json" >"$LANE_CENTRAL_GATE"
 jq --arg scout "$LANE_SCOUT_MANIFEST_SHA" --arg builder "$LANE_BUILDER_MANIFEST_SHA" '
-  .qualified_lanes = ["clerk"] |
+  .status = "provisional" |
+  .qualified_lanes = [] |
   .provisional_lanes = ["scout"] |
   .lanes.scout.backends["claude-zai"].qualified = false |
   .lanes.scout.backends["claude-zai"].status = "provisional" |

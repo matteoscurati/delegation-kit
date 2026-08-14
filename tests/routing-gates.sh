@@ -30,32 +30,31 @@ jq -e '
   .model == "glm-5.3" and
   .qualified_lanes == ["clerk","scout"] and
   .provisional_lanes == ["builder"] and
-  .efforts == ["max"]
+  .efforts == ["high"]
 ' "$TMP/glm-check.json" >/dev/null
 pass=$((pass + 1))
 
-# GLM-5.3 high remains a blocked candidate while max is the selected route. A
-# candidate check can describe its identity but must expose no dispatchable lane.
+# GLM-5.3 high is selected while max remains a blocked, evaluated candidate.
 env DELEGATION_GLM_ROUTING_FILE="$ROOT/config/glm-5.3-high-routing.json" \
   DELEGATION_GLM_CLAUDE_BIN=/usr/bin/true \
   bin/delegation-glm check --json >"$TMP/glm53-high-check.json"
 jq -e '
-  .model == "glm-5.3" and .qualified_lanes == [] and
-  .provisional_lanes == [] and .efforts == []
+  .model == "glm-5.3" and .qualified_lanes == ["clerk","scout"] and
+  .provisional_lanes == ["builder"] and .efforts == ["high"]
 ' "$TMP/glm53-high-check.json" >/dev/null
 pass=$((pass + 1))
 env DELEGATION_GLM_ROUTING_FILE="$ROOT/config/glm-5.3-max-routing.json" \
   DELEGATION_GLM_CLAUDE_BIN=/usr/bin/true \
   bin/delegation-glm check --json >"$TMP/glm53-max-check.json"
 jq -e '
-  .model == "glm-5.3" and .qualified_lanes == ["clerk","scout"] and
-  .provisional_lanes == ["builder"] and .efforts == ["max"]
+  .model == "glm-5.3" and .qualified_lanes == [] and
+  .provisional_lanes == [] and .efforts == []
 ' "$TMP/glm53-max-check.json" >/dev/null
 pass=$((pass + 1))
 bin/delegation-route lane builder --json >"$TMP/builder-candidates.json"
 jq -e '
-  any(.[]; .profile == "glm53-high-builder" and .status == "candidate" and .selection == "blocked") and
-  any(.[]; .profile == "glm53-max-builder" and .status == "provisional" and .selection == "explicit-only")
+  any(.[]; .profile == "glm53-high-builder" and .status == "provisional" and .selection == "explicit-only") and
+  any(.[]; .profile == "glm53-max-builder" and .status == "candidate" and .selection == "blocked")
 ' "$TMP/builder-candidates.json" >/dev/null
 pass=$((pass + 1))
 

@@ -1,26 +1,26 @@
 {
   "model": "glm-5.3",
   "profile_prefix": "glm53-high",
-  "status": "candidate",
+  "status": "provisional",
   "evaluated_at": "2026-08-14T00:00:00Z",
-  "source_run": "2026-08-14-glm-5.3-effort-comparison-v2",
-  "promoted_at": null,
+  "source_run": "2026-08-14-glm-5.3-effort-comparison-v4",
+  "promoted_at": "2026-08-14T00:00:00Z",
   "external_evidence_file": "model-evidence.json",
   "external_evidence_ids": ["zai-glm-5.3-launch-unspecified-2026-08-14"],
-  "qualification_basis": "The exact high-effort comparison completed clerk and scout at score 1.0, but one observed builder attempt claimed the intended change without modifying the fixture. High therefore fails the all-valid-repeats rule and every lane remains blocked; max was selected.",
-  "qualified_lanes": [],
-  "provisional_lanes": [],
+  "qualification_basis": "The exact glm-5.3/claude-zai high/max comparison completed three no-retry attempts per lane on the same runner. Both efforts scored 1.0 in every lane with all builder checkers passing; the preregistered efficiency rule selected high. Clerk and scout qualify explicit-only, while builder stops at provisional after the bounded synthetic pack.",
+  "qualified_lanes": ["clerk", "scout"],
+  "provisional_lanes": ["builder"],
   "lanes": {
     "clerk": {
       "default_effort": "high",
       "backends": {
         "claude-zai": {
-          "qualified": false,
-          "status": "candidate",
-          "selection": "blocked",
+          "qualified": true,
+          "status": "qualified",
+          "selection": "explicit-only",
           "effort": "high",
-          "cost_per_task_usd": null,
-          "evaluation_manifest_sha256": []
+          "cost_per_task_usd": 0.00273,
+          "local_result": {"run_id": "2026-08-14-glm-5.3-effort-comparison-v4", "outcome": "passed", "task_count": 6, "repeats": 3, "valid_repeats": 3, "mean_score": 1.0, "mean_latency_seconds": 22.0, "confidence": "bounded-repeated"}
         }
       }
     },
@@ -28,12 +28,12 @@
       "default_effort": "high",
       "backends": {
         "claude-zai": {
-          "qualified": false,
-          "status": "candidate",
-          "selection": "blocked",
+          "qualified": true,
+          "status": "qualified",
+          "selection": "explicit-only",
           "effort": "high",
-          "cost_per_task_usd": null,
-          "evaluation_manifest_sha256": []
+          "cost_per_task_usd": 0.009753,
+          "local_result": {"run_id": "2026-08-14-glm-5.3-effort-comparison-v4", "outcome": "passed", "task_count": 7, "repeats": 3, "valid_repeats": 3, "mean_score": 1.0, "mean_latency_seconds": 75.0, "confidence": "bounded-repeated"}
         }
       }
     },
@@ -42,11 +42,11 @@
       "backends": {
         "claude-zai": {
           "qualified": false,
-          "status": "candidate",
-          "selection": "blocked",
+          "status": "provisional",
+          "selection": "explicit-only",
           "effort": "high",
-          "cost_per_task_usd": null,
-          "evaluation_manifest_sha256": []
+          "cost_per_task_usd": 0.00446,
+          "local_result": {"run_id": "2026-08-14-glm-5.3-effort-comparison-v4", "outcome": "passed", "task_count": 6, "repeats": 3, "valid_repeats": 3, "mean_score": 1.0, "all_checker_runs_pass": true, "mean_latency_seconds": 27.0, "confidence": "bounded-repeated"}
         }
       }
     },

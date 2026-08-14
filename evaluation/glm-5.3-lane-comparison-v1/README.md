@@ -23,13 +23,15 @@ Reviewer, judgement, security, and policy annotation are outside scope.
 ## 2026-08-14 result
 
 [`result-2026-08-14.json`](./result-2026-08-14.json) records the minimal public
-aggregate. `max` completed all nine attempts with score 1.0 in every lane and
-all builder checkers passing. `high` completed clerk and scout, but one builder
-attempt claimed the intended path without changing the fixture; that observed
-attempt is `VOID`, so `high` is not eligible.
+aggregate. Both `high` and `max` completed all nine attempts with score 1.0 in
+every lane and all builder checkers passing on the same frozen runner. The
+public result also records SHA-256 digests for the private comparison,
+per-effort aggregates, scores, provenance, and manifests.
 
-The preregistered rule therefore selects `max`. Against the historical
-GLM-5.2/high pack, GLM-5.3/max preserves the 1.0 lane scores while reducing
-total elapsed time from 976 to 487 seconds and provider-reported cost from
-$1.159437 to $0.622429. Clerk and scout qualify explicit-only; builder remains
-provisional explicit-only after the bounded synthetic pack.
+The preregistered rule therefore selects `high`: it matched max's quality while
+using 372 rather than 505 seconds and $0.334234 rather than $0.719138 of
+provider-reported cost. Against the historical GLM-5.2/high pack, selected
+GLM-5.3/high preserves the 1.0 lane scores while reducing total elapsed time
+from 976 to 372 seconds and provider-reported cost from $1.159437 to $0.334234.
+Clerk and scout qualify explicit-only; builder remains provisional explicit-only
+after the bounded synthetic pack.

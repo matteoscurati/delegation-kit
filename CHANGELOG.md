@@ -6,13 +6,13 @@ All notable changes to delegation-kit are documented here.
 
 ### Changed
 
-- **GLM-5.3/max replaces GLM-5.2/high across the active executor.** The exact
-  high/max comparison ran three no-retry attempts per lane. Max scored 1.0 in
-  all nine clerk, scout, and builder attempts and passed every builder checker;
-  clerk and scout are qualified explicit-only, while builder remains
-  provisional explicit-only. High remains blocked after one observed builder
-  attempt failed to modify its fixture, and GLM-5.2 is retained only as a
-  superseded historical baseline.
+- **GLM-5.3/high replaces GLM-5.2/high across the active executor.** The exact
+  high/max comparison ran three no-retry attempts per lane on the same frozen
+  runner. Both efforts scored 1.0 in all nine attempts and passed every builder
+  checker; the preregistered efficiency rule selected high (372s, $0.334234)
+  over max (505s, $0.719138). Clerk and scout are qualified explicit-only,
+  builder remains provisional explicit-only, max is blocked as not selected,
+  and GLM-5.2 is retained only as a superseded historical baseline.
 - The evidence snapshot records Z.ai's GLM-5.3 release, Coding Plan access,
   effort mapping, and launch benchmark claims as contextual-only evidence. No
   independent tracked leaderboard had a GLM-5.3 row on 2026-08-14.

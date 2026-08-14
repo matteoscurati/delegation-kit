@@ -13,9 +13,9 @@ Before dispatch, run `delegation-glm check --json`. The current gate exposes
 `clerk` and `scout` in `qualified_lanes`, but keeps them explicit-only rather
 than making either an automatic default. `builder` is provisional after its
 first exact local pack; use it only after an explicit decision and pass
-`--allow-provisional`. Every operational lane is pinned to `max`; the evaluated
-`high` tuple remains blocked after one builder attempt failed to modify its
-fixture. Reviewer is disabled; policy annotation is candidate/blocked and may
+`--allow-provisional`. Every operational lane is pinned to `high`; the evaluated
+`max` tuple remains blocked because it matched quality but used more elapsed
+time and provider-reported cost. Reviewer is disabled; policy annotation is candidate/blocked and may
 run only through a separately allowlisted evaluation manifest.
 
 Builder scope limit: the bridge dispatches the delegate at
@@ -28,10 +28,11 @@ the lead closes them. Observed 2026-08-04: a toolchain dispatch returned
 analysis only (checks honestly marked unexecuted) for $0.88 and ~6.6 minutes.
 
 The frozen 2026-08-14 comparison ran three no-retry attempts per lane at both
-`high` and `max`. Max scored 1.0 in every lane and passed every builder checker;
-clerk and scout qualified explicit-only, while builder stops at provisional.
-Compared with the historical GLM-5.2/high pack it preserved quality while
-roughly halving total elapsed time and provider-reported cost. Reviewer is not
+`high` and `max`. Both efforts scored 1.0 in every lane and passed every builder
+checker; the preregistered efficiency rule selected high. Clerk and scout
+qualified explicit-only, while builder stops at provisional. Compared with the
+historical GLM-5.2/high pack it preserved quality while sharply reducing total
+elapsed time and provider-reported cost. Reviewer is not
 dispatchable. The installed routing JSON remains
 authoritative if a later versioned evaluation changes that set.
 `delegation-evidence lane builder` shows the dated external rows: they provide

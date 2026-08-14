@@ -7,7 +7,7 @@
 # Usage: ./doctor.sh [--ping] [--ping-glm] [--ping-kimi] [--ping-grok]
 #   --ping   also does a live round-trip (real API calls, costs a few tokens per
 #            side). Off by default; static checks are free.
-#   --ping-glm does a separate paid GLM-5.3/max ping, but only for a qualified lane.
+#   --ping-glm does a separate paid GLM-5.3/high ping, but only for a qualified lane.
 #   --ping-kimi does a separate Kimi K3 ping through a qualified lane, or an
 #               explicitly selected provisional read-only lane when no lane is qualified.
 #   --ping-grok does a paid Grok 4.6 ping through its provisional builder gate.
@@ -329,8 +329,8 @@ if ! have jq; then
   warn "jq not on PATH — delegation-glm cannot run"
 elif have delegation-glm; then
   glm_check="$(delegation-glm check --json 2>/dev/null || true)"
-  if [ -n "$glm_check" ] && printf '%s' "$glm_check" | jq -e '.model == "glm-5.3" and .efforts == ["max"]' >/dev/null 2>&1; then
-    ok "delegation-glm installed and pinned to glm-5.3/max"
+  if [ -n "$glm_check" ] && printf '%s' "$glm_check" | jq -e '.model == "glm-5.3" and .efforts == ["high"]' >/dev/null 2>&1; then
+    ok "delegation-glm installed and pinned to glm-5.3/high"
     glm_selected="$(printf '%s' "$glm_check" | jq -r '.selected_backend')"
     glm_lanes="$(printf '%s' "$glm_check" | jq -r '.qualified_lanes | join(",")')"
     glm_provisional="$(printf '%s' "$glm_check" | jq -r '.provisional_lanes | join(",")')"
@@ -342,7 +342,7 @@ elif have delegation-glm; then
       || info "GLM has no automatically qualified lanes"
     [ -z "$glm_provisional" ] || info "GLM provisional lanes (explicit flag required): $glm_provisional"
   else
-    bad "delegation-glm check failed or is not pinned to glm-5.3/max"
+    bad "delegation-glm check failed or is not pinned to glm-5.3/high"
   fi
 else
   warn "delegation-glm not installed — re-run ./install.sh after evaluating GLM"
@@ -521,7 +521,7 @@ else
 fi
 
 if [ "$DO_GLM_PING" = 1 ]; then
-  hdr "GLM-5.3/max live ping (--ping-glm)"
+  hdr "GLM-5.3/high live ping (--ping-glm)"
   if ! have delegation-glm; then
     bad "GLM ping unavailable — delegation-glm is not installed"
   else
@@ -535,9 +535,9 @@ if [ "$DO_GLM_PING" = 1 ]; then
       if delegation-glm run --lane "$glm_lane" --effort auto --backend auto \
           --prompt-file "$ping_dir/prompt.txt" --output "$ping_dir/out.txt" --workdir "$ping_dir" \
           >/dev/null 2>&1 && grep -Fxq PONG "$ping_dir/out.txt"; then
-        ok "GLM-5.3/max qualified-lane ping returned PONG"
+        ok "GLM-5.3/high qualified-lane ping returned PONG"
       else
-        bad "GLM-5.3/max ping failed"
+        bad "GLM-5.3/high ping failed"
       fi
       rm -rf "$ping_dir"
     fi

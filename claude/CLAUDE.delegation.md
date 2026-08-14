@@ -59,8 +59,9 @@ GLM-5.3 may replace an executor profile only through the installed
 provisional after its first exact local pack and requires an explicit decision
 plus `--allow-provisional`. The bridge pins GLM-5.3 and runs only through the isolated Claude→Z.AI
 backend, keyed by `ZAI_API_KEY` or the 600-mode key the installer stored. All
-operational lanes route at `max`, and an effort the gate did not pin is refused.
-The evaluated `high` tuple remains blocked after a builder checker failure;
+operational lanes route at `high`, and an effort the gate did not pin is refused.
+The evaluated `max` tuple matched quality but remains blocked because the
+preregistered efficiency rule selected high;
 GLM-5.2 is historical only. Reviewer remains disabled.
 Never silently substitute another model or promote an unevaluated lane.
 Policy annotation remains candidate/blocked and may run only through a

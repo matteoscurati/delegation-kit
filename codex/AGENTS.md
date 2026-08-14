@@ -23,9 +23,10 @@ an explicit decision plus `--allow-provisional`. The bridge runs only through th
 backend, keyed by `ZAI_API_KEY` or the 600-mode key the installer stored. Prefer
 the incumbent for costly edits unless the provisional builder lane was selected deliberately. If the runtime or
 lane gate is absent, keep using the incumbent profile; never silently substitute.
-Every operational lane is pinned to `max`; the evaluated `high` tuple remains
-blocked after one builder attempt failed its scoped-edit checker. Reviewer is
-disabled; policy annotation remains candidate/blocked and evaluation-only.
+Every operational lane is pinned to `high`; the evaluated `max` tuple matched
+quality but remains blocked because the preregistered rule selected high on
+elapsed time and provider-reported cost. Reviewer is disabled; policy annotation
+remains candidate/blocked and evaluation-only.
 GLM-5.2 is retained only as historical
 comparison evidence and has no dispatchable lane.
 

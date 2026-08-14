@@ -1,74 +1,151 @@
 {
   "schema_version": "delegation_glm_effort_comparison_result_v1",
   "evaluated_at": "2026-08-14T00:00:00Z",
-  "run_id": "2026-08-14-glm-5.3-effort-comparison-v2",
+  "run_id": "2026-08-14-glm-5.3-effort-comparison-v4",
   "selected_tuple": {
     "model": "glm-5.3",
     "backend": "claude-zai",
-    "effort": "max"
+    "effort": "high"
   },
   "runtime_provenance": {
-    "runner_source_commit": "e687c8115a712555c3271a8344b6d82ab548e83c",
-    "runner_sha256": "9e66c7030d97dde6a896d176dfcdbfc71dd878862c309b322abc02f34a2b34b9",
+    "runner_source_commit": "f17e8891881bbdb244a9fe5e3f42c486c71f5658",
+    "runner_sha256": "d9d6bd074466b78c6a9a772848812b1379ab6056ff8fb1acede3fc3477ed2cd3",
     "claude_code": "2.1.220",
     "claude_binary_sha256": "8addc857f3fe64d5a0368af9ee50321b50afb4a6918ba3ef018ab84f5dbbe081",
     "contract_sha256": "1dd5737a4f6c7888038ccae292939047fd88756734095e48d6e163640c89cdb9",
     "post_observation_retries": 0,
     "exact_content_identity_attested": true
   },
+  "receipt_sha256": {
+    "comparison": "b006afbdf8fe70565b22151f6bc6cd169387151d057b71482b9f91f27cca0da3",
+    "high_aggregate": "12b8ba35188385b22903917cad8e9b7e8a3a2e1dc7d57a3b3cdb122f6a82af0c",
+    "high_scores": "4634c4181942252213c7e97f381a31d61fe7dee32a285117fe404c6df586c910",
+    "high_provenance": "fc4ac27e0c7a6138b366305a4139f116738bf4cab04af480f2c8aa6c6b94d3d2",
+    "high_manifests": {
+      "clerk": "2c90ab5e21fc922d9b4bdc6628df6ab56c35a425600b0f2453c52fa2205afc6e",
+      "scout": "55202a47f5abf98f557670c7c5eb588596b1b0eca4ea5f2e5d1aae339c813794",
+      "builder": "4815f3ef58e824b8c52c739eef296ce1b60b8539604428a5e8e66815cefe82f6"
+    },
+    "max_aggregate": "282d94f9b57e1a089662679348a1a95aa7e7ac770c17ac1a98d1b77d8720c287",
+    "max_scores": "0a2ad849f6a13ce344460acf678ad13ccf3c5e706f79b0a2c1d3a9d62b77a1bc",
+    "max_provenance": "f24d253400bb2895d25e0d4400026051294d568453ae58e45c36677df4444c28",
+    "max_manifests": {
+      "clerk": "6fe69cb86df22cc2e867d423fa4d377665cc47db69d2aec2b33fff280f2efa3e",
+      "scout": "028cdbce35f1e8f56fca2af0f2dbae0c22a7ca6ac32b4c5342ad51e75f09de4a",
+      "builder": "25133dab645c6fa1bff1d25ddac256b7f749a81103eff7c914f6fb8ccbdc8446"
+    }
+  },
   "comparison_sources": {
-    "glm_5_3_attempts": [
+    "glm_5_3_attempts": ["2026-08-14-glm-5.3-effort-comparison-v4"],
+    "glm_5_2_baseline": "2026-07-31-glm-lane-qualification-v6",
+    "superseded_preflights": [
       "2026-08-14-glm-5.3-effort-comparison",
       "2026-08-14-glm-5.3-effort-comparison-v2"
-    ],
-    "glm_5_2_baseline": "2026-07-31-glm-lane-qualification-v6",
-    "reused_attempt": "high/clerk/r1 from the first run; every other scored GLM-5.3 attempt is from v2"
+    ]
   },
-  "invalidated_preflights": [
-    {
-      "run": "2026-08-14-glm-5.3-effort-comparison",
-      "attempts": ["high/clerk/r2", "high/clerk/r3", "high/scout/r1", "high/scout/r2", "high/scout/r3", "high/builder/r1"],
-      "provider_reached": false,
-      "model_output_observed": false,
-      "reason": "orchestrator_pty_suspended_claude_capability_probe"
-    }
-  ],
   "efforts": {
     "high": {
-      "eligible": false,
-      "total_elapsed_seconds": 376,
-      "provider_cost_usd": 0.362103,
-      "lanes": {
-        "clerk": {"valid_repeats": 3, "required_repeats": 3, "mean_score": 1.0, "elapsed_seconds": [16, 22, 21], "provider_cost_usd": 0.042976, "threshold_passed": true},
-        "scout": {"valid_repeats": 3, "required_repeats": 3, "mean_score": 1.0, "elapsed_seconds": [64, 78, 80], "provider_cost_usd": 0.229979, "threshold_passed": true},
-        "builder": {"valid_repeats": 2, "required_repeats": 3, "mean_score": 1.0, "elapsed_seconds": [22, 17, 56], "provider_cost_usd": 0.089148, "all_checker_runs_pass": false, "void_reasons": ["claimed_without_fixture_change"], "threshold_passed": false}
+      "eligible": true,
+      "total_elapsed_seconds": 372,
+      "provider_cost_usd": 0.334234,
+      "tokens": {
+        "input": 18406,
+        "output": 7644,
+        "reasoning": 0,
+        "cache_read": 102208,
+        "cache_write": 0
       },
-      "decision": "blocked"
+      "lanes": {
+        "clerk": {
+          "task_count": 6,
+          "valid_repeats": 3,
+          "required_repeats": 3,
+          "mean_score": 1.0,
+          "elapsed_seconds": [25, 21, 20],
+          "provider_cost_usd": 0.049138,
+          "threshold_passed": true,
+          "decision": "qualified"
+        },
+        "scout": {
+          "task_count": 7,
+          "valid_repeats": 3,
+          "required_repeats": 3,
+          "mean_score": 1.0,
+          "elapsed_seconds": [56, 71, 98],
+          "provider_cost_usd": 0.204809,
+          "threshold_passed": true,
+          "decision": "qualified"
+        },
+        "builder": {
+          "task_count": 6,
+          "valid_repeats": 3,
+          "required_repeats": 3,
+          "mean_score": 1.0,
+          "elapsed_seconds": [29, 33, 19],
+          "provider_cost_usd": 0.080287,
+          "all_checker_runs_pass": true,
+          "threshold_passed": true,
+          "decision": "provisional"
+        }
+      },
+      "decision": "selected"
     },
     "max": {
       "eligible": true,
-      "total_elapsed_seconds": 487,
-      "provider_cost_usd": 0.622429,
-      "tokens": {"input": 28547, "output": 15774, "reasoning": 0, "cache_read": 170688, "cache_write": 0},
-      "lanes": {
-        "clerk": {"task_count": 6, "valid_repeats": 3, "required_repeats": 3, "mean_score": 1.0, "elapsed_seconds": [29, 23, 16], "provider_cost_usd": 0.077282, "threshold_passed": true, "decision": "qualified"},
-        "scout": {"task_count": 7, "valid_repeats": 3, "required_repeats": 3, "mean_score": 1.0, "elapsed_seconds": [77, 87, 61], "provider_cost_usd": 0.285589, "threshold_passed": true, "decision": "qualified"},
-        "builder": {"task_count": 6, "valid_repeats": 3, "required_repeats": 3, "mean_score": 1.0, "elapsed_seconds": [64, 63, 67], "provider_cost_usd": 0.259558, "all_checker_runs_pass": true, "threshold_passed": true, "decision": "provisional"}
+      "total_elapsed_seconds": 505,
+      "provider_cost_usd": 0.719138,
+      "tokens": {
+        "input": 30026,
+        "output": 19216,
+        "reasoning": 0,
+        "cache_read": 177216,
+        "cache_write": 0
       },
-      "decision": "selected"
+      "lanes": {
+        "clerk": {
+          "valid_repeats": 3,
+          "required_repeats": 3,
+          "mean_score": 1.0,
+          "elapsed_seconds": [24, 21, 13],
+          "provider_cost_usd": 0.070041,
+          "threshold_passed": true
+        },
+        "scout": {
+          "valid_repeats": 3,
+          "required_repeats": 3,
+          "mean_score": 1.0,
+          "elapsed_seconds": [67, 79, 106],
+          "provider_cost_usd": 0.371318,
+          "threshold_passed": true
+        },
+        "builder": {
+          "valid_repeats": 3,
+          "required_repeats": 3,
+          "mean_score": 1.0,
+          "elapsed_seconds": [88, 55, 52],
+          "provider_cost_usd": 0.277779,
+          "all_checker_runs_pass": true,
+          "threshold_passed": true
+        }
+      },
+      "decision": "passed-not-selected"
     }
   },
   "glm_5_2_high_baseline": {
     "total_elapsed_seconds": 976,
     "provider_cost_usd": 1.159437,
-    "lane_mean_scores": {"clerk": 1.0, "scout": 1.0, "builder": 1.0}
+    "lane_mean_scores": {
+      "clerk": 1.0,
+      "scout": 1.0,
+      "builder": 1.0
+    }
   },
-  "selection_decision": "Select glm-5.3/claude-zai/max. It passes every preregistered lane threshold; high is ineligible after an observed builder VOID.",
+  "selection_decision": "Select glm-5.3/claude-zai/high. Both efforts pass every preregistered lane threshold at the same score; high has lower total elapsed time and provider-reported cost.",
   "limitations": [
     "The packs are bounded synthetic qualification tasks, not broad model-quality benchmarks.",
     "Provider-reported cost is transport telemetry and may not equal the user's Coding Plan billing.",
     "The comparison qualifies only the exact model, backend, effort, runner, permissions, and named lanes.",
     "No frontend-specific, reviewer, judgement, security, or policy-annotation lane was evaluated.",
-    "The first orchestration attempt used a PTY that suspended capability probes; only its already-valid high/clerk/r1 output was reused, and pre-provider failures were explicitly invalidated."
+    "Earlier orchestration preflights and the first v2 comparison were superseded; only the no-retry v4 attempts contribute to this result."
   ]
 }
