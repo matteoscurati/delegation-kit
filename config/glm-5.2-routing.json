@@ -1,21 +1,21 @@
 {
   "model": "glm-5.2",
   "profile_prefix": "glm",
-  "status": "provisional",
+  "status": "superseded",
   "evaluated_at": "2026-07-31T13:55:22Z",
   "source_run": "2026-07-31-glm-lane-qualification-v6",
   "promoted_at": "2026-07-31T13:55:22Z",
   "external_evidence_file": "model-evidence.json",
   "external_evidence_ids": ["aa-claude-glm-5.2", "arena-agent-glm-5.2-max-2026-07-28", "webdev-glm-5.2-max-2026-07-21", "zai-glm-5.2-launch"],
-  "qualification_basis": "The frozen exact glm-5.2/claude-zai/high comparison completed three no-retry attempts per provider and lane. Clerk and scout matched the best incumbent and are qualified explicit-only. Builder passed all checkers but stops at provisional after its first exact local pack.",
-  "qualified_lanes": ["clerk", "scout"],
-  "provisional_lanes": ["builder"],
+  "qualification_basis": "Historical exact glm-5.2/claude-zai/high result retained for comparison. Operational lanes were disabled after glm-5.3/max passed the 2026-08-14 exact effort comparison.",
+  "qualified_lanes": [],
+  "provisional_lanes": [],
   "lanes": {
     "clerk": {
       "default_effort": "high",
       "backends": {
         "claude-zai": {
-          "qualified": true, "status": "qualified", "selection": "explicit-only",
+          "qualified": false, "status": "disabled", "selection": "blocked",
           "effort": "high", "cost_per_task_usd": 0.004875,
           "legacy_local_result": {
             "run_id": "2026-07-31-glm-lane-qualification-v6", "outcome": "passed",
@@ -31,7 +31,7 @@
       "default_effort": "high",
       "backends": {
         "claude-zai": {
-          "qualified": true, "status": "qualified", "selection": "explicit-only",
+          "qualified": false, "status": "disabled", "selection": "blocked",
           "effort": "high", "cost_per_task_usd": 0.032234,
           "legacy_local_result": {
             "run_id": "2026-07-31-glm-lane-qualification-v6", "outcome": "passed",
@@ -49,7 +49,7 @@
       "default_effort": "high",
       "backends": {
         "claude-zai": {
-          "qualified": false, "status": "provisional", "selection": "explicit-only",
+          "qualified": false, "status": "disabled", "selection": "blocked",
           "effort": "high", "cost_per_task_usd": 0.021932,
           "local_result": {
             "run_id": "2026-07-31-glm-lane-qualification-v6", "outcome": "passed",

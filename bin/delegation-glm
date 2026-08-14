@@ -11,7 +11,7 @@ while [ -L "$SOURCE" ]; do
   [[ "$SOURCE" = /* ]] || SOURCE="$SOURCE_DIR/$SOURCE"
 done
 ROOT="$(cd "$(dirname "$SOURCE")/.." && pwd)"
-ROUTING_FILE="${DELEGATION_GLM_ROUTING_FILE:-$ROOT/config/glm-5.2-routing.json}"
+ROUTING_FILE="${DELEGATION_GLM_ROUTING_FILE:-$ROOT/config/glm-5.3-max-routing.json}"
 CENTRAL_GATES="${DELEGATION_ROUTING_GATES_FILE:-$ROOT/config/routing-gates.json}"
 ROUTER="$ROOT/bin/delegation-route"
 SCHEMA_COMPILER="$ROOT/bin/delegation-schema"
@@ -22,6 +22,7 @@ SCHEMA_COMPILER="$ROOT/bin/delegation-schema"
 # with DELEGATION_GLM_KEY_FILE.
 KEY_FILE="${DELEGATION_GLM_KEY_FILE:-$ROOT/config/zai.env}"
 CLAUDE_BIN_OVERRIDE="${DELEGATION_GLM_CLAUDE_BIN:-}"
+CAPABILITY_TIMEOUT_SECONDS="${DELEGATION_GLM_CAPABILITY_TIMEOUT_SECONDS:-10}"
 MODEL=""
 PROFILE_PREFIX=""
 CLAUDE_BIN=""
@@ -315,11 +316,17 @@ claude_zai_status() {
   CLAUDE_ZAI_REASON=""
   resolve_claude_bin || return 1
   local help timeout_bin rc=0
+  if ! [[ "$CAPABILITY_TIMEOUT_SECONDS" =~ ^[0-9]+$ ]] \
+      || [ "$CAPABILITY_TIMEOUT_SECONDS" -lt 1 ] \
+      || [ "$CAPABILITY_TIMEOUT_SECONDS" -gt 30 ]; then
+    CLAUDE_ZAI_REASON="DELEGATION_GLM_CAPABILITY_TIMEOUT_SECONDS must be an integer from 1 to 30"
+    return 1
+  fi
   if have gtimeout; then timeout_bin="$(command -v gtimeout)"
   elif have timeout; then timeout_bin="$(command -v timeout)"
   else CLAUDE_ZAI_REASON="gtimeout or timeout is required for the Claude Code capability probe"; return 1
   fi
-  help="$("$timeout_bin" 10 "$CLAUDE_BIN" --help 2>&1)" || rc=$?
+  help="$("$timeout_bin" "$CAPABILITY_TIMEOUT_SECONDS" "$CLAUDE_BIN" --help 2>&1)" || rc=$?
   if [ "$rc" -eq 124 ]; then
     CLAUDE_ZAI_REASON="Claude Code capability probe timed out"
     return 1

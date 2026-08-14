@@ -53,18 +53,19 @@ the dated evidence snapshot and lane mapping.
 
 ### Optional evaluated GLM executor
 
-GLM-5.2 may replace an executor profile only through the installed
+GLM-5.3 may replace an executor profile only through the installed
 `glm-executor` skill. The current gate reports `clerk` and `scout` in
 `qualified_lanes`, while retaining explicit-only selection. `builder` is
 provisional after its first exact local pack and requires an explicit decision
-plus `--allow-provisional`. The bridge pins GLM-5.2 and runs only through the isolated Claude→Z.AI
+plus `--allow-provisional`. The bridge pins GLM-5.3 and runs only through the isolated Claude→Z.AI
 backend, keyed by `ZAI_API_KEY` or the 600-mode key the installer stored. All
-operational lanes route at `high`, and an effort the gate did not pin is refused.
-Reviewer remains disabled.
+operational lanes route at `max`, and an effort the gate did not pin is refused.
+The evaluated `high` tuple remains blocked after a builder checker failure;
+GLM-5.2 is historical only. Reviewer remains disabled.
 Never silently substitute another model or promote an unevaluated lane.
-`policy-annotation` at `high` is a separate candidate/blocked lane that may run
-only with an allowlisted read-only evaluation manifest. It never widens the
-operational gate or qualifies broad judgement.
+Policy annotation remains candidate/blocked and may run only through a
+separately allowlisted GLM-5.3/max evaluation manifest. It never inherits this
+coding qualification or qualifies broad judgement.
 
 ### Optional Gemini 3.6 Flash executor
 
@@ -183,7 +184,7 @@ central graph directly before runtime/auth checks.
   *and* higher-recall there). Size the reviewer to the work, not to the top of the
   evidence for that lane.
 - **Picking among the external builders:** they are not interchangeable. Kimi K3
-  and Grok 4.6 are `preferred-explicit` by explicit owner decision; GLM-5.2 and
+  and Grok 4.6 are `preferred-explicit` by explicit owner decision; GLM-5.3 and
   Qwen3.8-Max stay plain `explicit-only`. Grok 4.6's current public rows use
   non-production harnesses, so they are contextual rather than exact. Preference
   is not qualification — every one of them still needs an explicit decision and

@@ -2,6 +2,29 @@
 
 All notable changes to delegation-kit are documented here.
 
+## Unreleased
+
+### Changed
+
+- **GLM-5.3/max replaces GLM-5.2/high across the active executor.** The exact
+  high/max comparison ran three no-retry attempts per lane. Max scored 1.0 in
+  all nine clerk, scout, and builder attempts and passed every builder checker;
+  clerk and scout are qualified explicit-only, while builder remains
+  provisional explicit-only. High remains blocked after one observed builder
+  attempt failed to modify its fixture, and GLM-5.2 is retained only as a
+  superseded historical baseline.
+- The evidence snapshot records Z.ai's GLM-5.3 release, Coding Plan access,
+  effort mapping, and launch benchmark claims as contextual-only evidence. No
+  independent tracked leaderboard had a GLM-5.3 row on 2026-08-14.
+
+### Fixed
+
+- `delegation-glm` now reads model and profile identity from the selected
+  executable gate, supports manifest-bound `high` and `max` comparisons, and
+  capability-probes Claude Code with a ten-second fail-closed timeout. A
+  separately verified native binary can be selected explicitly for diagnostics
+  without weakening model, lane, effort, sandbox, or manifest checks.
+
 ## [0.14.0] — 2026-08-13
 
 ### Changed

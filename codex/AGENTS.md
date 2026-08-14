@@ -16,16 +16,18 @@
 
 ## Optional evaluated GLM executor
 
-GLM-5.2 is available only through the installed `glm-executor` skill. The current
+GLM-5.3 is available only through the installed `glm-executor` skill. The current
 gate lists `clerk` and `scout` in `qualified_lanes`, with explicit-only
 selection. Builder is provisional after its first exact local pack and requires
 an explicit decision plus `--allow-provisional`. The bridge runs only through the isolated Claude→Z.AI
 backend, keyed by `ZAI_API_KEY` or the 600-mode key the installer stored. Prefer
 the incumbent for costly edits unless the provisional builder lane was selected deliberately. If the runtime or
 lane gate is absent, keep using the incumbent profile; never silently substitute.
-`policy-annotation` at `high` is a separate candidate/blocked lane available
-only through an allowlisted read-only evaluation manifest. It never adds an
-operational route or qualifies broad judgement.
+Every operational lane is pinned to `max`; the evaluated `high` tuple remains
+blocked after one builder attempt failed its scoped-edit checker. Reviewer is
+disabled; policy annotation remains candidate/blocked and evaluation-only.
+GLM-5.2 is retained only as historical
+comparison evidence and has no dispatchable lane.
 
 ## Optional Gemini 3.6 Flash executor
 

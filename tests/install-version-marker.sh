@@ -18,6 +18,21 @@ ok() { pass=$((pass + 1)); }
 DATA="$TMP/data"
 MARKER="$DATA/installed-version.json"
 GROK_TEST_HOME="$TMP/grok-home"
+TEST_TOOLS="$TMP/test-tools"
+
+# Keep doctor checks hermetic. A broken or stale user-global Claude binary must
+# not hang this installer fixture or cause it to inspect a global GLM runner.
+mkdir -p "$TEST_TOOLS"
+cat >"$TEST_TOOLS/claude" <<'EOF'
+#!/usr/bin/env bash
+case "${1:-}" in
+  --version) printf 'claude test-build\n' ;;
+  --help) printf '%s\n' '--effort' ;;
+  auth) [ "${2:-}" = status ] ;;
+  *) exit 2 ;;
+esac
+EOF
+chmod 700 "$TEST_TOOLS/claude"
 
 # Seed an upgrade-shaped install: a stale 4.5 gate plus a digest-valid archived
 # CLI that already exposes 4.6. The installer must replace the gate atomically
@@ -105,7 +120,9 @@ ok
 doctor_section() { # runs doctor against $1 as DATA_HOME, prints its version block
   # doctor exits non-zero whenever it reports a FAIL, which is precisely what
   # the drift cases below assert — so its status must not abort this script.
-  env DELEGATION_DATA_HOME="$1" CLAUDE_HOME="$TMP/claude" CODEX_HOME="$TMP/codex" \
+  env PATH="$TMP/bin:$TEST_TOOLS:$PATH" DELEGATION_DATA_HOME="$1" \
+    CLAUDE_HOME="$TMP/claude" CODEX_HOME="$TMP/codex" \
+    DELEGATION_DOCTOR_PROBE_TIMEOUT_SECONDS=1 \
     "$ROOT/doctor.sh" 2>&1 | awk '/^== Installed version ==/{f=1;next} /^== /{f=0} f' \
     || true
 }

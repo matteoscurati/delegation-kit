@@ -1,26 +1,26 @@
 {
   "model": "glm-5.3",
   "profile_prefix": "glm53-max",
-  "status": "candidate",
-  "evaluated_at": null,
-  "source_run": null,
-  "promoted_at": null,
+  "status": "provisional",
+  "evaluated_at": "2026-08-14T00:00:00Z",
+  "source_run": "2026-08-14-glm-5.3-effort-comparison-v2",
+  "promoted_at": "2026-08-14T00:00:00Z",
   "external_evidence_file": "model-evidence.json",
   "external_evidence_ids": ["zai-glm-5.3-launch-unspecified-2026-08-14"],
-  "qualification_basis": "Separate pre-registered candidate for the exact glm-5.3/claude-zai/max tuple. External launch evidence is contextual only; every operational lane remains blocked until the local exact comparison completes.",
-  "qualified_lanes": [],
-  "provisional_lanes": [],
+  "qualification_basis": "The exact glm-5.3/claude-zai/max comparison completed three no-retry attempts per lane. Every lane scored 1.0; clerk and scout qualify explicit-only, while builder stops at provisional after the bounded synthetic pack. Max was selected because high had an observed builder VOID.",
+  "qualified_lanes": ["clerk", "scout"],
+  "provisional_lanes": ["builder"],
   "lanes": {
     "clerk": {
       "default_effort": "max",
       "backends": {
         "claude-zai": {
-          "qualified": false,
-          "status": "candidate",
-          "selection": "blocked",
+          "qualified": true,
+          "status": "qualified",
+          "selection": "explicit-only",
           "effort": "max",
-          "cost_per_task_usd": null,
-          "evaluation_manifest_sha256": []
+          "cost_per_task_usd": 0.004293,
+          "local_result": {"run_id": "2026-08-14-glm-5.3-effort-comparison-v2", "outcome": "passed", "task_count": 6, "repeats": 3, "valid_repeats": 3, "mean_score": 1.0, "confidence": "bounded-repeated"}
         }
       }
     },
@@ -28,12 +28,12 @@
       "default_effort": "max",
       "backends": {
         "claude-zai": {
-          "qualified": false,
-          "status": "candidate",
-          "selection": "blocked",
+          "qualified": true,
+          "status": "qualified",
+          "selection": "explicit-only",
           "effort": "max",
-          "cost_per_task_usd": null,
-          "evaluation_manifest_sha256": []
+          "cost_per_task_usd": 0.0136,
+          "local_result": {"run_id": "2026-08-14-glm-5.3-effort-comparison-v2", "outcome": "passed", "task_count": 7, "repeats": 3, "valid_repeats": 3, "mean_score": 1.0, "mean_latency_seconds": 75.0, "confidence": "bounded-repeated"}
         }
       }
     },
@@ -42,11 +42,11 @@
       "backends": {
         "claude-zai": {
           "qualified": false,
-          "status": "candidate",
-          "selection": "blocked",
+          "status": "provisional",
+          "selection": "explicit-only",
           "effort": "max",
-          "cost_per_task_usd": null,
-          "evaluation_manifest_sha256": []
+          "cost_per_task_usd": 0.01442,
+          "local_result": {"run_id": "2026-08-14-glm-5.3-effort-comparison-v2", "outcome": "passed", "task_count": 6, "repeats": 3, "valid_repeats": 3, "mean_score": 1.0, "all_checker_runs_pass": true, "mean_latency_seconds": 64.67, "confidence": "bounded-repeated"}
         }
       }
     },
@@ -59,6 +59,19 @@
           "selection": "blocked",
           "effort": "max",
           "cost_per_task_usd": null
+        }
+      }
+    },
+    "policy-annotation": {
+      "default_effort": "max",
+      "backends": {
+        "claude-zai": {
+          "qualified": false,
+          "status": "candidate",
+          "selection": "blocked",
+          "effort": "max",
+          "evaluation_manifest_sha256": [],
+          "qualification_basis": "Evaluation-only candidate. Coding-lane qualification cannot promote or operationalize policy annotation."
         }
       }
     }

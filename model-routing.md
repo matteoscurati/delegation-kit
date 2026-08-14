@@ -112,7 +112,8 @@ and `max`; `gpt-5.5` **refuses** `max` and enumerates a shorter set of its own.
 | gpt-5.6-luna | low · medium · high · xhigh · max |
 | sonnet-5 | low · medium · high |
 | gpt-5.5 | none · low · medium · high · xhigh (no `max`) |
-| glm-5.2 | high (installed bridge maximum) · max (provider capability only) |
+| glm-5.3 | max (installed bridge); high evaluated and blocked |
+| glm-5.2 | high (historical, superseded) |
 | kimi-k3 | max |
 | gemini-3.6-flash | medium (scout provisional) · high (editing candidate) |
 | qwen3.8-max | xhigh (builder provisional; every other lane candidate/disabled) |
@@ -264,10 +265,12 @@ prices for the keystrokes in between.
 6. **Refresh or disable.** A stale evidence snapshot (currently >45 days) blocks
    new qualification decisions until its live sources are checked again.
 
-The frozen 2026-07-31 exact comparison qualifies GLM `clerk` and `scout` while
-retaining explicit-only selection. Builder passed its first repeated pack and
-moves only from candidate to provisional; it still requires
-`--allow-provisional`. Reviewer remains disabled. Builder runs at
+The frozen 2026-08-14 exact comparison selects GLM-5.3/`claude-zai`/`max`.
+Clerk and scout are qualified explicit-only; builder passed its first repeated
+GLM-5.3 pack and remains provisional explicit-only, so it still requires
+`--allow-provisional`. GLM-5.3/`high` is blocked after one builder attempt
+claimed a change without applying it, and GLM-5.2/`high` is retained only as a
+historical baseline. Reviewer remains disabled. Builder runs at
 `--permission-mode acceptEdits` with no settings sources: the delegate can only
 apply in-workdir Edit/Write changes — it cannot run shell commands, and the
 harness refuses writes to sensitive files such as `.npmrc`. Environment and

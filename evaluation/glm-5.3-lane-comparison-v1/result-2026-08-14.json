@@ -1,0 +1,74 @@
+{
+  "schema_version": "delegation_glm_effort_comparison_result_v1",
+  "evaluated_at": "2026-08-14T00:00:00Z",
+  "run_id": "2026-08-14-glm-5.3-effort-comparison-v2",
+  "selected_tuple": {
+    "model": "glm-5.3",
+    "backend": "claude-zai",
+    "effort": "max"
+  },
+  "runtime_provenance": {
+    "runner_source_commit": "e687c8115a712555c3271a8344b6d82ab548e83c",
+    "runner_sha256": "9e66c7030d97dde6a896d176dfcdbfc71dd878862c309b322abc02f34a2b34b9",
+    "claude_code": "2.1.220",
+    "claude_binary_sha256": "8addc857f3fe64d5a0368af9ee50321b50afb4a6918ba3ef018ab84f5dbbe081",
+    "contract_sha256": "1dd5737a4f6c7888038ccae292939047fd88756734095e48d6e163640c89cdb9",
+    "post_observation_retries": 0,
+    "exact_content_identity_attested": true
+  },
+  "comparison_sources": {
+    "glm_5_3_attempts": [
+      "2026-08-14-glm-5.3-effort-comparison",
+      "2026-08-14-glm-5.3-effort-comparison-v2"
+    ],
+    "glm_5_2_baseline": "2026-07-31-glm-lane-qualification-v6",
+    "reused_attempt": "high/clerk/r1 from the first run; every other scored GLM-5.3 attempt is from v2"
+  },
+  "invalidated_preflights": [
+    {
+      "run": "2026-08-14-glm-5.3-effort-comparison",
+      "attempts": ["high/clerk/r2", "high/clerk/r3", "high/scout/r1", "high/scout/r2", "high/scout/r3", "high/builder/r1"],
+      "provider_reached": false,
+      "model_output_observed": false,
+      "reason": "orchestrator_pty_suspended_claude_capability_probe"
+    }
+  ],
+  "efforts": {
+    "high": {
+      "eligible": false,
+      "total_elapsed_seconds": 376,
+      "provider_cost_usd": 0.362103,
+      "lanes": {
+        "clerk": {"valid_repeats": 3, "required_repeats": 3, "mean_score": 1.0, "elapsed_seconds": [16, 22, 21], "provider_cost_usd": 0.042976, "threshold_passed": true},
+        "scout": {"valid_repeats": 3, "required_repeats": 3, "mean_score": 1.0, "elapsed_seconds": [64, 78, 80], "provider_cost_usd": 0.229979, "threshold_passed": true},
+        "builder": {"valid_repeats": 2, "required_repeats": 3, "mean_score": 1.0, "elapsed_seconds": [22, 17, 56], "provider_cost_usd": 0.089148, "all_checker_runs_pass": false, "void_reasons": ["claimed_without_fixture_change"], "threshold_passed": false}
+      },
+      "decision": "blocked"
+    },
+    "max": {
+      "eligible": true,
+      "total_elapsed_seconds": 487,
+      "provider_cost_usd": 0.622429,
+      "tokens": {"input": 28547, "output": 15774, "reasoning": 0, "cache_read": 170688, "cache_write": 0},
+      "lanes": {
+        "clerk": {"task_count": 6, "valid_repeats": 3, "required_repeats": 3, "mean_score": 1.0, "elapsed_seconds": [29, 23, 16], "provider_cost_usd": 0.077282, "threshold_passed": true, "decision": "qualified"},
+        "scout": {"task_count": 7, "valid_repeats": 3, "required_repeats": 3, "mean_score": 1.0, "elapsed_seconds": [77, 87, 61], "provider_cost_usd": 0.285589, "threshold_passed": true, "decision": "qualified"},
+        "builder": {"task_count": 6, "valid_repeats": 3, "required_repeats": 3, "mean_score": 1.0, "elapsed_seconds": [64, 63, 67], "provider_cost_usd": 0.259558, "all_checker_runs_pass": true, "threshold_passed": true, "decision": "provisional"}
+      },
+      "decision": "selected"
+    }
+  },
+  "glm_5_2_high_baseline": {
+    "total_elapsed_seconds": 976,
+    "provider_cost_usd": 1.159437,
+    "lane_mean_scores": {"clerk": 1.0, "scout": 1.0, "builder": 1.0}
+  },
+  "selection_decision": "Select glm-5.3/claude-zai/max. It passes every preregistered lane threshold; high is ineligible after an observed builder VOID.",
+  "limitations": [
+    "The packs are bounded synthetic qualification tasks, not broad model-quality benchmarks.",
+    "Provider-reported cost is transport telemetry and may not equal the user's Coding Plan billing.",
+    "The comparison qualifies only the exact model, backend, effort, runner, permissions, and named lanes.",
+    "No frontend-specific, reviewer, judgement, security, or policy-annotation lane was evaluated.",
+    "The first orchestration attempt used a PTY that suspended capability probes; only its already-valid high/clerk/r1 output was reused, and pre-provider failures were explicitly invalidated."
+  ]
+}

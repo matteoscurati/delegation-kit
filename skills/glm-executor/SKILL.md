@@ -1,22 +1,22 @@
 ---
 name: glm-executor
 description: >-
-  Dispatch a gate-approved GLM-5.2 lane through delegation-glm. Qualified lanes
+  Dispatch a gate-approved GLM-5.3 lane through delegation-glm. Qualified lanes
   remain explicit-only; provisional lanes require an explicit
   --allow-provisional decision. Never use it as a silent fallback.
 ---
 
-# GLM-5.2 executor bridge
+# GLM-5.3 executor bridge
 
-GLM-5.2 is an optional external executor, not a native Claude or Codex model.
+GLM-5.3 is an optional external executor, not a native Claude or Codex model.
 Before dispatch, run `delegation-glm check --json`. The current gate exposes
 `clerk` and `scout` in `qualified_lanes`, but keeps them explicit-only rather
 than making either an automatic default. `builder` is provisional after its
 first exact local pack; use it only after an explicit decision and pass
-`--allow-provisional`.
-`policy-annotation` at `high` is candidate/blocked and may be used only by a
-pre-registered allowlisted evaluation manifest. It is read-only, cannot promote
-itself, and does not qualify the general judgement lane.
+`--allow-provisional`. Every operational lane is pinned to `max`; the evaluated
+`high` tuple remains blocked after one builder attempt failed to modify its
+fixture. Reviewer is disabled; policy annotation is candidate/blocked and may
+run only through a separately allowlisted evaluation manifest.
 
 Builder scope limit: the bridge dispatches the delegate at
 `--permission-mode acceptEdits` with no settings sources, so it can only apply
@@ -27,9 +27,12 @@ toolchain fixes that need exactly those actions are not routable to this lane;
 the lead closes them. Observed 2026-08-04: a toolchain dispatch returned
 analysis only (checks honestly marked unexecuted) for $0.88 and ~6.6 minutes.
 
-The frozen 2026-07-31 comparison ran three no-retry attempts for GLM and both
-incumbents per lane. Clerk and scout matched the best incumbent; builder passed
-all deterministic checkers but stops at provisional. Reviewer is not dispatchable. The installed routing JSON remains
+The frozen 2026-08-14 comparison ran three no-retry attempts per lane at both
+`high` and `max`. Max scored 1.0 in every lane and passed every builder checker;
+clerk and scout qualified explicit-only, while builder stops at provisional.
+Compared with the historical GLM-5.2/high pack it preserved quality while
+roughly halving total elapsed time and provider-reported cost. Reviewer is not
+dispatchable. The installed routing JSON remains
 authoritative if a later versioned evaluation changes that set.
 `delegation-evidence lane builder` shows the dated external rows: they provide
 context, not a local harness score and not permission to widen the gate.
@@ -48,6 +51,10 @@ delegation-glm run --lane builder --effort auto --allow-provisional \
 needs a key: `ZAI_API_KEY` in the environment, else the 600-mode key the
 installer stored. Keep `--effort auto`; an explicit effort the gate did not pin
 is refused (78), and only an `--evaluation` run may measure a new combination.
+The capability probe has a ten-second fail-closed timeout. For a deliberate
+diagnostic with a separately verified native Claude Code binary, set
+`DELEGATION_GLM_CLAUDE_BIN` to its absolute executable path; this changes
+runtime provenance, so never use it to evade a failed capability check.
 That flag also supports manifest-bound clerk/scout/builder qualification when
 the versioned gate marks the lane evaluation-eligible, but
 requires `--evaluation-manifest`; never use it for ordinary work.

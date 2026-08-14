@@ -27,15 +27,15 @@ cd "$ROOT"
 expect_success bin/delegation-route check --json
 bin/delegation-glm check --json >"$TMP/glm-check.json"
 jq -e '
+  .model == "glm-5.3" and
   .qualified_lanes == ["clerk","scout"] and
   .provisional_lanes == ["builder"] and
-  .efforts == ["high"]
+  .efforts == ["max"]
 ' "$TMP/glm-check.json" >/dev/null
 pass=$((pass + 1))
 
-# GLM-5.3 is registered as two exact effort candidates without weakening the
-# still-selected GLM-5.2 route. A candidate check can describe its identity but
-# must expose no dispatchable lane.
+# GLM-5.3 high remains a blocked candidate while max is the selected route. A
+# candidate check can describe its identity but must expose no dispatchable lane.
 env DELEGATION_GLM_ROUTING_FILE="$ROOT/config/glm-5.3-high-routing.json" \
   DELEGATION_GLM_CLAUDE_BIN=/usr/bin/true \
   bin/delegation-glm check --json >"$TMP/glm53-high-check.json"
@@ -48,14 +48,14 @@ env DELEGATION_GLM_ROUTING_FILE="$ROOT/config/glm-5.3-max-routing.json" \
   DELEGATION_GLM_CLAUDE_BIN=/usr/bin/true \
   bin/delegation-glm check --json >"$TMP/glm53-max-check.json"
 jq -e '
-  .model == "glm-5.3" and .qualified_lanes == [] and
-  .provisional_lanes == [] and .efforts == []
+  .model == "glm-5.3" and .qualified_lanes == ["clerk","scout"] and
+  .provisional_lanes == ["builder"] and .efforts == ["max"]
 ' "$TMP/glm53-max-check.json" >/dev/null
 pass=$((pass + 1))
 bin/delegation-route lane builder --json >"$TMP/builder-candidates.json"
 jq -e '
   any(.[]; .profile == "glm53-high-builder" and .status == "candidate" and .selection == "blocked") and
-  any(.[]; .profile == "glm53-max-builder" and .status == "candidate" and .selection == "blocked")
+  any(.[]; .profile == "glm53-max-builder" and .status == "provisional" and .selection == "explicit-only")
 ' "$TMP/builder-candidates.json" >/dev/null
 pass=$((pass + 1))
 
@@ -135,14 +135,16 @@ expect_failure 65 env DELEGATION_ROUTING_GATES_FILE="$TMP/misplaced-manifest.jso
   bin/delegation-route check --json
 jq '.profiles["glm-scout"].lanes.scout.evaluation_manifest_sha256 =
       ["aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"] |
-    .profiles["glm-scout"].lanes.scout.status = "provisional"' \
+    .profiles["glm-scout"].lanes.scout.status = "provisional" |
+    .profiles["glm-scout"].lanes.scout.selection = "explicit-only"' \
   config/routing-gates.json >"$TMP/glm-lane-central.json"
 jq '.lanes.scout.backends["claude-zai"].evaluation_manifest_sha256 =
       ["aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"] |
     .lanes.scout.backends["claude-zai"].status = "provisional" |
     .lanes.scout.backends["claude-zai"].qualified = false |
-    .qualified_lanes = ["clerk"] |
-    .provisional_lanes = ["scout","builder"]' \
+    .lanes.scout.backends["claude-zai"].selection = "explicit-only" |
+    .qualified_lanes = [] |
+    .provisional_lanes = ["scout"]' \
   config/glm-5.2-routing.json >"$TMP/glm-lane-executable.json"
 env DELEGATION_ROUTING_GATES_FILE="$TMP/glm-lane-central.json" \
   DELEGATION_GLM_ROUTING_FILE="$TMP/glm-lane-executable.json" \
@@ -282,7 +284,7 @@ bin/delegation-route resolve --lane policy-annotation --json >"$TMP/policy-annot
 jq -e '
   (.defaults | length) == 0 and (.fallbacks | length) == 0 and (.explicit | length) == 0 and
   ([.blocked[].profile] | sort) ==
-    ["fable-policy-annotator","glm-policy-annotation","grok-build","kimi-k3",
+    ["fable-policy-annotator","glm-policy-annotation","glm53-max-policy-annotation","grok-build","kimi-k3",
      "opus-policy-annotator","qwen3.8-max","sol-max-policy-annotator"]
 ' "$TMP/policy-annotation.json" >/dev/null
 jq -e '
