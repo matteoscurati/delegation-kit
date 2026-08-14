@@ -35,3 +35,8 @@ GLM-5.3/high preserves the 1.0 lane scores while reducing total elapsed time
 from 976 to 372 seconds and provider-reported cost from $1.159437 to $0.334234.
 Clerk and scout qualify explicit-only; builder remains provisional explicit-only
 after the bounded synthetic pack.
+
+After changing the operational default to the selected high gate, the exact
+final runner was requalified separately: all nine attempts again scored 1.0,
+all builder checkers passed, and the public result binds that run's aggregate,
+scores, provenance, and manifests by SHA-256.

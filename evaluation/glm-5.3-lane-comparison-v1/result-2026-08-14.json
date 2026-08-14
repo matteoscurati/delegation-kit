@@ -16,6 +16,35 @@
     "post_observation_retries": 0,
     "exact_content_identity_attested": true
   },
+  "operational_requalification": {
+    "run_id": "2026-08-14-glm-5.3-high-operational-requalification-v5",
+    "model": "glm-5.3",
+    "backend": "claude-zai",
+    "effort": "high",
+    "runner_source_commit": "4ac27b5648f576e3791c509f655c43bfc2a43d68",
+    "runner_sha256": "1effc4fcacdbfa1b830c8de30e347868c130e0d04bcd8b9891db771b9efd2422",
+    "valid_repeats_per_lane": 3,
+    "lane_mean_scores": {
+      "clerk": 1.0,
+      "scout": 1.0,
+      "builder": 1.0
+    },
+    "all_builder_checkers_pass": true,
+    "total_elapsed_seconds": 368,
+    "provider_cost_usd": 0.390474,
+    "post_observation_retries": 0,
+    "exact_content_identity_attested": true,
+    "receipt_sha256": {
+      "aggregate": "a0041905bda8f6249627c31499bfab9d7ed9d344a4bf3afa26e4c98da4a2c24f",
+      "scores": "60b46588f69ec02254ae63a277c08d2c09cd9a3b5aae195d98dc3f7945e1277b",
+      "provenance": "f4512e8437b357e5df623fbb517b40a5071b37cd3d0e2326e35006ab91b00906",
+      "manifests": {
+        "clerk": "419f29b989e2c1958d39fb81b4cfa9417d14cdfa73138fffc908998984e55f41",
+        "scout": "df4e00918143d83765213ed3bba83c2592e1bd99d51a5532ee5ddc429b0f2098",
+        "builder": "2b82e75b7715fb7692388b08977ef91fc898b1a07d37c0b63c7abbd28c57d67f"
+      }
+    }
+  },
   "receipt_sha256": {
     "comparison": "b006afbdf8fe70565b22151f6bc6cd169387151d057b71482b9f91f27cca0da3",
     "high_aggregate": "12b8ba35188385b22903917cad8e9b7e8a3a2e1dc7d57a3b3cdb122f6a82af0c",

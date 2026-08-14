@@ -13,6 +13,9 @@ All notable changes to delegation-kit are documented here.
   over max (505s, $0.719138). Clerk and scout are qualified explicit-only,
   builder remains provisional explicit-only, max is blocked as not selected,
   and GLM-5.2 is retained only as a superseded historical baseline.
+  The selected high tuple was then requalified 9/9 on the final high-default
+  runner bytes; the public result records digests for both the comparison and
+  operational receipts.
 - The evidence snapshot records Z.ai's GLM-5.3 release, Coding Plan access,
   effort mapping, and launch benchmark claims as contextual-only evidence. No
   independent tracked leaderboard had a GLM-5.3 row on 2026-08-14.
