@@ -98,53 +98,17 @@
       "model": "claude-fable-5", "harness": "claude-code", "effort": "xhigh",
       "lanes": {"policy-annotation": {"status": "candidate", "selection": "blocked", "exact_evidence_ids": [], "context_evidence_ids": [], "evaluation_manifest_sha256": ["d9471fd8573f81fd0aae786054182a964864acf5db51e95d95923195aa21e6cc"], "evidence_gap": "The frozen v1 transport failed; no fresh held-out policy-annotation result exists for the xhigh Claude Code variant."}}
     },
-    "glm-clerk": {
-      "model": "glm-5.2", "harness": "claude-zai", "effort": "high",
-      "lanes": {"clerk": {"status": "disabled", "selection": "blocked", "exact_evidence_ids": [], "context_evidence_ids": ["aa-claude-glm-5.2", "zai-glm-5.2-launch"], "local_evaluation": {"run_id": "2026-07-31-glm-lane-qualification-v6", "task_count": 6, "repeats": 3, "valid_repeats": 3, "mean_score": 1.0, "best_incumbent_mean_score": 1.0, "confidence": "historical", "limitations": "Superseded exact local tuple retained only as the GLM-5.3 comparison baseline."}, "fallback": "luna-clerk"}}
-    },
-    "glm-scout": {
-      "model": "glm-5.2", "harness": "claude-zai", "effort": "high",
-      "lanes": {"scout": {"status": "disabled", "selection": "blocked", "exact_evidence_ids": [], "context_evidence_ids": ["aa-claude-glm-5.2", "arena-agent-glm-5.2-max-2026-07-28", "zai-glm-5.2-launch"], "local_evaluation": {"run_id": "2026-07-31-glm-lane-qualification-v6", "task_count": 7, "repeats": 3, "valid_repeats": 3, "mean_score": 1.0, "best_incumbent_mean_score": 1.0, "confidence": "historical", "limitations": "Superseded exact local tuple retained only as the GLM-5.3 comparison baseline."}, "evidence_gap": "Superseded by the exact GLM-5.3/high comparison.", "fallback": "terra-scout"}}
-    },
-    "glm-builder": {
-      "model": "glm-5.2", "harness": "claude-zai", "effort": "high",
-      "lanes": {"builder": {"status": "disabled", "selection": "blocked", "exact_evidence_ids": [], "context_evidence_ids": ["aa-claude-glm-5.2", "zai-glm-5.2-launch"], "local_evaluation": {"run_id": "2026-07-31-glm-lane-qualification-v6", "task_count": 6, "repeats": 3, "valid_repeats": 3, "mean_score": 1.0, "best_incumbent_mean_score": 1.0, "all_checker_runs_pass": true, "confidence": "historical", "limitations": "Superseded exact local tuple retained only as the GLM-5.3 comparison baseline."}, "evidence_gap": "Superseded by the exact GLM-5.3/high comparison.", "fallback": "terra-builder"}}
-    },
-    "glm-reviewer": {
-      "model": "glm-5.2", "harness": "claude-zai", "effort": "high",
-      "lanes": {"reviewer": {"status": "disabled", "selection": "blocked", "exact_evidence_ids": [], "context_evidence_ids": [], "evidence_gap": "No exact review precision/recall row."}}
-    },
-    "glm-policy-annotation": {
-      "model": "glm-5.2", "harness": "claude-zai", "effort": "high",
-      "lanes": {"policy-annotation": {"status": "candidate", "selection": "blocked", "exact_evidence_ids": [], "context_evidence_ids": [], "evaluation_manifest_sha256": ["4adabaa2c6b4978b9dbfaa7088836805c738c28110a6309d0d05e2430b86eef7", "1fcb2882628c2a81801d177d40bb1859639d0fc97fd4176cc73d6b83a4fc4c57"], "evidence_gap": "No frozen local policy-annotation result exists for the highest supported claude-zai effort."}}
-    },
-    "glm53-high-clerk": {
-      "model": "glm-5.3", "harness": "claude-zai", "effort": "high",
-      "lanes": {"clerk": {"status": "qualified", "selection": "explicit-only", "exact_evidence_ids": [], "context_evidence_ids": ["zai-glm-5.3-launch-unspecified-2026-08-14"], "local_evaluation": {"run_id": "2026-08-14-glm-5.3-high-operational-requalification-v5", "task_count": 6, "repeats": 3, "valid_repeats": 3, "mean_score": 1.0, "glm_5_2_baseline_mean_score": 1.0, "mean_latency_seconds": 22.33, "provider_cost_usd": 0.055239, "confidence": "bounded-repeated", "limitations": "Exact synthetic extraction pack on the final high-default runner; explicit-only selection is retained."}, "fallback": "luna-clerk"}}
-    },
-    "glm53-high-scout": {
-      "model": "glm-5.3", "harness": "claude-zai", "effort": "high",
-      "lanes": {"scout": {"status": "qualified", "selection": "explicit-only", "exact_evidence_ids": [], "context_evidence_ids": ["zai-glm-5.3-launch-unspecified-2026-08-14"], "local_evaluation": {"run_id": "2026-08-14-glm-5.3-high-operational-requalification-v5", "task_count": 7, "repeats": 3, "valid_repeats": 3, "mean_score": 1.0, "glm_5_2_baseline_mean_score": 1.0, "mean_latency_seconds": 73.67, "provider_cost_usd": 0.25243, "confidence": "bounded-repeated", "limitations": "Exact synthetic trace pack on the final high-default runner; explicit-only selection is retained."}, "fallback": "terra-scout"}}
-    },
-    "glm53-high-builder": {
-      "model": "glm-5.3", "harness": "claude-zai", "effort": "high",
-      "lanes": {"builder": {"status": "provisional", "selection": "explicit-only", "exact_evidence_ids": [], "context_evidence_ids": ["zai-glm-5.3-launch-unspecified-2026-08-14"], "local_evaluation": {"run_id": "2026-08-14-glm-5.3-high-operational-requalification-v5", "task_count": 6, "repeats": 3, "valid_repeats": 3, "mean_score": 1.0, "glm_5_2_baseline_mean_score": 1.0, "all_checker_runs_pass": true, "mean_latency_seconds": 26.67, "provider_cost_usd": 0.082805, "confidence": "bounded-repeated", "limitations": "Exact local GLM-5.3 builder pack on the final high-default runner; promotion stops at provisional."}, "fallback": "terra-builder"}}
-    },
-    "glm53-high-reviewer": {
-      "model": "glm-5.3", "harness": "claude-zai", "effort": "high",
-      "lanes": {"reviewer": {"status": "disabled", "selection": "blocked", "exact_evidence_ids": [], "context_evidence_ids": [], "evidence_gap": "No exact review precision/recall result."}}
-    },
     "glm53-max-clerk": {
       "model": "glm-5.3", "harness": "claude-zai", "effort": "max",
-      "lanes": {"clerk": {"status": "candidate", "selection": "blocked", "exact_evidence_ids": [], "context_evidence_ids": ["zai-glm-5.3-launch-unspecified-2026-08-14"], "local_evaluation": {"run_id": "2026-08-14-glm-5.3-effort-comparison-v4", "task_count": 6, "repeats": 3, "valid_repeats": 3, "mean_score": 1.0, "mean_latency_seconds": 19.33, "provider_cost_usd": 0.070041, "decision": "passed-not-selected"}, "evidence_gap": "Max matched quality but was not selected by the preregistered efficiency rule.", "fallback": "luna-clerk"}}
+      "lanes": {"clerk": {"status": "qualified", "selection": "explicit-only", "exact_evidence_ids": [], "context_evidence_ids": ["zai-glm-5.3-launch-unspecified-2026-08-14"], "local_evaluation": {"run_id": "2026-08-14-glm-5.3-effort-comparison-v4", "task_count": 6, "repeats": 3, "valid_repeats": 3, "mean_score": 1.0, "mean_latency_seconds": 19.33, "provider_cost_usd": 0.070041, "decision": "owner-selected"}, "fallback": "luna-clerk"}}
     },
     "glm53-max-scout": {
       "model": "glm-5.3", "harness": "claude-zai", "effort": "max",
-      "lanes": {"scout": {"status": "candidate", "selection": "blocked", "exact_evidence_ids": [], "context_evidence_ids": ["zai-glm-5.3-launch-unspecified-2026-08-14"], "local_evaluation": {"run_id": "2026-08-14-glm-5.3-effort-comparison-v4", "task_count": 7, "repeats": 3, "valid_repeats": 3, "mean_score": 1.0, "mean_latency_seconds": 84.0, "provider_cost_usd": 0.371318, "decision": "passed-not-selected"}, "evidence_gap": "Max matched quality but was not selected by the preregistered efficiency rule.", "fallback": "terra-scout"}}
+      "lanes": {"scout": {"status": "qualified", "selection": "explicit-only", "exact_evidence_ids": [], "context_evidence_ids": ["zai-glm-5.3-launch-unspecified-2026-08-14"], "local_evaluation": {"run_id": "2026-08-14-glm-5.3-effort-comparison-v4", "task_count": 7, "repeats": 3, "valid_repeats": 3, "mean_score": 1.0, "mean_latency_seconds": 84.0, "provider_cost_usd": 0.371318, "decision": "owner-selected"}, "fallback": "terra-scout"}}
     },
     "glm53-max-builder": {
       "model": "glm-5.3", "harness": "claude-zai", "effort": "max",
-      "lanes": {"builder": {"status": "candidate", "selection": "blocked", "exact_evidence_ids": [], "context_evidence_ids": ["zai-glm-5.3-launch-unspecified-2026-08-14"], "local_evaluation": {"run_id": "2026-08-14-glm-5.3-effort-comparison-v4", "task_count": 6, "repeats": 3, "valid_repeats": 3, "mean_score": 1.0, "all_checker_runs_pass": true, "mean_latency_seconds": 65.0, "provider_cost_usd": 0.277779, "decision": "passed-not-selected"}, "evidence_gap": "Max matched quality but was not selected by the preregistered efficiency rule.", "fallback": "terra-builder"}}
+      "lanes": {"builder": {"status": "provisional", "selection": "explicit-only", "exact_evidence_ids": [], "context_evidence_ids": ["zai-glm-5.3-launch-unspecified-2026-08-14"], "local_evaluation": {"run_id": "2026-08-14-glm-5.3-effort-comparison-v4", "task_count": 6, "repeats": 3, "valid_repeats": 3, "mean_score": 1.0, "all_checker_runs_pass": true, "mean_latency_seconds": 65.0, "provider_cost_usd": 0.277779, "decision": "owner-selected"}, "qualification_basis": "Owner selected max as the sole GLM-5.3 effort after the exact comparison; bounded synthetic evidence keeps builder provisional.", "fallback": "terra-builder"}}
     },
     "glm53-max-reviewer": {
       "model": "glm-5.3", "harness": "claude-zai", "effort": "max",

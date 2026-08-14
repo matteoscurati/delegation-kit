@@ -95,7 +95,7 @@ provisional/explicit-only behind `--allow-provisional`. See
 | 5 native profiles | `agents/*.toml` | `luna-clerk` · `terra-scout` · `terra-builder` · `sol-reviewer` · `sol-judge` |
 | 5 ephemeral profiles | `*.config.toml` | for `codex exec --ephemeral -p <name>` |
 | collaboration policy | appended to `AGENTS.md` | usage-aware routing **+ a Codex→Claude bridge** |
-| optional GLM skill | `skills/glm-executor/` | same fail-closed GLM-5.3/high executor path |
+| optional GLM skill | `skills/glm-executor/` | same fail-closed GLM-5.3/max executor path |
 | optional Gemini skill | `skills/gemini-executor/` | same fail-closed Gemini 3.6 Flash executor path |
 | optional Kimi skill | `skills/kimi-executor/` | same fail-closed provisional Kimi K3 path |
 | provisional Grok skill | `skills/grok-executor/` | same fail-closed Grok 4.6 builder path |
@@ -108,12 +108,12 @@ The universal installer also adds `delegation-schema`, `delegation-glm`,
 `delegation-evidence`, the ZIP-only `delegation-epoch` importer, and the read-only
 central router `delegation-route` under
 `~/.local/bin`, with versioned gates under `~/.local/share/delegation-kit/`.
-GLM-5.3/high `clerk` and `scout` are qualified but remain explicit-only; `builder` is
+GLM-5.3/max `clerk` and `scout` are qualified but remain explicit-only; `builder` is
 provisional and requires an explicit decision plus `--allow-provisional`.
 Reviewer is disabled; policy annotation remains a blocked evaluation-only
-candidate. GLM-5.2 is retained only as the historical comparison baseline, and
-the evaluated GLM-5.3/max tuple remains blocked because high matched its quality
-with lower elapsed time and provider-reported cost. The runner refuses every
+candidate at `glm-5.3/max`. The only shipped GLM gate is GLM-5.3/max: GLM-5.2
+and GLM-5.3/high have no installed or selectable profile. Their frozen comparison
+receipts remain historical evidence only. The runner refuses every
 blocked lane and every effort the gate did not pin, and also refuses execution unless at least one of Claude Code or Codex is
 installed; it is an agent option, not a standalone GLM client. The installer asks
 for the Z.AI API key and stores it in `~/.local/share/delegation-kit/config/zai.env`

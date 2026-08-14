@@ -11,7 +11,7 @@ while [ -L "$SOURCE" ]; do
   [[ "$SOURCE" = /* ]] || SOURCE="$SOURCE_DIR/$SOURCE"
 done
 ROOT="$(cd "$(dirname "$SOURCE")/.." && pwd)"
-ROUTING_FILE="${DELEGATION_GLM_ROUTING_FILE:-$ROOT/config/glm-5.3-high-routing.json}"
+ROUTING_FILE="${DELEGATION_GLM_ROUTING_FILE:-$ROOT/config/glm-5.3-max-routing.json}"
 CENTRAL_GATES="${DELEGATION_ROUTING_GATES_FILE:-$ROOT/config/routing-gates.json}"
 ROUTER="$ROOT/bin/delegation-route"
 SCHEMA_COMPILER="$ROOT/bin/delegation-schema"
@@ -59,7 +59,7 @@ usage() {
 Usage:
   delegation-glm check [--json]
   delegation-glm run --lane <clerk|scout|builder|reviewer|policy-annotation> \
-    [--effort <auto|high|max>] [--backend <auto|claude-zai>] \
+    [--effort <auto|max>] [--backend <auto|claude-zai>] \
     --prompt-file <path> --output <path> --workdir <path> \
     [--metrics <path>] [--max-cost-usd <amount>] [--debug-dir <path>] \
     [--allow-provisional] [--evaluation --evaluation-manifest <path>]
@@ -85,8 +85,8 @@ load_gate_identity() {
   [ -r "$ROUTING_FILE" ] || die 78 "cannot read executable GLM gate $ROUTING_FILE"
   MODEL="$(jq -r '.model // empty' "$ROUTING_FILE" 2>/dev/null)"
   PROFILE_PREFIX="$(jq -r '.profile_prefix // empty' "$ROUTING_FILE" 2>/dev/null)"
-  [[ "$MODEL" =~ ^glm-5\.[0-9]+$ ]] \
-    || die 78 "executable GLM gate has an invalid model identity"
+  [ "$MODEL" = "glm-5.3" ] \
+    || die 78 "executable GLM gate must select glm-5.3"
   [[ "$PROFILE_PREFIX" =~ ^[a-z0-9-]+$ ]] \
     || die 78 "executable GLM gate has an invalid profile prefix"
 }
@@ -612,7 +612,7 @@ run_command() {
     esac
   done
   case "$lane" in clerk|scout|builder|reviewer|policy-annotation) ;; *) die 64 "invalid lane: $lane" ;; esac
-  case "$effort" in auto|high|max) ;; *) die 64 "invalid effort: $effort" ;; esac
+  case "$effort" in auto|max) ;; *) die 64 "invalid effort: $effort (only max is supported)" ;; esac
   case "$backend" in auto|claude-zai) ;; *) die 64 "invalid backend: $backend" ;; esac
   [ -f "$prompt_file" ] || die 64 "prompt file missing: $prompt_file"
   if [ "$evaluation" = 1 ]; then
@@ -686,7 +686,7 @@ run_command() {
       || die 78 "lane '$lane' backend '$backend' is qualified only at effort '$expected_effort'"
   fi
   if [ "$evaluation" = 1 ]; then
-    case "$effort" in high|max) ;; *) die 78 "GLM qualification evaluation supports only effort 'high' or 'max'" ;; esac
+    [ "$effort" = max ] || die 78 "GLM qualification evaluation supports only effort 'max'"
     evaluation_manifest "$evaluation_manifest_path" "$prompt_file" "$effort" "$lane" "$workdir"
     max_cost="$EVALUATION_MAX_COST_USD"
   fi

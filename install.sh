@@ -51,12 +51,11 @@ chmod 755 "$DATA_HOME/bin/delegation-schema"
 ln -sfn "$DATA_HOME/bin/delegation-schema" "$BIN_HOME/delegation-schema"
 echo "Schema transport compiler -> $BIN_HOME/delegation-schema (Claude/Codex, read-only)"
 cp "$KIT/bin/delegation-glm" "$DATA_HOME/bin/delegation-glm"
-cp "$KIT/config/glm-5.2-routing.json" "$DATA_HOME/config/glm-5.2-routing.json"
-cp "$KIT/config/glm-5.3-high-routing.json" "$DATA_HOME/config/glm-5.3-high-routing.json"
+rm -f "$DATA_HOME/config/glm-5.2-routing.json" "$DATA_HOME/config/glm-5.3-high-routing.json"
 cp "$KIT/config/glm-5.3-max-routing.json" "$DATA_HOME/config/glm-5.3-max-routing.json"
 chmod 755 "$DATA_HOME/bin/delegation-glm"
 ln -sfn "$DATA_HOME/bin/delegation-glm" "$BIN_HOME/delegation-glm"
-echo "GLM bridge -> $BIN_HOME/delegation-glm (active gate: $DATA_HOME/config/glm-5.3-high-routing.json; GLM-5.2 historical gate retained)"
+echo "GLM bridge -> $BIN_HOME/delegation-glm (only gate: $DATA_HOME/config/glm-5.3-max-routing.json; stale 5.2/high gates removed)"
 
 # GLM's only transport is the Z.AI API, so without a key the lane is dead. Ask
 # once, interactively, and never overwrite an existing key without consent.

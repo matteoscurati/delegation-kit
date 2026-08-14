@@ -23,12 +23,11 @@ an explicit decision plus `--allow-provisional`. The bridge runs only through th
 backend, keyed by `ZAI_API_KEY` or the 600-mode key the installer stored. Prefer
 the incumbent for costly edits unless the provisional builder lane was selected deliberately. If the runtime or
 lane gate is absent, keep using the incumbent profile; never silently substitute.
-Every operational lane is pinned to `high`; the evaluated `max` tuple matched
-quality but remains blocked because the preregistered rule selected high on
-elapsed time and provider-reported cost. Reviewer is disabled; policy annotation
-remains candidate/blocked and evaluation-only.
-GLM-5.2 is retained only as historical
-comparison evidence and has no dispatchable lane.
+Every operational lane is pinned to `max`, selected explicitly by the owner.
+It is the only shipped GLM tuple: neither GLM-5.2 nor GLM-5.3/high has an
+installed or selectable route. Their frozen receipts remain historical evidence
+only. Reviewer is disabled; policy annotation remains candidate/blocked and
+evaluation-only at GLM-5.3/max.
 
 ## Optional Gemini 3.6 Flash executor
 

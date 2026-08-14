@@ -154,7 +154,7 @@
       "observed_at": "2026-07-25",
       "data_date": "2026-07-25",
       "scope": "Pairwise agentic software-engineering leaderboard reporting mean rank and dominance across repository tasks",
-      "limitations": "Only Fable 5, Grok 4.5, and GLM-5.2 among current targets are listed; Grok CLI and Claude Code results are contextual for different local bridges"
+      "limitations": "Only Fable 5, historical Grok 4.5, and historical GLM-5.2 among tracked targets are listed; Grok CLI and Claude Code results are contextual for different local bridges"
     },
     "apex-swe-2026-07-25": {
       "name": "Mercor APEX-SWE",

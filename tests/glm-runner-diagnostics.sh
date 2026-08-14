@@ -245,6 +245,14 @@ PATH="$TEST_TMP/bin:$PATH" TMPDIR="$TEST_TMP/runtime" \
 [ "$(cat "$TEST_TMP/results/qualified.out")" = PONG ] \
   || fail "qualified dispatch without provisional flag failed"
 
+rc=0
+PATH="$TEST_TMP/bin:$PATH" ZAI_API_KEY="fixture-key" FAKE_CLAUDE_CASE=success \
+  "$ROOT/bin/delegation-glm" run \
+    --lane scout --effort high --backend claude-zai \
+    --prompt-file "$TEST_TMP/prompt" --output "$TEST_TMP/results/high-effort.out" \
+    --workdir "$TEST_TMP/work" >/dev/null 2>&1 || rc=$?
+[ "$rc" -eq 64 ] || fail "removed high effort returned $rc, expected 64"
+
 # An explicit binary override is the binary capability-probed and dispatched;
 # the neighboring PATH fake returns PONG, so OVERRIDE proves there was no
 # post-probe re-resolution through PATH.
@@ -569,7 +577,7 @@ jq --arg scout "$LANE_SCOUT_MANIFEST_SHA" --arg builder "$LANE_BUILDER_MANIFEST_
 ' "$LANE_EVAL_ROOT/config/routing-gates.json" >"$LANE_CENTRAL_GATE"
 jq --arg scout "$LANE_SCOUT_MANIFEST_SHA" --arg builder "$LANE_BUILDER_MANIFEST_SHA" '
   .status = "provisional" |
-  .qualified_lanes = [] |
+  .qualified_lanes = ["clerk"] |
   .provisional_lanes = ["scout"] |
   .lanes.scout.backends["claude-zai"].qualified = false |
   .lanes.scout.backends["claude-zai"].status = "provisional" |

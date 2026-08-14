@@ -34,12 +34,14 @@ esac
 EOF
 chmod 700 "$TEST_TOOLS/claude"
 
-# Seed an upgrade-shaped install: a stale 4.5 gate plus a digest-valid archived
-# CLI that already exposes 4.6. The installer must replace the gate atomically
-# and recognize the retained archive only after current routing files exist.
+# Seed an upgrade-shaped install: stale Grok 4.5 and GLM 5.2/high gates plus a
+# digest-valid Grok archive. The installer must remove the stale gates and
+# recognize the retained archive only after current routing files exist.
 mkdir -p "$DATA/config" "$DATA/grok-cli/current" "$GROK_TEST_HOME"
 printf '%s\n' '{}' >"$GROK_TEST_HOME/auth.json"
 printf '%s\n' '{}' >"$DATA/config/grok-4.5-routing.json"
+printf '%s\n' '{}' >"$DATA/config/glm-5.2-routing.json"
+printf '%s\n' '{}' >"$DATA/config/glm-5.3-high-routing.json"
 cat >"$DATA/grok-cli/current/grok" <<'EOF'
 #!/usr/bin/env bash
 case "${1:-}" in
@@ -73,6 +75,12 @@ env CLAUDE_HOME="$TMP/claude" CODEX_HOME="$TMP/codex" \
   || fail 'upgrade retained the stale Grok 4.5 gate'
 [ -f "$DATA/config/grok-4.6-routing.json" ] \
   || fail 'upgrade did not install the Grok 4.6 gate'
+[ ! -e "$DATA/config/glm-5.2-routing.json" ] \
+  || fail 'upgrade retained the stale GLM 5.2 gate'
+[ ! -e "$DATA/config/glm-5.3-high-routing.json" ] \
+  || fail 'upgrade retained the stale GLM 5.3/high gate'
+[ -f "$DATA/config/glm-5.3-max-routing.json" ] \
+  || fail 'upgrade did not install the GLM 5.3/max gate'
 grep -q 'existing compatible Grok Build CLI archive retained' "$TMP/install.log" \
   || { sed 's/^/    /' "$TMP/install.log" >&2; fail 'upgrade falsely warned that the compatible Grok archive was unavailable'; }
 ok

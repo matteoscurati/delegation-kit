@@ -28,11 +28,10 @@ the lead closes them. Observed 2026-08-04: a toolchain dispatch returned
 analysis only (checks honestly marked unexecuted) for $0.88 and ~6.6 minutes.
 
 The frozen 2026-08-14 comparison ran three no-retry attempts per lane at both
-`high` and `max`. Both efforts scored 1.0 in every lane and passed every builder
-checker; the preregistered efficiency rule selected high. Clerk and scout
-qualified explicit-only, while builder stops at provisional. Compared with the
-historical GLM-5.2/high pack it preserved quality while sharply reducing total
-elapsed time and provider-reported cost. Reviewer is not
+`high` and `max`; both efforts scored 1.0 throughout and passed every builder
+checker. The owner subsequently selected max as the sole operational effort.
+GLM-5.2 and GLM-5.3/high survive only in immutable historical receipts. Clerk
+and scout qualify explicit-only, while builder stops at provisional. Reviewer is not
 dispatchable. The installed routing JSON remains
 authoritative if a later versioned evaluation changes that set.
 `delegation-evidence lane builder` shows the dated external rows: they provide
