@@ -7,16 +7,18 @@ promote a provisional or candidate lane.
 
 ## Verified snapshot
 
-The matrix below was verified on macOS 26.5.1 with Codex CLI `0.146.0` and
-Claude Code `2.1.220`. Numeric vendor versions are provenance only wherever the
-runner uses capability probing.
+The 0.15.0 release-integration gate was verified on **2026-08-16** on macOS
+26.5.1 with Codex CLI `0.146.1` and Claude Code `2.1.232`. Numeric vendor
+versions are provenance only wherever the runner uses capability probing.
 
-Every row below was exercised on **2026-08-05**, in one pass, against a single
-disposable fixture carrying a real off-by-one (`rolling_max` iterating
-`range(len(values) - size)`), a five-row CSV to aggregate, and an untyped CSS
-component. Read-only lanes had to describe or diagnose it; builder lanes had to
-turn the red acceptance check green in their own worktree copy. Nothing here is
-carried forward from an earlier snapshot.
+The role-oriented semantic matrix below was last exercised in full on
+**2026-08-05**, in one pass, against a single disposable fixture carrying a
+real off-by-one (`rolling_max` iterating `range(len(values) - size)`), a
+five-row CSV to aggregate, and an untyped CSS component. Read-only lanes had to
+describe or diagnose it; builder lanes had to turn the red acceptance check
+green in their own worktree copy. The 0.15.0 release gate did not claim to
+re-run unchanged semantic rows: it refreshed the install, routing, regression,
+and live bridge observations reported below.
 
 The Gemini row was previously recorded as unverifiable on the belief that the
 `agy` OAuth session had expired. It had not: the session was valid in the login
@@ -34,17 +36,23 @@ run rather than an absence.
 | Kimi K3 | `clerk`, `scout`, `builder`, `frontend-builder` | All four passed at native `max`. Clerk aggregated correctly; scout mapped the module and located the off-by-one by line; builder turned the check green confined to `src/window.py`; frontend-builder made the CSS component theme-aware through `prefers-color-scheme`, editing only `style.css`. The capability, sandbox, pin/tamper, signal, timeout, OAuth-finalization, and diagnostics regressions pass, including the shared-OAuth concurrency cases, and the live two-parallel `--oauth shared` smoke passed 2026-08-04 with a real mid-run token rotation. All operational lanes remain provisional; `builder` and `frontend-builder` are `preferred-explicit` as of 0.13.0 while `clerk`/`scout` stay `explicit-only`, and every one still requires `--allow-provisional`. |
 | Grok 4.6 | `builder`, `frontend-builder` | Introduced at `grok-build/high` on an explicit owner replacement decision. Current public builder and WebDev rows are contextual because their harnesses differ from the installed CLI. Both lanes remain provisional and `preferred-explicit`, require `--allow-provisional`, and rely on the checkout's authenticated compatibility smoke plus lead verification. |
 | Qwen3.8-Max | `builder` | Passed at `token-plan-openai/xhigh`. The lane is text-only, so the brief carried the file contents and the runner returned a unified diff, semantically correct on the first attempt. Left to itself the model emits `--- src/window.py` / `+++ src/window.py` without the conventional `a/`/`b/` prefixes, so a bare `git apply` — which defaults to `-p1` and strips one component — looks for `window.py` and fails on a patch that is actually correct; `-p0` applies it cleanly. Asking for prefixed headers in the brief fixes it at the source: re-dispatched with that instruction, the model returned `--- a/src/window.py` and the patch applied with a **bare `git apply`**, check printing `PASS`. `skills/qwen-executor` now carries that wording. The lane is provisional explicit-only and requires `--allow-provisional`; every other lane still fails closed with exit `78`. |
-| Claude↔Codex bridge | both directions | `doctor.sh --ping` completed both real round trips. |
+| Claude↔Codex bridge | both directions | On 2026-08-16, `doctor.sh --ping` returned `PONG` for the Claude→Codex round-trip and accepted the configured model and effort at the Claude endpoint used by the Codex→Claude path. |
 
-The full doctor result for this snapshot was `44 OK, 0 WARN, 0 FAIL` with
-`--ping` on 2026-08-05, and both live round trips returned. The ten regression
-suites passed through `./run-tests.sh` in 51s of wall clock — the figure moves
-with machine load, so treat it as one observation rather than a bound. They include 37 central routing checks, 14
-install-marker checks, 8 version-surface checks, and 6 Epoch ZIP checks. Every suite except `doctor.sh --ping` also runs in CI on each pull
-request; the ping stays local because it needs authenticated Claude and Codex
-CLIs. A two-pass installation into empty temporary Claude/Codex
-homes produced one guarded policy block per host and byte-identical agents,
-profiles, skills, runners, and gates.
+The full 0.15.0 doctor result was `42 OK, 0 WARN, 0 FAIL` with `--ping` on
+2026-08-16. The installed version and commit matched the checkout; the
+Claude→Codex round-trip returned `PONG`, and the Claude endpoint accepted the
+configured model and effort. The ten regression suites passed through
+`./run-tests.sh` in 52s of wall clock — the figure moves with machine load, so
+treat it as one observation rather than a bound. They include 41 central
+routing checks, 15 install-marker checks, 8 version-surface checks, and 6 Epoch
+ZIP checks. The routing gate specifically verifies `sol-reviewer/high` as the
+provisional default for `material-review` while leaving `sol-judge` and
+judgement explicit-only. Every suite except `doctor.sh --ping` also runs in CI
+on each pull request; the ping stays local because it needs authenticated
+Claude and Codex CLIs. The 2026-08-05 full semantic pass additionally included
+a two-pass installation into empty temporary Claude/Codex homes, which produced
+one guarded policy block per host and byte-identical agents, profiles, skills,
+runners, and gates.
 
 **Smoke the installed runners, not the ones in the checkout.** The key-bearing
 lanes resolve their credential file relative to their own root:
