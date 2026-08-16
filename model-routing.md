@@ -186,6 +186,11 @@ automatically, and never merges or deploys.
 
 ## How to apply
 
+- **Codex material review defaults to Sol.** Use `sol-reviewer` at `high` for
+  material correctness review. The route is provisional because no exact
+  review precision/recall row exists, so the lead must still verify its output.
+  This default is role-scoped: routine review stays on its cheap lane, while
+  `sol-judge` and `super-judgement` remain explicit-only.
 - **These are defaults, not limits.** Judge the output, not the price tag: if a
   cheaper model's result doesn't meet the bar, redo it on a smarter one. Escalating
   costs less than shipping mediocre work.

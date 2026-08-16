@@ -264,9 +264,24 @@ jq '.runtime_cli_compatibility = "version-pinned"' \
 expect_failure 65 env DELEGATION_GROK_ROUTING_FILE="$TMP/bad-grok-compatibility.json" \
   bin/delegation-route check --json
 
-# Disabled/candidate profiles never leak into explicit/fallback candidates.
+# Sol is the role-scoped Codex default for material review.
+bin/delegation-route resolve --lane material-review --json >"$TMP/material-review.json"
+jq -e '
+  [.defaults[].profile] == ["sol-reviewer"] and
+  (.fallbacks | length) == 0 and
+  (.explicit | length) == 0 and
+  (.defaults[0].model == "gpt-5.6-sol") and
+  (.defaults[0].effort == "high") and
+  (.defaults[0].status == "provisional")
+' "$TMP/material-review.json" >/dev/null
+pass=$((pass + 1))
+
+# Sol defaults only to material review. Technical judgement stays a manual,
+# explicit choice alongside Fable, and disabled/candidate profiles never leak
+# into an operational group.
 bin/delegation-route resolve --lane judgement --json >"$TMP/judgement.json"
-jq -e '([.explicit[].profile] | sort) == ["fable-judge","sol-judge"] and
+jq -e '(.defaults | length) == 0 and (.fallbacks | length) == 0 and
+       ([.explicit[].profile] | sort) == ["fable-judge","sol-judge"] and
        ([.blocked[].profile] | index("kimi-k3") != null) and
        ([.blocked[].profile] | index("qwen3.8-max") != null)' "$TMP/judgement.json" >/dev/null
 pass=$((pass + 1))

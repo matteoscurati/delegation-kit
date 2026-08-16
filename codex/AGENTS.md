@@ -8,7 +8,7 @@
 - Default to solving simple, well-scoped work directly. Do not create subagents for a routine single-file change.
 - The lead owns requirements, decisions, integration, verification, and the final response.
 - For genuinely separable work, use at most two direct workers by default. Give each a bounded task, explicit file ownership, and a concise return format. Never allow recursive delegation.
-- Prefer `luna-clerk` for deterministic inventory, extraction, transformation, and test-log summaries; `terra-scout` for read-only repository mapping; `terra-builder` for a bounded implementation; `sol-reviewer` for material review; and `sol-judge` for explicit technical judgement.
+- Prefer `luna-clerk` for deterministic inventory, extraction, transformation, and test-log summaries; `terra-scout` for read-only repository mapping; and `terra-builder` for a bounded implementation. Use `sol-reviewer` as the default Codex profile for material review. Keep `sol-judge` reserved for explicit technical judgement.
 - When the native subagent tool cannot select a model, use the matching ephemeral CLI profile. `sol-judge` is read-only and explicit-only; it never edits, delegates, merges, or deploys.
 - Avoid double fan-out: in Ultra mode, let Ultra orchestrate and do not add a second manual delegation layer. Ultra is exceptional, not the default.
 - Escalate Luna to Terra, or Terra to Sol, when the task becomes ambiguous or high risk. Do not repeatedly retry an unsuitable cheap worker.

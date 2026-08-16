@@ -31,6 +31,9 @@ same graph directly and refuse drift.
 - **Senior review / taste / security:** security-adjacent code (route here
   directly), user-facing surfaces (UI, copy, API design), material correctness
   review, and the escalation target for the cheap lane.
+- **Codex material review:** default to the read-only `sol-reviewer` profile at
+  `high`. Its route is provisional pending exact review precision/recall
+  evidence. Do not transfer this default to routine review or judgement.
 - **Judgement:** Fable `xhigh` for architecture/trade-offs/synthesis or Sol `high`
   for technical feasibility/repository fit/failure modes. Both are
   `manual-qualified`, explicit-only, thinking-not-typing profiles.

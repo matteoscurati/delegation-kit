@@ -5,6 +5,11 @@
   "selected_tuple": {
     "model": "glm-5.3",
     "backend": "claude-zai",
+    "effort": "max"
+  },
+  "comparison_selected_tuple": {
+    "model": "glm-5.3",
+    "backend": "claude-zai",
     "effort": "high"
   },
   "runtime_provenance": {
@@ -17,12 +22,12 @@
     "exact_content_identity_attested": true
   },
   "operational_requalification": {
-    "run_id": "2026-08-14-glm-5.3-high-operational-requalification-v5",
+    "run_id": "2026-08-14-glm-5.3-max-operational-requalification-v6",
     "model": "glm-5.3",
     "backend": "claude-zai",
-    "effort": "high",
-    "runner_source_commit": "4ac27b5648f576e3791c509f655c43bfc2a43d68",
-    "runner_sha256": "1effc4fcacdbfa1b830c8de30e347868c130e0d04bcd8b9891db771b9efd2422",
+    "effort": "max",
+    "runner_source_commit": "0a353cfe125af0e049957b249139a756fd7d1da3",
+    "runner_sha256": "9c37e74f8679c881ed31ab0fe6ce23c935af25ff12a05af8191cecd2af92b79a",
     "valid_repeats_per_lane": 3,
     "lane_mean_scores": {
       "clerk": 1.0,
@@ -30,18 +35,18 @@
       "builder": 1.0
     },
     "all_builder_checkers_pass": true,
-    "total_elapsed_seconds": 368,
-    "provider_cost_usd": 0.390474,
+    "total_elapsed_seconds": 572,
+    "provider_cost_usd": 0.709635,
     "post_observation_retries": 0,
     "exact_content_identity_attested": true,
     "receipt_sha256": {
-      "aggregate": "a0041905bda8f6249627c31499bfab9d7ed9d344a4bf3afa26e4c98da4a2c24f",
-      "scores": "60b46588f69ec02254ae63a277c08d2c09cd9a3b5aae195d98dc3f7945e1277b",
-      "provenance": "f4512e8437b357e5df623fbb517b40a5071b37cd3d0e2326e35006ab91b00906",
+      "aggregate": "de66b68b8b378c5efa81db3549df553572d73ecc35a1df65d486a6aaa9d6500e",
+      "scores": "6c46950992bdd4594c3af19c48c4b31e9826ece6c984e4fc05648f18978fe4d7",
+      "provenance": "bef80ab1cd97a8bf1975b65580312c337735ce2c737946e11184d18c3152e474",
       "manifests": {
-        "clerk": "419f29b989e2c1958d39fb81b4cfa9417d14cdfa73138fffc908998984e55f41",
-        "scout": "df4e00918143d83765213ed3bba83c2592e1bd99d51a5532ee5ddc429b0f2098",
-        "builder": "2b82e75b7715fb7692388b08977ef91fc898b1a07d37c0b63c7abbd28c57d67f"
+        "clerk": "a11236f0b7da5872a98c6e797df82cdccb1771f7f824eeb2b47a6c3f8e368f86",
+        "scout": "46e72a0d4086c353f76d687d1387698ba3e655c24454beaec4fd5a9d707a0c6c",
+        "builder": "13e77822066c63c66bc3f80b11ead0abb1aed711dabbd235cf54c337af86d234"
       }
     }
   },
@@ -117,7 +122,7 @@
           "decision": "provisional"
         }
       },
-      "decision": "selected"
+      "decision": "comparison-selected-not-operational"
     },
     "max": {
       "eligible": true,
@@ -157,7 +162,7 @@
           "threshold_passed": true
         }
       },
-      "decision": "passed-not-selected"
+      "decision": "owner-selected-operational"
     }
   },
   "glm_5_2_high_baseline": {
@@ -169,12 +174,13 @@
       "builder": 1.0
     }
   },
-  "selection_decision": "Select glm-5.3/claude-zai/high. Both efforts pass every preregistered lane threshold at the same score; high has lower total elapsed time and provider-reported cost.",
+  "selection_decision": "The preregistered efficiency rule selected glm-5.3/claude-zai/high because both efforts passed at the same score and high had lower elapsed time and provider-reported cost. The owner subsequently overrode that operational preference and selected max as the sole shipped effort; the final max-only runner was requalified separately.",
   "limitations": [
     "The packs are bounded synthetic qualification tasks, not broad model-quality benchmarks.",
     "Provider-reported cost is transport telemetry and may not equal the user's Coding Plan billing.",
     "The comparison qualifies only the exact model, backend, effort, runner, permissions, and named lanes.",
     "No frontend-specific, reviewer, judgement, security, or policy-annotation lane was evaluated.",
-    "Earlier orchestration preflights and the first v2 comparison were superseded; only the no-retry v4 attempts contribute to this result."
+    "Earlier orchestration preflights and the first v2 comparison were superseded; only the no-retry v4 attempts contribute to the comparison.",
+    "The max operational selection is an explicit owner preference, not the preregistered efficiency winner; its separate v6 requalification establishes exact-runner validity, not superiority over high."
   ]
 }

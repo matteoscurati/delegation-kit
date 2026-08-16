@@ -171,7 +171,9 @@ benchmarks remain separately labeled context.
   first-party contextual provenance for Coding Plan availability, effort
 mapping, and coding/agent/security claims. The exact local high/max comparison
 selected high by its preregistered efficiency rule; no independent tracked
-source had a GLM-5.3 row on that date.
+source had a GLM-5.3 row on that date. The later max-only operational route is
+an explicit owner preference backed by a separate 9/9 exact-runner
+requalification, not a relabelling of the comparison result.
 
 ### Local harness evaluation with OpenBench
 

@@ -28,7 +28,7 @@ every lane and all builder checkers passing on the same frozen runner. The
 public result also records SHA-256 digests for the private comparison,
 per-effort aggregates, scores, provenance, and manifests.
 
-The preregistered rule therefore selects `high`: it matched max's quality while
+The preregistered rule selected `high`: it matched max's quality while
 using 372 rather than 505 seconds and $0.334234 rather than $0.719138 of
 provider-reported cost. Against the historical GLM-5.2/high pack, selected
 GLM-5.3/high preserves the 1.0 lane scores while reducing total elapsed time
@@ -36,7 +36,10 @@ from 976 to 372 seconds and provider-reported cost from $1.159437 to $0.334234.
 Clerk and scout qualify explicit-only; builder remains provisional explicit-only
 after the bounded synthetic pack.
 
-After changing the operational default to the selected high gate, the exact
-final runner was requalified separately: all nine attempts again scored 1.0,
+The owner later made a separate operational decision to ship only `max`, despite
+high remaining the comparison's efficiency winner. GLM-5.2 and GLM-5.3/high
+therefore have no executable gate or selectable profile. The exact final
+max-only runner was requalified separately: all nine attempts again scored 1.0,
 all builder checkers passed, and the public result binds that run's aggregate,
-scores, provenance, and manifests by SHA-256.
+scores, provenance, and manifests by SHA-256. This establishes exact-runner
+validity for max; it does not relabel max as the preregistered efficiency winner.

@@ -4,8 +4,16 @@ All notable changes to delegation-kit are documented here.
 
 ## Unreleased
 
+## [0.15.0] — 2026-08-16
+
 ### Changed
 
+- **Sol becomes Codex's default material reviewer without widening its role.**
+  `sol-reviewer` at `high` moves from manual explicit selection to the
+  provisional `material-review` default on an explicit owner decision. It
+  remains read-only and provisional because no exact review precision/recall
+  row exists. `sol-judge`, judgement, and `super-judgement` remain manual and
+  explicit-only; routine review and executor lanes are unchanged.
 - **GLM-5.3/max replaces every previous GLM route across the active executor.** The exact
   high/max comparison ran three no-retry attempts per lane on the same frozen
   runner. Both efforts scored 1.0 in all nine attempts and passed every builder
@@ -14,9 +22,9 @@ All notable changes to delegation-kit are documented here.
   the sole operational effort. Clerk and scout are qualified explicit-only and
   builder remains provisional explicit-only. The 5.2 and 5.3/high gates and
   central profiles were removed; upgrades delete stale installed copies while
-  frozen receipts remain historical. The selected tuple is requalified on the final max-default
-  runner bytes; the public result records digests for both the comparison and
-  operational receipts.
+  frozen receipts remain historical. The selected tuple was requalified 9/9 on
+  the final max-only runner bytes; the public result records digests for both
+  the comparison and operational receipts.
 - The evidence snapshot records Z.ai's GLM-5.3 release, Coding Plan access,
   effort mapping, and launch benchmark claims as contextual-only evidence. No
   independent tracked leaderboard had a GLM-5.3 row on 2026-08-14.

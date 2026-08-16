@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "updated_at": "2026-08-14T00:00:00Z",
+  "updated_at": "2026-08-16T00:00:00Z",
   "evidence_file": "model-evidence.json",
   "status_values": ["disabled", "candidate", "provisional", "qualified", "manual-qualified"],
   "selection_values": ["default", "fallback", "preferred-explicit", "explicit-only", "blocked"],
@@ -19,7 +19,7 @@
     },
     "sol-reviewer": {
       "model": "gpt-5.6-sol", "harness": "codex", "effort": "high",
-      "lanes": {"material-review": {"status": "manual-qualified", "selection": "explicit-only", "exact_evidence_ids": [], "context_evidence_ids": ["aa-codex-gpt-5.6-sol-high"], "evidence_gap": "No exact review precision/recall row."}}
+      "lanes": {"material-review": {"status": "provisional", "selection": "default", "exact_evidence_ids": [], "context_evidence_ids": ["aa-codex-gpt-5.6-sol-high"], "qualification_basis": "Explicit owner routing decision, 2026-08-16. Codex material review defaults to the read-only sol-reviewer profile at high. Status remains provisional because no exact review precision/recall row exists. This decision does not apply to routine review, judgement, or super-judgement; sol-judge remains manual-qualified and explicit-only.", "evidence_gap": "No exact review precision/recall row."}}
     },
     "sol-judge": {
       "model": "gpt-5.6-sol", "harness": "codex", "effort": "high",
@@ -100,15 +100,15 @@
     },
     "glm53-max-clerk": {
       "model": "glm-5.3", "harness": "claude-zai", "effort": "max",
-      "lanes": {"clerk": {"status": "qualified", "selection": "explicit-only", "exact_evidence_ids": [], "context_evidence_ids": ["zai-glm-5.3-launch-unspecified-2026-08-14"], "local_evaluation": {"run_id": "2026-08-14-glm-5.3-effort-comparison-v4", "task_count": 6, "repeats": 3, "valid_repeats": 3, "mean_score": 1.0, "mean_latency_seconds": 19.33, "provider_cost_usd": 0.070041, "decision": "owner-selected"}, "fallback": "luna-clerk"}}
+      "lanes": {"clerk": {"status": "qualified", "selection": "explicit-only", "exact_evidence_ids": [], "context_evidence_ids": ["zai-glm-5.3-launch-unspecified-2026-08-14"], "local_evaluation": {"run_id": "2026-08-14-glm-5.3-max-operational-requalification-v6", "task_count": 6, "repeats": 3, "valid_repeats": 3, "mean_score": 1.0, "mean_latency_seconds": 21.0, "provider_cost_usd": 0.07332, "confidence": "bounded-repeated", "limitations": "Exact synthetic extraction pack on the final max-only runner; explicit-only selection is retained."}, "fallback": "luna-clerk"}}
     },
     "glm53-max-scout": {
       "model": "glm-5.3", "harness": "claude-zai", "effort": "max",
-      "lanes": {"scout": {"status": "qualified", "selection": "explicit-only", "exact_evidence_ids": [], "context_evidence_ids": ["zai-glm-5.3-launch-unspecified-2026-08-14"], "local_evaluation": {"run_id": "2026-08-14-glm-5.3-effort-comparison-v4", "task_count": 7, "repeats": 3, "valid_repeats": 3, "mean_score": 1.0, "mean_latency_seconds": 84.0, "provider_cost_usd": 0.371318, "decision": "owner-selected"}, "fallback": "terra-scout"}}
+      "lanes": {"scout": {"status": "qualified", "selection": "explicit-only", "exact_evidence_ids": [], "context_evidence_ids": ["zai-glm-5.3-launch-unspecified-2026-08-14"], "local_evaluation": {"run_id": "2026-08-14-glm-5.3-max-operational-requalification-v6", "task_count": 7, "repeats": 3, "valid_repeats": 3, "mean_score": 1.0, "mean_latency_seconds": 94.33, "provider_cost_usd": 0.295942, "confidence": "bounded-repeated", "limitations": "Exact synthetic trace pack on the final max-only runner; explicit-only selection is retained."}, "fallback": "terra-scout"}}
     },
     "glm53-max-builder": {
       "model": "glm-5.3", "harness": "claude-zai", "effort": "max",
-      "lanes": {"builder": {"status": "provisional", "selection": "explicit-only", "exact_evidence_ids": [], "context_evidence_ids": ["zai-glm-5.3-launch-unspecified-2026-08-14"], "local_evaluation": {"run_id": "2026-08-14-glm-5.3-effort-comparison-v4", "task_count": 6, "repeats": 3, "valid_repeats": 3, "mean_score": 1.0, "all_checker_runs_pass": true, "mean_latency_seconds": 65.0, "provider_cost_usd": 0.277779, "decision": "owner-selected"}, "qualification_basis": "Owner selected max as the sole GLM-5.3 effort after the exact comparison; bounded synthetic evidence keeps builder provisional.", "fallback": "terra-builder"}}
+      "lanes": {"builder": {"status": "provisional", "selection": "explicit-only", "exact_evidence_ids": [], "context_evidence_ids": ["zai-glm-5.3-launch-unspecified-2026-08-14"], "local_evaluation": {"run_id": "2026-08-14-glm-5.3-max-operational-requalification-v6", "task_count": 6, "repeats": 3, "valid_repeats": 3, "mean_score": 1.0, "all_checker_runs_pass": true, "mean_latency_seconds": 75.33, "provider_cost_usd": 0.340373, "confidence": "bounded-repeated", "limitations": "Exact local builder pack on the final max-only runner; promotion stops at provisional."}, "qualification_basis": "Owner selected max as the sole GLM-5.3 effort; the exact final runner passed the bounded repeated pack, which keeps builder provisional.", "fallback": "terra-builder"}}
     },
     "glm53-max-reviewer": {
       "model": "glm-5.3", "harness": "claude-zai", "effort": "max",

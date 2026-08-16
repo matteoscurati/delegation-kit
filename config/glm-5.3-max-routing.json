@@ -3,11 +3,11 @@
   "profile_prefix": "glm53-max",
   "status": "provisional",
   "evaluated_at": "2026-08-14T00:00:00Z",
-  "source_run": "2026-08-14-glm-5.3-effort-comparison-v4",
+  "source_run": "2026-08-14-glm-5.3-max-operational-requalification-v6",
   "promoted_at": "2026-08-14T00:00:00Z",
   "external_evidence_file": "model-evidence.json",
   "external_evidence_ids": ["zai-glm-5.3-launch-unspecified-2026-08-14"],
-  "qualification_basis": "The exact max-effort tuple completed all nine comparison attempts at score 1.0 with every builder checker passing. The owner subsequently selected max as the sole GLM-5.3 operational effort. Clerk and scout qualify explicit-only; builder remains provisional explicit-only pending broader evidence.",
+  "qualification_basis": "After the owner selected max as the sole GLM-5.3 operational effort, the exact final max-only runner completed three no-retry attempts per lane at score 1.0 with every builder checker passing. Clerk and scout qualify explicit-only; builder remains provisional explicit-only pending broader evidence.",
   "qualified_lanes": ["clerk", "scout"],
   "provisional_lanes": ["builder"],
   "lanes": {
@@ -19,8 +19,8 @@
           "status": "qualified",
           "selection": "explicit-only",
           "effort": "max",
-          "cost_per_task_usd": 0.003891,
-          "local_result": {"run_id": "2026-08-14-glm-5.3-effort-comparison-v4", "outcome": "passed", "task_count": 6, "repeats": 3, "valid_repeats": 3, "mean_score": 1.0, "mean_latency_seconds": 19.33, "confidence": "bounded-repeated"}
+          "cost_per_task_usd": 0.004073,
+          "local_result": {"run_id": "2026-08-14-glm-5.3-max-operational-requalification-v6", "outcome": "passed", "task_count": 6, "repeats": 3, "valid_repeats": 3, "mean_score": 1.0, "mean_latency_seconds": 21.0, "confidence": "bounded-repeated"}
         }
       }
     },
@@ -32,8 +32,8 @@
           "status": "qualified",
           "selection": "explicit-only",
           "effort": "max",
-          "cost_per_task_usd": 0.017682,
-          "local_result": {"run_id": "2026-08-14-glm-5.3-effort-comparison-v4", "outcome": "passed", "task_count": 7, "repeats": 3, "valid_repeats": 3, "mean_score": 1.0, "mean_latency_seconds": 84.0, "confidence": "bounded-repeated"}
+          "cost_per_task_usd": 0.014092,
+          "local_result": {"run_id": "2026-08-14-glm-5.3-max-operational-requalification-v6", "outcome": "passed", "task_count": 7, "repeats": 3, "valid_repeats": 3, "mean_score": 1.0, "mean_latency_seconds": 94.33, "confidence": "bounded-repeated"}
         }
       }
     },
@@ -45,8 +45,8 @@
           "status": "provisional",
           "selection": "explicit-only",
           "effort": "max",
-          "cost_per_task_usd": 0.015432,
-          "local_result": {"run_id": "2026-08-14-glm-5.3-effort-comparison-v4", "outcome": "passed", "task_count": 6, "repeats": 3, "valid_repeats": 3, "mean_score": 1.0, "all_checker_runs_pass": true, "mean_latency_seconds": 65.0, "confidence": "bounded-repeated"}
+          "cost_per_task_usd": 0.01891,
+          "local_result": {"run_id": "2026-08-14-glm-5.3-max-operational-requalification-v6", "outcome": "passed", "task_count": 6, "repeats": 3, "valid_repeats": 3, "mean_score": 1.0, "all_checker_runs_pass": true, "mean_latency_seconds": 75.33, "confidence": "bounded-repeated"}
         }
       }
     },

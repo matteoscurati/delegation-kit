@@ -9,7 +9,18 @@ It ships as a **reference implementation**: the author's concrete models
 external-evidence snapshot, and fail-closed local gates. Swap the models for your own tiers with
 [`ADAPTING.md`](./ADAPTING.md) — the *structure* is the transferable part.
 
-## Current release: 0.14.0
+## Current release: 0.15.0
+
+Version 0.15.0 makes `glm-5.3` / `claude-zai` / `max` the sole operational
+GLM tuple and makes GPT-5.6 Sol at `high` Codex's default material reviewer.
+The final max-only GLM runner passed all nine no-retry requalification attempts
+with every builder checker green; clerk and scout remain qualified explicit-only
+and builder remains provisional explicit-only. The preregistered comparison
+still records `high` as its efficiency winner: `max` is the owner's later
+operational choice, not a rewritten benchmark result. `sol-reviewer` is a
+role-scoped provisional default because no exact review precision/recall row
+exists, while `sol-judge`, judgement, and `super-judgement` remain manual and
+explicit-only.
 
 Version 0.14.0 replaces the active Grok 4.5 route with Grok 4.6 at the same
 provisional `builder` and `frontend-builder` lanes and pinned `high` effort. The
@@ -92,7 +103,7 @@ provisional/explicit-only behind `--allow-provisional`. See
 **Codex** (`~/.codex/`)
 | piece | where | what |
 |---|---|---|
-| 5 native profiles | `agents/*.toml` | `luna-clerk` · `terra-scout` · `terra-builder` · `sol-reviewer` · `sol-judge` |
+| 5 native profiles | `agents/*.toml` | `luna-clerk` · `terra-scout` · `terra-builder` · `sol-reviewer` (default material review) · `sol-judge` (explicit judgement) |
 | 5 ephemeral profiles | `*.config.toml` | for `codex exec --ephemeral -p <name>` |
 | collaboration policy | appended to `AGENTS.md` | usage-aware routing **+ a Codex→Claude bridge** |
 | optional GLM skill | `skills/glm-executor/` | same fail-closed GLM-5.3/max executor path |
@@ -166,7 +177,9 @@ and scout qualified explicit-only and builder moved only to provisional. A timeo
 missing output, identity mismatch, permission violation, or checker failure is
 `VOID`, and the runner never promotes a route. Only a separately reviewed
 aggregate that passes the preregistered thresholds may justify a public gate
-change.
+change. The owner subsequently chose max as the sole operational effort; a
+separate exact-runner max requalification passed 9/9 with every builder checker
+green. This owner preference does not rewrite high as the comparison winner.
 
 Gemini 3.6 Flash uses the installed, user-authenticated Antigravity CLI (`agy`).
 Only `scout` at `medium` is provisional and requires `--allow-provisional`;
@@ -318,6 +331,10 @@ It is the dispatch authority: GLM, Gemini, Kimi, Grok, and Qwen validate it agai
 backend gates before every check/run, and refuse drift. Exact and contextual
 benchmark references are stored separately, and the generated table exposes
 local sample size/confidence instead of treating legacy scores as comparable.
+Within Codex, `sol-reviewer` at `high` is the provisional default for
+`material-review` by explicit owner decision; the status remains provisional
+because no exact review precision/recall row exists. This role-scoped default
+does not widen Sol into execution or automatic judgement.
 Fable `xhigh` and Sol `high` are explicit, manually qualified judgement profiles.
 `super-judgement` pairs them as independent judges followed by cross-review; the
 lead retains final authority and no dispatch, merge, or deploy is automatic.
