@@ -36,7 +36,7 @@ run. It remains absent from every operational route group; evaluation neither
 promotes nor mutates a gate and does not qualify broad architecture/trade-off
 judgement. Dedicated runners pin the exact configured model, harness, and
 highest supported effort before provider dispatch: Kimi K3/native at `max`,
-Qwen Token Plan at `xhigh`, GLM-5.2/Claude-to-Z.AI at `high`, and Grok
+Qwen Token Plan at `xhigh`, GLM-5.3/Claude-to-Z.AI at `max`, and Grok
 4.5/Grok Build at `high`. The central gate also records blocked Fable, Opus, and
 Sol policy-annotation candidates; those profiles still require their own frozen
 transport harness and an allowlisted manifest before they may supply evidence.
@@ -167,6 +167,13 @@ benchmarks remain separately labeled context.
   first-party contextual release provenance for the pinned model identity,
   long-horizon coding positioning, and one-million-token context. It is not an
   independent benchmark, local compatibility proof, or lane qualification.
+- [Z.ai's GLM-5.3 launch](https://z.ai/blog/glm-5.3), observed 2026-08-14, is
+  first-party contextual provenance for Coding Plan availability, effort
+mapping, and coding/agent/security claims. The exact local high/max comparison
+selected high by its preregistered efficiency rule; no independent tracked
+source had a GLM-5.3 row on that date. The later max-only operational route is
+an explicit owner preference backed by a separate 9/9 exact-runner
+requalification, not a relabelling of the comparison result.
 
 ### Local harness evaluation with OpenBench
 
@@ -245,7 +252,7 @@ compares it against the snapshot, so a mismatch is a signal to re-read, not a
 failure. New relevant families include FrontierCode, FrontierSWE, APEX Agents,
 Blueprint-Bench 2, and Epoch Capabilities Index. Exact model-name records exist
 for Fable 5, Opus 5, Sonnet 5, GLM-5.2, all three GPT-5.6 tiers, Grok 4.5, and
-Kimi K3; Gemini 3.6 Flash and Qwen3.8-Max have no exact model-name ZIP
+Kimi K3; GLM-5.3, Gemini 3.6 Flash, and Qwen3.8-Max have no exact model-name ZIP
 record. Unknown harness or effort remains contextual, so the archive does not
 qualify a production lane by itself.
 

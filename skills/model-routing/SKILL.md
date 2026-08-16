@@ -31,6 +31,9 @@ same graph directly and refuse drift.
 - **Senior review / taste / security:** security-adjacent code (route here
   directly), user-facing surfaces (UI, copy, API design), material correctness
   review, and the escalation target for the cheap lane.
+- **Codex material review:** default to the read-only `sol-reviewer` profile at
+  `high`. Its route is provisional pending exact review precision/recall
+  evidence. Do not transfer this default to routine review or judgement.
 - **Judgement:** Fable `xhigh` for architecture/trade-offs/synthesis or Sol `high`
   for technical feasibility/repository fit/failure modes. Both are
   `manual-qualified`, explicit-only, thinking-not-typing profiles.
@@ -38,11 +41,12 @@ same graph directly and refuse drift.
   Fable and Sol reason independently, cross-review after both verdicts exist, and
   the lead decides. Never trigger it automatically.
 
-An optional external candidate such as GLM-5.2 earns one of these lanes only
+An optional external candidate such as GLM-5.3 earns one of these lanes only
 after its versioned evaluation gate allows that exact role. GLM clerk/scout are
 qualified explicit-only; builder is provisional explicit-only and requires
 `--allow-provisional`; reviewer is disabled. An installed CLI or visible model
-name is not qualification.
+name is not qualification. The active GLM tuple is `glm-5.3/claude-zai/max`;
+no GLM-5.2 or GLM-5.3/high route is shipped or selectable.
 
 Kimi K3 is provisional for `clerk`, `scout`, `builder`, and `frontend-builder` at
 `max`; senior is a blocked candidate, while reviewer and judgement are disabled.

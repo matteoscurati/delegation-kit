@@ -9,7 +9,18 @@ It ships as a **reference implementation**: the author's concrete models
 external-evidence snapshot, and fail-closed local gates. Swap the models for your own tiers with
 [`ADAPTING.md`](./ADAPTING.md) — the *structure* is the transferable part.
 
-## Current release: 0.14.0
+## Current release: 0.15.0
+
+Version 0.15.0 makes `glm-5.3` / `claude-zai` / `max` the sole operational
+GLM tuple and makes GPT-5.6 Sol at `high` Codex's default material reviewer.
+The final max-only GLM runner passed all nine no-retry requalification attempts
+with every builder checker green; clerk and scout remain qualified explicit-only
+and builder remains provisional explicit-only. The preregistered comparison
+still records `high` as its efficiency winner: `max` is the owner's later
+operational choice, not a rewritten benchmark result. `sol-reviewer` is a
+role-scoped provisional default because no exact review precision/recall row
+exists, while `sol-judge`, judgement, and `super-judgement` remain manual and
+explicit-only.
 
 Version 0.14.0 replaces the active Grok 4.5 route with Grok 4.6 at the same
 provisional `builder` and `frontend-builder` lanes and pinned `high` effort. The
@@ -92,10 +103,10 @@ provisional/explicit-only behind `--allow-provisional`. See
 **Codex** (`~/.codex/`)
 | piece | where | what |
 |---|---|---|
-| 5 native profiles | `agents/*.toml` | `luna-clerk` · `terra-scout` · `terra-builder` · `sol-reviewer` · `sol-judge` |
+| 5 native profiles | `agents/*.toml` | `luna-clerk` · `terra-scout` · `terra-builder` · `sol-reviewer` (default material review) · `sol-judge` (explicit judgement) |
 | 5 ephemeral profiles | `*.config.toml` | for `codex exec --ephemeral -p <name>` |
 | collaboration policy | appended to `AGENTS.md` | usage-aware routing **+ a Codex→Claude bridge** |
-| optional GLM skill | `skills/glm-executor/` | same fail-closed GLM-5.2 executor path |
+| optional GLM skill | `skills/glm-executor/` | same fail-closed GLM-5.3/max executor path |
 | optional Gemini skill | `skills/gemini-executor/` | same fail-closed Gemini 3.6 Flash executor path |
 | optional Kimi skill | `skills/kimi-executor/` | same fail-closed provisional Kimi K3 path |
 | provisional Grok skill | `skills/grok-executor/` | same fail-closed Grok 4.6 builder path |
@@ -108,12 +119,12 @@ The universal installer also adds `delegation-schema`, `delegation-glm`,
 `delegation-evidence`, the ZIP-only `delegation-epoch` importer, and the read-only
 central router `delegation-route` under
 `~/.local/bin`, with versioned gates under `~/.local/share/delegation-kit/`.
-GLM `clerk` and `scout` are qualified but remain explicit-only; `builder` is
+GLM-5.3/max `clerk` and `scout` are qualified but remain explicit-only; `builder` is
 provisional and requires an explicit decision plus `--allow-provisional`.
-Reviewer is disabled. A separate
-`policy-annotation` candidate at the highest supported bridge effort (`high`)
-can run only through an allowlisted read-only evaluation manifest and creates no
-operational route. The runner refuses every
+Reviewer is disabled; policy annotation remains a blocked evaluation-only
+candidate at `glm-5.3/max`. The only shipped GLM gate is GLM-5.3/max: GLM-5.2
+and GLM-5.3/high have no installed or selectable profile. Their frozen comparison
+receipts remain historical evidence only. The runner refuses every
 blocked lane and every effort the gate did not pin, and also refuses execution unless at least one of Claude Code or Codex is
 installed; it is an agent option, not a standalone GLM client. The installer asks
 for the Z.AI API key and stores it in `~/.local/share/delegation-kit/config/zai.env`
@@ -125,6 +136,9 @@ rate limits — including `rate_limited` (retry with backoff) versus
 Raw events and stderr are deleted unless an existing private
 directory is explicitly supplied with `--debug-dir`; those artifacts are
 sensitive and must not be committed.
+The Claude Code capability probe times out fail-closed after ten seconds. A
+diagnostic may point `DELEGATION_GLM_CLAUDE_BIN` at a separately verified native
+binary; that path is runtime provenance, not permission to bypass the gate.
 
 Structured-output schemas have two explicit layers: the checked-in normative
 schema and a provider transport schema derived without editing the source.
@@ -149,18 +163,23 @@ dispatch. Historical schemas and frozen evaluation protocols are never
 rewritten; a manifest still binds the normative file and the committed runner
 source binds the compiler implementation.
 
-Qualification of the normal GLM lanes uses the public
-[`glm-lane-qualification-v1` contract](./evaluation/glm-lane-qualification-v1/README.md).
-Each attempt is pinned to `glm-5.2` / `claude-zai` / `high` and to hashes of the
+Qualification of the current GLM lanes uses the public
+[`glm-5.3-lane-comparison-v1` contract](./evaluation/glm-5.3-lane-comparison-v1/README.md).
+Each attempt is pinned to `glm-5.3` / `claude-zai` / `high|max` and to hashes of the
 prompt, contract, output schema, runner, runner commit, and fixture commit. The
 private manifest must be allowlisted in private copies of both gates; raw packs
-and results stay under ignored `eval/`. Three GLM attempts are compared with the
-Codex and Claude incumbents for the same lane. The frozen 2026-07-31 comparison
-qualified clerk and scout and moved builder only to provisional. A timeout,
+and results stay under ignored `eval/`. Three no-retry attempts per effort and
+lane reuse the frozen GLM-5.2 fixtures as a direct baseline. The 2026-08-14
+comparison selected `high`: both efforts scored 1.0 in all nine attempts and
+passed every builder checker, while high used less elapsed time and
+provider-reported cost. Clerk
+and scout qualified explicit-only and builder moved only to provisional. A timeout,
 missing output, identity mismatch, permission violation, or checker failure is
 `VOID`, and the runner never promotes a route. Only a separately reviewed
 aggregate that passes the preregistered thresholds may justify a public gate
-change.
+change. The owner subsequently chose max as the sole operational effort; a
+separate exact-runner max requalification passed 9/9 with every builder checker
+green. This owner preference does not rewrite high as the comparison winner.
 
 Gemini 3.6 Flash uses the installed, user-authenticated Antigravity CLI (`agy`).
 Only `scout` at `medium` is provisional and requires `--allow-provisional`;
@@ -312,6 +331,10 @@ It is the dispatch authority: GLM, Gemini, Kimi, Grok, and Qwen validate it agai
 backend gates before every check/run, and refuse drift. Exact and contextual
 benchmark references are stored separately, and the generated table exposes
 local sample size/confidence instead of treating legacy scores as comparable.
+Within Codex, `sol-reviewer` at `high` is the provisional default for
+`material-review` by explicit owner decision; the status remains provisional
+because no exact review precision/recall row exists. This role-scoped default
+does not widen Sol into execution or automatic judgement.
 Fable `xhigh` and Sol `high` are explicit, manually qualified judgement profiles.
 `super-judgement` pairs them as independent judges followed by cross-review; the
 lead retains final authority and no dispatch, merge, or deploy is automatic.

@@ -1,0 +1,186 @@
+{
+  "schema_version": "delegation_glm_effort_comparison_result_v1",
+  "evaluated_at": "2026-08-14T00:00:00Z",
+  "run_id": "2026-08-14-glm-5.3-effort-comparison-v4",
+  "selected_tuple": {
+    "model": "glm-5.3",
+    "backend": "claude-zai",
+    "effort": "max"
+  },
+  "comparison_selected_tuple": {
+    "model": "glm-5.3",
+    "backend": "claude-zai",
+    "effort": "high"
+  },
+  "runtime_provenance": {
+    "runner_source_commit": "f17e8891881bbdb244a9fe5e3f42c486c71f5658",
+    "runner_sha256": "d9d6bd074466b78c6a9a772848812b1379ab6056ff8fb1acede3fc3477ed2cd3",
+    "claude_code": "2.1.220",
+    "claude_binary_sha256": "8addc857f3fe64d5a0368af9ee50321b50afb4a6918ba3ef018ab84f5dbbe081",
+    "contract_sha256": "1dd5737a4f6c7888038ccae292939047fd88756734095e48d6e163640c89cdb9",
+    "post_observation_retries": 0,
+    "exact_content_identity_attested": true
+  },
+  "operational_requalification": {
+    "run_id": "2026-08-14-glm-5.3-max-operational-requalification-v6",
+    "model": "glm-5.3",
+    "backend": "claude-zai",
+    "effort": "max",
+    "runner_source_commit": "0a353cfe125af0e049957b249139a756fd7d1da3",
+    "runner_sha256": "9c37e74f8679c881ed31ab0fe6ce23c935af25ff12a05af8191cecd2af92b79a",
+    "valid_repeats_per_lane": 3,
+    "lane_mean_scores": {
+      "clerk": 1.0,
+      "scout": 1.0,
+      "builder": 1.0
+    },
+    "all_builder_checkers_pass": true,
+    "total_elapsed_seconds": 572,
+    "provider_cost_usd": 0.709635,
+    "post_observation_retries": 0,
+    "exact_content_identity_attested": true,
+    "receipt_sha256": {
+      "aggregate": "de66b68b8b378c5efa81db3549df553572d73ecc35a1df65d486a6aaa9d6500e",
+      "scores": "6c46950992bdd4594c3af19c48c4b31e9826ece6c984e4fc05648f18978fe4d7",
+      "provenance": "bef80ab1cd97a8bf1975b65580312c337735ce2c737946e11184d18c3152e474",
+      "manifests": {
+        "clerk": "a11236f0b7da5872a98c6e797df82cdccb1771f7f824eeb2b47a6c3f8e368f86",
+        "scout": "46e72a0d4086c353f76d687d1387698ba3e655c24454beaec4fd5a9d707a0c6c",
+        "builder": "13e77822066c63c66bc3f80b11ead0abb1aed711dabbd235cf54c337af86d234"
+      }
+    }
+  },
+  "receipt_sha256": {
+    "comparison": "b006afbdf8fe70565b22151f6bc6cd169387151d057b71482b9f91f27cca0da3",
+    "high_aggregate": "12b8ba35188385b22903917cad8e9b7e8a3a2e1dc7d57a3b3cdb122f6a82af0c",
+    "high_scores": "4634c4181942252213c7e97f381a31d61fe7dee32a285117fe404c6df586c910",
+    "high_provenance": "fc4ac27e0c7a6138b366305a4139f116738bf4cab04af480f2c8aa6c6b94d3d2",
+    "high_manifests": {
+      "clerk": "2c90ab5e21fc922d9b4bdc6628df6ab56c35a425600b0f2453c52fa2205afc6e",
+      "scout": "55202a47f5abf98f557670c7c5eb588596b1b0eca4ea5f2e5d1aae339c813794",
+      "builder": "4815f3ef58e824b8c52c739eef296ce1b60b8539604428a5e8e66815cefe82f6"
+    },
+    "max_aggregate": "282d94f9b57e1a089662679348a1a95aa7e7ac770c17ac1a98d1b77d8720c287",
+    "max_scores": "0a2ad849f6a13ce344460acf678ad13ccf3c5e706f79b0a2c1d3a9d62b77a1bc",
+    "max_provenance": "f24d253400bb2895d25e0d4400026051294d568453ae58e45c36677df4444c28",
+    "max_manifests": {
+      "clerk": "6fe69cb86df22cc2e867d423fa4d377665cc47db69d2aec2b33fff280f2efa3e",
+      "scout": "028cdbce35f1e8f56fca2af0f2dbae0c22a7ca6ac32b4c5342ad51e75f09de4a",
+      "builder": "25133dab645c6fa1bff1d25ddac256b7f749a81103eff7c914f6fb8ccbdc8446"
+    }
+  },
+  "comparison_sources": {
+    "glm_5_3_attempts": ["2026-08-14-glm-5.3-effort-comparison-v4"],
+    "glm_5_2_baseline": "2026-07-31-glm-lane-qualification-v6",
+    "superseded_preflights": [
+      "2026-08-14-glm-5.3-effort-comparison",
+      "2026-08-14-glm-5.3-effort-comparison-v2"
+    ]
+  },
+  "efforts": {
+    "high": {
+      "eligible": true,
+      "total_elapsed_seconds": 372,
+      "provider_cost_usd": 0.334234,
+      "tokens": {
+        "input": 18406,
+        "output": 7644,
+        "reasoning": 0,
+        "cache_read": 102208,
+        "cache_write": 0
+      },
+      "lanes": {
+        "clerk": {
+          "task_count": 6,
+          "valid_repeats": 3,
+          "required_repeats": 3,
+          "mean_score": 1.0,
+          "elapsed_seconds": [25, 21, 20],
+          "provider_cost_usd": 0.049138,
+          "threshold_passed": true,
+          "decision": "qualified"
+        },
+        "scout": {
+          "task_count": 7,
+          "valid_repeats": 3,
+          "required_repeats": 3,
+          "mean_score": 1.0,
+          "elapsed_seconds": [56, 71, 98],
+          "provider_cost_usd": 0.204809,
+          "threshold_passed": true,
+          "decision": "qualified"
+        },
+        "builder": {
+          "task_count": 6,
+          "valid_repeats": 3,
+          "required_repeats": 3,
+          "mean_score": 1.0,
+          "elapsed_seconds": [29, 33, 19],
+          "provider_cost_usd": 0.080287,
+          "all_checker_runs_pass": true,
+          "threshold_passed": true,
+          "decision": "provisional"
+        }
+      },
+      "decision": "comparison-selected-not-operational"
+    },
+    "max": {
+      "eligible": true,
+      "total_elapsed_seconds": 505,
+      "provider_cost_usd": 0.719138,
+      "tokens": {
+        "input": 30026,
+        "output": 19216,
+        "reasoning": 0,
+        "cache_read": 177216,
+        "cache_write": 0
+      },
+      "lanes": {
+        "clerk": {
+          "valid_repeats": 3,
+          "required_repeats": 3,
+          "mean_score": 1.0,
+          "elapsed_seconds": [24, 21, 13],
+          "provider_cost_usd": 0.070041,
+          "threshold_passed": true
+        },
+        "scout": {
+          "valid_repeats": 3,
+          "required_repeats": 3,
+          "mean_score": 1.0,
+          "elapsed_seconds": [67, 79, 106],
+          "provider_cost_usd": 0.371318,
+          "threshold_passed": true
+        },
+        "builder": {
+          "valid_repeats": 3,
+          "required_repeats": 3,
+          "mean_score": 1.0,
+          "elapsed_seconds": [88, 55, 52],
+          "provider_cost_usd": 0.277779,
+          "all_checker_runs_pass": true,
+          "threshold_passed": true
+        }
+      },
+      "decision": "owner-selected-operational"
+    }
+  },
+  "glm_5_2_high_baseline": {
+    "total_elapsed_seconds": 976,
+    "provider_cost_usd": 1.159437,
+    "lane_mean_scores": {
+      "clerk": 1.0,
+      "scout": 1.0,
+      "builder": 1.0
+    }
+  },
+  "selection_decision": "The preregistered efficiency rule selected glm-5.3/claude-zai/high because both efforts passed at the same score and high had lower elapsed time and provider-reported cost. The owner subsequently overrode that operational preference and selected max as the sole shipped effort; the final max-only runner was requalified separately.",
+  "limitations": [
+    "The packs are bounded synthetic qualification tasks, not broad model-quality benchmarks.",
+    "Provider-reported cost is transport telemetry and may not equal the user's Coding Plan billing.",
+    "The comparison qualifies only the exact model, backend, effort, runner, permissions, and named lanes.",
+    "No frontend-specific, reviewer, judgement, security, or policy-annotation lane was evaluated.",
+    "Earlier orchestration preflights and the first v2 comparison were superseded; only the no-retry v4 attempts contribute to the comparison.",
+    "The max operational selection is an explicit owner preference, not the preregistered efficiency winner; its separate v6 requalification establishes exact-runner validity, not superiority over high."
+  ]
+}

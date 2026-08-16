@@ -7,7 +7,7 @@
 # Usage: ./doctor.sh [--ping] [--ping-glm] [--ping-kimi] [--ping-grok]
 #   --ping   also does a live round-trip (real API calls, costs a few tokens per
 #            side). Off by default; static checks are free.
-#   --ping-glm does a separate paid GLM-5.2 ping, but only for a qualified lane.
+#   --ping-glm does a separate paid GLM-5.3/max ping, but only for a qualified lane.
 #   --ping-kimi does a separate Kimi K3 ping through a qualified lane, or an
 #               explicitly selected provisional read-only lane when no lane is qualified.
 #   --ping-grok does a paid Grok 4.6 ping through its provisional builder gate.
@@ -55,6 +55,13 @@ found_path() { [ -d "$1" ] && [ -n "$(find "$1" -path "$2" 2>/dev/null)" ]; }
 # portable timeout: GNU `timeout`, macOS Homebrew `gtimeout`, else run without one
 if have timeout; then _TO="timeout 120"; elif have gtimeout; then _TO="gtimeout 120"; else _TO=""; fi
 run_to() { if [ -n "$_TO" ]; then $_TO "$@"; else "$@"; fi; }
+PROBE_TIMEOUT_SECONDS="${DELEGATION_DOCTOR_PROBE_TIMEOUT_SECONDS:-10}"
+run_probe() {
+  if have timeout; then timeout "$PROBE_TIMEOUT_SECONDS" "$@"
+  elif have gtimeout; then gtimeout "$PROBE_TIMEOUT_SECONDS" "$@"
+  else "$@"
+  fi
+}
 
 # ---- installed kit vs this checkout ----
 # Without this, a stale install is invisible: every other check inspects the
@@ -103,17 +110,31 @@ fi
 
 # ---- CLIs on PATH + versions ----
 hdr "CLIs"
-have codex && ok "codex on PATH ($(codex --version 2>&1 | head -1))" \
-  || bad "codex NOT on PATH — the Claude->Codex bridge cannot run"
-have claude && ok "claude on PATH ($(claude --version 2>&1 | head -1))" \
-  || bad "claude NOT on PATH — the Codex->Claude bridge cannot run"
+if have codex; then
+  if cli_version="$(run_probe codex --version 2>&1)"; then
+    ok "codex on PATH (${cli_version%%$'\n'*})"
+  else
+    bad "codex on PATH but its version probe did not complete within ${PROBE_TIMEOUT_SECONDS}s"
+  fi
+else
+  bad "codex NOT on PATH — the Claude->Codex bridge cannot run"
+fi
+if have claude; then
+  if cli_version="$(run_probe claude --version 2>&1)"; then
+    ok "claude on PATH (${cli_version%%$'\n'*})"
+  else
+    bad "claude on PATH but its version probe did not complete within ${PROBE_TIMEOUT_SECONDS}s"
+  fi
+else
+  bad "claude NOT on PATH — the Codex->Claude bridge cannot run"
+fi
 
 # ---- auth (accept the several ways each tool can be authenticated) ----
 hdr "Auth"
 if [ -f "$CODEX_HOME/auth.json" ]; then ok "codex authenticated ($CODEX_HOME/auth.json)"
 elif [ -n "${OPENAI_API_KEY:-}" ]; then ok "codex authenticated (OPENAI_API_KEY in env)"
 else warn "no $CODEX_HOME/auth.json and no \$OPENAI_API_KEY — run: codex login (if the bridge 401s)"; fi
-if have claude && claude auth status >/dev/null 2>&1; then ok "claude authenticated (CLI auth status)"
+if have claude && run_probe claude auth status >/dev/null 2>&1; then ok "claude authenticated (CLI auth status)"
 elif [ -f "$CLAUDE_HOME/.credentials.json" ]; then ok "claude credentials present (file)"
 elif [ -n "${ANTHROPIC_API_KEY:-}" ]; then ok "claude authenticated (ANTHROPIC_API_KEY in env)"
 elif [ "$(uname)" = Darwin ] && security find-generic-password -s "Claude Code-credentials" >/dev/null 2>&1; then
@@ -302,14 +323,14 @@ else
   warn "delegation-route not installed — re-run ./install.sh"
 fi
 
-# ---- optional GLM-5.2 external executor ----
-hdr "GLM-5.2 optional executor"
+# ---- optional GLM-5.3 external executor ----
+hdr "GLM-5.3 optional executor"
 if ! have jq; then
   warn "jq not on PATH — delegation-glm cannot run"
 elif have delegation-glm; then
   glm_check="$(delegation-glm check --json 2>/dev/null || true)"
-  if [ -n "$glm_check" ] && printf '%s' "$glm_check" | jq -e '.model == "glm-5.2"' >/dev/null 2>&1; then
-    ok "delegation-glm installed and pinned to glm-5.2"
+  if [ -n "$glm_check" ] && printf '%s' "$glm_check" | jq -e '.model == "glm-5.3" and .efforts == ["max"]' >/dev/null 2>&1; then
+    ok "delegation-glm installed and pinned to glm-5.3/max"
     glm_selected="$(printf '%s' "$glm_check" | jq -r '.selected_backend')"
     glm_lanes="$(printf '%s' "$glm_check" | jq -r '.qualified_lanes | join(",")')"
     glm_provisional="$(printf '%s' "$glm_check" | jq -r '.provisional_lanes | join(",")')"
@@ -321,7 +342,7 @@ elif have delegation-glm; then
       || info "GLM has no automatically qualified lanes"
     [ -z "$glm_provisional" ] || info "GLM provisional lanes (explicit flag required): $glm_provisional"
   else
-    bad "delegation-glm check failed or is not pinned to glm-5.2"
+    bad "delegation-glm check failed or is not pinned to glm-5.3/max"
   fi
 else
   warn "delegation-glm not installed — re-run ./install.sh after evaluating GLM"
@@ -500,7 +521,7 @@ else
 fi
 
 if [ "$DO_GLM_PING" = 1 ]; then
-  hdr "GLM-5.2 live ping (--ping-glm)"
+  hdr "GLM-5.3/max live ping (--ping-glm)"
   if ! have delegation-glm; then
     bad "GLM ping unavailable — delegation-glm is not installed"
   else
@@ -514,9 +535,9 @@ if [ "$DO_GLM_PING" = 1 ]; then
       if delegation-glm run --lane "$glm_lane" --effort auto --backend auto \
           --prompt-file "$ping_dir/prompt.txt" --output "$ping_dir/out.txt" --workdir "$ping_dir" \
           >/dev/null 2>&1 && grep -Fxq PONG "$ping_dir/out.txt"; then
-        ok "GLM-5.2 qualified-lane ping returned PONG"
+        ok "GLM-5.3/max qualified-lane ping returned PONG"
       else
-        bad "GLM-5.2 ping failed"
+        bad "GLM-5.3/max ping failed"
       fi
       rm -rf "$ping_dir"
     fi

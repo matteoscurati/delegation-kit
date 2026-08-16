@@ -27,10 +27,29 @@ cd "$ROOT"
 expect_success bin/delegation-route check --json
 bin/delegation-glm check --json >"$TMP/glm-check.json"
 jq -e '
+  .model == "glm-5.3" and
   .qualified_lanes == ["clerk","scout"] and
   .provisional_lanes == ["builder"] and
-  .efforts == ["high"]
+  .efforts == ["max"]
 ' "$TMP/glm-check.json" >/dev/null
+pass=$((pass + 1))
+
+# GLM-5.3/max is the only shipped executable gate and profile family.
+env DELEGATION_GLM_ROUTING_FILE="$ROOT/config/glm-5.3-max-routing.json" \
+  DELEGATION_GLM_CLAUDE_BIN=/usr/bin/true \
+  bin/delegation-glm check --json >"$TMP/glm53-max-check.json"
+jq -e '
+  .model == "glm-5.3" and .qualified_lanes == ["clerk","scout"] and
+  .provisional_lanes == ["builder"] and .efforts == ["max"]
+' "$TMP/glm53-max-check.json" >/dev/null
+pass=$((pass + 1))
+[ ! -e config/glm-5.2-routing.json ] && [ ! -e config/glm-5.3-high-routing.json ]
+pass=$((pass + 1))
+bin/delegation-route lane builder --json >"$TMP/builder-candidates.json"
+jq -e '
+  any(.[]; .profile == "glm53-max-builder" and .status == "provisional" and .selection == "explicit-only") and
+  all(.[]; (.model == "glm-5.2" or (.model == "glm-5.3" and .effort == "high")) | not)
+' "$TMP/builder-candidates.json" >/dev/null
 pass=$((pass + 1))
 
 # The repository owns reusable qualification assets only. Downstream-project
@@ -107,17 +126,19 @@ jq '.profiles["kimi-k3"].lanes.scout.evaluation_manifest_sha256 =
   config/routing-gates.json >"$TMP/misplaced-manifest.json"
 expect_failure 65 env DELEGATION_ROUTING_GATES_FILE="$TMP/misplaced-manifest.json" \
   bin/delegation-route check --json
-jq '.profiles["glm-scout"].lanes.scout.evaluation_manifest_sha256 =
+jq '.profiles["glm53-max-scout"].lanes.scout.evaluation_manifest_sha256 =
       ["aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"] |
-    .profiles["glm-scout"].lanes.scout.status = "provisional"' \
+    .profiles["glm53-max-scout"].lanes.scout.status = "provisional" |
+    .profiles["glm53-max-scout"].lanes.scout.selection = "explicit-only"' \
   config/routing-gates.json >"$TMP/glm-lane-central.json"
 jq '.lanes.scout.backends["claude-zai"].evaluation_manifest_sha256 =
       ["aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"] |
     .lanes.scout.backends["claude-zai"].status = "provisional" |
     .lanes.scout.backends["claude-zai"].qualified = false |
+    .lanes.scout.backends["claude-zai"].selection = "explicit-only" |
     .qualified_lanes = ["clerk"] |
-    .provisional_lanes = ["scout","builder"]' \
-  config/glm-5.2-routing.json >"$TMP/glm-lane-executable.json"
+    .provisional_lanes = ["builder","scout"]' \
+  config/glm-5.3-max-routing.json >"$TMP/glm-lane-executable.json"
 env DELEGATION_ROUTING_GATES_FILE="$TMP/glm-lane-central.json" \
   DELEGATION_GLM_ROUTING_FILE="$TMP/glm-lane-executable.json" \
   bin/delegation-route check --json >/dev/null
@@ -150,7 +171,7 @@ expect_failure 65 env DELEGATION_ROUTING_GATES_FILE="$TMP/bad-fallback.json" \
 # Executable gates are checked bidirectionally, including extra lanes and arrays.
 jq '.lanes.reviewer.backends["claude-zai"] |=
       (.status = "qualified" | .selection = "explicit-only" | .qualified = true) |
-    .qualified_lanes = ["reviewer"]' config/glm-5.2-routing.json >"$TMP/bad-glm.json"
+    .qualified_lanes = ["reviewer"]' config/glm-5.3-max-routing.json >"$TMP/bad-glm.json"
 expect_failure 65 env DELEGATION_GLM_ROUTING_FILE="$TMP/bad-glm.json" \
   bin/delegation-route check --json
 
@@ -233,7 +254,7 @@ expect_failure 65 env DELEGATION_GROK_ROUTING_FILE="$TMP/bad-grok-manifest.json"
 # GLM evaluation allowlist drift is checked independently from status drift.
 jq '.lanes["policy-annotation"].backends["claude-zai"].evaluation_manifest_sha256 =
       ["eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"]' \
-  config/glm-5.2-routing.json >"$TMP/bad-glm-manifest.json"
+  config/glm-5.3-max-routing.json >"$TMP/bad-glm-manifest.json"
 expect_failure 65 env DELEGATION_GLM_ROUTING_FILE="$TMP/bad-glm-manifest.json" \
   bin/delegation-route check --json
 
@@ -243,9 +264,24 @@ jq '.runtime_cli_compatibility = "version-pinned"' \
 expect_failure 65 env DELEGATION_GROK_ROUTING_FILE="$TMP/bad-grok-compatibility.json" \
   bin/delegation-route check --json
 
-# Disabled/candidate profiles never leak into explicit/fallback candidates.
+# Sol is the role-scoped Codex default for material review.
+bin/delegation-route resolve --lane material-review --json >"$TMP/material-review.json"
+jq -e '
+  [.defaults[].profile] == ["sol-reviewer"] and
+  (.fallbacks | length) == 0 and
+  (.explicit | length) == 0 and
+  (.defaults[0].model == "gpt-5.6-sol") and
+  (.defaults[0].effort == "high") and
+  (.defaults[0].status == "provisional")
+' "$TMP/material-review.json" >/dev/null
+pass=$((pass + 1))
+
+# Sol defaults only to material review. Technical judgement stays a manual,
+# explicit choice alongside Fable, and disabled/candidate profiles never leak
+# into an operational group.
 bin/delegation-route resolve --lane judgement --json >"$TMP/judgement.json"
-jq -e '([.explicit[].profile] | sort) == ["fable-judge","sol-judge"] and
+jq -e '(.defaults | length) == 0 and (.fallbacks | length) == 0 and
+       ([.explicit[].profile] | sort) == ["fable-judge","sol-judge"] and
        ([.blocked[].profile] | index("kimi-k3") != null) and
        ([.blocked[].profile] | index("qwen3.8-max") != null)' "$TMP/judgement.json" >/dev/null
 pass=$((pass + 1))
@@ -256,7 +292,7 @@ bin/delegation-route resolve --lane policy-annotation --json >"$TMP/policy-annot
 jq -e '
   (.defaults | length) == 0 and (.fallbacks | length) == 0 and (.explicit | length) == 0 and
   ([.blocked[].profile] | sort) ==
-    ["fable-policy-annotator","glm-policy-annotation","grok-build","kimi-k3",
+    ["fable-policy-annotator","glm53-max-policy-annotation","grok-build","kimi-k3",
      "opus-policy-annotator","qwen3.8-max","sol-max-policy-annotator"]
 ' "$TMP/policy-annotation.json" >/dev/null
 jq -e '

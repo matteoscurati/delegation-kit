@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "snapshot_at": "2026-08-12T00:00:00Z",
+  "snapshot_at": "2026-08-14T00:00:00Z",
   "max_snapshot_age_days": 45,
   "policy": {
     "external_evidence_never_auto_qualifies": true,
@@ -154,7 +154,7 @@
       "observed_at": "2026-07-25",
       "data_date": "2026-07-25",
       "scope": "Pairwise agentic software-engineering leaderboard reporting mean rank and dominance across repository tasks",
-      "limitations": "Only Fable 5, Grok 4.5, and GLM-5.2 among current targets are listed; Grok CLI and Claude Code results are contextual for different local bridges"
+      "limitations": "Only Fable 5, historical Grok 4.5, and historical GLM-5.2 among tracked targets are listed; Grok CLI and Claude Code results are contextual for different local bridges"
     },
     "apex-swe-2026-07-25": {
       "name": "Mercor APEX-SWE",
@@ -321,6 +321,17 @@
       "category": "first-party-release-evidence",
       "scope": "Official model identity, Grok Build availability, high-effort benchmark claims, 500k-token context, and API pricing.",
       "limitations": "First-party launch claims are contextual provenance, not independent evidence or an exact attestation of the hardened delegation-grok runner."
+    },
+    "zai-glm-5.3-launch-2026-08-14": {
+      "name": "Z.ai GLM-5.3 launch",
+      "url": "https://z.ai/blog/glm-5.3",
+      "documentation_url": "https://docs.z.ai/guides/llm/glm-5.3",
+      "integration_url": "https://docs.z.ai/devpack/latest-model",
+      "observed_at": "2026-08-14",
+      "data_date": "2026-08-14",
+      "category": "first-party-release-evidence",
+      "scope": "Official model identity, Coding Plan availability, one-million-token context, effort mapping, and launch benchmark claims for coding, agent, and cybersecurity tasks.",
+      "limitations": "First-party launch claims use several harnesses and incompletely reported effort settings. They are contextual only and do not attest the exact delegation-glm runner. No independent tracked source had a GLM-5.3 row on the observation date; general API dollar pricing was not yet published."
     },
     "cursorbench-3.2-2026-08-12": {
       "name": "CursorBench 3.2",
@@ -1768,6 +1779,37 @@
       "source": "code-arena-webdev-2026-08-12",
       "contextual_only": true,
       "metrics": {"webdev": {"rank": 7, "elo": 1617.9367297526142, "ci_low": 1596.7515918685071, "ci_high": 1639.121867636721, "votes": 1005, "pre_release": true, "input_price_per_million_tokens_usd": 2, "output_price_per_million_tokens_usd": 6}}
+    },
+    {
+      "id": "zai-glm-5.3-launch-unspecified-2026-08-14",
+      "model": "glm-5.3",
+      "harness": "zai-reported-mixed",
+      "effort": "unspecified",
+      "source": "zai-glm-5.3-launch-2026-08-14",
+      "contextual_only": true,
+      "note": "The launch aggregates multiple harnesses and does not publish one exact effort for every metric; none of these values qualifies a delegation lane.",
+      "metrics": {
+        "coding": {
+          "terminal_bench_v2_pass_pct": 88.2,
+          "terminal_bench_v3_pass_pct": 28.3,
+          "deep_swe_v1_1_pass_pct": 66.9,
+          "nl2repo_pass_pct": 58.0,
+          "frontier_swe_pass_pct": 78.1,
+          "swe_marathon_v1_1_pass_pct": 42.5
+        },
+        "agent": {
+          "agents_last_exam_pass_pct": 28.5,
+          "toolathlon_pass_pct": 73.0,
+          "automation_bench_pass_pct": 48.2,
+          "gdpval_aa_v2_elo": 1769
+        },
+        "security": {
+          "cybergym_pass_pct": 84.5,
+          "exploitgym_solved": 105,
+          "exploitgym_total": 130,
+          "exploitbench_pass_pct": 54.4
+        }
+      }
     }
   ]
 }

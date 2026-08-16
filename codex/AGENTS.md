@@ -8,7 +8,7 @@
 - Default to solving simple, well-scoped work directly. Do not create subagents for a routine single-file change.
 - The lead owns requirements, decisions, integration, verification, and the final response.
 - For genuinely separable work, use at most two direct workers by default. Give each a bounded task, explicit file ownership, and a concise return format. Never allow recursive delegation.
-- Prefer `luna-clerk` for deterministic inventory, extraction, transformation, and test-log summaries; `terra-scout` for read-only repository mapping; `terra-builder` for a bounded implementation; `sol-reviewer` for material review; and `sol-judge` for explicit technical judgement.
+- Prefer `luna-clerk` for deterministic inventory, extraction, transformation, and test-log summaries; `terra-scout` for read-only repository mapping; and `terra-builder` for a bounded implementation. Use `sol-reviewer` as the default Codex profile for material review. Keep `sol-judge` reserved for explicit technical judgement.
 - When the native subagent tool cannot select a model, use the matching ephemeral CLI profile. `sol-judge` is read-only and explicit-only; it never edits, delegates, merges, or deploys.
 - Avoid double fan-out: in Ultra mode, let Ultra orchestrate and do not add a second manual delegation layer. Ultra is exceptional, not the default.
 - Escalate Luna to Terra, or Terra to Sol, when the task becomes ambiguous or high risk. Do not repeatedly retry an unsuitable cheap worker.
@@ -16,16 +16,18 @@
 
 ## Optional evaluated GLM executor
 
-GLM-5.2 is available only through the installed `glm-executor` skill. The current
+GLM-5.3 is available only through the installed `glm-executor` skill. The current
 gate lists `clerk` and `scout` in `qualified_lanes`, with explicit-only
 selection. Builder is provisional after its first exact local pack and requires
 an explicit decision plus `--allow-provisional`. The bridge runs only through the isolated Claude→Z.AI
 backend, keyed by `ZAI_API_KEY` or the 600-mode key the installer stored. Prefer
 the incumbent for costly edits unless the provisional builder lane was selected deliberately. If the runtime or
 lane gate is absent, keep using the incumbent profile; never silently substitute.
-`policy-annotation` at `high` is a separate candidate/blocked lane available
-only through an allowlisted read-only evaluation manifest. It never adds an
-operational route or qualifies broad judgement.
+Every operational lane is pinned to `max`, selected explicitly by the owner.
+It is the only shipped GLM tuple: neither GLM-5.2 nor GLM-5.3/high has an
+installed or selectable route. Their frozen receipts remain historical evidence
+only. Reviewer is disabled; policy annotation remains candidate/blocked and
+evaluation-only at GLM-5.3/max.
 
 ## Optional Gemini 3.6 Flash executor
 
