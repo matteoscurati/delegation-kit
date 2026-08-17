@@ -1,22 +1,22 @@
 ---
 name: gemini-executor
 description: >-
-  Dispatch the explicitly approved Gemini 3.6 Flash scout lane through the
-  installed Antigravity CLI. Never bypass its gate or silently change model,
+  Inspect or evaluate the staged Gemini 3.7 Flash route through the installed
+  Antigravity CLI. Never bypass its gate or silently change model,
   effort, backend, or permissions.
 ---
 
-# Gemini 3.6 Flash executor
+# Gemini 3.7 Flash executor
 
-Gemini 3.6 Flash is an optional external executor reached through the installed
+Gemini 3.7 Flash is a staged external executor reached through the installed
 `agy` CLI and its user-managed Google OAuth session. Before dispatch, run
 `delegation-gemini check --json`.
 
-The initial gate exposes only `scout` as provisional, pinned to
-`gemini-3.6-flash-medium`. Use it only after an explicit decision and pass
-`--allow-provisional`. `builder` and `frontend-builder` at high are blocked
-candidates; reviewer and judgement are disabled. Runtime presence, a model
-listing, launch benchmarks, and a compatibility smoke are not qualification.
+No operational lane is currently exposed. `scout` at medium plus `builder` and
+`frontend-builder` at high are blocked candidates; reviewer and judgement are
+disabled. The official launch confirms the model and supported thinking levels,
+but the current local Antigravity session cannot attest exact inventory or
+OAuth. The previous Gemini 3.6 smoke does not transfer.
 
 The bridge is deliberately **prompt-only**. Antigravity's headless permission
 requests cannot be approved safely per process, and
@@ -36,15 +36,16 @@ tool namespace, so global hooks, MCPs, plugins, memories, and permission grants
 are not loaded. It also forces terminal sandboxing and remains in plan mode
 during evaluation runs.
 
-Then run:
+For a deliberate controlled evaluation only, run:
 
 ```sh
-delegation-gemini run --lane scout --effort auto --allow-provisional \
+delegation-gemini run --lane scout --effort auto --evaluation \
   --backend auto --prompt-file "$brief" --output "$result" --workdir "$repo"
 ```
 
-`auto` resolves to the `agy` backend and the effort pinned by the gate. The
-runner uses plan mode for every dispatch and refuses every unapproved
+`auto` resolves to the `agy` backend and the effort pinned by the gate. Ordinary
+dispatch remains refused until both gates are promoted. The runner uses plan
+mode for every evaluation and refuses every unapproved
 lane/model/effort tuple. It never falls back to a neighboring Gemini variant,
 another provider, or another model.
 

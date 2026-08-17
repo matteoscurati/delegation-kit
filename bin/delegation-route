@@ -21,7 +21,8 @@ else
 fi
 KIMI_GATE="${DELEGATION_KIMI_ROUTING_FILE:-$ROOT/config/kimi-k3-routing.json}"
 QWEN_GATE="${DELEGATION_QWEN_ROUTING_FILE:-$ROOT/config/qwen3.8-max-routing.json}"
-GEMINI_GATE="${DELEGATION_GEMINI_ROUTING_FILE:-$ROOT/config/gemini-3.6-flash-routing.json}"
+DEEPSEEK_GATE="${DELEGATION_DEEPSEEK_ROUTING_FILE:-$ROOT/config/deepseek-v4-pro-routing.json}"
+GEMINI_GATE="${DELEGATION_GEMINI_ROUTING_FILE:-$ROOT/config/gemini-3.7-flash-routing.json}"
 GROK_GATE="${DELEGATION_GROK_ROUTING_FILE:-$ROOT/config/grok-4.6-routing.json}"
 
 usage() {
@@ -135,6 +136,7 @@ validate() {
   done
   [ -r "$KIMI_GATE" ] || die 66 "cannot read executable Kimi gate $KIMI_GATE"
   [ -r "$QWEN_GATE" ] || die 66 "cannot read executable Qwen gate $QWEN_GATE"
+  [ -r "$DEEPSEEK_GATE" ] || die 66 "cannot read executable DeepSeek gate $DEEPSEEK_GATE"
   [ -r "$GEMINI_GATE" ] || die 66 "cannot read executable Gemini gate $GEMINI_GATE"
   [ -r "$GROK_GATE" ] || die 66 "cannot read executable Grok gate $GROK_GATE"
   for glm_gate in "${GLM_GATES[@]}"; do
@@ -179,11 +181,21 @@ validate() {
     (($expected | to_entries | map(select(.value.status == "provisional") | .key) | sort) == (($bridge[0].provisional_lanes // []) | sort)) and
     all($bridge[0].lanes[]; (.backends["token-plan-openai"].qualified == (.backends["token-plan-openai"].status == "qualified")))
   ' >/dev/null || die 65 "central routing and Qwen executable gate disagree"
+  jq -e -n --slurpfile central "$GATES" --slurpfile bridge "$DEEPSEEK_GATE" '
+    [$central[0].profiles | to_entries[] | select(.value.model == "deepseek-v4-pro" and .value.harness == "deepseek-api") as $p |
+     $p.value.lanes | to_entries[] | {key:.key,value:{status:.value.status,selection:.value.selection,effort:$p.value.effort,evaluation_manifest_sha256:(.value.evaluation_manifest_sha256 // [])}}] | from_entries as $expected |
+    [$bridge[0].lanes | to_entries[] | {key:.key,value:{status:.value.backends["deepseek-api"].status,selection:.value.backends["deepseek-api"].selection,effort:(.value.backends["deepseek-api"].effort // .value.default_effort),evaluation_manifest_sha256:(.value.backends["deepseek-api"].evaluation_manifest_sha256 // [])}}] | from_entries as $actual |
+    ($bridge[0].model == "deepseek-v4-pro") and (($expected | keys) == ($actual | keys)) and
+    all($expected | keys[]; $expected[.] == $actual[.]) and
+    (($expected | to_entries | map(select(.value.status == "qualified") | .key) | sort) == (($bridge[0].qualified_lanes // []) | sort)) and
+    (($expected | to_entries | map(select(.value.status == "provisional") | .key) | sort) == (($bridge[0].provisional_lanes // []) | sort)) and
+    all($bridge[0].lanes[]; (.backends["deepseek-api"].qualified == (.backends["deepseek-api"].status == "qualified")))
+  ' >/dev/null || die 65 "central routing and DeepSeek executable gate disagree"
   jq -e -n --slurpfile central "$GATES" --slurpfile bridge "$GEMINI_GATE" '
-    [$central[0].profiles | to_entries[] | select(.value.model == "gemini-3.6-flash" and .value.harness == "agy") as $p |
+    [$central[0].profiles | to_entries[] | select(.value.model == "gemini-3.7-flash" and .value.harness == "agy") as $p |
      $p.value.lanes | to_entries[] | {key:.key,value:{status:.value.status,selection:.value.selection,effort:$p.value.effort}}] | from_entries as $expected |
     [$bridge[0].lanes | to_entries[] | {key:.key,value:{status:.value.backends.agy.status,selection:.value.backends.agy.selection,effort:(.value.backends.agy.effort // .value.default_effort)}}] | from_entries as $actual |
-    ($bridge[0].model == "gemini-3.6-flash") and (($expected | keys) == ($actual | keys)) and
+    ($bridge[0].model == "gemini-3.7-flash") and (($expected | keys) == ($actual | keys)) and
     all($expected | keys[]; $expected[.] == $actual[.]) and
     (($expected | to_entries | map(select(.value.status == "qualified") | .key) | sort) == (($bridge[0].qualified_lanes // []) | sort)) and
     (($expected | to_entries | map(select(.value.status == "provisional") | .key) | sort) == (($bridge[0].provisional_lanes // []) | sort)) and

@@ -4,6 +4,26 @@ All notable changes to delegation-kit are documented here.
 
 ## Unreleased
 
+## [0.16.0] — 2026-08-17
+
+### Added
+
+- Added `delegation-deepseek`, its executable and central gates, installer,
+  doctor checks, executor skill, and regression suite. The official
+  `deepseek-v4-pro` API is pinned to `max`; only the text-only `builder` lane is
+  provisional/explicit-only after one exact live patch smoke, and every other
+  lane remains blocked.
+
+### Changed
+
+- Re-pinned the fail-closed Antigravity bridge from Gemini 3.6 Flash to
+  `gemini-3.7-flash`, including its gate, skill, policy, installer, doctor, and
+  tests. No operational Gemini lane is inherited: the current local session
+  cannot attest exact 3.7 inventory/OAuth, so all new routes remain blocked.
+- Refreshed the evidence registry with first-party Gemini 3.7 Flash and DeepSeek
+  V4 Pro sources and contextual benchmark claims; neither source auto-qualifies
+  a lane.
+
 ## [0.15.0] — 2026-08-16
 
 ### Changed

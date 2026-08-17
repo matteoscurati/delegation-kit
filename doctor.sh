@@ -220,6 +220,11 @@ if [ -f "$CLAUDE_HOME/skills/qwen-executor/SKILL.md" ]; then
 elif found_path "$CLAUDE_HOME/plugins" '*qwen-executor/SKILL.md'; then
   ok "provisional Qwen builder skill installed (via plugin cache; universal install still required for runner)"
 else warn "Qwen builder skill missing — re-run ./install.sh"; fi
+if [ -f "$CLAUDE_HOME/skills/deepseek-executor/SKILL.md" ]; then
+  ok "provisional DeepSeek builder skill installed"
+elif found_path "$CLAUDE_HOME/plugins" '*deepseek-executor/SKILL.md'; then
+  ok "provisional DeepSeek builder skill installed (via plugin cache; universal install still required for runner)"
+else warn "DeepSeek builder skill missing — re-run ./install.sh"; fi
 if [ -f "$CLAUDE_HOME/skills/grok-executor/SKILL.md" ]; then
   ok "provisional Grok builder skill installed"
 elif found_path "$CLAUDE_HOME/plugins" '*grok-executor/SKILL.md'; then
@@ -261,6 +266,9 @@ else warn "optional Kimi executor skill missing for Codex"; fi
 if [ -f "$CODEX_HOME/skills/qwen-executor/SKILL.md" ]; then
   ok "provisional Qwen builder skill installed for Codex"
 else warn "Qwen builder skill missing for Codex"; fi
+if [ -f "$CODEX_HOME/skills/deepseek-executor/SKILL.md" ]; then
+  ok "provisional DeepSeek builder skill installed for Codex"
+else warn "DeepSeek builder skill missing for Codex"; fi
 if [ -f "$CODEX_HOME/skills/grok-executor/SKILL.md" ]; then
   ok "provisional Grok builder skill installed for Codex"
 else warn "Grok builder skill missing for Codex"; fi
@@ -348,14 +356,14 @@ else
   warn "delegation-glm not installed — re-run ./install.sh after evaluating GLM"
 fi
 
-# ---- optional Gemini 3.6 Flash external executor ----
-hdr "Gemini 3.6 Flash optional executor"
+# ---- optional Gemini 3.7 Flash external executor ----
+hdr "Gemini 3.7 Flash staged executor"
 if ! have jq; then
   warn "jq not on PATH — delegation-gemini cannot run"
 elif have delegation-gemini; then
   gemini_check="$(delegation-gemini check --json 2>/dev/null || true)"
-  if [ -n "$gemini_check" ] && printf '%s' "$gemini_check" | jq -e '.model == "gemini-3.6-flash"' >/dev/null 2>&1; then
-    ok "delegation-gemini installed and pinned to gemini-3.6-flash"
+  if [ -n "$gemini_check" ] && printf '%s' "$gemini_check" | jq -e '.model == "gemini-3.7-flash" and .provisional_lanes == []' >/dev/null 2>&1; then
+    ok "delegation-gemini installed and pinned to gemini-3.7-flash"
     gemini_selected="$(printf '%s' "$gemini_check" | jq -r '.selected_backend')"
     gemini_lanes="$(printf '%s' "$gemini_check" | jq -r '.qualified_lanes | join(",")')"
     gemini_provisional="$(printf '%s' "$gemini_check" | jq -r '.provisional_lanes | join(",")')"
@@ -365,12 +373,39 @@ elif have delegation-gemini; then
     [ -n "$gemini_lanes" ] \
       && ok "Gemini evaluation-qualified lanes: $gemini_lanes" \
       || info "Gemini has no automatically qualified lanes"
-    [ -z "$gemini_provisional" ] || info "Gemini provisional lanes (explicit flag required): $gemini_provisional"
+    [ -z "$gemini_provisional" ] \
+      && info "Gemini has no operational lanes; staged candidates remain fail-closed" \
+      || info "Gemini provisional lanes (explicit flag required): $gemini_provisional"
   else
-    bad "delegation-gemini check failed or is not pinned to gemini-3.6-flash"
+    bad "delegation-gemini check failed, is not pinned to gemini-3.7-flash, or exposes an unapproved lane"
   fi
 else
   warn "delegation-gemini not installed — re-run ./install.sh"
+fi
+
+# ---- DeepSeek V4 Pro/max provisional builder ----
+hdr "DeepSeek V4 Pro/max builder"
+if ! have jq; then
+  warn "jq not on PATH — delegation-deepseek cannot run"
+elif have delegation-deepseek; then
+  deepseek_check="$(delegation-deepseek check --json 2>/dev/null || true)"
+  if [ -n "$deepseek_check" ] && printf '%s' "$deepseek_check" | jq -e '
+      .model == "deepseek-v4-pro" and .efforts == ["max"] and
+      .provisional_lanes == ["builder"]' >/dev/null 2>&1; then
+    ok "delegation-deepseek installed and pinned to deepseek-v4-pro/max"
+    deepseek_selected="$(printf '%s' "$deepseek_check" | jq -r '.selected_backend')"
+    deepseek_candidates="$(printf '%s' "$deepseek_check" | jq -r '.candidate_lanes | join(",")')"
+    if [ "$deepseek_selected" = none ]; then
+      info "DeepSeek API runtime unavailable"
+    else
+      ok "DeepSeek API runtime available ($deepseek_selected)"
+    fi
+    info "DeepSeek builder is provisional and explicit-only; all other candidates remain blocked: ${deepseek_candidates:-none}"
+  else
+    bad "delegation-deepseek check failed or does not enforce deepseek-v4-pro/max builder-only routing"
+  fi
+else
+  warn "delegation-deepseek not installed — re-run ./install.sh"
 fi
 
 # ---- optional Kimi K3 external executor ----

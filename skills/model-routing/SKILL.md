@@ -13,7 +13,7 @@ advisory and the versioned routing gate remains authoritative.
 Use `delegation-route resolve --lane <lane>` for the operational decision. It is
 read-only and never dispatches a model.
 For native Claude/Codex agents, the lead must resolve first; invoking an
-explicit-only profile is the manual selection event. GLM/Gemini/Kimi/Grok/Qwen runners enforce the
+explicit-only profile is the manual selection event. GLM/Gemini/Kimi/Grok/Qwen/DeepSeek runners enforce the
 same graph directly and refuse drift.
 
 ## When to delegate at all
@@ -63,12 +63,17 @@ Its `policy-annotation` entry, like the corresponding Kimi, GLM, and Grok
 entries, is an allowlisted evaluation-only candidate and not an operational
 route.
 
-Gemini 3.6 Flash is provisional only for `scout` at `medium` through `agy`.
-Builder and frontend-builder at `high` remain blocked; reviewer and judgement
-are disabled. Dispatch requires an explicit decision and
-`--allow-provisional`. It is a prompt-only bridge: put the required tracked-file
+Gemini 3.7 Flash is staged through `agy` with no operational lane. Scout at
+`medium` and builder/frontend-builder at `high` remain blocked candidates;
+reviewer and judgement are disabled. It is a prompt-only bridge: put the required tracked-file
 excerpts into the brief. It uses an isolated temporary home/workspace, retains
 only macOS Keychain access for OAuth, and denies every tool namespace.
+
+DeepSeek V4 Pro is provisional for `builder` only, explicit-only at `max`, and
+requires `--allow-provisional`. The official API runner is prompt-only and
+text-only: it returns a patch the lead applies and verifies. One live exact
+tuple smoke is compatibility evidence, not measured builder qualification; all
+other lanes remain blocked.
 
 Grok 4.6 is provisional for `builder` and `frontend-builder` at `high` through
 Grok Build CLI. Dispatch requires an explicit decision and

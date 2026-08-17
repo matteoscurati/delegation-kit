@@ -68,19 +68,33 @@ Policy annotation remains candidate/blocked and may run only through a
 separately allowlisted GLM-5.3/max evaluation manifest. It never inherits this
 coding qualification or qualifies broad judgement.
 
-### Optional Gemini 3.6 Flash executor
+### Optional Gemini 3.7 Flash executor
 
-Gemini 3.6 Flash is available only through `gemini-executor` and
-`delegation-gemini`, using the authenticated Antigravity CLI (`agy`). The initial
-gate exposes only `scout` at `medium` as provisional and requires an explicit
-decision plus `--allow-provisional`. Builder and frontend-builder at `high` are
-blocked candidates; reviewer and judgement are disabled. Runtime/model listing
-is not qualification, and the runner never changes model, effort, backend, or
+Gemini 3.7 Flash is staged only through `gemini-executor` and
+`delegation-gemini`, using the authenticated Antigravity CLI (`agy`). No lane is
+operational yet: scout at `medium` and builder/frontend-builder at `high` are
+blocked candidates; reviewer and judgement are disabled. The current local
+session cannot attest exact model inventory or OAuth, and the old Gemini 3.6
+smoke does not transfer. Runtime/model listing is not qualification, and the
+runner never changes model, effort, backend, or
 lane silently. Dispatches are prompt-only: embed all relevant file excerpts in
 the brief. Never use `--dangerously-skip-permissions` or grant headless
 filesystem, shell, network, MCP, subagent, or editing tools. The runner starts
 `agy` with an empty temporary workspace and home, carries across only macOS
 Keychain access for OAuth, and explicitly denies every tool namespace.
+
+### Optional provisional DeepSeek V4 Pro builder
+
+DeepSeek V4 Pro is available only through `deepseek-executor` and
+`delegation-deepseek`, pinned to the official OpenAI-compatible API at effort
+`max`. Only `builder` is provisional and explicit-only; require an explicit
+decision and `--allow-provisional`. The bridge is prompt-only and text-only:
+embed the relevant file excerpts, request a patch, and let the lead apply and
+verify it. One live exact-tuple patch smoke proved provider identity and effort
+acceptance, not builder qualification. Clerk, scout, reviewer, senior, and
+policy annotation remain blocked candidates; judgement is disabled. Never copy
+another tool's key silently or substitute another model, effort, backend, or
+lane.
 
 ### Optional gated Kimi model
 
@@ -185,8 +199,8 @@ central graph directly before runtime/auth checks.
   *and* higher-recall there). Size the reviewer to the work, not to the top of the
   evidence for that lane.
 - **Picking among the external builders:** they are not interchangeable. Kimi K3
-  and Grok 4.6 are `preferred-explicit` by explicit owner decision; GLM-5.3 and
-  Qwen3.8-Max stay plain `explicit-only`. Grok 4.6's current public rows use
+  and Grok 4.6 are `preferred-explicit` by explicit owner decision; GLM-5.3,
+  Qwen3.8-Max, and DeepSeek V4 Pro stay plain `explicit-only`. Grok 4.6's current public rows use
   non-production harnesses, so they are contextual rather than exact. Preference
   is not qualification — every one of them still needs an explicit decision and
   `--allow-provisional`. For frontend work prefer Kimi over Grok on WebDev

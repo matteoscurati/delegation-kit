@@ -21,7 +21,7 @@ decision graph and read their dispatch status from it before checking runtime or
 authentication. Their backend-specific JSON files retain transport and legacy
 measurement details but cannot widen the central gate.
 
-Qwen3.8-Max carries an empty `exact_evidence_ids` array on every lane, including
+Qwen3.8-Max and DeepSeek V4 Pro carry empty `exact_evidence_ids` arrays on every lane, including
 the provisional `builder`. Its only recorded row is the contextual
 `qwen-3.8-max-ga-launch` availability record, whose metrics live under
 `launch.*` precisely so they can never satisfy a lane's `required_metrics`.
@@ -36,7 +36,8 @@ run. It remains absent from every operational route group; evaluation neither
 promotes nor mutates a gate and does not qualify broad architecture/trade-off
 judgement. Dedicated runners pin the exact configured model, harness, and
 highest supported effort before provider dispatch: Kimi K3/native at `max`,
-Qwen Token Plan at `xhigh`, GLM-5.3/Claude-to-Z.AI at `max`, and Grok
+Qwen Token Plan at `xhigh`, DeepSeek V4 Pro through the official API at `max`,
+GLM-5.3/Claude-to-Z.AI at `max`, and Grok
 4.5/Grok Build at `high`. The central gate also records blocked Fable, Opus, and
 Sol policy-annotation candidates; those profiles still require their own frozen
 transport harness and an allowlisted manifest before they may supply evidence.
@@ -127,7 +128,9 @@ benchmarks remain separately labeled context.
   planning, implementation, bugfinding, and review tasks. Every row uses Cursor's
   harness; its Grok 4.5 row also carries the publisher's possible
   training-contamination warning. It supplies the first coding-context rows for
-  Gemini 3.6 Flash `medium` and `high`, but not for the production `agy` harness.
+  historical Gemini 3.6 Flash `medium` and `high`, but not for the production
+  `agy` harness. Gemini 3.7 launch claims are recorded separately as contextual
+  first-party evidence.
   The pricing provenance now explicitly uses the publisher's per-task tokens and
   published input, cache-read, cache-write, and output rates; it changes no
   recorded CursorBench score.
@@ -252,7 +255,7 @@ compares it against the snapshot, so a mismatch is a signal to re-read, not a
 failure. New relevant families include FrontierCode, FrontierSWE, APEX Agents,
 Blueprint-Bench 2, and Epoch Capabilities Index. Exact model-name records exist
 for Fable 5, Opus 5, Sonnet 5, GLM-5.2, all three GPT-5.6 tiers, Grok 4.5, and
-Kimi K3; GLM-5.3, Gemini 3.6 Flash, and Qwen3.8-Max have no exact model-name ZIP
+Kimi K3; GLM-5.3, Gemini 3.7 Flash, DeepSeek V4 Pro, and Qwen3.8-Max have no exact model-name ZIP
 record. Unknown harness or effort remains contextual, so the archive does not
 qualify a production lane by itself.
 

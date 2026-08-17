@@ -29,20 +29,33 @@ installed or selectable route. Their frozen receipts remain historical evidence
 only. Reviewer is disabled; policy annotation remains candidate/blocked and
 evaluation-only at GLM-5.3/max.
 
-## Optional Gemini 3.6 Flash executor
+## Optional Gemini 3.7 Flash executor
 
-Gemini 3.6 Flash is available only through `gemini-executor` and
-`delegation-gemini`, using the authenticated Antigravity CLI (`agy`). The initial
-gate permits only `scout` at `medium`, provisionally and with an explicit
-`--allow-provisional` decision. Builder and frontend-builder at `high` are
-blocked candidates; reviewer and judgement are disabled. A visible model name,
-OAuth session, launch benchmark, or smoke test is not qualification. Never
+Gemini 3.7 Flash is staged only through `gemini-executor` and
+`delegation-gemini`, using the authenticated Antigravity CLI (`agy`). No lane is
+operational yet: scout at `medium` and builder/frontend-builder at `high` are
+blocked candidates; reviewer and judgement are disabled. The current local
+session cannot attest exact model inventory or OAuth, and the old Gemini 3.6
+smoke does not transfer. A visible model name or launch benchmark is not
+qualification. Never
 silently change the exact model, effort, backend, or lane. The bridge is
 prompt-only: include all needed file excerpts in the brief, and never enable
 `--dangerously-skip-permissions` or assume headless tools can read the repo.
 The runner starts `agy` with an empty temporary workspace and home, carries
 across only macOS Keychain access for OAuth, and explicitly denies every tool
 namespace.
+
+## Optional provisional DeepSeek V4 Pro builder
+
+DeepSeek V4 Pro is available only through `deepseek-executor` and
+`delegation-deepseek`, pinned to the official OpenAI-compatible API at effort
+`max`. Only `builder` is provisional and explicit-only; require an explicit
+decision and `--allow-provisional`. The lane is text-only: embed all relevant
+file excerpts, ask for a patch, then have the lead apply and verify it. One live
+exact-tuple patch smoke proved provider identity and effort acceptance, not
+builder qualification. Clerk, scout, reviewer, senior, and policy annotation
+remain blocked candidates; judgement is disabled. Never copy another tool's
+key silently or substitute another model, effort, backend, or lane.
 
 ## Evidence-backed qualification
 
