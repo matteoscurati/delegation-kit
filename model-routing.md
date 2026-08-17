@@ -114,7 +114,8 @@ and `max`; `gpt-5.5` **refuses** `max` and enumerates a shorter set of its own.
 | gpt-5.5 | none · low · medium · high · xhigh (no `max`) |
 | glm-5.3 | max (only installed and selectable GLM tuple) |
 | kimi-k3 | max |
-| gemini-3.6-flash | medium (scout provisional) · high (editing candidate) |
+| gemini-3.7-flash | medium (scout candidate) · high (editing candidate) |
+| deepseek-v4-pro | high · max (builder pinned to max, provisional) |
 | qwen3.8-max | xhigh (builder provisional; every other lane candidate/disabled) |
 | grok-4.6 | high (builder/frontend-builder provisional; policy annotation evaluation-only) |
 
@@ -144,19 +145,25 @@ And the previously allowlisted `policy-annotation` evaluation manifest was bound
 to the `qwen3.8-max-preview` tuple; it is void after the rename and must be
 regenerated before any evaluation run.
 
-Gemini 3.6 Flash is reachable through the authenticated Antigravity CLI. Its
-public evidence consists of CursorBench scores at `medium` (51.2) and `high`
-(53.5), a preliminary WebDev result (1527 ±13), and — new on 2026-07-27 — a
-first Agent Arena row. That Arena row rests on 2,194 sessions, so its intervals
-swamp the estimates (net improvement 0.61% ±2.95%) and it moves nothing. All
-are contextual because they use Cursor/Arena rather than the production `agy`
-harness. Only the exact
-`gemini-3.6-flash-medium` scout tuple is provisional and requires
-`--allow-provisional`; high-effort editing lanes remain blocked pending scoped
-local evaluation. Runtime discovery is compatibility evidence, not qualification.
+Gemini 3.7 Flash is staged through the authenticated Antigravity CLI. Google's
+launch reports DeepSWE 65.3%, FrontierCode 43.6%, and WebDev Elo 1588, but these
+are first-party mixed-harness claims rather than evidence for production `agy`.
+The current local session cannot attest exact model inventory or OAuth, so the
+previous Gemini 3.6 smoke is not inherited: scout/medium and both editing/high
+lanes remain candidate/blocked. Runtime discovery is compatibility evidence,
+not qualification.
 The Antigravity bridge is prompt-only: the lead supplies selected file excerpts
 in the brief. The runner uses an empty temporary workspace and home, retains
 only macOS Keychain access for OAuth, and explicitly denies every tool namespace.
+
+DeepSeek V4 Pro is pinned to the official OpenAI-compatible API at `max`.
+DeepSeek officially exposes only `high` and `max` thinking; low/medium map to
+high and xhigh maps to max. One live exact-tuple smoke returned the exact
+`deepseek-v4-pro` identity, accepted `reasoning_effort=max`, and produced a
+correct structured off-by-one patch. That is enough for an owner-selected
+**provisional, explicit-only, text-only builder**, not qualification. The
+provider Terminal-Bench 2.0 claim uses another harness, no DeepSWE row exists,
+and WebDev supports frontend work only. All other lanes stay blocked.
 
 Grok 4.6 is provisional for `builder` and `frontend-builder` through Grok Build
 CLI at `high`. Current CursorBench, FrontierCode, APEX, and preliminary WebDev
@@ -292,3 +299,7 @@ Qwen3.8-Max is provisional for `builder` only, explicit-only at `xhigh`, and
 requires `--allow-provisional`. It is text-only and returns a patch rather than
 editing a worktree. Every other Qwen lane stays blocked until a controlled
 `--evaluation` run records lane-specific evidence and both gates are updated.
+DeepSeek V4 Pro is likewise a text-only, explicit-only provisional builder,
+pinned to the official API at `max`; all neighbouring lanes stay blocked.
+Gemini 3.7 Flash is installed as a fail-closed candidate graph with no
+operational lane until the exact Antigravity identity/auth smoke succeeds.

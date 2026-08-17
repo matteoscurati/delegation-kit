@@ -1,0 +1,503 @@
+#!/usr/bin/env bash
+# Run DeepSeek V4 Pro through the DeepSeek OpenAI-compatible API.
+# Only the builder lane is promoted, and only as provisional/explicit-only: it
+# requires --allow-provisional after an explicit routing decision. Every other
+# lane stays blocked until exact local evaluation promotes it in both the
+# central and executable gates.
+set -euo pipefail
+umask 077
+
+SOURCE="${BASH_SOURCE[0]}"
+while [ -L "$SOURCE" ]; do
+  SOURCE_DIR="$(cd "$(dirname "$SOURCE")" && pwd)"
+  SOURCE="$(readlink "$SOURCE")"
+  [[ "$SOURCE" = /* ]] || SOURCE="$SOURCE_DIR/$SOURCE"
+done
+ROOT="$(cd "$(dirname "$SOURCE")/.." && pwd)"
+ROUTING_FILE="${DELEGATION_DEEPSEEK_ROUTING_FILE:-$ROOT/config/deepseek-v4-pro-routing.json}"
+CENTRAL_GATES="${DELEGATION_ROUTING_GATES_FILE:-$ROOT/config/routing-gates.json}"
+ROUTER="$ROOT/bin/delegation-route"
+KEY_FILE="${DELEGATION_DEEPSEEK_KEY_FILE:-$ROOT/config/deepseek.env}"
+MODEL="deepseek-v4-pro"
+PROFILE="deepseek-v4-pro"
+BACKEND="deepseek-api"
+API_URL="https://api.deepseek.com/v1/chat/completions"
+RUN_TMP="" RUN_OUTPUT_TMP="" RUN_METRICS_TMP="" RUN_COMMIT_TMP=""
+
+cleanup_run() {
+  [ -z "$RUN_OUTPUT_TMP" ] || rm -f -- "$RUN_OUTPUT_TMP"
+  [ -z "$RUN_METRICS_TMP" ] || rm -f -- "$RUN_METRICS_TMP"
+  [ -z "$RUN_COMMIT_TMP" ] || rm -f -- "$RUN_COMMIT_TMP"
+  [ -z "$RUN_TMP" ] || rm -rf -- "$RUN_TMP"
+}
+
+usage() {
+  cat <<'EOF'
+Usage:
+  delegation-deepseek check [--json]
+  delegation-deepseek run --lane <builder|clerk|scout|reviewer|senior|judgement|policy-annotation> \
+    [--effort <auto|none|minimal|low|medium|high|xhigh|max>] \
+    [--backend <auto|deepseek-api>] --prompt-file <path> \
+    --output <path> --workdir <path> [--metrics <path>] \
+    [--debug-dir <path>] [--allow-provisional] \
+    [--evaluation --evaluation-manifest <path>] [--preflight-only]
+
+The builder lane is provisional: pass --allow-provisional after an explicit
+routing decision. It is text-only — the DeepSeek chat-completions transport
+cannot edit a worktree, so builder returns a patch the lead applies and
+verifies. Normal dispatch is refused while lanes are candidate/disabled.
+
+--evaluation is reserved for allowlisted controlled qualification runs of
+candidate lanes, never promotes or mutates a gate, and adds no operational
+route. It cannot be combined with --allow-provisional. Policy-annotation
+does not qualify broad architecture/trade-off judgement. --preflight-only is
+valid only with --evaluation and --evaluation-manifest: it traverses the same
+pre-provider validation path as the real evaluation run, prints a
+delegation_policy_annotation_preflight_receipt_v1 receipt on stdout, and exits
+zero before provider dispatch and before any caller-visible artifact exists.
+
+Exit codes: 64 invalid input, 69 unavailable/authentication failure,
+70 dispatch/extract failure, 75 temporary/rate-limit failure, 78 routing gate
+refusal. Failures write sanitized metadata to <output>.error.json. Raw provider
+responses and stderr are preserved only when --debug-dir is supplied.
+EOF
+}
+
+die() { local code="$1"; shift; printf 'delegation-deepseek: %s\n' "$*" >&2; exit "$code"; }
+have() { command -v "$1" >/dev/null 2>&1; }
+normalized_destination() { local parent name; parent="$(cd "$(dirname "$1")" && pwd -P)" || return 1; name="$(basename "$1")"; printf '%s/%s' "$parent" "$name"; }
+
+key_file_mode() {
+  local mode
+  if mode="$(stat -c '%a' "$KEY_FILE" 2>/dev/null)"; then printf '%s' "$mode"; return; fi
+  if mode="$(stat -f '%Lp' "$KEY_FILE" 2>/dev/null)"; then printf '%s' "$mode"; return; fi
+  printf ''
+}
+
+load_key() {
+  DEEPSEEK_KEY_PROBLEM=""
+  [ -z "${DEEPSEEK_API_KEY:-}" ] || return 0
+  [ -f "$KEY_FILE" ] || return 0
+  local perms raw
+  perms="$(key_file_mode)"
+  case "$perms" in ""|?00) ;; *) DEEPSEEK_KEY_PROBLEM="key file $KEY_FILE is mode $perms; run: chmod 600 $KEY_FILE"; return 0 ;; esac
+  raw="$(sed -n 's/^[[:space:]]*\(export[[:space:]][[:space:]]*\)\{0,1\}DEEPSEEK_API_KEY=//p' "$KEY_FILE" 2>/dev/null | head -1)"
+  raw="${raw%$'\r'}"; raw="${raw#"${raw%%[![:space:]]*}"}"; raw="${raw%"${raw##*[![:space:]]}"}"
+  case "$raw" in \"*\") raw="${raw#\"}"; raw="${raw%\"}" ;; \'*\') raw="${raw#\'}"; raw="${raw%\'}" ;; esac
+  if [ -n "$raw" ]; then DEEPSEEK_API_KEY="$raw"; else DEEPSEEK_KEY_PROBLEM="key file $KEY_FILE holds no DEEPSEEK_API_KEY line"; fi
+}
+
+runtime_status() {
+  DEEPSEEK_REASON=""
+  have curl || { DEEPSEEK_REASON="curl not on PATH"; return 1; }
+  have jq || { DEEPSEEK_REASON="jq not on PATH"; return 1; }
+  load_key
+  if [ -z "${DEEPSEEK_API_KEY:-}" ]; then DEEPSEEK_REASON="${DEEPSEEK_KEY_PROBLEM:-DEEPSEEK_API_KEY is unset and $KEY_FILE holds no key}"; return 1; fi
+  DEEPSEEK_REASON="ready"; return 0
+}
+
+validate_gate_graph() {
+  [ -x "$ROUTER" ] || return 1
+  DELEGATION_ROUTING_GATES_FILE="$CENTRAL_GATES" DELEGATION_DEEPSEEK_ROUTING_FILE="$ROUTING_FILE" "$ROUTER" check --json >/dev/null 2>&1
+}
+
+lane_status() { jq -r --arg profile "$PROFILE" --arg lane "$1" '.profiles[$profile].lanes[$lane].status // "disabled"' "$CENTRAL_GATES"; }
+lane_selection() { jq -r --arg profile "$PROFILE" --arg lane "$1" '.profiles[$profile].lanes[$lane].selection // "blocked"' "$CENTRAL_GATES"; }
+lane_effort() { jq -r --arg profile "$PROFILE" '.profiles[$profile].effort // empty' "$CENTRAL_GATES"; }
+qualified_lanes() { jq -c --arg profile "$PROFILE" '[.profiles[$profile].lanes | to_entries[] | select(.value.status == "qualified") | .key] | sort' "$CENTRAL_GATES"; }
+provisional_lanes() { jq -c --arg profile "$PROFILE" '[.profiles[$profile].lanes | to_entries[] | select(.value.status == "provisional") | .key] | sort' "$CENTRAL_GATES"; }
+candidate_lanes() { jq -c --arg profile "$PROFILE" '[.profiles[$profile].lanes | to_entries[] | select(.value.status == "candidate") | .key] | sort' "$CENTRAL_GATES"; }
+
+sha256_file() {
+  if have shasum; then shasum -a 256 "$1" | awk '{print $1}';
+  elif have sha256sum; then sha256sum "$1" | awk '{print $1}';
+  else return 1; fi
+}
+
+evaluation_manifest() {
+  local manifest="$1" lane="$2" prompt_file="$3" expected_effort="$4"
+  local hash expected_hash source_head runner_hash contract_path output_schema_path contract_hash output_schema_hash
+  [ -f "$manifest" ] && [ ! -L "$manifest" ] || die 78 "evaluation manifest is missing or symlinked"
+  hash="$(sha256_file "$manifest")" || die 69 "sha256 tool is required for evaluation"
+  expected_hash="$(sha256_file "$prompt_file")" || die 69 "sha256 tool is required for evaluation"
+  source_head="$(git -C "$ROOT" rev-parse HEAD 2>/dev/null)" || die 78 "runner source checkout is unavailable"
+  runner_hash="$(sha256_file "$SOURCE")" || die 69 "sha256 tool is required for evaluation"
+  git -C "$ROOT" diff --quiet && git -C "$ROOT" diff --cached --quiet &&
+    [ -z "$(git -C "$ROOT" ls-files --others --exclude-standard)" ] || die 78 "runner source checkout is dirty"
+  jq -e --arg lane "$lane" --arg model "$MODEL" --arg profile "$PROFILE" --arg effort "$expected_effort" \
+    --arg prompt_sha256 "$expected_hash" --arg runner_sha256 "$runner_hash" '
+      (keys | sort) == ["backend","contract_path","contract_sha256","effort","lane","max_output_chars","model","output_schema_path","output_schema_sha256","profile","prompt_sha256","runner_sha256","runner_source_commit","schema","timeout_seconds"] and
+      .schema == "delegation_policy_annotation_evaluation_v1" and
+      .profile == $profile and .lane == $lane and .model == $model and
+      .backend == "deepseek-api" and .effort == $effort and .prompt_sha256 == $prompt_sha256 and
+      .runner_sha256 == $runner_sha256 and
+      ([.prompt_sha256,.output_schema_sha256,.contract_sha256,.runner_sha256] | all(test("^[0-9a-f]{64}$"))) and
+      (.runner_source_commit | test("^[0-9a-f]{40}$")) and
+      (.contract_path | type == "string" and test("^(?!/)(?!.*(^|/)\\.\\.(/|$)).+")) and
+      (.output_schema_path | type == "string" and test("^(?!/)(?!.*(^|/)\\.\\.(/|$)).+")) and
+      (.timeout_seconds | type == "number" and floor == . and . >= 1 and . <= 900) and
+      (.max_output_chars | type == "number" and floor == . and . >= 1 and . <= 65536)
+    ' "$manifest" >/dev/null 2>&1 || die 78 "evaluation manifest is malformed or does not bind this exact run"
+  git -C "$ROOT" merge-base --is-ancestor "$(jq -r '.runner_source_commit' "$manifest")" "$source_head" \
+    || die 78 "evaluation manifest source commit is not an ancestor of this runner checkout"
+  contract_path="$(jq -r '.contract_path' "$manifest")"
+  output_schema_path="$(jq -r '.output_schema_path' "$manifest")"
+  [ -f "$ROOT/$contract_path" ] && [ ! -L "$ROOT/$contract_path" ] \
+    || die 78 "evaluation contract path is missing or symlinked"
+  [ -f "$ROOT/$output_schema_path" ] && [ ! -L "$ROOT/$output_schema_path" ] \
+    || die 78 "evaluation output schema path is missing or symlinked"
+  contract_hash="$(sha256_file "$ROOT/$contract_path")" || die 69 "sha256 tool is required for evaluation"
+  output_schema_hash="$(sha256_file "$ROOT/$output_schema_path")" || die 69 "sha256 tool is required for evaluation"
+  [ "$contract_hash" = "$(jq -r '.contract_sha256' "$manifest")" ] \
+    || die 78 "evaluation contract hash does not match its bound path"
+  [ "$output_schema_hash" = "$(jq -r '.output_schema_sha256' "$manifest")" ] \
+    || die 78 "evaluation output schema hash does not match its bound path"
+  jq -e --arg profile "$PROFILE" --arg lane "$lane" --arg hash "$hash" '
+    .profiles[$profile].lanes[$lane].evaluation_manifest_sha256 | type == "array" and index($hash) != null
+  ' "$CENTRAL_GATES" >/dev/null 2>&1 || die 78 "evaluation manifest is not allowlisted by the central gate"
+  jq -e --arg lane "$lane" --arg hash "$hash" '
+    .lanes[$lane].backends["deepseek-api"].evaluation_manifest_sha256 | type == "array" and index($hash) != null
+  ' "$ROUTING_FILE" >/dev/null 2>&1 || die 78 "evaluation manifest is not allowlisted by the executable gate"
+  EVALUATION_TIMEOUT_SECONDS="$(jq -r '.timeout_seconds' "$manifest")"
+  EVALUATION_MAX_OUTPUT_CHARS="$(jq -r '.max_output_chars' "$manifest")"
+  # Bound values the run receipt republishes; recomputed locally, never caller input.
+  EVALUATION_MANIFEST_SHA256="$hash"
+  EVALUATION_PROMPT_SHA256="$expected_hash"
+  EVALUATION_RUNNER_SOURCE_COMMIT="$source_head"
+  EVALUATION_RUNNER_SHA256="$runner_hash"
+  EVALUATION_CONTRACT_SHA256="$contract_hash"
+  EVALUATION_OUTPUT_SCHEMA_SHA256="$output_schema_hash"
+}
+
+# Success stdout for --preflight-only: exactly one JSON object, every value
+# recomputed by the validation path above, never taken from caller input.
+print_preflight_receipt() {
+  local lane="$1" effort="$2"
+  jq -n --arg profile "$PROFILE" --arg model "$MODEL" --arg backend "$BACKEND" \
+    --arg effort "$effort" --arg lane "$lane" \
+    --arg manifest_sha256 "$EVALUATION_MANIFEST_SHA256" \
+    --arg prompt_sha256 "$EVALUATION_PROMPT_SHA256" \
+    --arg source_commit "$EVALUATION_RUNNER_SOURCE_COMMIT" \
+    --arg runner_sha256 "$EVALUATION_RUNNER_SHA256" \
+    --arg contract_sha256 "$EVALUATION_CONTRACT_SHA256" \
+    --arg output_schema_sha256 "$EVALUATION_OUTPUT_SCHEMA_SHA256" \
+    '{schema_version:"delegation_policy_annotation_preflight_receipt_v1",
+      status:"READY_NO_PROVIDER_CALL",
+      profile:$profile,model:$model,backend:$backend,effort:$effort,lane:$lane,
+      evaluation_manifest_sha256:$manifest_sha256,prompt_sha256:$prompt_sha256,
+      runner_source_commit:$source_commit,runner_sha256:$runner_sha256,
+      contract_sha256:$contract_sha256,output_schema_sha256:$output_schema_sha256,
+      provider_dispatch_started:false,provider_attempts:0,post_observation_retries:0}'
+}
+
+DEBUG_RUN_DIR=""
+preserve_debug() {
+  local parent="$1" response_file="$2" stderr_file="$3"
+  DEBUG_RUN_DIR=""
+  [ -n "$parent" ] || return 0
+  DEBUG_RUN_DIR="$(mktemp -d "$parent/delegation-deepseek.XXXXXX")" || return 1
+  chmod 700 "$DEBUG_RUN_DIR"
+  cp "$response_file" "$DEBUG_RUN_DIR/response.json"
+  cp "$stderr_file" "$DEBUG_RUN_DIR/stderr.txt"
+  chmod 600 "$DEBUG_RUN_DIR/response.json" "$DEBUG_RUN_DIR/stderr.txt"
+}
+
+write_diagnostic() {
+  local diagnostic="$1" response_file="$2" stderr_file="$3" started="$4"
+  local effort="$5" lane="$6" phase="$7" reason="$8" http_code="$9"
+  local curl_exit="${10}" debug_path="${11}"
+  local parent name tmp finished response_bytes stderr_bytes
+  response_bytes="$(wc -c <"$response_file" | tr -d ' ')"
+  stderr_bytes="$(wc -c <"$stderr_file" | tr -d ' ')"
+  finished="$(date +%s)"
+  parent="$(dirname "$diagnostic")"
+  name="$(basename "$diagnostic")"
+  tmp="$(mktemp "$parent/.$name.XXXXXX")"
+  jq -n --arg model "$MODEL" --arg backend "$BACKEND" --arg effort "$effort" \
+    --arg lane "$lane" --arg phase "$phase" --arg reason "$reason" \
+    --arg http_code "$http_code" --arg debug_dir "$debug_path" \
+    --argjson curl_exit "$curl_exit" --argjson response_bytes "$response_bytes" \
+    --argjson stderr_bytes "$stderr_bytes" \
+    --argjson elapsed_seconds "$((finished - started))" \
+    '{schema_version:1,model:$model,backend:$backend,effort:$effort,lane:$lane,
+      phase:$phase,reason:$reason,http_code:$http_code,curl_exit_code:$curl_exit,
+      response_bytes:$response_bytes,stderr_bytes:$stderr_bytes,
+      elapsed_seconds:$elapsed_seconds,
+      debug_dir:(if $debug_dir == "" then null else $debug_dir end)}' >"$tmp"
+  chmod 600 "$tmp"
+  mv "$tmp" "$diagnostic"
+}
+
+print_check() {
+  local as_json="${1:-0}" ready=false selected=none
+  validate_gate_graph || die 78 "central and executable routing gates are missing, invalid, or inconsistent"
+  runtime_status && ready=true || true
+  [ "$ready" = true ] && selected="$BACKEND"
+  if [ "$as_json" = 1 ]; then
+    jq -n --arg model "$MODEL" --arg selected "$selected" --arg reason "$DEEPSEEK_REASON" \
+      --argjson available "$ready" --argjson qualified "$(qualified_lanes)" \
+      --argjson provisional "$(provisional_lanes)" --argjson candidate "$(candidate_lanes)" \
+      '{model:$model,efforts:["max"],selected_backend:$selected,qualified_lanes:$qualified,provisional_lanes:$provisional,candidate_lanes:$candidate,backends:{"deepseek-api":{available:$available,reason:$reason}}}'
+  else
+    printf 'DeepSeek V4 Pro: selected=%s qualified=%s provisional=%s candidate=%s\n' "$selected" "$(qualified_lanes)" "$(provisional_lanes)" "$(candidate_lanes)"
+    printf '  deepseek-api: %s (%s; effort=max)\n' "$ready" "$DEEPSEEK_REASON"
+  fi
+}
+
+run_command() {
+  local lane="" effort=auto backend=auto prompt_file="" output="" workdir="" metrics="" debug_dir="" allow_provisional=0 evaluation=0 evaluation_manifest_path="" preflight_only=0
+  while [ "$#" -gt 0 ]; do
+    case "$1" in
+      --lane) lane="${2:-}"; shift 2 ;; --effort) effort="${2:-}"; shift 2 ;;
+      --backend) backend="${2:-}"; shift 2 ;; --prompt-file) prompt_file="${2:-}"; shift 2 ;;
+      --output) output="${2:-}"; shift 2 ;; --workdir) workdir="${2:-}"; shift 2 ;;
+      --metrics) metrics="${2:-}"; shift 2 ;; --debug-dir) debug_dir="${2:-}"; shift 2 ;;
+      --allow-provisional) allow_provisional=1; shift ;;
+      --evaluation) evaluation=1; shift ;;
+      --evaluation-manifest) evaluation_manifest_path="${2:-}"; shift 2 ;;
+      --preflight-only) preflight_only=1; shift ;;
+      -h|--help) usage; exit 0 ;; *) die 64 "unknown run argument: $1" ;;
+    esac
+  done
+  case "$lane" in builder|clerk|scout|reviewer|senior|judgement|policy-annotation) ;; *) die 64 "invalid lane: $lane" ;; esac
+  case "$effort" in auto|none|minimal|low|medium|high|xhigh|max) ;; *) die 64 "invalid effort: $effort" ;; esac
+  case "$backend" in auto|deepseek-api) ;; *) die 64 "invalid backend: $backend" ;; esac
+  [ -f "$prompt_file" ] || die 64 "prompt file missing: $prompt_file"
+  if [ "$evaluation" = 1 ]; then
+    [ -n "$evaluation_manifest_path" ] || die 64 "--evaluation requires --evaluation-manifest"
+    [ "$allow_provisional" = 0 ] || die 64 "--evaluation and --allow-provisional are mutually exclusive"
+  else
+    [ -z "$evaluation_manifest_path" ] || die 64 "--evaluation-manifest requires --evaluation"
+  fi
+  [ "$preflight_only" = 0 ] || [ "$evaluation" = 1 ] \
+    || die 64 "--preflight-only requires --evaluation and --evaluation-manifest"
+  [ -d "$workdir" ] || die 64 "workdir missing: $workdir"
+  [ -n "$output" ] || die 64 "--output is required"
+  [ -z "$debug_dir" ] || {
+    [ -d "$debug_dir" ] && [ ! -L "$debug_dir" ] || die 64 "debug directory missing or symlinked: $debug_dir"
+    debug_dir="$(cd "$debug_dir" && pwd -P)"
+  }
+  validate_gate_graph || die 78 "central and executable routing gates are missing, invalid, or inconsistent"
+  backend="$BACKEND"
+  local status; status="$(lane_status "$lane")"
+  if [ "$evaluation" = 0 ]; then
+    case "$status" in
+      qualified) ;;
+      provisional)
+        [ "$allow_provisional" = 1 ] \
+          || die 78 "lane '$lane' is provisional; pass --allow-provisional after an explicit routing decision"
+        case "$(lane_selection "$lane")" in
+          explicit-only|preferred-explicit) ;;
+          *) die 78 "lane '$lane' is provisional but its selection is not explicit" ;;
+        esac
+        ;;
+      *) die 78 "lane '$lane' has non-dispatchable status '$status'" ;;
+    esac
+  else
+    [ "$status" = candidate ] || die 78 "lane '$lane' has status '$status'; --evaluation permits candidate lanes only"
+  fi
+  [ "$effort" != auto ] || effort="$(lane_effort)"
+  if [ "$effort" != "$(lane_effort)" ]; then die 78 "lane '$lane' is pinned only at effort '$(lane_effort)'"; fi
+  [ "$effort" != none ] || die 64 "deepseek-v4-pro requires thinking; effort 'none' is not supported"
+  local tmp dispatch_prompt="$prompt_file"
+  tmp="$(mktemp -d "${TMPDIR:-/tmp}/delegation-deepseek.XXXXXX")"
+  RUN_TMP="$tmp"
+  trap cleanup_run EXIT
+  if [ "$evaluation" = 1 ]; then
+    dispatch_prompt="$tmp/prompt.snapshot"
+    cp -- "$prompt_file" "$dispatch_prompt" || die 70 "could not snapshot evaluation prompt"
+    evaluation_manifest "$evaluation_manifest_path" "$lane" "$dispatch_prompt" "$effort"
+  fi
+  runtime_status || die 69 "$DEEPSEEK_REASON"
+
+  metrics="${metrics:-$output.metrics.json}"
+  local diagnostic="$output.error.json" commit="$output.commit.json"
+  local output_parent metrics_parent diagnostic_parent output_name metrics_name diagnostic_name
+  output_parent="$(dirname "$output")"; output_name="$(basename "$output")"
+  metrics_parent="$(dirname "$metrics")"; metrics_name="$(basename "$metrics")"
+  diagnostic_parent="$(dirname "$diagnostic")"; diagnostic_name="$(basename "$diagnostic")"
+  [ -d "$output_parent" ] || die 64 "output parent directory must already exist: $output_parent"
+  [ -d "$metrics_parent" ] || die 64 "metrics parent directory must already exist: $metrics_parent"
+  [ -d "$diagnostic_parent" ] || die 64 "diagnostic parent directory must already exist: $diagnostic_parent"
+  output="$(cd "$output_parent" && pwd -P)/$output_name"
+  metrics="$(cd "$metrics_parent" && pwd -P)/$metrics_name"
+  diagnostic="$(cd "$diagnostic_parent" && pwd -P)/$diagnostic_name"
+  commit="$output.commit.json"
+  workdir="$(cd "$workdir" && pwd -P)"
+  if [ -n "$debug_dir" ]; then
+    case "$debug_dir" in
+      "$workdir"|"$workdir"/*) die 64 "non-editing runner debug directory must be outside workdir" ;;
+    esac
+  fi
+  if [ -e "$output" ] || [ -e "$metrics" ] || [ -e "$diagnostic" ] ||
+     { [ "$evaluation" = 1 ] && [ -e "$commit" ]; }; then
+    die 64 "output, metrics, diagnostic, and commit paths must not already exist"
+  fi
+  if [ -L "$output" ] || [ -L "$metrics" ] || [ -L "$diagnostic" ] ||
+     { [ "$evaluation" = 1 ] && [ -L "$commit" ]; }; then
+    die 64 "output, metrics, diagnostic, and commit paths must not be symlinks"
+  fi
+  local norm_output norm_metrics norm_diagnostic norm_commit
+  norm_output="$(normalized_destination "$output")"
+  norm_metrics="$(normalized_destination "$metrics")"
+  norm_diagnostic="$(normalized_destination "$diagnostic")"
+  norm_commit="$(normalized_destination "$commit")"
+  [ "$norm_output" != "$norm_metrics" ] || die 64 "output and metrics paths resolve to the same file"
+  [ "$norm_output" != "$norm_diagnostic" ] && [ "$norm_metrics" != "$norm_diagnostic" ] \
+    || die 64 "path collides with reserved diagnostic path"
+  if [ "$evaluation" = 1 ]; then
+    [ "$norm_commit" != "$norm_output" ] && [ "$norm_commit" != "$norm_metrics" ] \
+      && [ "$norm_commit" != "$norm_diagnostic" ] || die 64 "commit path collision"
+  fi
+  case "$output" in "$workdir"/*) die 64 "non-editing runner output must be outside workdir" ;; esac
+  case "$metrics" in "$workdir"/*) die 64 "non-editing runner metrics must be outside workdir" ;; esac
+  case "$diagnostic" in "$workdir"/*) die 64 "non-editing runner diagnostic must be outside workdir" ;; esac
+
+  # Preflight ends here: every pre-provider check the real evaluation run makes
+  # has passed, and nothing caller-visible has been created. Exit before the
+  # request body, curl config, and staged temp files below exist.
+  if [ "$preflight_only" = 1 ]; then
+    print_preflight_receipt "$lane" "$effort" || die 70 "could not emit preflight receipt"
+    exit 0
+  fi
+
+  local body response stderr_file http_code started curl_rc=0 curl_config provider_model=""
+  local phase="" reason="" final_rc=0
+  body="$tmp/request.json"; response="$tmp/response.json"; stderr_file="$tmp/stderr"
+  curl_config="$tmp/curl.conf"; started="$(date +%s)"
+  : >"$response"; : >"$stderr_file"
+  RUN_OUTPUT_TMP="$(mktemp "$output_parent/.$output_name.XXXXXX")"
+  RUN_METRICS_TMP="$(mktemp "$metrics_parent/.$metrics_name.XXXXXX")"
+  if [ "$evaluation" = 1 ]; then
+    RUN_COMMIT_TMP="$(mktemp "$output_parent/.$output_name.commit.XXXXXX")"
+  fi
+  local max_tokens=4096
+  # Evaluation runs annotate whole policy documents; 4096 truncated them.
+  [ "$evaluation" = 0 ] || max_tokens=16384
+  jq -n --arg model "$MODEL" --rawfile prompt "$dispatch_prompt" --arg effort "$effort" \
+    --argjson max_tokens "$max_tokens" \
+    '{model:$model,messages:[{role:"user",content:$prompt}],max_tokens:$max_tokens,
+      reasoning_effort:$effort,thinking:{type:"enabled"}}' >"$body"
+  # Keep the bearer token out of the process argv. The runner-wide umask makes
+  # this transient curl config mode 600, and the EXIT trap removes it.
+  printf 'header = "Authorization: Bearer %s"\nheader = "Content-Type: application/json"\n' \
+    "$DEEPSEEK_API_KEY" >"$curl_config"
+  local max_time=600
+  [ "$evaluation" = 0 ] || max_time="$EVALUATION_TIMEOUT_SECONDS"
+  http_code="$(curl --config "$curl_config" -sS -o "$response" -w '%{http_code}' \
+    --connect-timeout 20 --max-time "$max_time" --data-binary "@$body" "$API_URL" 2>"$stderr_file")" || curl_rc=$?
+  if [ "$curl_rc" -ne 0 ]; then
+    http_code=000; phase=dispatch; reason=transport_failure; final_rc=75
+    # curl exit 28 is the --max-time deadline; report it distinctly so a bound
+    # timeout is not collapsed into a generic transport failure.
+    [ "$curl_rc" -ne 28 ] || reason=deadline_exceeded
+  else
+    case "$http_code" in
+      200) ;;
+      401|403) phase=dispatch; reason=authentication_failed; final_rc=69 ;;
+      429) phase=dispatch; reason=rate_limited; final_rc=75 ;;
+      5??) phase=dispatch; reason=provider_temporary_failure; final_rc=75 ;;
+      *) phase=dispatch; reason=provider_error; final_rc=70 ;;
+    esac
+  fi
+  if [ "$final_rc" -eq 0 ] && ! provider_model="$(jq -er --arg model "$MODEL" '.model | select(type == "string" and . == $model)' "$response")"; then
+    phase=extract; reason=provider_identity_mismatch; final_rc=70
+  fi
+  if [ "$final_rc" -eq 0 ] && ! jq -er \
+    '.choices[0].message.content | select(type == "string" and length > 0)' \
+    "$response" >"$RUN_OUTPUT_TMP"; then
+    phase=extract; reason=invalid_or_empty_response; final_rc=70
+  fi
+  if [ "$final_rc" -eq 0 ] && [ "$evaluation" = 1 ] && [ "$(wc -m <"$RUN_OUTPUT_TMP" | tr -d ' ')" -gt "$EVALUATION_MAX_OUTPUT_CHARS" ]; then
+    phase=extract; reason=output_limit_exceeded; final_rc=70
+  fi
+  # A successful evaluation publishes its attempt receipt or publishes nothing.
+  # Every field is recomputed here from local state the manifest already bound;
+  # nothing is accepted from the caller.
+  local raw_output_sha256=""
+  if [ "$final_rc" -eq 0 ] && [ "$evaluation" = 1 ]; then
+    raw_output_sha256="$(sha256_file "$RUN_OUTPUT_TMP")" || raw_output_sha256=""
+    if [ -z "$raw_output_sha256" ] || [ -z "${EVALUATION_MANIFEST_SHA256:-}" ] ||
+       [ -z "${EVALUATION_PROMPT_SHA256:-}" ] || [ -z "${EVALUATION_RUNNER_SOURCE_COMMIT:-}" ] ||
+       [ -z "${EVALUATION_RUNNER_SHA256:-}" ]; then
+      phase=extract; reason=receipt_uncomputable; final_rc=70
+    fi
+  fi
+  if [ "$final_rc" -eq 0 ] && ! jq -n --arg model "$provider_model" --arg effort "$effort" \
+    --arg lane "$lane" --argjson started "$started" \
+    --argjson input "$(jq '.usage.prompt_tokens // 0' "$response")" \
+    --argjson output_tokens "$(jq '.usage.completion_tokens // 0' "$response")" \
+    --argjson reasoning "$(jq '.usage.completion_tokens_details.reasoning_tokens // 0' "$response")" \
+    --argjson cache_read "$(jq '.usage.prompt_cache_hit_tokens // 0' "$response")" \
+    --argjson evaluation "$evaluation" \
+    --arg manifest_sha256 "${EVALUATION_MANIFEST_SHA256:-}" \
+    --arg prompt_sha256 "${EVALUATION_PROMPT_SHA256:-}" \
+    --arg source_commit "${EVALUATION_RUNNER_SOURCE_COMMIT:-}" \
+    --arg runner_sha256 "${EVALUATION_RUNNER_SHA256:-}" \
+    --arg raw_output_sha256 "$raw_output_sha256" \
+    '{model:$model,backend:"deepseek-api",effort:$effort,lane:$lane,
+      started_at_epoch:$started,finished_at_epoch:now,billing:"api",
+      provider_cost_usd:null,tokens:{input:$input,output:$output_tokens,
+      reasoning:$reasoning,cache_read:$cache_read,cache_write:0}} +
+    (if $evaluation == 1 then {evaluation_receipt:{
+      schema_version:"delegation_policy_annotation_attempt_receipt_v1",
+      evaluation_manifest_sha256:$manifest_sha256,
+      prompt_sha256:$prompt_sha256,
+      runner_source_commit:$source_commit,
+      runner_sha256:$runner_sha256,
+      raw_output_sha256:$raw_output_sha256,
+      provider_attempts:1,
+      post_observation_retries:0}} else {} end)' >"$RUN_METRICS_TMP"; then
+    phase=extract; reason=metrics_write_failed; final_rc=70
+  fi
+  if [ "$final_rc" -eq 0 ] && [ "$evaluation" = 1 ]; then
+    metrics_sha256="$(sha256_file "$RUN_METRICS_TMP")" || metrics_sha256=""
+    if [ -z "$metrics_sha256" ] || ! jq -n \
+      --arg raw_output_sha256 "$raw_output_sha256" \
+      --arg metrics_sha256 "$metrics_sha256" \
+      --arg manifest_sha256 "$EVALUATION_MANIFEST_SHA256" \
+      '{schema_version:"delegation_policy_annotation_publication_commit_v1",
+        raw_output_sha256:$raw_output_sha256,metrics_sha256:$metrics_sha256,
+        evaluation_manifest_sha256:$manifest_sha256}' >"$RUN_COMMIT_TMP"; then
+      phase=extract; reason=commit_marker_write_failed; final_rc=70
+    fi
+  fi
+  if [ "$final_rc" -eq 0 ]; then
+    if ! mv "$RUN_OUTPUT_TMP" "$output"; then
+      rm -f -- "$output"
+      phase=publish; reason=output_publish_failed; final_rc=70
+    else
+      RUN_OUTPUT_TMP=""
+      if ! mv "$RUN_METRICS_TMP" "$metrics"; then
+        rm -f -- "$output" "$metrics"
+        phase=publish; reason=metrics_publish_failed; final_rc=70
+      else
+        RUN_METRICS_TMP=""
+        if [ "$evaluation" = 1 ]; then
+          if ! mv "$RUN_COMMIT_TMP" "$commit"; then
+            rm -f -- "$output" "$metrics" "$commit"
+            phase=publish; reason=commit_publish_failed; final_rc=70
+          else
+            RUN_COMMIT_TMP=""
+          fi
+        fi
+      fi
+    fi
+  fi
+  if [ "$final_rc" -ne 0 ]; then
+    preserve_debug "$debug_dir" "$response" "$stderr_file" || DEBUG_RUN_DIR=""
+    write_diagnostic "$diagnostic" "$response" "$stderr_file" "$started" \
+      "$effort" "$lane" "$phase" "$reason" "$http_code" "$curl_rc" "$DEBUG_RUN_DIR"
+    if [ -n "$DEBUG_RUN_DIR" ]; then
+      cp "$diagnostic" "$DEBUG_RUN_DIR/diagnostic.json" \
+        && chmod 600 "$DEBUG_RUN_DIR/diagnostic.json" || true
+    fi
+    printf 'delegation-deepseek: %s (details: %s)\n' "$reason" "$diagnostic" >&2
+    exit "$final_rc"
+  fi
+}
+
+case "${1:-}" in
+  check) shift; if [ "${1:-}" = --json ]; then print_check 1; else print_check 0; fi ;;
+  run) shift; run_command "$@" ;; -h|--help|"") usage ;; *) die 64 "unknown command: $1" ;;
+esac

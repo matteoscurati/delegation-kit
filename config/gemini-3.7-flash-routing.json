@@ -1,34 +1,27 @@
 {
-  "model": "gemini-3.6-flash",
-  "status": "provisional",
-  "evaluated_at": "2026-07-23T00:00:00Z",
-  "source_run": "2026-07-23-agy-prompt-only-smoke",
-  "qualification_basis": "The installed and authenticated Antigravity CLI exposes the exact Gemini 3.6 Flash variants. Scout/medium is provisional through a prompt-only bridge with a successful live compatibility run; editing lanes remain blocked until locally evaluated behind enforceable write isolation.",
+  "model": "gemini-3.7-flash",
+  "status": "candidate",
+  "evaluated_at": "2026-08-17T00:00:00Z",
+  "source_run": "2026-08-17-gemini-3.7-staging",
+  "external_evidence_file": "model-evidence.json",
+  "external_evidence_ids": ["google-gemini-3.7-flash-launch-2026-08-17"],
+  "qualification_basis": "Gemini 3.7 Flash is staged on the fail-closed Antigravity bridge. Google confirms the exact API model and low/medium/high thinking levels, but the current local Antigravity session cannot attest model inventory or OAuth. No operational lane is inherited from Gemini 3.6; every lane remains blocked until an exact local runtime smoke and lane-specific evaluation exist.",
   "preferred_backends": [
     "agy"
   ],
   "qualified_lanes": [],
-  "provisional_lanes": [
-    "scout"
-  ],
+  "provisional_lanes": [],
   "lanes": {
     "scout": {
       "default_effort": "medium",
       "backends": {
         "agy": {
           "qualified": false,
-          "status": "provisional",
-          "selection": "explicit-only",
+          "status": "candidate",
+          "selection": "blocked",
           "effort": "medium",
-          "runtime_model": "gemini-3.6-flash-medium",
-          "local_evaluation": {
-            "run_id": "2026-07-23-agy-prompt-only-smoke",
-            "outcome": "passed-live-compatibility-smoke",
-            "task_count": 1,
-            "repeats": 1,
-            "confidence": "low",
-            "limitations": "One self-contained architecture-review task verified the exact OAuth/model/effort/output path, but it was not held out, scored, repeated, or a repository-navigation test."
-          }
+          "runtime_model": "gemini-3.7-flash-medium",
+          "local_evaluation": null
         }
       }
     },
@@ -40,7 +33,7 @@
           "status": "candidate",
           "selection": "blocked",
           "effort": "high",
-          "runtime_model": "gemini-3.6-flash-high",
+          "runtime_model": "gemini-3.7-flash-high",
           "local_evaluation": null
         }
       }
@@ -53,7 +46,7 @@
           "status": "candidate",
           "selection": "blocked",
           "effort": "high",
-          "runtime_model": "gemini-3.6-flash-high",
+          "runtime_model": "gemini-3.7-flash-high",
           "local_evaluation": null
         }
       }
@@ -66,7 +59,7 @@
           "status": "disabled",
           "selection": "blocked",
           "effort": "high",
-          "runtime_model": "gemini-3.6-flash-high",
+          "runtime_model": "gemini-3.7-flash-high",
           "local_evaluation": null
         }
       }
@@ -79,7 +72,7 @@
           "status": "disabled",
           "selection": "blocked",
           "effort": "high",
-          "runtime_model": "gemini-3.6-flash-high",
+          "runtime_model": "gemini-3.7-flash-high",
           "local_evaluation": null
         }
       }

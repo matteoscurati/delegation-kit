@@ -129,16 +129,23 @@ else
 fi
 
 cp "$KIT/bin/delegation-gemini" "$DATA_HOME/bin/delegation-gemini"
-cp "$KIT/config/gemini-3.6-flash-routing.json" "$DATA_HOME/config/gemini-3.6-flash-routing.json"
+cp "$KIT/config/gemini-3.7-flash-routing.json" "$DATA_HOME/config/gemini-3.7-flash-routing.json"
+rm -f -- "$DATA_HOME/config/gemini-3.6-flash-routing.json"
 chmod 755 "$DATA_HOME/bin/delegation-gemini"
 ln -sfn "$DATA_HOME/bin/delegation-gemini" "$BIN_HOME/delegation-gemini"
-echo "Gemini bridge -> $BIN_HOME/delegation-gemini (routing gate: $DATA_HOME/config/gemini-3.6-flash-routing.json)"
+echo "Gemini bridge -> $BIN_HOME/delegation-gemini (candidate gate: $DATA_HOME/config/gemini-3.7-flash-routing.json; stale 3.6 gate removed)"
 
 cp "$KIT/bin/delegation-qwen" "$DATA_HOME/bin/delegation-qwen"
 cp "$KIT/config/qwen3.8-max-routing.json" "$DATA_HOME/config/qwen3.8-max-routing.json"
 chmod 755 "$DATA_HOME/bin/delegation-qwen"
 ln -sfn "$DATA_HOME/bin/delegation-qwen" "$BIN_HOME/delegation-qwen"
 echo "Qwen bridge -> $BIN_HOME/delegation-qwen (provisional builder gate: $DATA_HOME/config/qwen3.8-max-routing.json)"
+
+cp "$KIT/bin/delegation-deepseek" "$DATA_HOME/bin/delegation-deepseek"
+cp "$KIT/config/deepseek-v4-pro-routing.json" "$DATA_HOME/config/deepseek-v4-pro-routing.json"
+chmod 755 "$DATA_HOME/bin/delegation-deepseek"
+ln -sfn "$DATA_HOME/bin/delegation-deepseek" "$BIN_HOME/delegation-deepseek"
+echo "DeepSeek bridge -> $BIN_HOME/delegation-deepseek (provisional builder gate: $DATA_HOME/config/deepseek-v4-pro-routing.json)"
 
 cp "$KIT/bin/delegation-grok" "$DATA_HOME/bin/delegation-grok"
 cp "$KIT/config/grok-4.6-routing.json" "$DATA_HOME/config/grok-4.6-routing.json"
@@ -165,6 +172,44 @@ if [ -f "$QWEN_KEY_FILE" ]; then
     printf '  Qwen Token Plan key already stored in %s. Replace it? [y/N] ' "$QWEN_KEY_FILE"
     read -r qwen_replace || qwen_replace=""
     case "$qwen_replace" in [yY]*) ;; *) qwen_ask=0 ;; esac
+  fi
+fi
+
+# DeepSeek credentials belong to this bridge. Never copy a key from
+# ai-consultants or another tool silently; accept an explicit environment value
+# or ask once, preserving an existing mode-600 file by default.
+DEEPSEEK_KEY_FILE="$DATA_HOME/config/deepseek.env"
+deepseek_store_key() { # $1=key
+  ( umask 077; printf 'DEEPSEEK_API_KEY=%s\n' "$1" >"$DEEPSEEK_KEY_FILE" )
+  chmod 600 "$DEEPSEEK_KEY_FILE"
+  echo "  + DeepSeek API key stored in $DEEPSEEK_KEY_FILE (mode 600)"
+}
+deepseek_ask=1
+if [ -f "$DEEPSEEK_KEY_FILE" ]; then
+  if [ ! -t 0 ]; then
+    echo "  + DeepSeek API key already stored in $DEEPSEEK_KEY_FILE"
+    deepseek_ask=0
+  else
+    printf '  DeepSeek API key already stored in %s. Replace it? [y/N] ' "$DEEPSEEK_KEY_FILE"
+    read -r deepseek_replace || deepseek_replace=""
+    case "$deepseek_replace" in [yY]*) ;; *) deepseek_ask=0 ;; esac
+  fi
+fi
+if [ "$deepseek_ask" = 1 ]; then
+  if [ -n "${DEEPSEEK_API_KEY:-}" ]; then
+    if [ ! -t 0 ]; then deepseek_store_key "$DEEPSEEK_API_KEY"
+    else
+      printf '  Store DEEPSEEK_API_KEY in %s? [Y/n] ' "$DEEPSEEK_KEY_FILE"
+      read -r deepseek_use_env || deepseek_use_env=""
+      case "$deepseek_use_env" in [nN]*) echo "  ! not stored — DeepSeek works only where the variable is exported" ;; *) deepseek_store_key "$DEEPSEEK_API_KEY" ;; esac
+    fi
+  elif [ ! -t 0 ]; then
+    echo "  ! no DeepSeek API key configured — provisional runtime stays unavailable"
+  else
+    printf '  DeepSeek API key (input hidden, Enter to skip): '
+    read -rs deepseek_key || deepseek_key=""; printf '\n'
+    case "$deepseek_key" in "") echo "  ! skipped — DeepSeek provisional runtime stays unavailable" ;; *) deepseek_store_key "$deepseek_key" ;; esac
+    unset deepseek_key
   fi
 fi
 if [ "$qwen_ask" = 1 ]; then
@@ -237,6 +282,8 @@ if [ "$do_claude" = 1 ]; then
   echo "  + optional Kimi executor skill -> $CLAUDE_HOME/skills/kimi-executor/"
   cp -R "$KIT/skills/gemini-executor" "$CLAUDE_HOME/skills/"
   echo "  + optional Gemini executor skill -> $CLAUDE_HOME/skills/gemini-executor/"
+  cp -R "$KIT/skills/deepseek-executor" "$CLAUDE_HOME/skills/"
+  echo "  + provisional DeepSeek builder skill -> $CLAUDE_HOME/skills/deepseek-executor/"
   cp -R "$KIT/skills/qwen-executor" "$CLAUDE_HOME/skills/"
   echo "  + provisional Qwen builder skill -> $CLAUDE_HOME/skills/qwen-executor/"
   cp -R "$KIT/skills/grok-executor" "$CLAUDE_HOME/skills/"
@@ -256,6 +303,8 @@ if [ "$do_codex" = 1 ]; then
   echo "  + optional Kimi executor skill -> $CODEX_HOME/skills/kimi-executor/"
   cp -R "$KIT/skills/gemini-executor" "$CODEX_HOME/skills/"
   echo "  + optional Gemini executor skill -> $CODEX_HOME/skills/gemini-executor/"
+  cp -R "$KIT/skills/deepseek-executor" "$CODEX_HOME/skills/"
+  echo "  + provisional DeepSeek builder skill -> $CODEX_HOME/skills/deepseek-executor/"
   cp -R "$KIT/skills/qwen-executor" "$CODEX_HOME/skills/"
   echo "  + provisional Qwen builder skill -> $CODEX_HOME/skills/qwen-executor/"
   cp -R "$KIT/skills/grok-executor" "$CODEX_HOME/skills/"

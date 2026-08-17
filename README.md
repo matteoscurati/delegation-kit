@@ -94,10 +94,11 @@ provisional/explicit-only behind `--allow-provisional`. See
 | routing skill | `skills/model-routing/` | surfaces the decision procedure when you delegate |
 | orchestrate skill | `skills/orchestrate/` | the fan-out loop — plan → delegate to workers → verify → advisor judges plan + ship |
 | optional GLM skill | `skills/glm-executor/` | dispatches only gate-allowed GLM lanes; provisional use is explicit |
-| optional Gemini skill | `skills/gemini-executor/` | Antigravity-backed Gemini 3.6 Flash scout; provisional use is explicit |
+| optional Gemini skill | `skills/gemini-executor/` | Antigravity-backed Gemini 3.7 Flash; staged and fail-closed pending exact runtime proof |
 | optional Kimi skill | `skills/kimi-executor/` | exposes only exact gate-allowed Kimi lane/backend/effort tuples |
 | provisional Grok skill | `skills/grok-executor/` | Grok Build-backed builder and frontend-builder at pinned high effort |
 | provisional Qwen skill | `skills/qwen-executor/` | Token Plan Qwen3.8-Max builder; text-only, provisional use is explicit |
+| provisional DeepSeek skill | `skills/deepseek-executor/` | official-API DeepSeek V4 Pro/max builder; text-only, provisional use is explicit |
 | lane discipline | `@import` in `CLAUDE.md` | always-loaded policy ([`claude/CLAUDE.delegation.md`](./claude/CLAUDE.delegation.md)) |
 
 **Codex** (`~/.codex/`)
@@ -107,14 +108,15 @@ provisional/explicit-only behind `--allow-provisional`. See
 | 5 ephemeral profiles | `*.config.toml` | for `codex exec --ephemeral -p <name>` |
 | collaboration policy | appended to `AGENTS.md` | usage-aware routing **+ a Codex→Claude bridge** |
 | optional GLM skill | `skills/glm-executor/` | same fail-closed GLM-5.3/max executor path |
-| optional Gemini skill | `skills/gemini-executor/` | same fail-closed Gemini 3.6 Flash executor path |
+| optional Gemini skill | `skills/gemini-executor/` | same staged Gemini 3.7 Flash executor path |
 | optional Kimi skill | `skills/kimi-executor/` | same fail-closed provisional Kimi K3 path |
 | provisional Grok skill | `skills/grok-executor/` | same fail-closed Grok 4.6 builder path |
 | provisional Qwen skill | `skills/qwen-executor/` | same fail-closed Qwen3.8-Max builder path |
+| provisional DeepSeek skill | `skills/deepseek-executor/` | same fail-closed DeepSeek V4 Pro/max builder path |
 | config snippet | printed for manual merge | `[agents]` fan-out caps + lead defaults |
 
 The universal installer also adds `delegation-schema`, `delegation-glm`,
-`delegation-gemini`, `delegation-kimi`,
+`delegation-gemini`, `delegation-kimi`, `delegation-deepseek`,
 `delegation-grok`, `delegation-qwen`,
 `delegation-evidence`, the ZIP-only `delegation-epoch` importer, and the read-only
 central router `delegation-route` under
@@ -181,15 +183,34 @@ change. The owner subsequently chose max as the sole operational effort; a
 separate exact-runner max requalification passed 9/9 with every builder checker
 green. This owner preference does not rewrite high as the comparison winner.
 
-Gemini 3.6 Flash uses the installed, user-authenticated Antigravity CLI (`agy`).
-Only `scout` at `medium` is provisional and requires `--allow-provisional`;
-builder and frontend-builder at `high` remain blocked candidates, while reviewer
-and judgement are disabled. The runner never substitutes another Gemini variant
-or treats OAuth/model listing as qualification. This bridge is prompt-only:
+Gemini 3.7 Flash is staged through the installed Antigravity CLI (`agy`). Scout
+at `medium` and builder/frontend-builder at `high` are blocked candidates;
+reviewer and judgement are disabled. The current local session cannot attest
+exact model inventory or OAuth, so no Gemini 3.6 route is inherited. The runner
+never substitutes another Gemini variant or treats launch evidence as
+qualification. This bridge is prompt-only:
 the lead must embed the relevant tracked-file excerpts in the brief, because
 headless filesystem and other tool permissions are never auto-approved. `agy`
 starts with an empty temporary workspace and home; only macOS Keychain access
 is carried across for OAuth, while all tool namespaces are explicitly denied.
+
+DeepSeek V4 Pro is installed as a **provisional text-only builder** through the
+official OpenAI-compatible API at `max`. One live exact-tuple smoke confirmed
+provider identity, max-effort acceptance, and a correct deterministic patch;
+that is compatibility evidence, not a held-out builder qualification. Dispatch
+therefore requires an explicit decision and `--allow-provisional`:
+
+```sh
+delegation-deepseek run --lane builder --allow-provisional \
+  --effort auto --backend auto --prompt-file "$brief" \
+  --output "$result" --metrics "$metrics" --workdir "$repo"
+```
+
+The model sees only the supplied brief and cannot edit the worktree. The lead
+applies and verifies returned patches. Every other DeepSeek lane remains
+blocked, and credentials are accepted only from an explicit environment value
+or the kit's private mode-600 key file; the installer never copies another
+tool's key silently.
 
 Kimi K3 is installed as a **provisional coding model**. Its gate permits explicit
 `clerk`, `scout`, `builder`, and `frontend-builder` runs at `max`; senior is a
@@ -327,7 +348,7 @@ edits `config/model-evidence.json` or a routing gate. The Airtable/`epochai`
 client is intentionally out of scope.
 
 The central decision file is [`config/routing-gates.json`](./config/routing-gates.json).
-It is the dispatch authority: GLM, Gemini, Kimi, Grok, and Qwen validate it against their complete
+It is the dispatch authority: GLM, Gemini, Kimi, Grok, Qwen, and DeepSeek validate it against their complete
 backend gates before every check/run, and refuse drift. Exact and contextual
 benchmark references are stored separately, and the generated table exposes
 local sample size/confidence instead of treating legacy scores as comparable.

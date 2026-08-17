@@ -42,6 +42,7 @@ printf '%s\n' '{}' >"$GROK_TEST_HOME/auth.json"
 printf '%s\n' '{}' >"$DATA/config/grok-4.5-routing.json"
 printf '%s\n' '{}' >"$DATA/config/glm-5.2-routing.json"
 printf '%s\n' '{}' >"$DATA/config/glm-5.3-high-routing.json"
+printf '%s\n' '{}' >"$DATA/config/gemini-3.6-flash-routing.json"
 cat >"$DATA/grok-cli/current/grok" <<'EOF'
 #!/usr/bin/env bash
 case "${1:-}" in
@@ -81,6 +82,14 @@ env CLAUDE_HOME="$TMP/claude" CODEX_HOME="$TMP/codex" \
   || fail 'upgrade retained the stale GLM 5.3/high gate'
 [ -f "$DATA/config/glm-5.3-max-routing.json" ] \
   || fail 'upgrade did not install the GLM 5.3/max gate'
+[ ! -e "$DATA/config/gemini-3.6-flash-routing.json" ] \
+  || fail 'upgrade retained the stale Gemini 3.6 gate'
+[ -f "$DATA/config/gemini-3.7-flash-routing.json" ] \
+  || fail 'upgrade did not install the Gemini 3.7 gate'
+[ -f "$DATA/config/deepseek-v4-pro-routing.json" ] && [ -x "$DATA/bin/delegation-deepseek" ] \
+  || fail 'install did not include the DeepSeek V4 Pro gate and runner'
+[ -f "$TMP/claude/skills/deepseek-executor/SKILL.md" ] && [ -f "$TMP/codex/skills/deepseek-executor/SKILL.md" ] \
+  || fail 'install did not include the DeepSeek executor skill on both surfaces'
 grep -q 'existing compatible Grok Build CLI archive retained' "$TMP/install.log" \
   || { sed 's/^/    /' "$TMP/install.log" >&2; fail 'upgrade falsely warned that the compatible Grok archive was unavailable'; }
 ok

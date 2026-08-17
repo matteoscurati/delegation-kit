@@ -183,6 +183,8 @@ expect_failure 78 env DELEGATION_ROUTING_GATES_FILE="$TMP/bad-pair.json" \
 expect_failure 78 env DELEGATION_ROUTING_GATES_FILE="$TMP/bad-pair.json" \
   bin/delegation-qwen check --json
 expect_failure 78 env DELEGATION_ROUTING_GATES_FILE="$TMP/bad-pair.json" \
+  bin/delegation-deepseek check --json
+expect_failure 78 env DELEGATION_ROUTING_GATES_FILE="$TMP/bad-pair.json" \
   bin/delegation-gemini check --json
 expect_failure 78 env DELEGATION_ROUTING_GATES_FILE="$TMP/bad-pair.json" \
   bin/delegation-grok check --json
@@ -210,6 +212,25 @@ expect_failure 64 bin/delegation-qwen run --lane policy-annotation --effort auto
   --evaluation-manifest "$TMP/absent-manifest.json" --prompt-file README.md \
   --output "$TMP/qwen-eval.txt" --workdir "$ROOT"
 
+# DeepSeek V4 Pro/max mirrors the same text-only promotion discipline: only
+# builder is provisional and an explicit decision reaches runtime/auth.
+expect_failure 78 bin/delegation-deepseek run --lane scout --effort auto --backend auto \
+  --prompt-file README.md --output "$TMP/deepseek-scout.txt" --workdir "$ROOT"
+expect_failure 78 bin/delegation-deepseek run --lane builder --effort auto --backend auto \
+  --prompt-file README.md --output "$TMP/deepseek-builder.txt" --workdir "$ROOT"
+expect_failure 69 env -u DEEPSEEK_API_KEY \
+  DELEGATION_DEEPSEEK_KEY_FILE="$TMP/absent-deepseek-key.env" \
+  bin/delegation-deepseek run --lane builder --effort auto --backend auto \
+  --allow-provisional --prompt-file README.md \
+  --output "$TMP/deepseek-builder-ok.txt" --workdir "$ROOT"
+
+# DeepSeek executable-gate drift is checked bidirectionally.
+jq '.lanes.clerk.backends["deepseek-api"].status = "provisional" |
+    .lanes.clerk.backends["deepseek-api"].selection = "explicit-only" |
+    .provisional_lanes = ["clerk"]' config/deepseek-v4-pro-routing.json >"$TMP/bad-deepseek.json"
+expect_failure 65 env DELEGATION_DEEPSEEK_ROUTING_FILE="$TMP/bad-deepseek.json" \
+  bin/delegation-route check --json
+
 # Qwen bridge drift is checked in both directions.
 jq '.lanes.clerk.backends["token-plan-openai"].status = "provisional" |
     .lanes.clerk.backends["token-plan-openai"].selection = "explicit-only" |
@@ -236,7 +257,7 @@ expect_failure 65 env DELEGATION_KIMI_ROUTING_FILE="$TMP/bad-kimi-manifest.json"
 
 # Gemini bridge drift is checked in both directions.
 jq '.lanes.scout.backends.agy.effort = "high"' \
-  config/gemini-3.6-flash-routing.json >"$TMP/bad-gemini.json"
+  config/gemini-3.7-flash-routing.json >"$TMP/bad-gemini.json"
 expect_failure 65 env DELEGATION_GEMINI_ROUTING_FILE="$TMP/bad-gemini.json" \
   bin/delegation-route check --json
 
@@ -292,13 +313,14 @@ bin/delegation-route resolve --lane policy-annotation --json >"$TMP/policy-annot
 jq -e '
   (.defaults | length) == 0 and (.fallbacks | length) == 0 and (.explicit | length) == 0 and
   ([.blocked[].profile] | sort) ==
-    ["fable-policy-annotator","glm53-max-policy-annotation","grok-build","kimi-k3",
+    ["deepseek-v4-pro","fable-policy-annotator","glm53-max-policy-annotation","grok-build","kimi-k3",
      "opus-policy-annotator","qwen3.8-max","sol-max-policy-annotator"]
 ' "$TMP/policy-annotation.json" >/dev/null
 jq -e '
   .profiles["kimi-k3"].lanes.reviewer.status == "disabled" and
   .profiles["kimi-k3"].lanes.judgement.status == "disabled" and
   .profiles["qwen3.8-max"].lanes.judgement.status == "disabled"
+  and .profiles["deepseek-v4-pro"].lanes.judgement.status == "disabled"
 ' config/routing-gates.json >/dev/null
 pass=$((pass + 1))
 

@@ -1,0 +1,48 @@
+{
+  "model": "deepseek-v4-pro",
+  "status": "provisional",
+  "evaluated_at": "2026-08-17T00:00:00Z",
+  "promoted_at": "2026-08-17T00:00:00Z",
+  "source_run": "2026-08-17-deepseek-v4-pro-max-smoke",
+  "external_evidence_file": "model-evidence.json",
+  "external_evidence_ids": ["deepseek-v4-pro-launch-2026-08-17"],
+  "qualification_basis": "Owner promotion of the text-only builder lane on an explicit routing decision, plus a live exact API smoke confirming deepseek-v4-pro accepts reasoning_effort=max and solves a deterministic patch task. This is not measured builder qualification: the provider Terminal-Bench 2.0 claim uses a different harness and no DeepSWE row exists. Use stays provisional and explicit-only; every other lane remains blocked.",
+  "preferred_backends": ["deepseek-api"],
+  "qualified_lanes": [],
+  "provisional_lanes": ["builder"],
+  "lanes": {
+    "builder": {
+      "default_effort": "max",
+      "preferred_backends": ["deepseek-api"],
+      "backends": {
+        "deepseek-api": {
+          "qualified": false,
+          "status": "provisional",
+          "selection": "explicit-only",
+          "effort": "max",
+          "runtime_model": "deepseek-v4-pro",
+          "runtime_controls": {
+            "transport": "chat-completions",
+            "worktree_edits": false,
+            "terminal": false,
+            "tools": []
+          },
+          "local_evaluation": {
+            "run_id": "2026-08-17-deepseek-v4-pro-max-smoke",
+            "outcome": "passed-exact-api-patch-smoke",
+            "task_count": 1,
+            "repeats": 1,
+            "confidence": "low",
+            "limitations": "One deterministic off-by-one diagnosis and patch task verified exact provider model identity, max effort acceptance, valid structured output, and the expected result. It is not a held-out repeated implementation pack. The runner is text-only and cannot edit a worktree, so the lane returns a patch the lead applies and verifies."
+          }
+        }
+      }
+    },
+    "clerk": {"default_effort": "max", "backends": {"deepseek-api": {"qualified": false, "status": "candidate", "selection": "blocked", "effort": "max"}}},
+    "scout": {"default_effort": "max", "backends": {"deepseek-api": {"qualified": false, "status": "candidate", "selection": "blocked", "effort": "max"}}},
+    "reviewer": {"default_effort": "max", "backends": {"deepseek-api": {"qualified": false, "status": "candidate", "selection": "blocked", "effort": "max"}}},
+    "senior": {"default_effort": "max", "backends": {"deepseek-api": {"qualified": false, "status": "candidate", "selection": "blocked", "effort": "max"}}},
+    "judgement": {"default_effort": "max", "backends": {"deepseek-api": {"qualified": false, "status": "disabled", "selection": "blocked", "effort": "max"}}},
+    "policy-annotation": {"default_effort": "max", "backends": {"deepseek-api": {"qualified": false, "status": "candidate", "selection": "blocked", "effort": "max", "evaluation_manifest_sha256": []}}}
+  }
+}

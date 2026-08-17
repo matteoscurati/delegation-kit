@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Run the pinned Gemini 3.6 Flash variants through Antigravity CLI.  This is a
+# Run the pinned Gemini 3.7 Flash variants through Antigravity CLI. This is a
 # fail-closed bridge: it never substitutes a model, effort, or harness.
 set -euo pipefail
 
@@ -9,10 +9,10 @@ while [ -L "$SOURCE" ]; do
   [[ "$SOURCE" = /* ]] || SOURCE="$SOURCE_DIR/$SOURCE"
 done
 ROOT="$(cd "$(dirname "$SOURCE")/.." && pwd)"
-ROUTING_FILE="${DELEGATION_GEMINI_ROUTING_FILE:-$ROOT/config/gemini-3.6-flash-routing.json}"
+ROUTING_FILE="${DELEGATION_GEMINI_ROUTING_FILE:-$ROOT/config/gemini-3.7-flash-routing.json}"
 CENTRAL_GATES="${DELEGATION_ROUTING_GATES_FILE:-$ROOT/config/routing-gates.json}"
 ROUTER="$ROOT/bin/delegation-route"
-MODEL="gemini-3.6-flash"
+MODEL="gemini-3.7-flash"
 USER_KEYCHAINS="${HOME:?HOME is required}/Library/Keychains"
 RUN_TMP="" RUN_OUTPUT_TMP="" RUN_METRICS_TMP=""
 
@@ -59,7 +59,7 @@ prepare_isolated_home() {
   chmod 700 "$isolated_home" "$isolated_home/.gemini" "$isolated_home/.gemini/antigravity-cli" "$isolated_home/Library"
   ln -s "$USER_KEYCHAINS" "$isolated_home/Library/Keychains"
   jq -n '{
-    model:"gemini-3.6-flash-medium",
+    model:"gemini-3.7-flash-medium",
     permissions:{
       allow:[],
       deny:[
@@ -75,7 +75,7 @@ prepare_isolated_home() {
 }
 
 agy_status() {
-  local required_model="${1:-gemini-3.6-flash-medium}"
+  local required_model="${1:-gemini-3.7-flash-medium}"
   AGY_REASON=""
   have agy || { AGY_REASON="agy not on PATH"; return 1; }
   local help models plugins status_tmp
@@ -144,7 +144,7 @@ print_check() {
       --argjson lanes "$lanes" --argjson provisional "$provisional" --argjson efforts "$efforts" \
       '{model:$model,selected_backend:$selected,efforts:$efforts,qualified_lanes:$lanes,provisional_lanes:$provisional,backends:{agy:{available:$available,reason:$reason}}}'
   else
-    printf 'Gemini 3.6 Flash: selected=%s efforts=%s qualified=%s provisional=%s\n  agy: %s (%s)\n' "$selected" "$efforts" "$lanes" "$provisional" "$available" "$AGY_REASON"
+    printf 'Gemini 3.7 Flash: selected=%s efforts=%s qualified=%s provisional=%s\n  agy: %s (%s)\n' "$selected" "$efforts" "$lanes" "$provisional" "$available" "$AGY_REASON"
   fi
 }
 
@@ -214,7 +214,7 @@ run_command() {
   [ "$effort" != auto ] || effort="$pinned"
   case "$effort" in medium|high) ;; *) die 78 "lane '$lane' has no pinned usable effort" ;; esac
   if [ "$evaluation" = 0 ] && [ "$effort" != "$pinned" ]; then die 78 "lane '$lane' is qualified only at effort '$pinned'"; fi
-  local runtime_model="gemini-3.6-flash-$effort"
+  local runtime_model="gemini-3.7-flash-$effort"
   agy_status "$runtime_model" || die 69 "$AGY_REASON"
   local user_prompt dispatch_prompt
   user_prompt="$(<"$prompt_file")"

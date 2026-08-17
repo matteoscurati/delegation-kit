@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "updated_at": "2026-08-16T00:00:00Z",
+  "updated_at": "2026-08-17T00:00:00Z",
   "evidence_file": "model-evidence.json",
   "status_values": ["disabled", "candidate", "provisional", "qualified", "manual-qualified"],
   "selection_values": ["default", "fallback", "preferred-explicit", "explicit-only", "blocked"],
@@ -131,30 +131,23 @@
         "reviewer": {"status": "disabled", "selection": "blocked", "exact_evidence_ids": [], "context_evidence_ids": [], "evidence_gap": "No exact review precision/recall row."}
       }
     },
-    "gemini-3.6-flash-scout": {
-      "model": "gemini-3.6-flash",
+    "gemini-3.7-flash-scout": {
+      "model": "gemini-3.7-flash",
       "harness": "agy",
       "effort": "medium",
       "lanes": {
         "scout": {
-          "status": "provisional",
-          "selection": "explicit-only",
+          "status": "candidate",
+          "selection": "blocked",
           "exact_evidence_ids": [],
-          "context_evidence_ids": [],
-          "local_evaluation": {
-            "run_id": "2026-07-23-agy-prompt-only-smoke",
-            "task_count": 1,
-            "repeats": 1,
-            "confidence": "low",
-            "limitations": "One self-contained architecture-review task verified the exact OAuth/model/effort/output path, but it was not held out, scored, repeated, or a repository-navigation test."
-          },
-          "evidence_gap": "No exact public agy/medium benchmark row; launch claims use different or unspecified harnesses.",
+          "context_evidence_ids": ["google-gemini-3.7-flash-launch-2026-08-17"],
+          "evidence_gap": "The official launch confirms Gemini 3.7 Flash and medium thinking, but the current local Antigravity session cannot attest exact model inventory or OAuth. The previous Gemini 3.6 smoke does not transfer.",
           "fallback": "terra-scout"
         }
       }
     },
-    "gemini-3.6-flash-builder": {
-      "model": "gemini-3.6-flash",
+    "gemini-3.7-flash-builder": {
+      "model": "gemini-3.7-flash",
       "harness": "agy",
       "effort": "high",
       "lanes": {
@@ -162,14 +155,14 @@
           "status": "candidate",
           "selection": "blocked",
           "exact_evidence_ids": [],
-          "context_evidence_ids": [],
-          "evidence_gap": "No local scoped-edit evaluation for the exact agy/high route.",
+          "context_evidence_ids": ["google-gemini-3.7-flash-launch-2026-08-17"],
+          "evidence_gap": "Google reports strong DeepSWE and FrontierCode results, but they do not attest the prompt-only agy/high route and no local scoped-edit evaluation exists.",
           "fallback": "terra-builder"
         }
       }
     },
-    "gemini-3.6-flash-frontend-builder": {
-      "model": "gemini-3.6-flash",
+    "gemini-3.7-flash-frontend-builder": {
+      "model": "gemini-3.7-flash",
       "harness": "agy",
       "effort": "high",
       "lanes": {
@@ -177,14 +170,14 @@
           "status": "candidate",
           "selection": "blocked",
           "exact_evidence_ids": [],
-          "context_evidence_ids": [],
-          "evidence_gap": "No frontend-specific local evaluation for the exact agy/high route.",
+          "context_evidence_ids": ["google-gemini-3.7-flash-launch-2026-08-17"],
+          "evidence_gap": "Google reports WebDev Elo 1588, but the harness differs and no frontend-specific local agy/high evaluation exists.",
           "fallback": "sonnet-builder"
         }
       }
     },
-    "gemini-3.6-flash-reviewer": {
-      "model": "gemini-3.6-flash",
+    "gemini-3.7-flash-reviewer": {
+      "model": "gemini-3.7-flash",
       "harness": "agy",
       "effort": "high",
       "lanes": {
@@ -197,8 +190,8 @@
         }
       }
     },
-    "gemini-3.6-flash-judgement": {
-      "model": "gemini-3.6-flash",
+    "gemini-3.7-flash-judgement": {
+      "model": "gemini-3.7-flash",
       "harness": "agy",
       "effort": "high",
       "lanes": {
@@ -277,6 +270,18 @@
         "senior": {"status": "candidate", "selection": "blocked", "exact_evidence_ids": [], "context_evidence_ids": [], "evidence_gap": "No exact high-risk judgement or steerability evaluation."},
         "judgement": {"status": "disabled", "selection": "blocked", "exact_evidence_ids": [], "context_evidence_ids": [], "evidence_gap": "Launch claims and runtime access cannot qualify judgement."},
         "policy-annotation": {"status": "candidate", "selection": "blocked", "exact_evidence_ids": [], "context_evidence_ids": [], "evaluation_manifest_sha256": [], "evidence_gap": "No frozen local policy-annotation result exists. The previous allowlisted manifest was bound to the qwen3.8-max-preview tuple and is void after the rename; regenerate it against qwen3.8-max before any evaluation run."}
+      }
+    },
+    "deepseek-v4-pro": {
+      "model": "deepseek-v4-pro", "harness": "deepseek-api", "effort": "max",
+      "lanes": {
+        "builder": {"status": "provisional", "selection": "explicit-only", "exact_evidence_ids": [], "context_evidence_ids": ["deepseek-v4-pro-launch-2026-08-17"], "local_evaluation": {"run_id": "2026-08-17-deepseek-v4-pro-max-smoke", "task_count": 1, "repeats": 1, "confidence": "low", "limitations": "One deterministic off-by-one diagnosis and patch task verified exact API model identity, reasoning_effort=max, valid structured output, and the expected result. This was not a held-out repeated implementation pack. The runner is text-only and cannot edit a worktree."}, "qualification_basis": "Explicit owner decision on 2026-08-17. The live exact-tuple smoke permits a provisional text-only builder route, but does not qualify it. Dispatch requires --allow-provisional and the lead applies and verifies returned patches.", "evidence_gap": "The provider reports Terminal-Bench 2.0 for a different harness, no DeepSWE row exists, and WebDev only supports frontend work.", "fallback": "terra-builder"},
+        "clerk": {"status": "candidate", "selection": "blocked", "exact_evidence_ids": [], "context_evidence_ids": [], "evidence_gap": "No exact public benchmark or local clerk evaluation.", "fallback": "luna-clerk"},
+        "scout": {"status": "candidate", "selection": "blocked", "exact_evidence_ids": [], "context_evidence_ids": [], "evidence_gap": "No exact public benchmark or local repository-navigation evaluation.", "fallback": "terra-scout"},
+        "reviewer": {"status": "candidate", "selection": "blocked", "exact_evidence_ids": [], "context_evidence_ids": [], "evidence_gap": "No exact review precision/recall evaluation."},
+        "senior": {"status": "candidate", "selection": "blocked", "exact_evidence_ids": [], "context_evidence_ids": [], "evidence_gap": "No exact high-risk judgement or steerability evaluation."},
+        "judgement": {"status": "disabled", "selection": "blocked", "exact_evidence_ids": [], "context_evidence_ids": [], "evidence_gap": "Provider claims and runtime access cannot qualify judgement."},
+        "policy-annotation": {"status": "candidate", "selection": "blocked", "exact_evidence_ids": [], "context_evidence_ids": [], "evaluation_manifest_sha256": [], "evidence_gap": "No frozen local policy-annotation result exists."}
       }
     }
   },

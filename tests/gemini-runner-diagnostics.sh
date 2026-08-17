@@ -24,13 +24,13 @@ if [ "${1:-}" = --help ]; then printf '%s\n' 'agy --print --model --effort --mod
 if [ "${1:-}" = plugin ] && [ "${2:-}" = list ]; then no_ssh_markers; printf '%s\n' "${FAKE_AGY_PLUGINS:-No imported plugins.}"; exit 0; fi
 if [ "${1:-}" = models ]; then
   no_ssh_markers
-  printf '%s\n' ${FAKE_AGY_MODELS:-gemini-3.6-flash-medium}
+  printf '%s\n' ${FAKE_AGY_MODELS:-gemini-3.7-flash-medium}
   exit 0
 fi
 no_ssh_markers
 case "${FAKE_AGY_CASE:-success}" in
  success)
-   expected_model="${FAKE_EXPECT_MODEL:-gemini-3.6-flash-medium}"
+   expected_model="${FAKE_EXPECT_MODEL:-gemini-3.7-flash-medium}"
    expected_effort="${FAKE_EXPECT_EFFORT:-medium}"
    case "$PWD" in */delegation-gemini.*/workspace) ;; *) printf 'unsafe cwd: %s\n' "$PWD" >&2; exit 91 ;; esac
    [[ " $* " = *" --model $expected_model "* ]] || exit 92
@@ -57,21 +57,21 @@ EOF
 chmod +x "$TMP/bin/agy"
 fail() { printf 'FAIL: %s\n' "$*" >&2; exit 1; }
 json() { jq -e "$2" "$1" >/dev/null || fail "$1 did not satisfy $2"; }
-run() { local name="$1" expected="$2"; shift 2; local rc=0; PATH="$TMP/bin:$PATH" TMPDIR="$TMP/runtime" FAKE_AGY_CASE="$name" "$ROOT/bin/delegation-gemini" run --lane scout --effort auto --backend auto --allow-provisional --prompt-file "$TMP/prompt" --output "$TMP/results/$name.out" --workdir "$TMP/work" "$@" >"$TMP/results/$name.stdout" 2>"$TMP/results/$name.stderr" || rc=$?; [ "$rc" = "$expected" ] || fail "$name returned $rc, expected $expected"; }
+run() { local name="$1" expected="$2"; shift 2; local rc=0; PATH="$TMP/bin:$PATH" TMPDIR="$TMP/runtime" FAKE_AGY_CASE="$name" "$ROOT/bin/delegation-gemini" run --lane scout --effort auto --backend auto --evaluation --prompt-file "$TMP/prompt" --output "$TMP/results/$name.out" --workdir "$TMP/work" "$@" >"$TMP/results/$name.stdout" 2>"$TMP/results/$name.stderr" || rc=$?; [ "$rc" = "$expected" ] || fail "$name returned $rc, expected $expected"; }
 
 # The test deliberately uses the checked-in gates; fake agy makes every probe local.
 PATH="$TMP/bin:$PATH" "$ROOT/bin/delegation-gemini" check --json >"$TMP/check.json"
-json "$TMP/check.json" '.model == "gemini-3.6-flash" and .backends.agy.available == true'
+json "$TMP/check.json" '.model == "gemini-3.7-flash" and .backends.agy.available == true and .provisional_lanes == []'
 run success 0
 [ "$(cat "$TMP/results/success.out")" = PONG ] || fail 'success output mismatch'
-json "$TMP/results/success.out.metrics.json" '.runtime_model == "gemini-3.6-flash-medium" and .context_mode == "prompt_only" and .workspace_mode == "isolated_empty" and .home_mode == "isolated_keychain_oauth" and .tokens == null and .provider_cost_usd == null'
+json "$TMP/results/success.out.metrics.json" '.runtime_model == "gemini-3.7-flash-medium" and .context_mode == "prompt_only" and .workspace_mode == "isolated_empty" and .home_mode == "isolated_keychain_oauth" and .tokens == null and .provider_cost_usd == null'
 [ ! -e "$TMP/results/success.out.error.json" ] || fail 'success left diagnostic'
 
 FAKE_AGY_PLUGINS='example-plugin 1.0 enabled' PATH="$TMP/bin:$PATH" "$ROOT/bin/delegation-gemini" check --json >"$TMP/plugin-check.json"
 json "$TMP/plugin-check.json" '.selected_backend == "none" and .backends.agy.available == false'
 
 rc=0
-FAKE_EXPECT_MODEL=gemini-3.6-flash-high FAKE_EXPECT_EFFORT=high FAKE_AGY_MODELS=gemini-3.6-flash-high \
+FAKE_EXPECT_MODEL=gemini-3.7-flash-high FAKE_EXPECT_EFFORT=high FAKE_AGY_MODELS=gemini-3.7-flash-high \
   PATH="$TMP/bin:$PATH" TMPDIR="$TMP/runtime" "$ROOT/bin/delegation-gemini" run \
   --lane builder --effort auto --backend agy --evaluation --prompt-file "$TMP/prompt" \
   --output "$TMP/results/evaluation-builder.out" --workdir "$TMP/work" >/dev/null 2>&1 || rc=$?
@@ -84,7 +84,7 @@ PATH="$TMP/bin:$PATH" "$ROOT/bin/delegation-gemini" run --lane reviewer --evalua
 [ "$rc" = 78 ] || fail "disabled reviewer evaluation returned $rc"
 
 rc=0; PATH="$TMP/bin:$PATH" "$ROOT/bin/delegation-gemini" run --lane scout --prompt-file "$TMP/prompt" --output "$TMP/results/refusal.out" --workdir "$TMP/work" >/dev/null 2>&1 || rc=$?
-[ "$rc" = 78 ] || fail "provisional refusal returned $rc"
+[ "$rc" = 78 ] || fail "candidate refusal returned $rc"
 for case in process_exit empty permission auth rate; do
   case "$case" in
     process_exit|empty|permission) expected=70 ;;
@@ -109,12 +109,12 @@ grep -q SECRET_PAYLOAD "$debug/stderr.txt" || fail 'debug raw stderr was not pre
 mode="$(stat -f '%Lp' "$debug" 2>/dev/null || stat -c '%a' "$debug")"; [ "$mode" = 700 ] || fail "debug dir mode $mode"
 for f in "$debug"/*; do mode="$(stat -f '%Lp' "$f" 2>/dev/null || stat -c '%a' "$f")"; [ "$mode" = 600 ] || fail "debug file mode $mode"; done
 mkdir "$TMP/outdir" "$TMP/metricsdir"
-rc=0; PATH="$TMP/bin:$PATH" "$ROOT/bin/delegation-gemini" run --lane scout --allow-provisional --prompt-file "$TMP/prompt" --output "$TMP/outdir" --workdir "$TMP/work" >/dev/null 2>&1 || rc=$?; [ "$rc" = 64 ] || fail 'output directory accepted'
-rc=0; PATH="$TMP/bin:$PATH" "$ROOT/bin/delegation-gemini" run --lane scout --allow-provisional --prompt-file "$TMP/prompt" --output "$TMP/results/metrics-dir.out" --metrics "$TMP/metricsdir" --workdir "$TMP/work" >/dev/null 2>&1 || rc=$?; [ "$rc" = 64 ] || fail 'metrics directory accepted'
-rc=0; PATH="$TMP/bin:$PATH" "$ROOT/bin/delegation-gemini" run --lane scout --allow-provisional --prompt-file "$TMP/prompt" --output "$TMP/results/collision.out" --metrics "$TMP/results/collision.out" --workdir "$TMP/work" >/dev/null 2>&1 || rc=$?; [ "$rc" = 64 ] || fail 'collision accepted'
+rc=0; PATH="$TMP/bin:$PATH" "$ROOT/bin/delegation-gemini" run --lane scout --evaluation --prompt-file "$TMP/prompt" --output "$TMP/outdir" --workdir "$TMP/work" >/dev/null 2>&1 || rc=$?; [ "$rc" = 64 ] || fail 'output directory accepted'
+rc=0; PATH="$TMP/bin:$PATH" "$ROOT/bin/delegation-gemini" run --lane scout --evaluation --prompt-file "$TMP/prompt" --output "$TMP/results/metrics-dir.out" --metrics "$TMP/metricsdir" --workdir "$TMP/work" >/dev/null 2>&1 || rc=$?; [ "$rc" = 64 ] || fail 'metrics directory accepted'
+rc=0; PATH="$TMP/bin:$PATH" "$ROOT/bin/delegation-gemini" run --lane scout --evaluation --prompt-file "$TMP/prompt" --output "$TMP/results/collision.out" --metrics "$TMP/results/collision.out" --workdir "$TMP/work" >/dev/null 2>&1 || rc=$?; [ "$rc" = 64 ] || fail 'collision accepted'
 printf 'existing\n' >"$TMP/results/existing.out"
-rc=0; PATH="$TMP/bin:$PATH" "$ROOT/bin/delegation-gemini" run --lane scout --allow-provisional --prompt-file "$TMP/prompt" --output "$TMP/results/existing.out" --workdir "$TMP/work" >/dev/null 2>&1 || rc=$?; [ "$rc" = 64 ] || fail 'existing output accepted'
+rc=0; PATH="$TMP/bin:$PATH" "$ROOT/bin/delegation-gemini" run --lane scout --evaluation --prompt-file "$TMP/prompt" --output "$TMP/results/existing.out" --workdir "$TMP/work" >/dev/null 2>&1 || rc=$?; [ "$rc" = 64 ] || fail 'existing output accepted'
 ln -s "$TMP/results/success.out" "$TMP/results/symlink.out"
-rc=0; PATH="$TMP/bin:$PATH" "$ROOT/bin/delegation-gemini" run --lane scout --allow-provisional --prompt-file "$TMP/prompt" --output "$TMP/results/symlink.out" --workdir "$TMP/work" >/dev/null 2>&1 || rc=$?; [ "$rc" = 64 ] || fail 'symlink output accepted'
+rc=0; PATH="$TMP/bin:$PATH" "$ROOT/bin/delegation-gemini" run --lane scout --evaluation --prompt-file "$TMP/prompt" --output "$TMP/results/symlink.out" --workdir "$TMP/work" >/dev/null 2>&1 || rc=$?; [ "$rc" = 64 ] || fail 'symlink output accepted'
 [ -z "$(find "$TMP/runtime" -mindepth 1 -maxdepth 1 -name 'delegation-gemini.*' -print)" ] || fail 'temporary directories not cleaned'
 printf 'Gemini runner diagnostics tests passed.\n'
