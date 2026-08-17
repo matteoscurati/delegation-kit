@@ -4,6 +4,8 @@ All notable changes to delegation-kit are documented here.
 
 ## Unreleased
 
+## [0.16.0] — 2026-08-17
+
 ### Added
 
 - Added `delegation-deepseek`, its executable and central gates, installer,

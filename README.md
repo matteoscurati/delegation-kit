@@ -9,7 +9,16 @@ It ships as a **reference implementation**: the author's concrete models
 external-evidence snapshot, and fail-closed local gates. Swap the models for your own tiers with
 [`ADAPTING.md`](./ADAPTING.md) — the *structure* is the transferable part.
 
-## Current release: 0.15.0
+## Current release: 0.16.0
+
+Version 0.16.0 adds a guarded official-API bridge for DeepSeek V4 Pro at
+`max`. Its prompt-only `builder` lane is provisional and explicit-only after
+one exact live smoke; it has no tools or worktree access, and every other lane
+remains blocked. The release also re-pins the fail-closed Antigravity bridge to
+Gemini 3.7 Flash without inheriting Gemini 3.6 qualification: the current
+runtime cannot attest the exact 3.7 inventory and OAuth session, so Gemini has
+no operational lane. In both cases, runtime availability remains distinct from
+qualification.
 
 Version 0.15.0 makes `glm-5.3` / `claude-zai` / `max` the sole operational
 GLM tuple and makes GPT-5.6 Sol at `high` Codex's default material reviewer.

@@ -7,7 +7,7 @@ promote a provisional or candidate lane.
 
 ## Verified snapshot
 
-The 0.15.0 release-integration gate was verified on **2026-08-16** on macOS
+The 0.16.0 release-integration gate was verified on **2026-08-17** on macOS
 26.5.1 with Codex CLI `0.146.1` and Claude Code `2.1.232`. Numeric vendor
 versions are provenance only wherever the runner uses capability probing.
 
@@ -16,15 +16,14 @@ The role-oriented semantic matrix below was last exercised in full on
 real off-by-one (`rolling_max` iterating `range(len(values) - size)`), a
 five-row CSV to aggregate, and an untyped CSS component. Read-only lanes had to
 describe or diagnose it; builder lanes had to turn the red acceptance check
-green in their own worktree copy. The 0.15.0 release gate did not claim to
+green in their own worktree copy. The 0.16.0 release gate did not claim to
 re-run unchanged semantic rows: it refreshed the install, routing, regression,
 and live bridge observations reported below.
 
-The Gemini row was previously recorded as unverifiable on the belief that the
-`agy` OAuth session had expired. It had not: the session was valid in the login
-keychain the whole time, and `agy` was ignoring it because this machine drives
-the kit over SSH. That is what 0.13.1 fixes, and the row is now a real passing
-run rather than an absence.
+The earlier Gemini 3.6 Flash smoke is historical evidence for a different exact
+model tuple. Gemini 3.7 Flash does not inherit it: the current `agy` runtime
+cannot attest the new model inventory and OAuth session, so the new bridge
+remains staged and fail-closed.
 
 | Surface | Profiles or lanes | Result |
 |---|---|---|
@@ -36,15 +35,15 @@ run rather than an absence.
 | Kimi K3 | `clerk`, `scout`, `builder`, `frontend-builder` | All four passed at native `max`. Clerk aggregated correctly; scout mapped the module and located the off-by-one by line; builder turned the check green confined to `src/window.py`; frontend-builder made the CSS component theme-aware through `prefers-color-scheme`, editing only `style.css`. The capability, sandbox, pin/tamper, signal, timeout, OAuth-finalization, and diagnostics regressions pass, including the shared-OAuth concurrency cases, and the live two-parallel `--oauth shared` smoke passed 2026-08-04 with a real mid-run token rotation. All operational lanes remain provisional; `builder` and `frontend-builder` are `preferred-explicit` as of 0.13.0 while `clerk`/`scout` stay `explicit-only`, and every one still requires `--allow-provisional`. |
 | Grok 4.6 | `builder`, `frontend-builder` | Introduced at `grok-build/high` on an explicit owner replacement decision. Current public builder and WebDev rows are contextual because their harnesses differ from the installed CLI. Both lanes remain provisional and `preferred-explicit`, require `--allow-provisional`, and rely on the checkout's authenticated compatibility smoke plus lead verification. |
 | Qwen3.8-Max | `builder` | Passed at `token-plan-openai/xhigh`. The lane is text-only, so the brief carried the file contents and the runner returned a unified diff, semantically correct on the first attempt. Left to itself the model emits `--- src/window.py` / `+++ src/window.py` without the conventional `a/`/`b/` prefixes, so a bare `git apply` — which defaults to `-p1` and strips one component — looks for `window.py` and fails on a patch that is actually correct; `-p0` applies it cleanly. Asking for prefixed headers in the brief fixes it at the source: re-dispatched with that instruction, the model returned `--- a/src/window.py` and the patch applied with a **bare `git apply`**, check printing `PASS`. `skills/qwen-executor` now carries that wording. The lane is provisional explicit-only and requires `--allow-provisional`; every other lane still fails closed with exit `78`. |
-| DeepSeek V4 Pro | `builder` | Passed one live exact official-API smoke at `max`: the response identified `deepseek-v4-pro`, accepted `reasoning_effort=max`, returned valid structured output, diagnosed the deterministic off-by-one bug, and produced the expected result. This is a text-only provisional/explicit-only owner route, not a held-out builder qualification; all other lanes remain blocked. |
-| Claude↔Codex bridge | both directions | On 2026-08-16, `doctor.sh --ping` returned `PONG` for the Claude→Codex round-trip and accepted the configured model and effort at the Claude endpoint used by the Codex→Claude path. |
+| DeepSeek V4 Pro | `builder` | Passed one live exact official-API patch smoke at `max`: the response identified `deepseek-v4-pro`, accepted `reasoning_effort=max`, returned valid structured output, diagnosed the deterministic off-by-one bug, and produced the expected result. The 0.16.0 release candidate was then installed byte-for-byte and its installed runner returned exact `PONG` at the same tuple. The installer intentionally did not copy a key from another tool; the release smoke supplied it only to that process. This is a text-only provisional/explicit-only owner route, not a held-out builder qualification; all other lanes remain blocked. |
+| Claude↔Codex bridge | both directions | On 2026-08-17, `doctor.sh --ping` returned `PONG` for the Claude→Codex round-trip and accepted the configured model and effort at the Claude endpoint used by the Codex→Claude path. |
 
-The full 0.15.0 doctor result was `42 OK, 0 WARN, 0 FAIL` with `--ping` on
-2026-08-16. The installed version and commit matched the checkout; the
+The full 0.16.0 doctor result was `46 OK, 0 WARN, 0 FAIL` with `--ping` on
+2026-08-17. The candidate install's version and recorded commit matched the checkout; the
 Claude→Codex round-trip returned `PONG`, and the Claude endpoint accepted the
-configured model and effort. The ten regression suites passed through
+configured model and effort. The eleven regression suites passed through
 `./run-tests.sh` in 52s of wall clock — the figure moves with machine load, so
-treat it as one observation rather than a bound. They include 41 central
+treat it as one observation rather than a bound. They include 46 central
 routing checks, 15 install-marker checks, 8 version-surface checks, and 6 Epoch
 ZIP checks. The routing gate specifically verifies `sol-reviewer/high` as the
 provisional default for `material-review` while leaving `sol-judge` and
