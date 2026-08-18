@@ -1,8 +1,8 @@
 # Worker brief format
 
-Every executor dispatch is one bounded call — a `sonnet-*` subagent (Agent or
-Workflow), a `codex exec` on a `luna`/`terra` profile across the bridge, or a
-gate-approved external runner such as `delegation-grok` — carrying this brief.
+Every worker dispatch is one bounded call — a Sonnet/Luna non-builder profile,
+an Opus/Terra max-effort builder, or a gate-approved external runner such as
+`delegation-grok` — carrying this brief.
 The worker has no memory of the conversation and no follow-ups; it sees this
 text and the working tree, nothing else.
 
@@ -31,10 +31,14 @@ proceed with what you have. Return distilled evidence — changed paths, checks 
 unresolved risks — not raw logs or an essay.
 ```
 
+Record the worker's exact producer profile in the orchestration state. The next
+review dispatch must resolve a review lane with that profile; a self-review or a
+sibling model from the same family is invalid.
+
 **Redispatch rule (FIX).** When a result comes back FIX, send a **fresh** brief
 that quotes the failed criterion and names the specific failure. Never continue
 the old call — every dispatch is stateless. Two FIX rounds on the same subtask is
-a commitment boundary: escalate the lane (executor → senior), don't retry a third
+a commitment boundary: escalate the lane (small worker → builder → review/judgement), don't retry a third
 time on the same worker.
 
 **Lane mechanics.** Prefer the Workflow tool for real fan-out (deterministic

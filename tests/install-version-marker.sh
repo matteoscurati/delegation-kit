@@ -65,6 +65,16 @@ else
 fi
 printf '%s  grok\n' "$archive_sha" >"$DATA/grok-cli/current/grok.sha256"
 
+# Seed one retired profile and stale copies of the reviewer profiles. The
+# installer must remove the retired name and overwrite both reviewers.
+mkdir -p "$TMP/claude/agents" "$TMP/codex/agents"
+printf '%s\n' stale >"$TMP/claude/agents/sonnet-builder.md"
+printf '%s\n' stale >"$TMP/claude/agents/opus-reviewer.md"
+printf '%s\n' stale >"$TMP/codex/agents/terra-scout.toml"
+printf '%s\n' stale >"$TMP/codex/terra-scout.config.toml"
+printf '%s\n' stale >"$TMP/codex/agents/terra-reviewer.toml"
+printf '%s\n' stale >"$TMP/codex/terra-reviewer.config.toml"
+
 # Install into fully isolated homes; never touch the real ones.
 env CLAUDE_HOME="$TMP/claude" CODEX_HOME="$TMP/codex" \
     DELEGATION_BIN_HOME="$TMP/bin" DELEGATION_DATA_HOME="$DATA" \
@@ -90,6 +100,57 @@ env CLAUDE_HOME="$TMP/claude" CODEX_HOME="$TMP/codex" \
   || fail 'install did not include the DeepSeek V4 Pro gate and runner'
 [ -f "$TMP/claude/skills/deepseek-executor/SKILL.md" ] && [ -f "$TMP/codex/skills/deepseek-executor/SKILL.md" ] \
   || fail 'install did not include the DeepSeek executor skill on both surfaces'
+[ -f "$TMP/claude/agents/opus-builder.md" ] \
+  && grep -Fxq 'model: claude-opus-5' "$TMP/claude/agents/opus-builder.md" \
+  && grep -Fxq 'effort: max' "$TMP/claude/agents/opus-builder.md" \
+  || fail 'install did not include opus-builder at max'
+[ -f "$TMP/claude/agents/fable-judge.md" ] \
+  && grep -Fxq 'model: fable' "$TMP/claude/agents/fable-judge.md" \
+  && grep -Fxq 'effort: max' "$TMP/claude/agents/fable-judge.md" \
+  && grep -Fxq 'tools: Read, Grep, Glob' "$TMP/claude/agents/fable-judge.md" \
+  || fail 'install did not include fable-judge at max'
+[ ! -e "$TMP/claude/agents/sonnet-builder.md" ] \
+  || fail 'upgrade retained the retired Sonnet builder profile'
+[ -f "$TMP/claude/agents/opus-reviewer.md" ] \
+  && grep -Fxq 'effort: max' "$TMP/claude/agents/opus-reviewer.md" \
+  && grep -Fxq 'tools: Read, Grep, Glob' "$TMP/claude/agents/opus-reviewer.md" \
+  && grep -Fq 'outside the Anthropic family' "$TMP/claude/agents/opus-reviewer.md" \
+  || fail 'install did not refresh opus-reviewer at max with the cross-family rule'
+[ -f "$TMP/claude/agents/sonnet-reviewer.md" ] \
+  && grep -Fxq 'model: sonnet' "$TMP/claude/agents/sonnet-reviewer.md" \
+  && grep -Fxq 'effort: medium' "$TMP/claude/agents/sonnet-reviewer.md" \
+  && grep -Fxq 'tools: Read, Grep, Glob' "$TMP/claude/agents/sonnet-reviewer.md" \
+  && grep -Fq 'outside the Anthropic' "$TMP/claude/agents/sonnet-reviewer.md" \
+  || fail 'install did not refresh the Sonnet tool-read-only cross-family reviewer'
+[ ! -e "$TMP/codex/agents/terra-scout.toml" ] && [ ! -e "$TMP/codex/terra-scout.config.toml" ] \
+  || fail 'upgrade retained the retired Terra scout profile'
+[ -f "$TMP/codex/agents/terra-builder.toml" ] && [ -f "$TMP/codex/terra-builder.config.toml" ] \
+  || fail 'install did not retain Terra builder profiles'
+[ -f "$TMP/codex/agents/terra-reviewer.toml" ] && [ -f "$TMP/codex/terra-reviewer.config.toml" ] \
+  && grep -Fxq 'model = "gpt-5.6-terra"' "$TMP/codex/agents/terra-reviewer.toml" \
+  && grep -Fxq 'model = "gpt-5.6-terra"' "$TMP/codex/terra-reviewer.config.toml" \
+  && grep -Fxq 'model_reasoning_effort = "max"' "$TMP/codex/agents/terra-reviewer.toml" \
+  && grep -Fxq 'model_reasoning_effort = "max"' "$TMP/codex/terra-reviewer.config.toml" \
+  && grep -Fxq 'sandbox_mode = "read-only"' "$TMP/codex/agents/terra-reviewer.toml" \
+  && grep -Fxq 'sandbox_mode = "read-only"' "$TMP/codex/terra-reviewer.config.toml" \
+  || fail 'install did not include the Terra max read-only reviewer profiles'
+[ -f "$TMP/codex/agents/sol-reviewer.toml" ] && [ -f "$TMP/codex/sol-reviewer.config.toml" ] \
+  && grep -Fxq 'model = "gpt-5.6-sol"' "$TMP/codex/agents/sol-reviewer.toml" \
+  && grep -Fxq 'model = "gpt-5.6-sol"' "$TMP/codex/sol-reviewer.config.toml" \
+  && grep -Fxq 'model_reasoning_effort = "high"' "$TMP/codex/agents/sol-reviewer.toml" \
+  && grep -Fxq 'model_reasoning_effort = "high"' "$TMP/codex/sol-reviewer.config.toml" \
+  && grep -Fxq 'sandbox_mode = "read-only"' "$TMP/codex/agents/sol-reviewer.toml" \
+  && grep -Fxq 'sandbox_mode = "read-only"' "$TMP/codex/sol-reviewer.config.toml" \
+  && grep -Fq 'outside the OpenAI model family' "$TMP/codex/agents/sol-reviewer.toml" \
+  || fail 'install did not include the Sol high read-only cross-family reviewer profiles'
+[ -f "$TMP/codex/agents/sol-judge.toml" ] && [ -f "$TMP/codex/sol-judge.config.toml" ] \
+  && grep -Fxq 'model = "gpt-5.6-sol"' "$TMP/codex/agents/sol-judge.toml" \
+  && grep -Fxq 'model = "gpt-5.6-sol"' "$TMP/codex/sol-judge.config.toml" \
+  && grep -Fxq 'model_reasoning_effort = "max"' "$TMP/codex/agents/sol-judge.toml" \
+  && grep -Fxq 'model_reasoning_effort = "max"' "$TMP/codex/sol-judge.config.toml" \
+  && grep -Fxq 'sandbox_mode = "read-only"' "$TMP/codex/agents/sol-judge.toml" \
+  && grep -Fxq 'sandbox_mode = "read-only"' "$TMP/codex/sol-judge.config.toml" \
+  || fail 'install did not include sol-judge at max'
 grep -q 'existing compatible Grok Build CLI archive retained' "$TMP/install.log" \
   || { sed 's/^/    /' "$TMP/install.log" >&2; fail 'upgrade falsely warned that the compatible Grok archive was unavailable'; }
 ok

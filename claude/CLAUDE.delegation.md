@@ -1,23 +1,23 @@
 # Delegation lane discipline (installed by delegation-kit)
 
 Usage-aware routing for driving coding work across models from Claude Code. A
-resident **lead** owns the work and enters the expensive **judgement** model only
-in short bursts; a cheap **executor** does the volume; a **senior** lane handles
-taste, security, and escalation. This file is the always-loaded policy; the
-`model-routing` skill carries the decision procedure and `model-routing.md` carries
-the dated evidence snapshot and lane mapping.
+resident **lead** owns the work; bounded builders implement; a reviewer from a
+different model family checks every delegated result; and **judgement** models
+enter only in short bursts. This file is the always-loaded policy; the
+  `model-routing` skill carries the decision procedure and `model-routing.md` carries
+  the dated evidence snapshot and lane mapping.
 
 > **Adapt this to your setup.** The model names below (`opus`/`sonnet`/`fable` on
 > Claude; the reference numbers) are the author's. Swap them for your own tiers —
-> see `ADAPTING.md`. The *structure* (lead / executor / senior / judgement,
-> escalation, verification) is the transferable part.
+> see `ADAPTING.md`. The *structure* (lead / builder / cross-family reviewer /
+> judgement, escalation, verification) is the transferable part.
 
 ## Lanes (reference mapping — author's models)
 
 - **Lead = the capable-but-not-metered model** (author: **Opus 5 @ xhigh**).
   Owns requirements, decisions, integration, verification, the final response.
   Resident. Drop to medium effort for routine coordination.
-- **Judgement = Fable 5 or Sol high**, selected explicitly. Fable emphasizes
+- **Judgement = Fable 5 at max or Sol at max**, selected explicitly. Fable emphasizes
   architecture, trade-offs, and synthesis; Sol emphasizes repository fit,
   technical feasibility, failure modes, and verifiability. **Two touches per
   feature, max — a plan up front, a verdict/synthesis at the end**; only a crossed
@@ -29,27 +29,29 @@ the dated evidence snapshot and lane mapping.
   gradient pays. Installable as `fable-judge` and the Codex `sol-judge` profile.
   `super-judgement` pairs them only after an explicit decision: independent
   verdicts first, cross-review second, final authority stays with the lead.
-- **Executor + routine reviewer = the cheap-and-capable model** (author:
-  **Sonnet 5**, via the `sonnet-*` profiles). Bulk implementation, migrations,
-  tests, extraction, repo mapping, and the **default** diff/bug-review lane.
-- **Senior review / taste / security = the high-taste model** (author: **Opus 5**,
-  via `opus-reviewer`). Security-adjacent work routed here **directly**; user-facing
-  taste (UI, copy, API design); escalation target for the executor. Anthropic may
-  fall back from Opus 5 to Opus 4.8 when its safety classifier flags a cyber
-  request, so this lane requests Opus 5 but cannot guarantee that exact variant
-  in that case. Inspect surfaced model identity or use Anthropic's CVP when exact
-  identity is mandatory.
+- **Small non-builder work = Sonnet 5 or Luna.** Sonnet clerk/scout/reviewer and
+  `luna-clerk` handle only very small bounded extraction, read-only mapping, log
+  summaries, and routine review. They never implement.
+- **High-level builder and reviewer = Opus 5 or Terra, both at max.** Editing
+  uses `opus-builder` / `terra-builder`; review uses the separate read-only
+  `opus-reviewer` / `terra-reviewer` profiles. Sonnet has no builder profile.
+- **Every delegated result gets cross-family review.** Resolve the appropriate
+  review lane with `--producer-profile`; the router excludes the producer's
+  entire family. Sol remains an advanced read-only default when it is
+  cross-family; Sonnet may review only very small routine work. Architecture
+  decisions remain explicit Fable/Sol judgement, and user-facing taste remains
+  the lead's responsibility.
 
 ## Named profiles (installed to `~/.claude/agents/`)
 
 | profile | model / effort | use for |
 |---|---|---|
-| `sonnet-clerk` | sonnet / low | extraction, inventories, log/test summaries, transforms |
-| `sonnet-scout` | sonnet / low | read-only repo mapping / exploration |
-| `sonnet-builder` | sonnet / medium | bounded implementation with acceptance checks |
-| `sonnet-reviewer` | sonnet / medium | routine correctness/bug review (the default) |
-| `opus-reviewer` | claude-opus-5 / high | security / taste / material review + escalation |
-| `fable-judge` | fable / xhigh | judgement: plan up front + final verdict/synthesis (two-touch) |
+| `sonnet-clerk` | sonnet / low | very small extraction, inventories, log/test summaries |
+| `sonnet-scout` | sonnet / low | very small read-only repo trace |
+| `sonnet-reviewer` | sonnet / medium | very small routine correctness review |
+| `opus-builder` | claude-opus-5 / max | bounded implementation with acceptance checks |
+| `opus-reviewer` | claude-opus-5 / max | read-only review of non-Anthropic output |
+| `fable-judge` | fable / max | judgement: plan up front + final verdict/synthesis (two-touch) |
 
 ### Optional evaluated GLM executor
 
@@ -182,22 +184,29 @@ default/fallback/explicit group. Invoking an explicit-only profile is the manual
 selection event; never spawn a blocked profile. External runners enforce the
 central graph directly before runtime/auth checks.
 
+For `routine-review`, `material-review`, and `security`, resolution without a
+producer identity is invalid. Use, for example,
+`delegation-route resolve --lane material-review --producer-profile terra-builder`.
+The returned `excluded_same_family` list is an audit trail, not a fallback pool.
+Verify runtime/auth for the returned reviewers; if none is available, stop rather
+than letting the producer family review itself.
+For the Opus security route, Anthropic may substitute Opus 4.8 when its safety
+classifier flags a cyber request. The router exposes this under
+`provider_fallback`; inspect surfaced content-model identity or use Anthropic's
+CVP when exact Opus 5 identity is mandatory.
+
 ## Rules
 
-- **Effort:** scale to ambiguity and blast radius, never to prestige — but read
-  the model's own effort ladder before picking the bottom rung. Cheap models do
-  not degrade gracefully: on the 2026-08-05 snapshot `gpt-5.6-luna` at `low`
-  scores 15% SWE-Atlas-QnA and 1.5% DeepSWE, and `gpt-5.6-terra` at `low` scores
-  23%, so a lane pinned there is not cheap, it is broken. The Codex profiles are
-  therefore pinned above the cliff (`luna-clerk` max, `terra-scout` medium,
-  `terra-builder` max) where the exact benchmark row still costs cents per task.
-  The Claude profiles keep low/medium, where the same ladder falls off far more
-  gently. Senior stays medium by default, high for security/hard design, low for
-  triage.
-- **Route review by content, not habit** — security/auth/payments/migrations/
-  user-facing → senior; routine bug-hunting stays on the executor (often cheaper
-  *and* higher-recall there). Size the reviewer to the work, not to the top of the
-  evidence for that lane.
+- **Effort and role are pinned:** the Opus and Terra builder/reviewer profiles all
+  run at `max`; reviewer profiles are read-only. `luna-clerk` stays at `max` because Luna collapses at low on the exact
+  evidence row, but remains limited to very small deterministic work. Sonnet keeps
+  low for clerk/scout and medium for tiny routine review. Never turn Sonnet or Luna
+  into a builder.
+- **Cross-family review is mandatory:** every delegated result is reviewed by an
+  operational reviewer from a different family. Very small work uses
+  `routine-review`; implementation uses `material-review`; security-shaped work
+  uses `security`. A model never reviews its own output or output from a sibling
+  model in the same family, even through a separate profile.
 - **Picking among the external builders:** they are not interchangeable. Kimi K3
   and Grok 4.6 are `preferred-explicit` by explicit owner decision; GLM-5.3,
   Qwen3.8-Max, and DeepSeek V4 Pro stay plain `explicit-only`. Grok 4.6's current public rows use
@@ -206,22 +215,25 @@ central graph directly before runtime/auth checks.
   `--allow-provisional`. For frontend work prefer Kimi over Grok on WebDev
   when current evidence supports it, and prefer any editing runner over Qwen, whose text-only
   transport returns a patch the lead must apply itself.
-- **Escalation ladder:** executor miss/ambiguity → senior → judgement. Never retry
-  the same failure on the executor twice — escalate. Security never delegates
-  downward: it starts on the senior lane. (Standing rule: judge the output, not the
+- **Escalation ladder:** small-lane miss or implementation need → Opus/Terra
+  builder; review → an available eligible cross-family reviewer; architecture
+  conflict → judgement. Never retry
+  the same unsuitable small lane twice. (Standing rule: judge the output, not the
   price tag.)
 - **Verification:** no executor diff ships unread, and a check must **exercise the
   deliverable** — run the command, read the output; grepping a README, testing
   something adjacent, or printing True while exiting zero proves nothing.
-  User-facing/security → senior reads it; pure mechanical → executor self-checks at
-  low effort, senior spot-checks. The judgement model only re-checks what it
+  Self-checks do not replace the required cross-family review.
+  The judgement model only re-checks what it
   produced or a multi-attempt synthesis — don't spend it verifying the executor.
 - **No double fan-out:** in an orchestration/ultra mode, let the orchestrator fan
   out; don't add a second manual delegation layer. Workers return distilled
   evidence (changed paths, checks run, unresolved risks), not raw logs or essays.
-- **Degraded mode:** a lane with no reachable model/bridge → the lead plays it, every
-  affected result labeled `[DEGRADED: <lane>]`, one lane max; with two or more gone
-  there is no team, so say so and work as ordinary single-model.
+- **Degraded mode:** for a non-review lane with no reachable model/bridge, the
+  lead may play it with every affected result labeled `[DEGRADED: <lane>]`, one
+  lane max. A missing cross-family reviewer is never degradable to self-review:
+  stop and report the blocker. With two or more non-review lanes gone there is
+  no team, so say so and work as ordinary single-model.
 - **Delegated output is unverified until you check it.** **Tie-breakers:**
   required lane evidence > deliverable quality > cost; and `cost` is per *task*,
   not per token.
@@ -247,7 +259,7 @@ effort**, don't inherit the Codex default:
   runs the base default model; see the mis-pin caveat below): `codex exec --ephemeral
   -p <profile> "<prompt>" </dev/null`. The *profile* sets the sandbox — `terra-builder`
   pins `workspace-write`, so don't reach for it on a read-only task.
-- Inline override: `codex exec -m gpt-5.6-luna -c model_reasoning_effort=low -s read-only "<prompt>" </dev/null`.
+- Inline override: `codex exec -m gpt-5.6-luna -c model_reasoning_effort=max -s read-only "<prompt>" </dev/null`.
   **Default to `-s read-only`** for review/analysis; add `-s workspace-write` only to let
   it edit; always redirect stdin from `/dev/null`.
 - Machine-readable return: add `--json` (JSONL events) or `-o <file>` (final message

@@ -1,15 +1,24 @@
 # delegation-kit
 
 Teach **Claude Code** and **Codex** how and when to delegate coding work across
-models — a cheap lane executes, a senior lane reviews taste/security, an expensive
-lane does judgement — with a symmetric bridge so each can reach the other.
+models — small non-builder lanes handle bounded support work, max-effort builder
+lanes implement, and a sufficiently capable model from another family reviews
+every delegated result — with a symmetric bridge so each can reach the other.
 
 It ships as a **reference implementation**: the author's concrete models
 (`sonnet`/`opus`/`fable` on Claude; `luna`/`terra`/`sol` on Codex), a dated
 external-evidence snapshot, and fail-closed local gates. Swap the models for your own tiers with
 [`ADAPTING.md`](./ADAPTING.md) — the *structure* is the transferable part.
 
-## Current release: 0.16.0
+## Current release: 0.17.0
+
+Version 0.17.0 reserves Sonnet and Luna for very small,
+non-builder tasks. Opus 5 and GPT-5.6 Terra are high-level builders and
+reviewers, both pinned to `max`; editing and read-only review use separate
+profiles. Every delegated result must be reviewed by another model family, with
+producer identity supplied to the fail-closed router. Explicit judgement remains
+with Fable and Sol both at `max`. These owner decisions do not
+retroactively qualify a model or rewrite earlier release evidence.
 
 Version 0.16.0 adds a guarded official-API bridge for DeepSeek V4 Pro at
 `max`. Its prompt-only `builder` lane is provisional and explicit-only after
@@ -99,7 +108,7 @@ provisional/explicit-only behind `--allow-provisional`. See
 **Claude Code** (`~/.claude/`)
 | piece | where | what |
 |---|---|---|
-| 6 subagent profiles | `agents/*.md` | `sonnet-clerk` · `sonnet-scout` · `sonnet-builder` · `sonnet-reviewer` · `opus-reviewer` · `fable-judge` (judgement lane) (model+effort pinned) |
+| 6 subagent profiles | `agents/*.md` | `sonnet-clerk` · `sonnet-scout` · `sonnet-reviewer` (very small, non-builder) · `opus-builder` (`max`, editing) · `opus-reviewer` (`max`, read-only cross-family) · `fable-judge` |
 | routing skill | `skills/model-routing/` | surfaces the decision procedure when you delegate |
 | orchestrate skill | `skills/orchestrate/` | the fan-out loop — plan → delegate to workers → verify → advisor judges plan + ship |
 | optional GLM skill | `skills/glm-executor/` | dispatches only gate-allowed GLM lanes; provisional use is explicit |
@@ -113,7 +122,7 @@ provisional/explicit-only behind `--allow-provisional`. See
 **Codex** (`~/.codex/`)
 | piece | where | what |
 |---|---|---|
-| 5 native profiles | `agents/*.toml` | `luna-clerk` · `terra-scout` · `terra-builder` · `sol-reviewer` (default material review) · `sol-judge` (explicit judgement) |
+| 5 native profiles | `agents/*.toml` | `luna-clerk` · `terra-builder` (`max`, editing) · `terra-reviewer` (`max`, read-only cross-family) · `sol-reviewer` (`high`) · `sol-judge` (`max`, explicit judgement) |
 | 5 ephemeral profiles | `*.config.toml` | for `codex exec --ephemeral -p <name>` |
 | collaboration policy | appended to `AGENTS.md` | usage-aware routing **+ a Codex→Claude bridge** |
 | optional GLM skill | `skills/glm-executor/` | same fail-closed GLM-5.3/max executor path |
@@ -361,11 +370,13 @@ It is the dispatch authority: GLM, Gemini, Kimi, Grok, Qwen, and DeepSeek valida
 backend gates before every check/run, and refuse drift. Exact and contextual
 benchmark references are stored separately, and the generated table exposes
 local sample size/confidence instead of treating legacy scores as comparable.
-Within Codex, `sol-reviewer` at `high` is the provisional default for
-`material-review` by explicit owner decision; the status remains provisional
-because no exact review precision/recall row exists. This role-scoped default
-does not widen Sol into execution or automatic judgement.
-Fable `xhigh` and Sol `high` are explicit, manually qualified judgement profiles.
+Review resolution is producer-aware and fail-closed:
+`delegation-route resolve --lane material-review --producer-profile <profile>`
+removes every reviewer from the producer's model family. Sol/high is the
+provisional default when it remains cross-family; Opus/Terra max are read-only
+fallback reviewers, and runtime availability must be verified before dispatch.
+No exact review precision/recall row exists, so these routes remain provisional.
+Fable `max` and Sol `max` are explicit, manually qualified judgement profiles.
 `super-judgement` pairs them as independent judges followed by cross-review; the
 lead retains final authority and no dispatch, merge, or deploy is automatic.
 
@@ -379,7 +390,10 @@ cd delegation-kit
 ```
 Idempotent, refreshes its guarded policy blocks, backs up before editing, and
 prints the Codex config snippet (it never auto-edits `config.toml`). Keep the
-checkout where it is — Claude's `@import` points
+cross-provider bridge available when using a single-host install: `--claude-only`
+or `--codex-only` can leave no installed cross-family reviewer for work produced
+by that host, in which case the mandatory review must stop rather than fall back
+to self-review. Keep the checkout where it is — Claude's `@import` points
 at it, so `git pull` updates the policy live. Remove with `./uninstall.sh`.
 
 Then verify the bridge and evidence snapshot are actually **wired** (not just
@@ -421,10 +435,14 @@ runner/gate, register the
 
 - **Lead** owns the work and enters the **judgement** model only in short bursts
   (a plan up front, a verdict at the end) — thinking, not typing.
-- **Executor** (cheap) does the volume and the *default* routine review.
-- **Senior** handles security (routed directly), user-facing taste, and escalation.
-- **Route review by content, not habit**; **size the reviewer to the work**;
-  escalate cheap → senior → judgement, never retry an unsuitable cheap worker twice.
+- **Small non-builder lanes** use Sonnet or Luna only for tightly bounded clerk,
+  scout, and routine-review work.
+- **Builder** uses Opus 5 or GPT-5.6 Terra, both pinned to `max`.
+- **Reviewer** can use Opus/Terra at `max`, Sol at `high`, or Sonnet for tiny
+  routine work—but never from the producer's family.
+- **Route review by content and producer family**; verify reviewer availability;
+  escalate small lane → builder/reviewer → judgement, never retry an unsuitable
+  worker twice.
 - Tie-breakers: **required lane evidence > deliverable quality > cost**, and
   **`cost` is per task, not per token** — a chatty cheap model can still be
   cheapest to finish the job.
@@ -438,9 +456,10 @@ runner/gate, register the
   them); for programmatic/parallel work drive a GPT lane with
   `codex exec --ephemeral -p <profile>` (or `-m <model> -c model_reasoning_effort=<level>`).
   Both in [`claude/CLAUDE.delegation.md`](./claude/CLAUDE.delegation.md).
-- **Codex → Claude**: call `claude -p "<prompt>" --model claude-opus-5|sonnet --effort <level>`
-  for taste, an independent-family second-opinion review, or bucket-aware offload
-  (in [`codex/AGENTS.md`](./codex/AGENTS.md)). CLI-only — no reverse plugin exists.
+- **Codex → Claude**: call Opus 5 at `max` through its editing builder or
+  read-only cross-family reviewer profile, or Sonnet only for very small
+  non-builder work, following the hardened CLI procedure in
+  [`codex/AGENTS.md`](./codex/AGENTS.md). CLI-only — no reverse plugin exists.
 
 Both directions pass context through the **shared working tree**, not the
 conversation: run the child in the repo root and reference files by path. The only

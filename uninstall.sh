@@ -25,24 +25,24 @@ strip_guarded() { # $1=file
 }
 
 echo "Claude Code -> $CLAUDE_HOME"
-for a in sonnet-clerk sonnet-scout sonnet-builder sonnet-reviewer opus-reviewer fable-judge; do
+for a in sonnet-clerk sonnet-scout sonnet-builder sonnet-reviewer opus-builder opus-reviewer fable-judge; do
   rm -f "$CLAUDE_HOME/agents/$a.md"
 done
 rm -rf "$CLAUDE_HOME/skills/model-routing" "$CLAUDE_HOME/skills/orchestrate" \
   "$CLAUDE_HOME/skills/glm-executor" "$CLAUDE_HOME/skills/kimi-executor"
 rm -rf "$CLAUDE_HOME/skills/qwen-executor" "$CLAUDE_HOME/skills/gemini-executor" \
   "$CLAUDE_HOME/skills/grok-executor" "$CLAUDE_HOME/skills/deepseek-executor"
-echo "  - removed 6 subagent profiles + model-routing, orchestrate, GLM, Gemini, Kimi, Qwen, DeepSeek & Grok skills"
+echo "  - removed 6 current subagent profiles, retired profile copies, and model-routing, orchestrate, GLM, Gemini, Kimi, Qwen, DeepSeek & Grok skills"
 strip_guarded "$CLAUDE_HOME/CLAUDE.md"
 
 echo "Codex -> $CODEX_HOME"
-for a in luna-clerk terra-scout terra-builder sol-reviewer sol-judge; do
+for a in luna-clerk terra-scout terra-builder terra-reviewer sol-reviewer sol-judge; do
   rm -f "$CODEX_HOME/agents/$a.toml" "$CODEX_HOME/$a.config.toml"
 done
 rm -rf "$CODEX_HOME/skills/glm-executor" "$CODEX_HOME/skills/gemini-executor" \
   "$CODEX_HOME/skills/kimi-executor" "$CODEX_HOME/skills/qwen-executor" \
   "$CODEX_HOME/skills/grok-executor" "$CODEX_HOME/skills/deepseek-executor"
-echo "  - removed 5 native + 5 ephemeral profiles"
+echo "  - removed 5 current native + 5 ephemeral profiles and retired Terra scout copies"
 strip_guarded "$CODEX_HOME/AGENTS.md"
 rm -f "$BIN_HOME/delegation-schema" "$BIN_HOME/delegation-glm" "$BIN_HOME/delegation-gemini" "$BIN_HOME/delegation-kimi" "$BIN_HOME/delegation-qwen" "$BIN_HOME/delegation-deepseek" "$BIN_HOME/delegation-grok" \
   "$BIN_HOME/delegation-evidence" "$BIN_HOME/delegation-epoch" "$BIN_HOME/delegation-route"

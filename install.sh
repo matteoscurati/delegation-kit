@@ -266,6 +266,9 @@ fi
 if [ "$do_claude" = 1 ]; then
   echo "Claude Code -> $CLAUDE_HOME"
   mkdir -p "$CLAUDE_HOME/agents" "$CLAUDE_HOME/skills"
+  # Remove the profile retired by the 2026-08-17 owner routing decision. A plain
+  # glob copy cannot remove a stale name left by an older installation.
+  rm -f "$CLAUDE_HOME/agents/sonnet-builder.md"
   cp "$KIT"/agents/*.md "$CLAUDE_HOME/agents/"
   echo "  + 6 subagent profiles -> $CLAUDE_HOME/agents/"
   # register the always-loaded policy first — it is the linchpin, so a missing optional
@@ -293,6 +296,7 @@ fi
 if [ "$do_codex" = 1 ]; then
   echo "Codex -> $CODEX_HOME"
   mkdir -p "$CODEX_HOME/agents" "$CODEX_HOME/skills"
+  rm -f "$CODEX_HOME/agents/terra-scout.toml" "$CODEX_HOME/terra-scout.config.toml"
   cp "$KIT"/codex/agents/*.toml "$CODEX_HOME/agents/"
   echo "  + 5 native subagent profiles -> $CODEX_HOME/agents/"
   cp "$KIT"/codex/profiles/*.config.toml "$CODEX_HOME/"

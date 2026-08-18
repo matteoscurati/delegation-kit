@@ -4,26 +4,54 @@
   "evidence_file": "model-evidence.json",
   "status_values": ["disabled", "candidate", "provisional", "qualified", "manual-qualified"],
   "selection_values": ["default", "fallback", "preferred-explicit", "explicit-only", "blocked"],
+  "model_families": {
+    "claude-fable-5": "anthropic",
+    "claude-opus-5": "anthropic",
+    "claude-sonnet-5": "anthropic",
+    "deepseek-v4-pro": "deepseek",
+    "gemini-3.7-flash": "google",
+    "glm-5.3": "zai",
+    "gpt-5.6-luna": "openai",
+    "gpt-5.6-sol": "openai",
+    "gpt-5.6-terra": "openai",
+    "grok-4.6": "xai",
+    "kimi-k3": "moonshot",
+    "qwen3.8-max": "alibaba"
+  },
+  "review_policy": {
+    "require_cross_family": true,
+    "review_lanes": ["routine-review", "material-review", "security"],
+    "eligible_reviewer_profiles": ["sonnet-reviewer", "opus-reviewer", "terra-reviewer", "sol-reviewer"],
+    "availability_must_be_verified": true
+  },
   "profiles": {
     "luna-clerk": {
       "model": "gpt-5.6-luna", "harness": "codex", "effort": "max",
       "lanes": {"clerk": {"status": "provisional", "selection": "default", "exact_evidence_ids": ["aa-codex-gpt-5.6-luna-max"], "context_evidence_ids": ["epoch-deepswe-gpt-5-6-luna-mini-swe-agent-low", "epoch-deepswe-gpt-5-6-luna-mini-swe-agent-max"], "qualification_basis": "Owner effort decision on measured evidence, 2026-08-05. The lane is unchanged; only its pinned effort moved from low to max. At low the exact AA row scores 15% SWE-Atlas-QnA, the clerk required metric, and the Epoch effort ladder puts the same model at 1.5% DeepSWE; at max the exact AA row scores 33% and 63%. Codex accepts none/minimal/low/medium/high/xhigh/max, verified against the provider on 2026-08-05. AA publishes no luna row between low and max, so max is the only better effort that keeps an exact row.", "fallback": "sonnet-clerk"}}
     },
-    "terra-scout": {
-      "model": "gpt-5.6-terra", "harness": "codex", "effort": "medium",
-      "lanes": {"scout": {"status": "provisional", "selection": "default", "exact_evidence_ids": ["aa-codex-gpt-5.6-terra-medium"], "context_evidence_ids": ["epoch-deepswe-gpt-5-6-terra-mini-swe-agent-low", "epoch-deepswe-gpt-5-6-terra-mini-swe-agent-medium"], "qualification_basis": "Owner effort decision on measured evidence, 2026-08-05. The lane is unchanged; only its pinned effort moved from low to medium, raising SWE-Atlas-QnA, the scout required metric, from 23% to 28% on the exact AA row for $0.90 rather than $0.48 per task.", "fallback": "sonnet-scout"}}
-    },
     "terra-builder": {
       "model": "gpt-5.6-terra", "harness": "codex", "effort": "max",
-      "lanes": {"builder": {"status": "provisional", "selection": "default", "exact_evidence_ids": ["aa-codex-gpt-5.6-terra-max"], "context_evidence_ids": ["epoch-deepswe-gpt-5-6-terra-mini-swe-agent-medium", "epoch-deepswe-gpt-5-6-terra-mini-swe-agent-max"], "qualification_basis": "Owner effort decision on measured evidence, 2026-08-05. The lane is unchanged; only its pinned effort moved from medium to max. Both builder required metrics rise on the exact AA row: DeepSWE 46% to 67% and Terminal-Bench v2 69% to 84%, for $2.76 rather than $0.90 per task. Escalating to the sonnet-builder fallback instead would buy less: it has no exact AA row and the Epoch ladder puts Sonnet 5 at 39.8% DeepSWE at medium.", "fallback": "sonnet-builder"}}
+      "lanes": {"builder": {"status": "provisional", "selection": "default", "exact_evidence_ids": ["aa-codex-gpt-5.6-terra-max"], "context_evidence_ids": ["epoch-deepswe-gpt-5-6-terra-mini-swe-agent-medium", "epoch-deepswe-gpt-5-6-terra-mini-swe-agent-max"], "qualification_basis": "Owner routing decision, 2026-08-17. Terra is a high-level builder pinned to max. Both builder required metrics rise on the exact AA row versus medium: DeepSWE 46% to 67% and Terminal-Bench v2 69% to 84%. Review uses a separate read-only Terra profile and is permitted only for work produced outside the OpenAI family.", "fallback": "opus-builder"}}
+    },
+    "terra-reviewer": {
+      "model": "gpt-5.6-terra", "harness": "codex", "effort": "max",
+      "lanes": {
+        "routine-review": {"status": "provisional", "selection": "fallback", "exact_evidence_ids": [], "context_evidence_ids": ["aa-codex-gpt-5.6-terra-max"], "qualification_basis": "Owner routing decision, 2026-08-17. Terra/max is a read-only cross-family reviewer for work produced outside the OpenAI family.", "evidence_gap": "No exact review precision/recall row; coding evidence is contextual only."},
+        "material-review": {"status": "provisional", "selection": "fallback", "exact_evidence_ids": [], "context_evidence_ids": ["aa-codex-gpt-5.6-terra-max"], "qualification_basis": "Owner routing decision, 2026-08-17. Terra/max is a read-only cross-family reviewer for work produced outside the OpenAI family.", "evidence_gap": "No exact review precision/recall row; coding evidence is contextual only."},
+        "security": {"status": "provisional", "selection": "fallback", "exact_evidence_ids": [], "context_evidence_ids": ["aa-codex-gpt-5.6-terra-max"], "qualification_basis": "Owner routing decision, 2026-08-17. Terra/max may review security-sensitive work only when the producer is outside the OpenAI family.", "evidence_gap": "No exact security-review precision/recall row; coding evidence is contextual only."}
+      }
     },
     "sol-reviewer": {
       "model": "gpt-5.6-sol", "harness": "codex", "effort": "high",
-      "lanes": {"material-review": {"status": "provisional", "selection": "default", "exact_evidence_ids": [], "context_evidence_ids": ["aa-codex-gpt-5.6-sol-high"], "qualification_basis": "Explicit owner routing decision, 2026-08-16. Codex material review defaults to the read-only sol-reviewer profile at high. Status remains provisional because no exact review precision/recall row exists. This decision does not apply to routine review, judgement, or super-judgement; sol-judge remains manual-qualified and explicit-only.", "evidence_gap": "No exact review precision/recall row."}}
+      "lanes": {
+        "material-review": {"status": "provisional", "selection": "default", "exact_evidence_ids": [], "context_evidence_ids": ["aa-codex-gpt-5.6-sol-high"], "qualification_basis": "Explicit owner routing decision, 2026-08-16. Codex material review defaults to the read-only sol-reviewer profile at high. Status remains provisional because no exact review precision/recall row exists. This decision does not apply to routine review, judgement, or super-judgement; sol-judge remains manual-qualified and explicit-only.", "evidence_gap": "No exact review precision/recall row."},
+        "security": {"status": "provisional", "selection": "default", "exact_evidence_ids": [], "context_evidence_ids": ["aa-codex-gpt-5.6-sol-high"], "qualification_basis": "Owner routing decision, 2026-08-17. Sol/high is a read-only technical reviewer, but the cross-family rule excludes it whenever the producer is in the OpenAI family.", "evidence_gap": "No exact security-review precision/recall row; the general coding row is contextual only."},
+        "routine-review": {"status": "provisional", "selection": "fallback", "exact_evidence_ids": [], "context_evidence_ids": ["aa-codex-gpt-5.6-sol-high"], "qualification_basis": "Owner routing decision, 2026-08-17. Sol/high is an advanced read-only fallback reviewer for work produced outside the OpenAI family.", "evidence_gap": "No exact review precision/recall row; coding evidence is contextual only."}
+      }
     },
     "sol-judge": {
-      "model": "gpt-5.6-sol", "harness": "codex", "effort": "high",
-      "lanes": {"judgement": {"status": "manual-qualified", "selection": "explicit-only", "exact_evidence_ids": [], "context_evidence_ids": ["aa-codex-gpt-5.6-sol-high", "arena-agent-gpt-5.6-sol-xhigh"], "evidence_gap": "Judgement is manual-only; the Agent Arena row also differs in harness and effort.", "qualification_basis": "Owner decision: technical feasibility, repository fit, failure modes, and verifiability."}}
+      "model": "gpt-5.6-sol", "harness": "codex", "effort": "max",
+      "lanes": {"judgement": {"status": "manual-qualified", "selection": "explicit-only", "exact_evidence_ids": [], "context_evidence_ids": ["aa-codex-gpt-5.6-sol-max", "aa-codex-gpt-5.6-sol-high", "arena-agent-gpt-5.6-sol-xhigh"], "evidence_gap": "Judgement is manual-only; the available rows measure coding or use a different effort rather than judgement quality.", "qualification_basis": "Explicit owner effort decision, 2026-08-18: Sol judgement runs at max for technical feasibility, repository fit, failure modes, and verifiability. This does not convert contextual coding evidence into judgement qualification."}}
     },
     "sol-max-policy-annotator": {
       "model": "gpt-5.6-sol", "harness": "codex", "effort": "max",
@@ -35,55 +63,22 @@
     },
     "sonnet-scout": {
       "model": "claude-sonnet-5", "harness": "claude-code", "effort": "low",
-      "lanes": {"scout": {"status": "provisional", "selection": "fallback", "exact_evidence_ids": [], "context_evidence_ids": [], "evidence_gap": "No current exact Claude Code low row.", "fallback": "terra-scout"}}
-    },
-    "sonnet-builder": {
-      "model": "claude-sonnet-5", "harness": "claude-code", "effort": "medium",
-      "lanes": {"builder": {"status": "provisional", "selection": "fallback", "exact_evidence_ids": [], "context_evidence_ids": [], "evidence_gap": "No current exact Claude Code medium row.", "fallback": "terra-builder"}}
+      "lanes": {"scout": {"status": "provisional", "selection": "default", "exact_evidence_ids": [], "context_evidence_ids": [], "qualification_basis": "Owner routing decision, 2026-08-17: Sonnet is the default only for very small, read-only non-builder scouting.", "evidence_gap": "No current exact Claude Code low row."}}
     },
     "sonnet-reviewer": {
       "model": "claude-sonnet-5", "harness": "claude-code", "effort": "medium",
-      "lanes": {"routine-review": {"status": "provisional", "selection": "default", "exact_evidence_ids": [], "context_evidence_ids": [], "evidence_gap": "No exact review precision/recall row.", "fallback": "opus-reviewer"}}
+      "lanes": {"routine-review": {"status": "provisional", "selection": "default", "exact_evidence_ids": [], "context_evidence_ids": [], "qualification_basis": "Owner routing decision, 2026-08-17: Sonnet is the default only for very small, non-builder routine review outside the Anthropic family.", "evidence_gap": "No exact review precision/recall row."}}
+    },
+    "opus-builder": {
+      "model": "claude-opus-5", "harness": "claude-code", "effort": "max",
+      "lanes": {"builder": {"status": "provisional", "selection": "fallback", "exact_evidence_ids": ["aa-claude-opus-5-max"], "context_evidence_ids": ["cursorbench-opus-5-max", "apex-swe-opus-5-max", "epoch-deepswe-claude-opus-5-mini-swe-agent-max"], "local_evaluation": {"run_id": "2026-08-17-opus-builder-named-profile-smoke", "task_count": 1, "repeats": 1, "valid_repeats": 1, "mean_score": 1.0, "all_checker_runs_pass": true, "provider_cost_usd": 0.228272, "confidence": "low", "limitations": "One disposable one-line edit through the installed named opus-builder profile. The run touched only the assigned tracked file, passed git diff --check, and reported canonicalModel claude-opus-5 at the explicitly requested max effort. This is compatibility and scope evidence, not a held-out repeated builder qualification."}, "qualification_basis": "Explicit owner routing decision, 2026-08-17. Opus is a high-level builder pinned to max; the exact Claude Code/max row carries both builder required metrics, and the installed named editing profile passed a scoped local smoke. Review uses a separate read-only Opus profile and is permitted only for work produced outside the Anthropic family. Status remains provisional because the single synthetic smoke is compatibility evidence rather than repeated held-out qualification.", "fallback": "terra-builder"}}
     },
     "opus-reviewer": {
-      "model": "claude-opus-5", "harness": "claude-code", "effort": "high",
+      "model": "claude-opus-5", "harness": "claude-code", "effort": "max",
       "lanes": {
-        "senior": {
-          "status": "manual-qualified",
-          "selection": "explicit-only",
-          "exact_evidence_ids": [],
-          "context_evidence_ids": ["anthropic-claude-opus-5-launch", "aa-claude-opus-4.8-max", "arena-agent-opus-4.8-thinking"],
-          "local_evaluation": {
-            "run_id": "2026-07-25-claude-opus-5-runtime-smoke",
-            "task_count": 1,
-            "repeats": 1,
-            "confidence": "low",
-            "limitations": "Exact first-party Claude Code model identity and output path only; not a review precision/recall evaluation."
-          },
-          "evidence_gap": "No exact review precision/recall row for Claude Opus 5 through Claude Code at high; launch claims and predecessor rows are contextual only."
-        },
-        "security": {
-          "status": "manual-qualified",
-          "selection": "explicit-only",
-          "exact_evidence_ids": [],
-          "context_evidence_ids": ["anthropic-claude-opus-5-launch"],
-          "local_evaluation": {
-            "run_id": "2026-07-25-claude-opus-5-security-smoke",
-            "task_count": 1,
-            "repeats": 1,
-            "confidence": "low",
-            "limitations": "Benign defensive-security prompt verified the named agent and exact Claude Opus 5 model identity; it does not test review quality or classifier-triggered fallback."
-          },
-          "provider_fallback": {
-            "possible": true,
-            "target_model": "claude-opus-4.8",
-            "trigger": "Anthropic safety classifier on flagged cyber requests",
-            "exact_variant_guaranteed": false,
-            "source_evidence_id": "anthropic-claude-opus-5-launch"
-          },
-          "qualification_basis": "Manual specialist lane; public coding scores do not qualify security review.",
-          "evidence_gap": "No exact security-review precision/recall benchmark; the benign smoke does not exercise Anthropic's classifier-triggered fallback."
-        }
+        "routine-review": {"status": "provisional", "selection": "fallback", "exact_evidence_ids": [], "context_evidence_ids": ["aa-claude-opus-5-max", "cursorbench-opus-5-max"], "qualification_basis": "Owner routing decision, 2026-08-17. Opus/max is a read-only cross-family reviewer for work produced outside the Anthropic family.", "evidence_gap": "No exact review precision/recall row; coding evidence is contextual only."},
+        "material-review": {"status": "provisional", "selection": "fallback", "exact_evidence_ids": [], "context_evidence_ids": ["aa-claude-opus-5-max", "cursorbench-opus-5-max"], "qualification_basis": "Owner routing decision, 2026-08-17. Opus/max is a read-only cross-family reviewer for work produced outside the Anthropic family.", "evidence_gap": "No exact review precision/recall row; coding evidence is contextual only."},
+        "security": {"status": "provisional", "selection": "fallback", "exact_evidence_ids": [], "context_evidence_ids": ["aa-claude-opus-5-max", "anthropic-claude-opus-5-launch"], "provider_fallback": {"possible": true, "target_model": "claude-opus-4.8", "trigger": "Anthropic safety classifier on flagged cyber requests", "exact_variant_guaranteed": false, "source_evidence_id": "anthropic-claude-opus-5-launch"}, "qualification_basis": "Owner routing decision, 2026-08-17. Opus/max may review security-sensitive work only when the producer is outside the Anthropic family. Anthropic may substitute Opus 4.8 on classifier-flagged cyber requests, so exact Opus 5 identity must be verified when required.", "evidence_gap": "No exact security-review precision/recall row; coding evidence is contextual only, and the benign smoke does not exercise Anthropic's classifier-triggered fallback."}
       }
     },
     "opus-policy-annotator": {
@@ -91,8 +86,8 @@
       "lanes": {"policy-annotation": {"status": "candidate", "selection": "blocked", "exact_evidence_ids": [], "context_evidence_ids": [], "evaluation_manifest_sha256": [], "evidence_gap": "No frozen local policy-annotation result exists for the xhigh Claude Code variant."}}
     },
     "fable-judge": {
-      "model": "claude-fable-5", "harness": "claude-code", "effort": "xhigh",
-      "lanes": {"judgement": {"status": "manual-qualified", "selection": "explicit-only", "exact_evidence_ids": [], "context_evidence_ids": ["aa-claude-fable-5-max", "arena-agent-fable-5-high"], "evidence_gap": "Published max/high variants are context, not the installed xhigh profile.", "qualification_basis": "Owner decision: architecture, trade-offs, synthesis, and final verdict."}}
+      "model": "claude-fable-5", "harness": "claude-code", "effort": "max",
+      "lanes": {"judgement": {"status": "manual-qualified", "selection": "explicit-only", "exact_evidence_ids": [], "context_evidence_ids": ["aa-claude-fable-5-max", "arena-agent-fable-5-high"], "local_evaluation": {"run_id": "2026-08-18-fable-max-runtime-probe", "task_count": 1, "repeats": 1, "confidence": "low", "limitations": "Authenticated Claude Code returned exact PONG and surfaced canonicalModel claude-fable-5 at requested max; this proves runtime compatibility, not judgement quality."}, "evidence_gap": "No exact judgement benchmark; coding evidence is contextual only.", "qualification_basis": "Owner decision: maximum-effort architecture, trade-offs, synthesis, and final verdict."}}
     },
     "fable-policy-annotator": {
       "model": "claude-fable-5", "harness": "claude-code", "effort": "xhigh",
@@ -104,7 +99,7 @@
     },
     "glm53-max-scout": {
       "model": "glm-5.3", "harness": "claude-zai", "effort": "max",
-      "lanes": {"scout": {"status": "qualified", "selection": "explicit-only", "exact_evidence_ids": [], "context_evidence_ids": ["zai-glm-5.3-launch-unspecified-2026-08-14"], "local_evaluation": {"run_id": "2026-08-14-glm-5.3-max-operational-requalification-v6", "task_count": 7, "repeats": 3, "valid_repeats": 3, "mean_score": 1.0, "mean_latency_seconds": 94.33, "provider_cost_usd": 0.295942, "confidence": "bounded-repeated", "limitations": "Exact synthetic trace pack on the final max-only runner; explicit-only selection is retained."}, "fallback": "terra-scout"}}
+      "lanes": {"scout": {"status": "qualified", "selection": "explicit-only", "exact_evidence_ids": [], "context_evidence_ids": ["zai-glm-5.3-launch-unspecified-2026-08-14"], "local_evaluation": {"run_id": "2026-08-14-glm-5.3-max-operational-requalification-v6", "task_count": 7, "repeats": 3, "valid_repeats": 3, "mean_score": 1.0, "mean_latency_seconds": 94.33, "provider_cost_usd": 0.295942, "confidence": "bounded-repeated", "limitations": "Exact synthetic trace pack on the final max-only runner; explicit-only selection is retained."}, "fallback": "sonnet-scout"}}
     },
     "glm53-max-builder": {
       "model": "glm-5.3", "harness": "claude-zai", "effort": "max",
@@ -122,9 +117,9 @@
       "model": "kimi-k3", "harness": "kimi-code-cli", "effort": "max",
       "lanes": {
         "clerk": {"status": "provisional", "selection": "explicit-only", "exact_evidence_ids": ["aa-kimi-code-kimi-k3"], "context_evidence_ids": [], "local_evaluation": {"run_id": "2026-07-16-kimi-k3", "task_count": null, "repeats": null, "confidence": "low", "limitations": "Provider quota truncated the run; valid-subset size is not recorded in the published gate."}, "fallback": "luna-clerk"},
-        "scout": {"status": "provisional", "selection": "explicit-only", "exact_evidence_ids": ["aa-kimi-code-kimi-k3"], "context_evidence_ids": ["arena-agent-kimi-k3"], "local_evaluation": {"run_id": "2026-07-16-kimi-k3", "task_count": null, "repeats": null, "confidence": "low", "limitations": "Provider quota truncated the run; valid-subset size is not recorded in the published gate."}, "fallback": "terra-scout"},
+        "scout": {"status": "provisional", "selection": "explicit-only", "exact_evidence_ids": ["aa-kimi-code-kimi-k3"], "context_evidence_ids": ["arena-agent-kimi-k3"], "local_evaluation": {"run_id": "2026-07-16-kimi-k3", "task_count": null, "repeats": null, "confidence": "low", "limitations": "Provider quota truncated the run; valid-subset size is not recorded in the published gate."}, "fallback": "sonnet-scout"},
         "builder": {"status": "provisional", "selection": "preferred-explicit", "exact_evidence_ids": ["aa-kimi-code-kimi-k3"], "context_evidence_ids": ["arena-agent-kimi-k3-2026-08-03", "epoch-deepswe-kimi-k3-mini-swe-agent-max"], "local_evaluation": {"run_id": "2026-07-16-kimi-k3", "task_count": null, "repeats": null, "confidence": "low", "limitations": "Provider quota truncated the run; valid-subset size is not recorded in the published gate."}, "qualification_basis": "Owner selection decision on measured evidence, 2026-08-05. Status stays provisional and dispatch still requires an explicit decision plus --allow-provisional. Kimi K3 carries both builder required metrics on an exact production tuple, while the other external builders remain owner-selected provisional alternatives. This records preference, not qualification: the local evaluation is still a quota-truncated run with no recorded valid-subset size.", "fallback": "terra-builder"},
-        "frontend-builder": {"status": "provisional", "selection": "preferred-explicit", "exact_evidence_ids": [], "context_evidence_ids": ["webdev-kimi-k3", "aa-kimi-code-kimi-k3"], "local_evaluation": {"run_id": "2026-07-16-kimi-k3", "task_count": null, "repeats": null, "confidence": "low", "limitations": "No frontend-specific local pack; provider quota truncated the general run."}, "evidence_gap": "WebDev uses a different harness/default effort; coding evidence is supporting only.", "fallback": "sonnet-builder"},
+        "frontend-builder": {"status": "provisional", "selection": "preferred-explicit", "exact_evidence_ids": [], "context_evidence_ids": ["webdev-kimi-k3", "aa-kimi-code-kimi-k3"], "local_evaluation": {"run_id": "2026-07-16-kimi-k3", "task_count": null, "repeats": null, "confidence": "low", "limitations": "No frontend-specific local pack; provider quota truncated the general run."}, "evidence_gap": "WebDev uses a different harness/default effort; coding evidence is supporting only.", "fallback": "opus-builder"},
         "senior": {"status": "candidate", "selection": "blocked", "exact_evidence_ids": [], "context_evidence_ids": ["arena-agent-kimi-k3"], "evidence_gap": "Steerability evidence is insufficient for promotion."},
         "judgement": {"status": "disabled", "selection": "blocked", "exact_evidence_ids": [], "context_evidence_ids": []},
         "policy-annotation": {"status": "candidate", "selection": "blocked", "exact_evidence_ids": [], "context_evidence_ids": [], "evaluation_manifest_sha256": ["1ad132e3396b8b0f951c121af661e998c27c836e2d43a49c2a8c5f02b39d59c0", "49970b7eed76090c9fc34e921fd86788829f7f44c3a26b7937b56addeb1ac77e"], "evidence_gap": "No frozen local policy-annotation result exists."},
@@ -142,7 +137,7 @@
           "exact_evidence_ids": [],
           "context_evidence_ids": ["google-gemini-3.7-flash-launch-2026-08-17"],
           "evidence_gap": "The official launch confirms Gemini 3.7 Flash and medium thinking, but the current local Antigravity session cannot attest exact model inventory or OAuth. The previous Gemini 3.6 smoke does not transfer.",
-          "fallback": "terra-scout"
+          "fallback": "sonnet-scout"
         }
       }
     },
@@ -172,7 +167,7 @@
           "exact_evidence_ids": [],
           "context_evidence_ids": ["google-gemini-3.7-flash-launch-2026-08-17"],
           "evidence_gap": "Google reports WebDev Elo 1588, but the harness differs and no frontend-specific local agy/high evaluation exists.",
-          "fallback": "sonnet-builder"
+          "fallback": "opus-builder"
         }
       }
     },
@@ -248,7 +243,7 @@
             "limitations": "No frontend-specific local pack; the edit-only scoped runner is shared with builder."
           },
           "evidence_gap": "WebDev uses a different harness and its 4.6 row is preliminary; frontend preference is an explicit owner decision.",
-          "fallback": "sonnet-builder"
+          "fallback": "opus-builder"
         },
         "policy-annotation": {
           "status": "candidate",
@@ -263,9 +258,9 @@
     "qwen3.8-max": {
       "model": "qwen3.8-max", "harness": "token-plan-openai", "effort": "xhigh",
       "lanes": {
-        "builder": {"status": "provisional", "selection": "explicit-only", "exact_evidence_ids": [], "context_evidence_ids": ["qwen-3.8-max-ga-launch"], "local_evaluation": {"run_id": "2026-08-03-qwen3.8-max-ga", "task_count": 1, "repeats": 1, "confidence": "low", "limitations": "Owner promotion on an explicit routing decision, not on measured builder capability. The only local check is a runtime identity probe confirming the endpoint serves qwen3.8-max at xhigh; no held-out implementation pack was run. The runner is text-only and cannot edit a worktree, so this lane returns a patch the lead applies and verifies."}, "evidence_gap": "No DeepSWE or Terminal-Bench v2 row exists for qwen3.8-max on any harness, so both builder required metrics are unmet. Promotion is an owner decision recorded as provisional and explicit-only.", "fallback": "sonnet-builder"},
+        "builder": {"status": "provisional", "selection": "explicit-only", "exact_evidence_ids": [], "context_evidence_ids": ["qwen-3.8-max-ga-launch"], "local_evaluation": {"run_id": "2026-08-03-qwen3.8-max-ga", "task_count": 1, "repeats": 1, "confidence": "low", "limitations": "Owner promotion on an explicit routing decision, not on measured builder capability. The only local check is a runtime identity probe confirming the endpoint serves qwen3.8-max at xhigh; no held-out implementation pack was run. The runner is text-only and cannot edit a worktree, so this lane returns a patch the lead applies and verifies."}, "evidence_gap": "No DeepSWE or Terminal-Bench v2 row exists for qwen3.8-max on any harness, so both builder required metrics are unmet. Promotion is an owner decision recorded as provisional and explicit-only.", "fallback": "opus-builder"},
         "clerk": {"status": "candidate", "selection": "blocked", "exact_evidence_ids": [], "context_evidence_ids": [], "evidence_gap": "No exact public benchmark or local clerk evaluation.", "fallback": "luna-clerk"},
-        "scout": {"status": "candidate", "selection": "blocked", "exact_evidence_ids": [], "context_evidence_ids": [], "evidence_gap": "No exact public benchmark or local repository-navigation evaluation.", "fallback": "terra-scout"},
+        "scout": {"status": "candidate", "selection": "blocked", "exact_evidence_ids": [], "context_evidence_ids": [], "evidence_gap": "No exact public benchmark or local repository-navigation evaluation.", "fallback": "sonnet-scout"},
         "reviewer": {"status": "candidate", "selection": "blocked", "exact_evidence_ids": [], "context_evidence_ids": [], "evidence_gap": "No exact review precision/recall evaluation."},
         "senior": {"status": "candidate", "selection": "blocked", "exact_evidence_ids": [], "context_evidence_ids": [], "evidence_gap": "No exact high-risk judgement or steerability evaluation."},
         "judgement": {"status": "disabled", "selection": "blocked", "exact_evidence_ids": [], "context_evidence_ids": [], "evidence_gap": "Launch claims and runtime access cannot qualify judgement."},
@@ -277,7 +272,7 @@
       "lanes": {
         "builder": {"status": "provisional", "selection": "explicit-only", "exact_evidence_ids": [], "context_evidence_ids": ["deepseek-v4-pro-launch-2026-08-17"], "local_evaluation": {"run_id": "2026-08-17-deepseek-v4-pro-max-smoke", "task_count": 1, "repeats": 1, "confidence": "low", "limitations": "One deterministic off-by-one diagnosis and patch task verified exact API model identity, reasoning_effort=max, valid structured output, and the expected result. This was not a held-out repeated implementation pack. The runner is text-only and cannot edit a worktree."}, "qualification_basis": "Explicit owner decision on 2026-08-17. The live exact-tuple smoke permits a provisional text-only builder route, but does not qualify it. Dispatch requires --allow-provisional and the lead applies and verifies returned patches.", "evidence_gap": "The provider reports Terminal-Bench 2.0 for a different harness, no DeepSWE row exists, and WebDev only supports frontend work.", "fallback": "terra-builder"},
         "clerk": {"status": "candidate", "selection": "blocked", "exact_evidence_ids": [], "context_evidence_ids": [], "evidence_gap": "No exact public benchmark or local clerk evaluation.", "fallback": "luna-clerk"},
-        "scout": {"status": "candidate", "selection": "blocked", "exact_evidence_ids": [], "context_evidence_ids": [], "evidence_gap": "No exact public benchmark or local repository-navigation evaluation.", "fallback": "terra-scout"},
+        "scout": {"status": "candidate", "selection": "blocked", "exact_evidence_ids": [], "context_evidence_ids": [], "evidence_gap": "No exact public benchmark or local repository-navigation evaluation.", "fallback": "sonnet-scout"},
         "reviewer": {"status": "candidate", "selection": "blocked", "exact_evidence_ids": [], "context_evidence_ids": [], "evidence_gap": "No exact review precision/recall evaluation."},
         "senior": {"status": "candidate", "selection": "blocked", "exact_evidence_ids": [], "context_evidence_ids": [], "evidence_gap": "No exact high-risk judgement or steerability evaluation."},
         "judgement": {"status": "disabled", "selection": "blocked", "exact_evidence_ids": [], "context_evidence_ids": [], "evidence_gap": "Provider claims and runtime access cannot qualify judgement."},

@@ -1,7 +1,7 @@
 name = "sol-judge"
 description = "Read-only technical judgement for architecture, feasibility, failure modes, and ship decisions."
 model = "gpt-5.6-sol"
-model_reasoning_effort = "high"
+model_reasoning_effort = "max"
 sandbox_mode = "read-only"
 developer_instructions = """
 Evaluate the decision independently. Do not edit or delegate.

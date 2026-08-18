@@ -151,6 +151,22 @@ total=0; miss=0; via_plugin=0
 # This broad inventory is only a presence check; exact profile validation below
 # resolves a direct install or a plugin listed as active by Claude Code.
 plugin_md=""; [ -d "$CLAUDE_HOME/plugins" ] && plugin_md="$(find "$CLAUDE_HOME/plugins" -type f -name '*.md' 2>/dev/null)"
+resolve_claude_agent() {
+  local agent_name="$1" direct="$CLAUDE_HOME/agents/$1" plugin_root candidate
+  if [ -f "$direct" ]; then
+    printf '%s\n' "$direct"
+    return 0
+  fi
+  have jq && [ -r "$CLAUDE_HOME/plugins/installed_plugins.json" ] || return 1
+  while IFS= read -r plugin_root; do
+    candidate="$plugin_root/agents/$agent_name"
+    if [ -f "$candidate" ]; then
+      printf '%s\n' "$candidate"
+      return 0
+    fi
+  done < <(jq -r '.plugins[][]? | .installPath // empty' "$CLAUDE_HOME/plugins/installed_plugins.json" 2>/dev/null)
+  return 1
+}
 for f in "$KIT"/agents/*.md; do
   total=$((total+1)); name="$(basename "$f")"
   if [ -f "$CLAUDE_HOME/agents/$name" ]; then continue; fi
@@ -164,23 +180,49 @@ elif [ "$miss" = 0 ]; then
   [ "$via_plugin" = 1 ] && ok "all $total subagent profiles installed (some via plugin cache)" \
     || ok "all $total subagent profiles installed"
 else bad "$miss/$total subagent profile(s) missing from $CLAUDE_HOME/agents/ (and plugin cache) — run ./install.sh or /plugin install"; fi
-opus_profile=""
-if [ -f "$CLAUDE_HOME/agents/opus-reviewer.md" ]; then
-  opus_profile="$CLAUDE_HOME/agents/opus-reviewer.md"
-elif have jq && [ -r "$CLAUDE_HOME/plugins/installed_plugins.json" ]; then
-  while IFS= read -r plugin_root; do
-    candidate="$plugin_root/agents/opus-reviewer.md"
-    if [ -f "$candidate" ]; then opus_profile="$candidate"; break; fi
-  done < <(jq -r '.plugins[][]? | .installPath // empty' "$CLAUDE_HOME/plugins/installed_plugins.json" 2>/dev/null)
-fi
+opus_profile="$(resolve_claude_agent opus-builder.md || true)"
 if [ -z "$opus_profile" ]; then
-  bad "cannot resolve the active opus-reviewer profile — run ./install.sh or reinstall the plugin"
+  bad "cannot resolve the active opus-builder profile — run ./install.sh or reinstall the plugin"
 elif grep -Fxq 'model: claude-opus-5' "$opus_profile" \
-    && grep -Fxq 'effort: high' "$opus_profile" \
-    && grep -Fq 'Opus 5 senior reviewer' "$opus_profile"; then
-  ok "opus-reviewer pinned to claude-opus-5/high"
+    && grep -Fxq 'effort: max' "$opus_profile" \
+    && grep -Fq 'Opus 5 builder running at max effort' "$opus_profile"; then
+  ok "opus-builder pinned to claude-opus-5/max"
 else
-  bad "active opus-reviewer is stale or not pinned to claude-opus-5/high — re-run ./install.sh"
+  bad "active opus-builder is stale or not pinned to claude-opus-5/max — re-run ./install.sh"
+fi
+if [ -e "$CLAUDE_HOME/agents/sonnet-builder.md" ]; then
+  bad "retired Sonnet builder profile still installed — re-run ./install.sh"
+else
+  ok "retired sonnet-builder profile is absent"
+fi
+opus_reviewer_profile="$(resolve_claude_agent opus-reviewer.md || true)"
+if [ -n "$opus_reviewer_profile" ] \
+    && grep -Fxq 'model: claude-opus-5' "$opus_reviewer_profile" \
+    && grep -Fxq 'effort: max' "$opus_reviewer_profile" \
+    && grep -Fxq 'tools: Read, Grep, Glob' "$opus_reviewer_profile" \
+    && grep -Fq 'outside the Anthropic family' "$opus_reviewer_profile"; then
+  ok "opus-reviewer pinned to claude-opus-5/max and cross-family only"
+else
+  bad "opus-reviewer missing, stale, or not cross-family/max — re-run ./install.sh"
+fi
+fable_profile="$(resolve_claude_agent fable-judge.md || true)"
+if [ -n "$fable_profile" ] \
+    && grep -Fxq 'model: fable' "$fable_profile" \
+    && grep -Fxq 'effort: max' "$fable_profile" \
+    && grep -Fxq 'tools: Read, Grep, Glob' "$fable_profile"; then
+  ok "fable-judge pinned to fable/max and read-only judgement"
+else
+  bad "fable-judge missing or stale — re-run ./install.sh"
+fi
+sonnet_reviewer_profile="$(resolve_claude_agent sonnet-reviewer.md || true)"
+if [ -n "$sonnet_reviewer_profile" ] \
+    && grep -Fxq 'model: sonnet' "$sonnet_reviewer_profile" \
+    && grep -Fxq 'effort: medium' "$sonnet_reviewer_profile" \
+    && grep -Fxq 'tools: Read, Grep, Glob' "$sonnet_reviewer_profile" \
+    && grep -Fq 'outside the Anthropic' "$sonnet_reviewer_profile"; then
+  ok "sonnet-reviewer pinned to sonnet/medium, tool-read-only, and cross-family only"
+else
+  bad "sonnet-reviewer missing, stale, or not cross-family/medium/read-only — re-run ./install.sh"
 fi
 # skill + the co-located evidence-backed policy the skill points at
 if [ -f "$CLAUDE_HOME/skills/model-routing/SKILL.md" ]; then
@@ -251,6 +293,49 @@ done
 if [ "$total" = 0 ]; then bad "no source profiles in $KIT/codex/profiles"
 elif [ "$miss" = 0 ]; then ok "all $total ephemeral -p profiles installed"
 else bad "$miss/$total ephemeral profile(s) missing from $CODEX_HOME/ — run ./install.sh"; fi
+if [ -e "$CODEX_HOME/agents/terra-scout.toml" ] || [ -e "$CODEX_HOME/terra-scout.config.toml" ]; then
+  bad "retired terra-scout profile still installed — re-run ./install.sh"
+else
+  ok "retired terra-scout native and ephemeral profiles are absent"
+fi
+if [ -f "$CODEX_HOME/agents/terra-reviewer.toml" ] \
+    && [ -f "$CODEX_HOME/terra-reviewer.config.toml" ] \
+    && grep -Fxq 'model = "gpt-5.6-terra"' "$CODEX_HOME/agents/terra-reviewer.toml" \
+    && grep -Fxq 'model = "gpt-5.6-terra"' "$CODEX_HOME/terra-reviewer.config.toml" \
+    && grep -Fxq 'model_reasoning_effort = "max"' "$CODEX_HOME/agents/terra-reviewer.toml" \
+    && grep -Fxq 'model_reasoning_effort = "max"' "$CODEX_HOME/terra-reviewer.config.toml" \
+    && grep -Fxq 'sandbox_mode = "read-only"' "$CODEX_HOME/agents/terra-reviewer.toml" \
+    && grep -Fxq 'sandbox_mode = "read-only"' "$CODEX_HOME/terra-reviewer.config.toml" \
+    && grep -Fq 'outside the OpenAI model family' "$CODEX_HOME/agents/terra-reviewer.toml"; then
+  ok "terra-reviewer pinned to gpt-5.6-terra/max, read-only, and cross-family only"
+else
+  bad "terra-reviewer missing, stale, or not cross-family/max/read-only — re-run ./install.sh"
+fi
+if [ -f "$CODEX_HOME/agents/sol-reviewer.toml" ] \
+    && [ -f "$CODEX_HOME/sol-reviewer.config.toml" ] \
+    && grep -Fxq 'model = "gpt-5.6-sol"' "$CODEX_HOME/agents/sol-reviewer.toml" \
+    && grep -Fxq 'model = "gpt-5.6-sol"' "$CODEX_HOME/sol-reviewer.config.toml" \
+    && grep -Fxq 'model_reasoning_effort = "high"' "$CODEX_HOME/agents/sol-reviewer.toml" \
+    && grep -Fxq 'model_reasoning_effort = "high"' "$CODEX_HOME/sol-reviewer.config.toml" \
+    && grep -Fxq 'sandbox_mode = "read-only"' "$CODEX_HOME/agents/sol-reviewer.toml" \
+    && grep -Fxq 'sandbox_mode = "read-only"' "$CODEX_HOME/sol-reviewer.config.toml" \
+    && grep -Fq 'outside the OpenAI model family' "$CODEX_HOME/agents/sol-reviewer.toml"; then
+  ok "sol-reviewer pinned to gpt-5.6-sol/high, read-only, and cross-family only"
+else
+  bad "sol-reviewer missing, stale, or not cross-family/high/read-only — re-run ./install.sh"
+fi
+if [ -f "$CODEX_HOME/agents/sol-judge.toml" ] \
+    && [ -f "$CODEX_HOME/sol-judge.config.toml" ] \
+    && grep -Fxq 'model = "gpt-5.6-sol"' "$CODEX_HOME/agents/sol-judge.toml" \
+    && grep -Fxq 'model = "gpt-5.6-sol"' "$CODEX_HOME/sol-judge.config.toml" \
+    && grep -Fxq 'model_reasoning_effort = "max"' "$CODEX_HOME/agents/sol-judge.toml" \
+    && grep -Fxq 'model_reasoning_effort = "max"' "$CODEX_HOME/sol-judge.config.toml" \
+    && grep -Fxq 'sandbox_mode = "read-only"' "$CODEX_HOME/agents/sol-judge.toml" \
+    && grep -Fxq 'sandbox_mode = "read-only"' "$CODEX_HOME/sol-judge.config.toml"; then
+  ok "sol-judge pinned to gpt-5.6-sol/max and read-only"
+else
+  bad "sol-judge missing, stale, or not max/read-only — re-run ./install.sh"
+fi
 if [ -f "$CODEX_HOME/AGENTS.md" ] && grep -qF "$BEGIN" "$CODEX_HOME/AGENTS.md"; then
   ok "collaboration policy registered in AGENTS.md"
 else bad "AGENTS.md has NO delegation-kit block -> Codex->Claude policy is NOT loaded. Run ./install.sh"; fi
@@ -324,6 +409,26 @@ elif have delegation-route; then
   if [ -n "$route_check" ] && printf '%s' "$route_check" | jq -e '.valid == true and .read_only == true' >/dev/null 2>&1; then
     ok "central routing gates valid ($(printf '%s' "$route_check" | jq -r '.profiles') profiles)"
     info "judgement and super-judgement require explicit selection; the router never dispatches"
+    route_table="$(delegation-route table --json 2>/dev/null || true)"
+    if [ -n "$route_table" ] && printf '%s' "$route_table" | jq -e '
+      .review_policy.require_cross_family == true and
+      .review_policy.availability_must_be_verified == true and
+      (.review_policy.review_lanes | sort) == ["material-review","routine-review","security"] and
+      .model_families["claude-opus-5"] == "anthropic" and
+      .model_families["gpt-5.6-terra"] == "openai"
+    ' >/dev/null 2>&1; then
+      ok "cross-family review policy and model-family registry installed"
+    else
+      bad "cross-family review policy missing or stale — re-run ./install.sh"
+    fi
+    if delegation-route resolve --lane material-review --json >/dev/null 2>&1; then
+      review_without_producer_rc=0
+    else
+      review_without_producer_rc=$?
+    fi
+    [ "$review_without_producer_rc" -eq 64 ] \
+      && ok "review routing fails closed without producer identity" \
+      || bad "review routing accepted missing producer identity"
   else
     bad "central routing gates are missing or invalid — re-run ./install.sh"
   fi
@@ -663,14 +768,14 @@ if [ "$DO_PING" = 1 ]; then
   hdr "Live round-trip (--ping)"
   [ -z "$_TO" ] && info "no timeout/gtimeout found — running pings without a timeout guard"
   if have codex; then
-    if [ -f "$CODEX_HOME/terra-scout.config.toml" ]; then
+    if [ -f "$CODEX_HOME/luna-clerk.config.toml" ]; then
       # single controlled word, so a raw-stdout grep is acceptable here; the risk the
       # hardening warns about is a mis-pinned profile silently running the default model —
       # guarded above by requiring the profile file to exist
-      out="$(run_to codex exec -s read-only --ephemeral -p terra-scout "Reply with exactly the single word: PONG and nothing else." </dev/null 2>/dev/null)"
+      out="$(run_to codex exec -s read-only --ephemeral -p luna-clerk "Reply with exactly the single word: PONG and nothing else." </dev/null 2>/dev/null)"
       printf '%s' "$out" | grep -q PONG && ok "Claude->Codex round-trip returned PONG (traverses codex exec)" || bad "Claude->Codex ping failed (no PONG)"
     else
-      warn "skipping Claude->Codex ping — profile $CODEX_HOME/terra-scout.config.toml not installed, so 'codex exec -p terra-scout' would silently fall back to the default model (a false PONG). Run ./install.sh"
+      warn "skipping Claude->Codex ping — profile $CODEX_HOME/luna-clerk.config.toml not installed, so 'codex exec -p luna-clerk' would silently fall back to the default model (a false PONG). Run ./install.sh"
     fi
   fi
   if have claude; then

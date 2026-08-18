@@ -1,17 +1,17 @@
 # Usage-aware collaboration (installed by delegation-kit)
 
-> **Adapt to your setup.** The profile names below (`luna-clerk` / `terra-scout` /
-> `terra-builder` / `sol-reviewer` / `sol-judge`) and their models are the author's reference
+> **Adapt to your setup.** The profile names below (`luna-clerk` /
+> `terra-builder` / `terra-reviewer` / `sol-reviewer` / `sol-judge`) and their models are the author's reference
 > mapping — swap them for your own tiers (see `ADAPTING.md`). The *structure* is
 > the transferable part.
 
 - Default to solving simple, well-scoped work directly. Do not create subagents for a routine single-file change.
 - The lead owns requirements, decisions, integration, verification, and the final response.
 - For genuinely separable work, use at most two direct workers by default. Give each a bounded task, explicit file ownership, and a concise return format. Never allow recursive delegation.
-- Prefer `luna-clerk` for deterministic inventory, extraction, transformation, and test-log summaries; `terra-scout` for read-only repository mapping; and `terra-builder` for a bounded implementation. Use `sol-reviewer` as the default Codex profile for material review. Keep `sol-judge` reserved for explicit technical judgement.
+- Use `luna-clerk` only for very small deterministic inventory, extraction, transformation, and test-log summaries; it never implements. Use the Claude `sonnet-scout`/`sonnet-reviewer` profiles only for very small read-only work. Opus and Terra are high-level builders and reviewers at `max`: editing uses `opus-builder`/`terra-builder`, while review uses separate read-only `opus-reviewer`/`terra-reviewer` profiles. Keep `sol-reviewer` as an advanced read-only reviewer and `sol-judge` for explicit technical judgement.
 - When the native subagent tool cannot select a model, use the matching ephemeral CLI profile. `sol-judge` is read-only and explicit-only; it never edits, delegates, merges, or deploys.
 - Avoid double fan-out: in Ultra mode, let Ultra orchestrate and do not add a second manual delegation layer. Ultra is exceptional, not the default.
-- Escalate Luna to Terra, or Terra to Sol, when the task becomes ambiguous or high risk. Do not repeatedly retry an unsuitable cheap worker.
+- Every delegated result requires review by a sufficiently capable available model from a different family. Resolve review with `delegation-route resolve --lane <routine-review|material-review|security> --producer-profile <profile>`; never use an entry under `excluded_same_family`. If no eligible reviewer is available, stop. Escalate small-lane work that needs edits to an Opus/Terra builder and do not repeatedly retry an unsuitable worker.
 - Workers should return distilled evidence, changed paths, checks run, and unresolved risks—not raw logs or broad essays.
 
 ## Optional evaluated GLM executor
@@ -65,6 +65,8 @@ WebDev supports only frontend-builder, and reviewer requires review precision an
 recall. The command cannot mutate a routing gate. Runtime/auth and a small local
 scope/permission smoke remain mandatory for the exact production variant.
 Use `delegation-route resolve --lane <lane>` for the central operational decision.
+For a review lane, always add `--producer-profile <profile>` (or the explicitly
+attested `--producer-family <family>`); omission fails closed.
 Before spawning a native profile, require it to appear in the appropriate
 default/fallback/explicit group. Invoking an explicit-only native profile is the
 manual selection event; blocked profiles must not be spawned. External runners
@@ -72,7 +74,7 @@ enforce the same central graph in code before every check or dispatch.
 
 ## Judgement
 
-Fable `xhigh` and `sol-judge` (Sol `high`) are manually qualified, explicit-only
+Fable `max` and `sol-judge` (Sol `max`) are manually qualified, explicit-only
 judges. Fable covers architecture, trade-offs, and synthesis; Sol covers technical
 feasibility, repository fit, failure modes, and verifiability. For an explicitly
 approved `super-judgement`, they reason independently before cross-reviewing each
@@ -152,38 +154,42 @@ read-only sandbox, and creates no operational route.
 
 ## Reaching Claude from Codex (cross-provider bridge)
 
-The lanes above route among OpenAI models. Reach across to Claude when it earns it:
+The lanes above route among OpenAI models. Reach across to Claude only within
+the same role boundaries:
 
-- **Taste** — user-facing UI, copy, or API-shape work, where a high-taste model
-  (Claude Opus) produces better results than the local lanes.
-- **Independent second opinion** — a review from a *different model family* catches
-  correctness/security bugs the local lanes correlate on and miss. Worth it on
-  material or security-sensitive diffs.
-- **Bucket-aware offload** — if Codex usage is tight and the Claude subscription has
-  spare capacity, push suitable volume across.
+- **Builder work** — Opus 5 at `max`, with bounded file ownership and acceptance
+  checks.
+- **Cross-family review** — the separate read-only `opus-reviewer` profile at
+  `max`, but only for output produced outside the Anthropic family.
+- **Very small non-builder work** — Sonnet at low/medium for read-only scouting,
+  extraction, or a tiny routine review. Sonnet never edits.
 
 **How — headless Claude Code CLI** (verified flags). Always name **both** the model
 family/tier (`--model`) **and** the reasoning effort (`--effort`) — don't inherit
 defaults blindly:
 
 ```sh
-# read-only review / analysis (no edits):
-claude -p "<self-contained prompt>" --model claude-opus-5 --effort high --permission-mode plan
+# very small read-only scout/review (no edits):
+claude -p "<self-contained prompt>" --model sonnet --effort low --permission-mode plan
 
-# let it edit:
-claude -p "<self-contained prompt>" --model sonnet --effort medium --permission-mode acceptEdits
+# bounded builder work:
+claude -p "<self-contained prompt>" --model claude-opus-5 --effort max --permission-mode acceptEdits
 
-# give it a role (reviewer / taste), or a structured output:
-claude -p "<prompt>" --model claude-opus-5 --effort high --permission-mode plan \
-  --append-system-prompt "You are a senior security reviewer. Report findings only."
+# cross-family read-only review after resolving producer identity:
+claude -p "<self-contained prompt>" --agent opus-reviewer --model claude-opus-5 --effort max --permission-mode plan
+
+# give the builder its role, or request structured output:
+claude -p "<prompt>" --model claude-opus-5 --effort max --permission-mode acceptEdits \
+  --append-system-prompt "You are a bounded builder. Edit only assigned files and report checks."
 # ...or define a named agent inline: --agents '<json>'
 # ...or machine-readable: --output-format stream-json
 ```
 
 - **Model + effort:** `--model claude-opus-5|sonnet|<full-id>` picks the family/tier;
   `--effort low|medium|high|xhigh|max` sets the depth (available levels depend on
-  the model). Reserve `opus` for taste/security/material review, `sonnet` for
-  high-volume execution; scale effort to blast radius, not prestige.
+  the model). Pin Opus builder and reviewer profiles to `max`; use Sonnet only
+  for very small non-builder work. Never let an Anthropic model review another
+  Anthropic model's output.
 - **Context (it starts fresh):** the Claude process does **not** see this Codex
   session. It *does* share the filesystem — run it from the repo root so it reads
   the same working tree (it auto-loads that repo's `CLAUDE.md`); widen its view
