@@ -68,39 +68,136 @@ while IFS= read -r manifest_hash; do
 done < <(jq -r '.. | objects | .evaluation_manifest_sha256? // empty | .[]' config/routing-gates.json)
 pass=$((pass + 1))
 
-# The senior/taste/security profile is pinned to the exact current Opus model.
-bin/delegation-route profile opus-reviewer --json >"$TMP/opus-reviewer.json"
+# Opus and Terra are high-level builders at max and also have separate read-only
+# reviewer profiles at max. Sonnet and Luna remain non-builder lanes.
+bin/delegation-route profile opus-builder --json >"$TMP/opus-builder.json"
 jq -e '
   .model == "claude-opus-5" and .harness == "claude-code" and
-  .effort == "high" and
-  .lanes.senior.status == "manual-qualified" and
-  (.lanes.senior.context_evidence_ids | index("anthropic-claude-opus-5-launch") != null) and
-  .lanes.security.status == "manual-qualified" and
-  .lanes.security.local_evaluation.run_id == "2026-07-25-claude-opus-5-security-smoke" and
-  .lanes.security.provider_fallback.possible == true and
-  .lanes.security.provider_fallback.target_model == "claude-opus-4.8" and
-  .lanes.security.provider_fallback.exact_variant_guaranteed == false
-' "$TMP/opus-reviewer.json" >/dev/null
+  .effort == "max" and
+  (.lanes | keys) == ["builder"] and
+  .lanes.builder.status == "provisional" and
+  .lanes.builder.selection == "fallback" and
+  .lanes.builder.exact_evidence_ids == ["aa-claude-opus-5-max"] and
+  .lanes.builder.local_evaluation.run_id == "2026-08-17-opus-builder-named-profile-smoke" and
+  .lanes.builder.local_evaluation.all_checker_runs_pass == true and
+  .lanes.builder.fallback == "terra-builder"
+' "$TMP/opus-builder.json" >/dev/null
+grep -Fxq 'model: claude-opus-5' agents/opus-builder.md
+grep -Fxq 'effort: max' agents/opus-builder.md
+[ ! -e agents/sonnet-builder.md ]
+[ -e agents/opus-reviewer.md ]
 grep -Fxq 'model: claude-opus-5' agents/opus-reviewer.md
-grep -Fxq 'effort: high' agents/opus-reviewer.md
+grep -Fxq 'effort: max' agents/opus-reviewer.md
+grep -Fxq 'tools: Read, Grep, Glob' agents/opus-reviewer.md
+grep -Fq 'outside the Anthropic family' agents/opus-reviewer.md
+[ ! -e codex/agents/terra-scout.toml ] && [ ! -e codex/profiles/terra-scout.config.toml ]
+grep -Fxq 'model = "gpt-5.6-terra"' codex/agents/terra-builder.toml
+grep -Fxq 'model_reasoning_effort = "max"' codex/agents/terra-builder.toml
+grep -Fxq 'model_reasoning_effort = "max"' codex/profiles/terra-builder.config.toml
+grep -Fxq 'model = "gpt-5.6-terra"' codex/agents/terra-reviewer.toml
+grep -Fxq 'model_reasoning_effort = "max"' codex/agents/terra-reviewer.toml
+grep -Fxq 'sandbox_mode = "read-only"' codex/agents/terra-reviewer.toml
+grep -Fq 'outside the OpenAI model family' codex/agents/terra-reviewer.toml
+grep -Fxq 'model_reasoning_effort = "max"' codex/profiles/terra-reviewer.config.toml
+grep -Fxq 'sandbox_mode = "read-only"' codex/profiles/terra-reviewer.config.toml
 pass=$((pass + 1))
 
-# Provider-controlled model fallback must remain visible to route consumers.
-bin/delegation-route resolve --lane security --json >"$TMP/security.json"
+# Builder routing is Terra/max by default and Opus/max as its cross-provider
+# fallback; neither small non-builder model may appear on the builder lane.
+bin/delegation-route resolve --lane builder --json >"$TMP/builder-routing.json"
 jq -e '
-  .explicit | length == 1 and
-  .[0].model == "claude-opus-5" and
-  .[0].provider_fallback.possible == true and
-  .[0].provider_fallback.target_model == "claude-opus-4.8" and
-  .[0].provider_fallback.exact_variant_guaranteed == false
-' "$TMP/security.json" >/dev/null
+  ([.defaults[] | select(.profile == "terra-builder" and .effort == "max")] | length) == 1 and
+  ([.fallbacks[] | select(.profile == "opus-builder" and .effort == "max")] | length) == 1 and
+  ([.defaults[],.fallbacks[],.explicit[],.blocked[]] |
+    all(.profile != "sonnet-builder" and .profile != "luna-clerk"))
+' "$TMP/builder-routing.json" >/dev/null
 pass=$((pass + 1))
 
-# Provider fallback declarations must be complete and evidence-backed.
+# Scout defaults to small read-only Sonnet work and Terra has no non-builder
+# operational profile.
+bin/delegation-route resolve --lane scout --json >"$TMP/scout-routing.json"
+jq -e '
+  [.defaults[].profile] == ["sonnet-scout"] and
+  ([.defaults[],.fallbacks[],.explicit[],.blocked[]] | all(.profile != "terra-scout"))
+' "$TMP/scout-routing.json" >/dev/null
+pass=$((pass + 1))
+
+# Review resolution fails closed without producer identity.
+expect_failure 64 bin/delegation-route resolve --lane material-review --json
+expect_failure 64 bin/delegation-route resolve --lane security --json
+
+# Terra/OpenAI output can be reviewed by Opus/Anthropic, never by Terra or Sol.
+bin/delegation-route resolve --lane security --producer-profile terra-builder --json >"$TMP/security-routing.json"
+jq -e '
+  (.defaults | length) == 0 and
+  [.fallbacks[].profile] == ["opus-reviewer"] and
+  .fallbacks[0].provider_fallback.possible == true and
+  .fallbacks[0].provider_fallback.target_model == "claude-opus-4.8" and
+  .fallbacks[0].provider_fallback.exact_variant_guaranteed == false and
+  ([.excluded_same_family[].profile] | sort) == ["sol-reviewer","terra-reviewer"] and
+  .review_policy.producer_family == "openai" and
+  .review_policy.require_cross_family == true
+' "$TMP/security-routing.json" >/dev/null
+pass=$((pass + 1))
+
+# Row-local fallback metadata must not point at a same-family reviewer after the
+# producer-dependent filter. The resolved groups are the only fallback authority.
+bin/delegation-route resolve --lane routine-review --producer-profile terra-builder --json >"$TMP/routine-routing.json"
+jq -e '
+  [.defaults[].profile] == ["sonnet-reviewer"] and
+  .defaults[0].fallback == null and
+  [.fallbacks[].profile] == ["opus-reviewer"] and
+  ([.excluded_same_family[].profile] | sort) == ["sol-reviewer","terra-reviewer"]
+' "$TMP/routine-routing.json" >/dev/null
+pass=$((pass + 1))
+
+# Provider-controlled model fallback must remain complete, explicit, and
+# visible to route consumers even after the cross-family filter is applied.
 jq '.profiles["opus-reviewer"].lanes.security.provider_fallback.exact_variant_guaranteed = true' \
   config/routing-gates.json >"$TMP/bad-provider-fallback.json"
 expect_failure 65 env DELEGATION_ROUTING_GATES_FILE="$TMP/bad-provider-fallback.json" \
   bin/delegation-route check --json
+
+# Review fallbacks are producer-dependent groups, never row-local profile hints
+# that could point back into the producer's family after filtering.
+jq '.profiles["sonnet-reviewer"].lanes["routine-review"].fallback = "sol-reviewer"' \
+  config/routing-gates.json >"$TMP/bad-review-fallback.json"
+expect_failure 65 env DELEGATION_ROUTING_GATES_FILE="$TMP/bad-review-fallback.json" \
+  bin/delegation-route check --json
+
+# Opus/Anthropic output can be reviewed by Sol or Terra, never by Opus itself.
+bin/delegation-route resolve --lane material-review --producer-profile opus-builder --json >"$TMP/opus-produced-review.json"
+jq -e '
+  [.defaults[].profile] == ["sol-reviewer"] and
+  [.fallbacks[].profile] == ["terra-reviewer"] and
+  [.excluded_same_family[].profile] == ["opus-reviewer"] and
+  .review_policy.producer_family == "anthropic"
+' "$TMP/opus-produced-review.json" >/dev/null
+pass=$((pass + 1))
+
+# A third-family producer keeps every sufficiently advanced cross-family
+# reviewer available, with Sol as default and Terra/Opus as fallbacks.
+bin/delegation-route resolve --lane material-review --producer-profile kimi-k3 --json >"$TMP/kimi-produced-review.json"
+jq -e '
+  [.defaults[].profile] == ["sol-reviewer"] and
+  ([.fallbacks[].profile] | sort) == ["opus-reviewer","terra-reviewer"] and
+  (.excluded_same_family | length) == 0 and
+  .review_policy.producer_family == "moonshot" and
+  .review_policy.availability_must_be_verified == true
+' "$TMP/kimi-produced-review.json" >/dev/null
+pass=$((pass + 1))
+
+expect_failure 64 bin/delegation-route resolve --lane material-review --producer-profile not-a-profile --json
+expect_failure 64 bin/delegation-route resolve --lane material-review --producer-family not-a-family --json
+expect_failure 64 bin/delegation-route resolve --lane builder --producer-profile opus-builder --json
+
+# Every profile model must have an explicit family, and every operational
+# review profile must stay on the reviewer allowlist.
+jq 'del(.model_families["claude-opus-5"])' config/routing-gates.json >"$TMP/missing-family.json"
+expect_failure 65 env DELEGATION_ROUTING_GATES_FILE="$TMP/missing-family.json" bin/delegation-route check --json
+jq '.review_policy.eligible_reviewer_profiles -= ["opus-reviewer"]' \
+  config/routing-gates.json >"$TMP/missing-reviewer-allowlist.json"
+expect_failure 65 env DELEGATION_ROUTING_GATES_FILE="$TMP/missing-reviewer-allowlist.json" bin/delegation-route check --json
 
 # Illegal status/selection pairs must fail schema validation.
 jq '.profiles["kimi-k3"].lanes.judgement.selection = "explicit-only"' \
@@ -149,7 +246,7 @@ expect_failure 65 env DELEGATION_ROUTING_GATES_FILE="$TMP/central-only-manifest.
   bin/delegation-route check --json
 
 # An evidence row cannot be called exact when model+harness+effort differ.
-jq '.profiles["fable-judge"].lanes.judgement.exact_evidence_ids = ["aa-claude-fable-5-max"] |
+jq '.profiles["fable-judge"].lanes.judgement.exact_evidence_ids = ["frontiercode-fable-5-xhigh"] |
     .profiles["fable-judge"].lanes.judgement.context_evidence_ids = []' \
   config/routing-gates.json >"$TMP/bad-exact.json"
 expect_failure 65 env DELEGATION_ROUTING_GATES_FILE="$TMP/bad-exact.json" \
@@ -285,26 +382,49 @@ jq '.runtime_cli_compatibility = "version-pinned"' \
 expect_failure 65 env DELEGATION_GROK_ROUTING_FILE="$TMP/bad-grok-compatibility.json" \
   bin/delegation-route check --json
 
-# Sol is the role-scoped Codex default for material review.
-bin/delegation-route resolve --lane material-review --json >"$TMP/material-review.json"
+# For a non-OpenAI/non-Anthropic producer, Sol remains the default material
+# reviewer and both max-effort Opus/Terra reviewers remain available fallbacks.
+bin/delegation-route resolve --lane material-review --producer-family deepseek --json >"$TMP/material-review.json"
 jq -e '
   [.defaults[].profile] == ["sol-reviewer"] and
-  (.fallbacks | length) == 0 and
+  ([.fallbacks[].profile] | sort) == ["opus-reviewer","terra-reviewer"] and
   (.explicit | length) == 0 and
   (.defaults[0].model == "gpt-5.6-sol") and
   (.defaults[0].effort == "high") and
-  (.defaults[0].status == "provisional")
+  (.defaults[0].status == "provisional") and
+  (.review_policy.producer_family == "deepseek")
 ' "$TMP/material-review.json" >/dev/null
 pass=$((pass + 1))
 
-# Sol defaults only to material review. Technical judgement stays a manual,
-# explicit choice alongside Fable, and disabled/candidate profiles never leak
-# into an operational group.
+# Technical judgement stays a manual, explicit choice alongside Fable, and
+# disabled/candidate profiles never leak into an operational group.
 bin/delegation-route resolve --lane judgement --json >"$TMP/judgement.json"
 jq -e '(.defaults | length) == 0 and (.fallbacks | length) == 0 and
        ([.explicit[].profile] | sort) == ["fable-judge","sol-judge"] and
+       (first(.explicit[] | select(.profile == "fable-judge")).effort == "max") and
+       (first(.explicit[] | select(.profile == "sol-judge")).effort == "max") and
+       (first(.explicit[] | select(.profile == "sol-judge")).context_evidence_ids | index("aa-codex-gpt-5.6-sol-max") != null) and
        ([.blocked[].profile] | index("kimi-k3") != null) and
        ([.blocked[].profile] | index("qwen3.8-max") != null)' "$TMP/judgement.json" >/dev/null
+grep -Fxq 'model_reasoning_effort = "max"' codex/agents/sol-judge.toml
+grep -Fxq 'model_reasoning_effort = "max"' codex/profiles/sol-judge.config.toml
+grep -Fxq 'effort: max' agents/fable-judge.md
+grep -Fxq 'tools: Read, Grep, Glob' agents/fable-judge.md
+grep -Fxq 'model: sonnet' agents/sonnet-reviewer.md
+grep -Fxq 'effort: medium' agents/sonnet-reviewer.md
+grep -Fxq 'tools: Read, Grep, Glob' agents/sonnet-reviewer.md
+grep -Fq 'outside the Anthropic' agents/sonnet-reviewer.md
+grep -Fxq 'model = "gpt-5.6-sol"' codex/agents/sol-reviewer.toml
+grep -Fxq 'model = "gpt-5.6-sol"' codex/profiles/sol-reviewer.config.toml
+grep -Fxq 'model_reasoning_effort = "high"' codex/agents/sol-reviewer.toml
+grep -Fxq 'model_reasoning_effort = "high"' codex/profiles/sol-reviewer.config.toml
+grep -Fxq 'sandbox_mode = "read-only"' codex/agents/sol-reviewer.toml
+grep -Fxq 'sandbox_mode = "read-only"' codex/profiles/sol-reviewer.config.toml
+grep -Fq 'outside the OpenAI model family' codex/agents/sol-reviewer.toml
+grep -Fxq 'model = "gpt-5.6-sol"' codex/agents/sol-judge.toml
+grep -Fxq 'model = "gpt-5.6-sol"' codex/profiles/sol-judge.config.toml
+grep -Fxq 'sandbox_mode = "read-only"' codex/agents/sol-judge.toml
+grep -Fxq 'sandbox_mode = "read-only"' codex/profiles/sol-judge.config.toml
 pass=$((pass + 1))
 
 # Policy annotation is candidate/blocked only, including separate exact-variant
@@ -329,6 +449,12 @@ bin/delegation-route table --json >"$TMP/table.json"
 jq -e '.profiles[] | select(.profile == "fable-judge" and .lane == "judgement") |
        (.exact_evidence_ids | length) == 0 and (.context_evidence_ids | length) == 2' \
   "$TMP/table.json" >/dev/null
+jq -e '
+  .review_policy.require_cross_family == true and
+  .model_families["claude-opus-5"] == "anthropic" and
+  .model_families["gpt-5.6-terra"] == "openai" and
+  any(.profiles[]; .profile == "terra-reviewer" and .family == "openai")
+' "$TMP/table.json" >/dev/null
 pass=$((pass + 1))
 
 printf 'routing gate tests: %s passed\n' "$pass"

@@ -28,21 +28,29 @@ cheapest that passes verification.
 - **Lead** (you; author: Opus @ xhigh, resident): frames criteria, plans waves,
   dispatches briefs, verifies every result, synthesizes. Enters the metered lane
   only in short bursts.
-- **Executor / workers** (author: Sonnet via `sonnet-*`, or a `luna`/`terra` lane
-  across the Codex bridge): one self-contained subtask each, in parallel,
-  stateless. Dispatch with the format in `references/worker-brief.md`.
+- **Small non-builder workers** (Sonnet clerk/scout/reviewer or `luna-clerk`):
+  only very small deterministic or read-only subtasks. They never edit.
+- **Builders** (`opus-builder` or Codex `terra-builder`, both at `max`): one
+  bounded implementation subtask each, with explicit file ownership and checks.
+  Dispatch with the format in `references/worker-brief.md`.
+- **Cross-family reviewers** (`opus-reviewer` / Codex `terra-reviewer`, both at
+  `max`, plus eligible Sonnet/Sol profiles): every delegated result is checked by
+  a different model family. Resolve with producer identity and verify reviewer
+  availability before dispatch.
 - **Advisor**, split by content (this is the kit's improvement over a single
   advisor — route by the policy): **Judgement** (author: Fable via `fable-judge`
   or Sol via `sol-judge`, two-touch) for plan
-  critique and ship/synthesis; **Senior** (author: Opus via `opus-reviewer`) for
-  taste and security review. Consult format in `references/advisor-consult.md`.
+  critique and ship/synthesis. Material technical/security review goes to any
+  eligible advanced read-only cross-family reviewer; user-facing taste stays with the lead. Consult
+  format in `references/advisor-consult.md`.
 - **Super-judgement** is an explicit, exceptional pair: Fable and Sol reason
   independently, cross-review only after both verdicts exist, and the lead makes
   the final decision. Follow `references/dual-judgement.md`; never trigger it
   automatically.
 
-The economics are the point: cheap parallel generation where volume wins,
-expensive judgement only where it changes a decision.
+The economics are the point: small lanes handle only bounded non-builder work;
+max-effort Opus/Terra own high-level build/review work; judgement appears only
+where it changes a decision. Family independence is never traded for cost.
 
 ## Dispatch with native primitives, not a shell worker-pool
 
@@ -52,9 +60,10 @@ background subshells:
 - **Workflow tool** — the default for real fan-out: `parallel`/`pipeline`, schema
   returns, per-agent isolation (`isolation:'worktree'` when workers edit in
   parallel). The orchestrator *is* the loop; encode waves as pipeline stages.
-- **Agent tool** — a couple of workers with the `sonnet-*` profiles.
-- **Codex bridge** — only to reach a different model family (independent
-  second opinion, or a bucket-aware cheap lane). Harden every raw `codex exec` /
+- **Agent tool** — Sonnet profiles for very small non-builder calls;
+  `opus-builder` for Claude-side edits.
+- **Codex bridge** — only to reach a different model family within the resolved
+  small non-builder, builder, or review role. Harden every raw `codex exec` /
   `claude -p` dispatch per the bridge section of `CLAUDE.delegation.md` (brief on a
   temp file, non-zero exit or empty output = failed dispatch, one output file per
   worker).
@@ -62,8 +71,9 @@ background subshells:
   skill and only when that runner's gate allows the requested lane. A provisional
   lane additionally requires the runner's explicit `--allow-provisional` flag.
   Qualification on one lane never promotes a neighboring one. This rule applies
-  equally to operational workers, Senior, and Judgement.
-  Gemini is provisional only for scout/medium. Grok 4.6 is provisional only for
+  equally to operational workers, material review, and Judgement.
+  Gemini 3.7 has no operational lane: its scout/medium and editing/high entries
+  are blocked candidates. Grok 4.6 is provisional only for
   builder and frontend-builder at high. Qwen3.8-Max is provisional only for
   builder at xhigh, and returns a patch rather than editing a worktree. Manifest-bound
   `policy-annotation` candidates are evaluation-only and never count as
@@ -95,19 +105,23 @@ background subshells:
 4. **Delegate.** Dispatch each wave via `references/worker-brief.md`. **No double
    fan-out** — if you were invoked from inside a Workflow/ultra run, you are already
    the orchestrator; run the loop inline, don't nest another delegation layer.
-5. **Verify.** Check every result against its **own** acceptance criteria, and make
+5. **Verify and cross-review.** Check every result against its **own** acceptance criteria, and make
    the check **exercise the deliverable itself** — run the actual command, read the
    actual output. Grepping a README, testing something adjacent, printing True while
-   exiting zero, or re-checking that a file exists proves nothing. Route the review
-   by content: mechanical → executor self-check at low effort; user-facing/security
-   → Senior. Verdict per result: **PASS**, **FIX** (redispatch naming the specific
+   exiting zero, or re-checking that a file exists proves nothing. Then resolve a
+   review lane with the producer profile. Tiny work uses `routine-review`,
+   implementation uses `material-review`, and security-sensitive work uses
+   `security`. Dispatch only a returned, available reviewer from another family;
+   self-check and lead verification do not replace this review. Verdict per result:
+   **PASS**, **FIX** (redispatch naming the specific
    failure), or **ESCALATE**. Never silently accept a partial pass; never hand-patch
    a substantive failure — redispatch.
 6. **Synthesize.** When all subtasks pass, assemble the deliverable. Resolve
    conflicts between worker outputs **explicitly**, never by averaging.
 7. **Ship / taste pass — mandatory consult #2.** Send the draft for the final
-   judgement: **Judgement** for synthesis and go/no-go; **Senior** if the deliverable
-   is user-facing or security-sensitive. Apply or explicitly rebut each note.
+   judgement: **Judgement** for synthesis and go/no-go; an eligible cross-family
+   reviewer for material technical/security review; the lead owns user-facing taste. Apply or explicitly
+   rebut each note.
 
 ## Commitment boundaries — when a touch past the mandatory two is justified
 
@@ -129,11 +143,13 @@ Only a crossed boundary buys a third+ consult, and spending it is **never silent
   would cost and let them decide.
 - **Status board** — print one line per subtask after each loop step: state
   (PENDING / DISPATCHED / PASS / FIX / ESCALATED), lane/path, retries. e.g.
-  `W2: FIX → PASS | sonnet-builder→codex:terra | 1 retry`.
-- **Degraded mode** — a lane with no reachable model/bridge → the Lead plays it,
-  every affected section and the final result labeled `[DEGRADED: <lane>]`,
-  context-isolation caveat noted. At most one lane; with two or more gone there is
-  no team, so say so and proceed as ordinary single-model work.
+  `W2: FIX → PASS | opus-builder→codex:terra-builder | 1 retry`.
+- **Degraded mode** — for a non-review lane with no reachable model/bridge, the
+  Lead may play it, with every affected section and the final result labeled
+  `[DEGRADED: <lane>]` and the context-isolation caveat noted. A missing
+  cross-family reviewer is never degradable to self-review: stop and report the
+  blocker. At most one non-review lane; with two or more gone there is no team,
+  so say so and proceed as ordinary single-model work.
 
 ## Finish
 

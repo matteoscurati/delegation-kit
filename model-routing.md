@@ -1,8 +1,10 @@
 # Model routing for orchestrated coding
 
-Delegation policy for driving coding work across several models — a strong one
-plans and judges, cheaper ones execute. It answers one question: **which model
-does which job.**
+Delegation policy for driving coding work across several models. Small models
+handle only very small non-builder work, dedicated max-effort builders
+implement, and a sufficiently capable model from another family reviews every
+delegated result before separate judgement lanes assess larger decisions. It
+answers one question: **which model does which job.**
 
 > **Evidence, not inherited scores.** Routing is based on a dated snapshot of
 > recent public benchmarks plus a small local compatibility check. Keep model,
@@ -24,11 +26,12 @@ bin/delegation-evidence check
 bin/delegation-evidence lane builder
 bin/delegation-evidence lane reviewer --json
 bin/delegation-route check
+bin/delegation-route resolve --lane material-review --producer-profile terra-builder --json
 bin/delegation-route resolve --lane judgement --json
 bin/delegation-route resolve --lane super-judgement --json
 ```
 
-The snapshot observed through 2026-08-12 uses Artificial Analysis Coding Agent
+The snapshot observed through 2026-08-17 uses Artificial Analysis Coding Agent
 Index v1.3 for end-to-end coding, Agent Arena for real-world reliability, Code
 Arena WebDev for frontend preference, SWE-PRBench/Martian for review, and
 CursorBench, FrontierCode, FrontierSWE, APEX-SWE, OpenBench, and Epoch's ZIP as
@@ -38,9 +41,13 @@ unrelated capabilities into subjective 1–10 scores.
 | retained exact model + harness + effort | coding index | DeepSWE | Terminal-Bench | repo Q&A | API cost/task |
 |---|---:|---:|---:|---:|---:|
 | Claude Opus 5 + Claude Code, xhigh (lead) | 67 | 60% | 85% | 55% | $8.23 |
+| GPT-5.6 Sol + Codex, max (judge context) | 67 | 69% | 88% | 43% | $7.08 |
+| Claude Opus 5 + Claude Code, max (builder) | 66 | 63% | 85% | 49% | $8.95 |
 | GPT-5.6 Sol + Codex, high | 64 | 65% | 83% | 45% | $4.14 |
 | Claude Opus 5 + Claude Code, high | 63 | 61% | 80% | 49% | $3.80 |
+| GPT-5.6 Terra + Codex, max (builder) | 62 | 67% | 84% | 36% | $2.76 |
 | Kimi K3 + Kimi Code CLI, max | 61 | 64% | 84% | 37% | $3.18 |
+| GPT-5.6 Luna + Codex, max (small non-builder) | 59 | 63% | 80% | 33% | $1.57 |
 | GPT-5.6 Terra + Codex, medium | 48 | 46% | 69% | 28% | $0.90 |
 | GLM-5.2 + Claude Code, reported default | 43 | 29% | 72% | 29% | $6.51 |
 | GPT-5.6 Terra + Codex, low | 37 | 30% | 58% | 23% | $0.48 |
@@ -56,16 +63,17 @@ requires the same model, harness, and effort and must be relevant to the lane;
 nearby variants and general coding scores for reviewer/judgement remain context.
 `delegation-route table` exposes both counts plus local sample confidence.
 
-The JSON retains exact observations for Luna `low`, Terra `low`/`medium`, Sol
-`high`, Opus 5 `xhigh`/`high`, Kimi K3 `max`, and the historical Grok 4.5
+The JSON retains exact observations for Luna `low`/`max`, Terra
+`low`/`medium`/`max`, Sol `high`/`max`, Opus 5 `high`/`xhigh`/`max`, Kimi K3 `max`,
+and the historical Grok 4.5
 `high` tuple. Grok 4.5 is no longer operational; Grok 4.6 currently has only
 contextual rows because CursorBench, FrontierCode, APEX, and WebDev use other
 harnesses. The 2026-07-28 index adds the lead lane's own tuple: Opus 5 through
 Claude Code at `xhigh` enters at 67, jointly ahead of Codex Sol `max`, with the
 highest repo-Q&A score on the board (55%) at $8.23 per task. Opus 5 `max` is
-recorded alongside it at 66 as non-installed context. Those rows measure coding,
-not review precision/recall, so they remain insufficient to qualify senior or
-security work. Fable `xhigh` has exact-variant FrontierCode evidence but no
+recorded alongside it at 66 and is now the installed Claude builder tuple.
+Those rows measure coding, not review precision/recall, so they do not qualify
+review or security work. Fable `max` has exact-variant coding evidence but no
 judgement benchmark. Sonnet's CursorBench and WebDev rows use different
 harnesses. GLM's public rows still do not match the production Claude→Z.AI
 bridge.
@@ -179,7 +187,7 @@ from all operational route groups and cannot qualify judgement automatically.
 
 ## Judgement and super-judgement
 
-Fable `xhigh` and Sol `high` are both manually qualified for judgement by an
+Fable `max` and Sol `max` are both manually qualified for judgement by an
 explicit owner decision, not by an automatic benchmark threshold. Fable focuses
 on architecture, trade-offs, and synthesis; Sol focuses on repository fit,
 technical feasibility, failure modes, and verifiability. Inspect the decision with
@@ -193,18 +201,28 @@ automatically, and never merges or deploys.
 
 ## How to apply
 
-- **Codex material review defaults to Sol.** Use `sol-reviewer` at `high` for
-  material correctness review. The route is provisional because no exact
-  review precision/recall row exists, so the lead must still verify its output.
-  This default is role-scoped: routine review stays on its cheap lane, while
-  `sol-judge` and `super-judgement` remain explicit-only.
-- **These are defaults, not limits.** Judge the output, not the price tag: if a
-  cheaper model's result doesn't meet the bar, redo it on a smarter one. Escalating
-  costs less than shipping mediocre work.
+- **Sonnet and Luna are very-small non-builder lanes.** Use them only for tightly
+  bounded clerk, scout, or routine-review work. They do not implement changes.
+- **Opus and Terra build and review at `max`.** Editing uses `terra-builder` or
+  `opus-builder`; review uses the separate read-only `terra-reviewer` or
+  `opus-reviewer`. Their coding rows support the owner routing decision, not
+  reviewer qualification, so all reviewer lanes remain provisional.
+- **Cross-family review is mandatory.** Every delegated result must be reviewed
+  by a sufficiently capable available model outside the producer's family. Run
+  `delegation-route resolve --lane <routine-review|material-review|security>
+  --producer-profile <profile>`. The command fails without producer identity and
+  reports same-family profiles under `excluded_same_family`.
+- **Sol remains an advanced default only when cross-family.** `sol-reviewer/high`
+  is excluded for Terra, Luna, Sol, or any other OpenAI-family producer. Opus is
+  excluded for Anthropic-family output. If every returned reviewer is
+  unavailable, stop rather than weakening the family boundary.
+- **These role boundaries are limits.** A failed Sonnet/Luna task escalates to
+  the appropriate builder or reviewer; it never turns the small lane into a
+  builder. Judge every output independently of price.
 - **When to delegate at all.** Default to handling work inline. Delegate the
-  clear-spec, mechanical, or high-volume stuff (bulk implementation, migrations,
-  data crunching) to the cheap-and-capable lane; reach for a multi-agent
-  orchestration only on an explicit decision, never on autopilot.
+  clear-spec implementation to Opus/Terra and only very small non-builder work
+  to Sonnet/Luna; reach for multi-agent orchestration only on an explicit
+  decision, never on autopilot.
 - **A long or open-ended run is bottlenecked by unknowns, not intelligence.** The
   burn is the un-tuned prompt that drifts into a second and third attempt. Spend
   cheap tokens up front to surface the unknowns — a *blindspot pass* on unfamiliar
@@ -214,48 +232,42 @@ automatically, and never merges or deploys.
   of describing in prose. Keep an implementation-notes log of deviations during the
   run, and quiz yourself on the diff before merge. Each is cheaper than the re-run
   it prevents.
-- **Delegated output is unverified until you check it.** Never ship or build on a
-  delegated diff or finding without reading it or reproducing the claim — polished
-  output is not correct output.
+- **Delegated output is unverified until independently reviewed.** Lead checks
+  and producer self-checks do not replace cross-family review. Never ship or
+  build on a delegated diff or finding without both exercising it and completing
+  the resolved review.
 - **Cost is a tie-breaker only.** Required lane evidence and deliverable quality
   come first; then domain-specific taste/reliability evidence; then cost.
 - **`cost` is per *task*, not per token.** A model that burns more tokens at a
   lower price can still finish the job cheapest — measured, `gpt-5.6-luna` is the
   cheapest per completed task, verbosity included. Don't up-tier to "save tokens";
   price the task, not the token.
-- **Size the reviewer to the work, not to the top of a general leaderboard.** The
-  reviewer only needs to be *at least as capable* as what it reviews. A diff the cheap lane
-  wrote against a plan the strong model authored is reviewed by the *mid* model
-  that already has the context — you don't spend your most expensive model on a
-  review it isn't uniquely needed for. Reserve the top model as reviewer for when
-  its gradient is actually required: high-level design/taste judgement, synthesis
-  across multiple attempts, or independently checking something it produced.
+- **Size review by materiality after filtering family.** Sonnet may review a very
+  small routine result. Opus/Terra at `max` and Sol at `high` may review material
+  or security-sensitive work when their family differs from the producer.
+- **Keep provider fallback visible.** On classifier-flagged cyber requests,
+  Anthropic may substitute Opus 4.8 for the requested Opus 5 security reviewer.
+  The route reports this as `provider_fallback`; inspect surfaced content-model
+  identity or use Anthropic's CVP when the exact variant is mandatory.
 - **Judgement models do thinking, not typing.** Fable handles architecture,
   trade-offs, and synthesis; Sol handles technical feasibility, repository fit,
   failure modes, and verifiability. Neither produces the diff when selected as a
   judge. Use the pair only through the explicit super-judgement protocol.
-- **Route security-adjacent work to Opus 5 directly.** Anthropic states that
-  flagged cyber requests in Claude Code may fall back from Opus 5 to Opus 4.8
-  by default. The gate declares this provider fallback explicitly: the security
-  lane requests Opus 5 but is not exact-variant guaranteed when the classifier
-  fires. Inspect surfaced model identity or use Anthropic's CVP where exact
-  identity is mandatory. The broader claim that benign defensive work is
-  routinely caught is unconfirmed; do not over-route on it.
-- **Anything user-facing** (UI, copy, API design) needs a high-taste model.
-- **The cheap mid model has no first-class lane of its own** in this policy — use
-  it as the driver/wrapper (the thin agents that shell out to the cheap execution
-  lane), not the model you hand a hard task to.
+- **Anything user-facing** (UI, copy, API design) remains a lead-owned taste
+  decision; implementation can then be assigned to a max-effort builder.
 
 ## The orchestrator pattern
 
 The concrete shape most of this reduces to:
 
-1. The strong model reads the codebase, writes the plan, breaks it into tasks.
-2. Sub-agents on cheaper models execute each task.
-3. The strong model reviews the merged result.
+1. The lead reads the codebase, writes the plan, and breaks it into tasks.
+2. Sonnet/Luna handle only very small non-builder support; Opus/Terra at `max`
+   implement bounded tasks.
+3. The router filters reviewers by producer family; an eligible, available
+   different-family model performs the read-only review before integration.
 
-You pay premium prices for *judgement*, twice (plan + review), and plan-included
-prices for the keystrokes in between.
+Judgement remains an explicit Fable/Sol decision and never silently turns into
+implementation.
 
 ## Before a model earns a lane
 

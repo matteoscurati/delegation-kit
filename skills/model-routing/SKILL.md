@@ -1,17 +1,19 @@
 ---
 name: model-routing
-description: How and when to delegate coding work across models — pick the right lane (cheap execution, senior review, explicit judgement, or dual super-judgement), size the reviewer to the work, and know when a manual gate is required. Use when deciding whether to spawn a subagent, which model/effort to hand a task, how to route a code review, or when to escalate. Also covers reaching Codex from Claude.
+description: How and when to delegate coding work across models — pick a small non-builder lane, a max-effort Opus/Terra builder, a cross-family reviewer, or explicit judgement, and know when a manual gate is required. Use when deciding whether to spawn a subagent, which model/effort to hand a task, how to route a code review, or when to escalate. Also covers reaching Codex from Claude.
 ---
 
 # Model-routing: which model does which job
 
-You are orchestrating coding work across several models. A strong model plans and
-judges; cheaper ones execute. Route by these rules. The dated evidence snapshot
+You are orchestrating coding work across several models. Route by the exact role
+boundary first, then by evidence and cost. The dated evidence snapshot
 and lane mapping live in `model-routing.md` plus `config/model-evidence.json` at
 the kit root. Use `delegation-evidence lane <lane>` when installed; evidence is
 advisory and the versioned routing gate remains authoritative.
-Use `delegation-route resolve --lane <lane>` for the operational decision. It is
-read-only and never dispatches a model.
+Use `delegation-route resolve --lane <lane>` for the operational decision. Review
+lanes additionally require `--producer-profile <profile>` or
+`--producer-family <family>` so the router can exclude the producer's whole
+model family. It is read-only and never dispatches a model.
 For native Claude/Codex agents, the lead must resolve first; invoking an
 explicit-only profile is the manual selection event. GLM/Gemini/Kimi/Grok/Qwen/DeepSeek runners enforce the
 same graph directly and refuse drift.
@@ -19,22 +21,24 @@ same graph directly and refuse drift.
 ## When to delegate at all
 - Default to solving simple, well-scoped work **directly**. Do not spawn a
   subagent for a routine single-file change.
-- Delegate the clear-spec, mechanical, or high-volume work (bulk implementation,
-  migrations, data crunching, extraction) to the cheap execution lane.
+- Use Sonnet or Luna only for very small, non-builder clerk, scout, or routine
+  review work. Do not route implementation to them.
+- Route bounded implementation to Opus or Terra at `max`.
+- Review every delegated result with a sufficiently capable available model from
+  another family. If no eligible cross-family reviewer is reachable, stop.
 - Reach for multi-agent orchestration only on an explicit decision, never on
   autopilot. In an orchestration/ultra mode, let the orchestrator fan out — don't
   add a second manual delegation layer on top.
 
 ## The lanes
-- **Execution / routine review (cheap):** bulk implementation, migrations, tests,
-  extraction, repo mapping, and the **default** diff/bug-review lane.
-- **Senior review / taste / security:** security-adjacent code (route here
-  directly), user-facing surfaces (UI, copy, API design), material correctness
-  review, and the escalation target for the cheap lane.
-- **Codex material review:** default to the read-only `sol-reviewer` profile at
-  `high`. Its route is provisional pending exact review precision/recall
-  evidence. Do not transfer this default to routine review or judgement.
-- **Judgement:** Fable `xhigh` for architecture/trade-offs/synthesis or Sol `high`
+- **Very small non-builder:** Sonnet/Luna for bounded extraction, repo mapping,
+  and routine review only.
+- **Builder:** Opus 5 or GPT-5.6 Terra at `max` through editing profiles.
+- **Cross-family reviewer:** Opus 5 and Terra also review at `max` through
+  separate read-only profiles. Sol/high remains an advanced read-only default
+  where its OpenAI family differs from the producer; Sonnet handles only tiny
+  routine review. The router removes every same-family candidate.
+- **Judgement:** Fable `max` for architecture/trade-offs/synthesis or Sol `max`
   for technical feasibility/repository fit/failure modes. Both are
   `manual-qualified`, explicit-only, thinking-not-typing profiles.
 - **Super-judgement:** only for exceptional, difficult-to-reverse decisions.
@@ -87,17 +91,18 @@ The candidate/blocked `policy-annotation` exception is manifest-bound,
 read-only, and cannot widen those operational lanes.
 
 ## Sizing and escalation
-- **Size the reviewer to the work, not to a general leaderboard.** A diff the cheap
-  lane wrote against a plan the strong model authored is reviewed by the *mid*
-  model that already has the context. Reserve the top model as reviewer only when
-  its gradient is required: high-level design/taste, synthesis across attempts, or
-  independently checking something it produced.
-- **Route review by content, not by habit** — send security/auth/payments/
-  migrations/user-facing to the senior lane; keep routine bug-hunting on the cheap
-  lane (often cheaper *and* higher-recall there).
-- **Escalation ladder:** cheap → senior → judgement. Never retry the same failure
-  on an unsuitable cheap worker twice — escalate. Security never delegates
-  downward: it starts on the senior lane.
+- **Size and separate the reviewer.** Sonnet may review only a very small routine
+  result. Opus/Terra at `max` and Sol at `high` may review material or
+  security-sensitive work, but only when their family differs from the producer.
+- **Route review by content and producer family.** Use `routine-review` for tiny
+  work, `material-review` for implementation, and `security` for security/auth/
+  payments/migrations. Always pass producer identity; never select anything in
+  `excluded_same_family`.
+- **Inspect provider fallback metadata.** Anthropic may substitute Opus 4.8 for
+  the requested Opus 5 reviewer on classifier-flagged cyber requests. When exact
+  identity matters, inspect the surfaced content model or use Anthropic's CVP.
+- **Escalation ladder:** small non-builder → builder or material reviewer →
+  judgement. Never retry the same failure on an unsuitable worker twice.
 - **Delegated output is unverified until you check it.** Never ship or build on a
   delegated diff or finding without reading it or reproducing the claim — and make
   the check **exercise the deliverable** (run the command, read the output);

@@ -7,7 +7,7 @@ promote a provisional or candidate lane.
 
 ## Verified snapshot
 
-The 0.16.0 release-integration gate was verified on **2026-08-17** on macOS
+The 0.17.0 release-integration gate was verified on **2026-08-18** on macOS
 26.5.1 with Codex CLI `0.146.1` and Claude Code `2.1.232`. Numeric vendor
 versions are provenance only wherever the runner uses capability probing.
 
@@ -16,7 +16,7 @@ The role-oriented semantic matrix below was last exercised in full on
 real off-by-one (`rolling_max` iterating `range(len(values) - size)`), a
 five-row CSV to aggregate, and an untyped CSS component. Read-only lanes had to
 describe or diagnose it; builder lanes had to turn the red acceptance check
-green in their own worktree copy. The 0.16.0 release gate did not claim to
+green in their own worktree copy. The 0.17.0 release gate did not claim to
 re-run unchanged semantic rows: it refreshed the install, routing, regression,
 and live bridge observations reported below.
 
@@ -24,6 +24,49 @@ The earlier Gemini 3.6 Flash smoke is historical evidence for a different exact
 model tuple. Gemini 3.7 Flash does not inherit it: the current `agy` runtime
 cannot attest the new model inventory and OAuth session, so the new bridge
 remains staged and fail-closed.
+
+## 0.17.0 native routing change
+
+The 0.17.0 release retires `sonnet-builder` and `terra-scout`. Sonnet/Luna are
+restricted to very small non-builder work. Opus and Terra now each have a
+max-effort editing builder and a separate read-only reviewer profile. The old
+`opus-reviewer/high` semantics are replaced by `opus-reviewer/max` with a
+mandatory cross-family constraint; `terra-reviewer/max` is new. The historical
+2026-08-05 semantic rows below remain evidence for the profiles that existed at
+that time; they do not qualify the new builder or reviewer profiles.
+
+The central router now requires producer identity for routine, material, and
+security review, then excludes every reviewer in that model family. Static
+availability is not inferred: the caller must verify runtime/auth for the
+remaining sufficiently capable candidates and stop if none is reachable.
+Single-host installs can therefore lack a usable reviewer for their own model
+family; this is a blocker, not permission for producer self-review. The Opus
+security route also preserves the declared possibility that Anthropic substitutes
+Opus 4.8 on classifier-flagged cyber requests, so exact Opus 5 identity must be
+verified separately when required.
+The new `opus-reviewer/max` and `terra-reviewer/max` profiles have structural,
+installation, sandbox, and routing proof in the release candidate; no new held-out
+semantic reviewer pack was run, so both review routes remain provisional.
+The read-only `sol-judge` profile is now pinned to `max` on an explicit owner
+effort decision while remaining manually qualified and explicit-only. Its exact
+max coding row is contextual rather than judgement evidence.
+The Fable judge likewise moves from `xhigh` to `max`; an authenticated 2026-08-18
+runtime probe accepted the exact request and surfaced `canonicalModel:
+claude-fable-5`, but did not test judgement quality.
+
+On 2026-08-17 the installed named `opus-builder` profile passed a disposable
+one-line scoped-edit smoke at the explicitly requested `claude-opus-5` / `max`
+tuple. It touched only the assigned tracked file, passed `git diff --check`, and
+the result's usage record surfaced `canonicalModel: claude-opus-5`. This is one
+low-confidence compatibility/scope observation, not a held-out repeated builder
+qualification, so the lane remains provisional. The 0.17.0 release candidate
+passed all 12 regression suites in 52 seconds, including 59 central routing
+checks. Its post-install doctor result was `56 OK, 0 WARN, 0 FAIL` with
+authenticated Claude-to-Codex and Claude endpoint round-trip pings; the
+unavailable optional Gemini and DeepSeek runtimes remained informational and
+fail-closed.
+
+## Historical semantic matrix
 
 | Surface | Profiles or lanes | Result |
 |---|---|---|
@@ -37,6 +80,8 @@ remains staged and fail-closed.
 | Qwen3.8-Max | `builder` | Passed at `token-plan-openai/xhigh`. The lane is text-only, so the brief carried the file contents and the runner returned a unified diff, semantically correct on the first attempt. Left to itself the model emits `--- src/window.py` / `+++ src/window.py` without the conventional `a/`/`b/` prefixes, so a bare `git apply` — which defaults to `-p1` and strips one component — looks for `window.py` and fails on a patch that is actually correct; `-p0` applies it cleanly. Asking for prefixed headers in the brief fixes it at the source: re-dispatched with that instruction, the model returned `--- a/src/window.py` and the patch applied with a **bare `git apply`**, check printing `PASS`. `skills/qwen-executor` now carries that wording. The lane is provisional explicit-only and requires `--allow-provisional`; every other lane still fails closed with exit `78`. |
 | DeepSeek V4 Pro | `builder` | Passed one live exact official-API patch smoke at `max`: the response identified `deepseek-v4-pro`, accepted `reasoning_effort=max`, returned valid structured output, diagnosed the deterministic off-by-one bug, and produced the expected result. The 0.16.0 release candidate was then installed byte-for-byte and its installed runner returned exact `PONG` at the same tuple. The installer intentionally did not copy a key from another tool; the release smoke supplied it only to that process. This is a text-only provisional/explicit-only owner route, not a held-out builder qualification; all other lanes remain blocked. |
 | Claude↔Codex bridge | both directions | On 2026-08-17, `doctor.sh --ping` returned `PONG` for the Claude→Codex round-trip and accepted the configured model and effort at the Claude endpoint used by the Codex→Claude path. |
+
+### 0.16.0 release-integration record
 
 The full 0.16.0 doctor result was `46 OK, 0 WARN, 0 FAIL` with `--ping` on
 2026-08-17. The candidate install's version and recorded commit matched the checkout; the

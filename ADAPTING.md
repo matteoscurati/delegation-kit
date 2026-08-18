@@ -9,15 +9,18 @@ Here's what to change and how.
 | role | what it does | author's pick |
 |---|---|---|
 | **lead** | owns the work, integrates, verifies; enters judgement only in bursts | Opus 5 @ xhigh |
-| **judgement** | plan + final verdict/synthesis; explicit, manual gate | Fable 5 or Sol high |
-| **super-judgement** | independent dual verdict + cross-review for exceptional decisions | Fable 5 + Sol high |
-| **executor** | bulk implementation, migrations, tests, extraction, repo mapping, **default review** | Sonnet 5 |
-| **senior** | security (direct), user-facing taste, escalation target, material review | Opus 5 |
-| **clerk / scout / builder** | cheap sub-lanes of the executor (extract / map / build) | Sonnet (Claude) · Luna+Terra (Codex) |
+| **judgement** | plan + final verdict/synthesis; explicit, manual gate | Fable 5 @ max or Sol @ max |
+| **super-judgement** | independent dual verdict + cross-review for exceptional decisions | Fable 5 @ max + Sol @ max |
+| **small non-builder** | very small extraction, repo mapping, and routine review only | Sonnet 5 · GPT-5.6 Luna |
+| **builder** | bounded implementation through an editing profile | Opus 5 @ max · GPT-5.6 Terra @ max |
+| **reviewer** | read-only correctness/security review; must differ from producer family | Opus 5 @ max · GPT-5.6 Terra @ max · Sol @ high |
 
-Pick one model per role from *your* table. A role can share a model with another
-(the author uses Opus for both lead and senior). Fill empty roles with the nearest
-tier you have.
+Pick one model per role from *your* table. In the author's operational subagent
+mapping, Opus and Terra both build and review through separate permission
+profiles, while Sonnet and Luna never build. The router requires a different
+model family for every delegated-result review.
+The resident lead is a separate host-level choice and does not create another
+subagent lane.
 
 ## Where to change the model / effort
 
@@ -25,14 +28,15 @@ Five places — keep them in sync:
 
 1. **Claude subagent profiles** — `agents/*.md` frontmatter:
    ```yaml
-   model: sonnet      # -> your executor tier: sonnet | opus | fable
-   effort: low        # low | medium | high | xhigh | max (per model; see model-routing.md)
+   model: sonnet      # -> your role-specific tier: sonnet | opus | fable
+   effort: low        # builders are pinned to max in the author's mapping
    ```
 2. **Codex profiles** — both files per profile must match:
    - `codex/agents/<name>.toml`: `model = "..."`, `model_reasoning_effort = "..."`
    - `codex/profiles/<name>.config.toml`: same `model` + `model_reasoning_effort`
 3. **The central gate** — `config/routing-gates.json`: update exact profile,
-   status, selection, evidence references, fallback, and any compound lane.
+   status, selection, evidence references, fallback, `model_families`, the
+   cross-family `review_policy`, and any compound lane.
 4. **The prose** — `claude/CLAUDE.delegation.md`, `codex/AGENTS.md`,
    `model-routing.md`: update the reference mapping and lane-evidence notes.
 5. **Executable bridges and sync surfaces** — for an external model, keep its
@@ -72,9 +76,9 @@ These are baked into the reference, not universal — decide for yourself:
 
 - **"Never use Haiku"** and **Fable-as-metered-credits** are the author's plan
   realities. Yours differ.
-- **Separate Sonnet-only weekly bucket** (Claude Max): the author exploits it by
-  pushing volume to Sonnet. Check whether your plan meters the same way before
-  relying on it.
+- **Separate Sonnet-only weekly bucket** (Claude Max): the author uses it only
+  for very small non-builder tasks. Check whether your plan meters the same way
+  before copying that choice.
 - **Lead = Opus, not the top model**: because the author's top model (Fable) bills
   as real money per call. If your top model is plan-included, your lead choice may
   differ.

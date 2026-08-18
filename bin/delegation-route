@@ -33,6 +33,8 @@ usage: delegation-route <check|lane NAME|profile NAME|resolve --lane NAME|table>
   lane NAME         list every profile configured for a lane
   profile NAME      show one exact profile and all its lane decisions
   resolve --lane N  return the allowed routing decision; never dispatches
+                    review lanes require --producer-profile NAME or
+                    --producer-family FAMILY and exclude that whole family
   table             print the internal routing table (Markdown, or JSON)
 EOF
 }
@@ -63,6 +65,19 @@ validate() {
     .schema_version == 1 and
     (.profiles | type == "object" and length > 0) and
     (.compound_lanes | type == "object") and
+    (.model_families | type == "object" and length > 0) and
+    (.model_families | all(.[]; type == "string" and length > 0)) and
+    (([.profiles[].model] - (.model_families | keys)) | length == 0) and
+    (.review_policy.require_cross_family == true) and
+    (.review_policy.availability_must_be_verified == true) and
+    (.review_policy.review_lanes | type == "array" and length > 0 and length == (unique | length)) and
+    (.review_policy.eligible_reviewer_profiles | type == "array" and length > 0 and length == (unique | length)) and
+    ((.review_policy.eligible_reviewer_profiles - $profiles) | length == 0) and
+    ([.profiles | to_entries[] as $p | $p.value.lanes | to_entries[] |
+      .key as $lane |
+      select(($root.review_policy.review_lanes | index($lane)) != null) |
+      select(.value.selection != "blocked" and .value.status != "candidate" and .value.status != "disabled") |
+      $p.key] - $root.review_policy.eligible_reviewer_profiles | length == 0) and
     ([.profiles[] | .model, .harness, .effort] | all(type == "string" and length > 0)) and
     ([.profiles[] | select(.harness == "claude-zai") |
       select(.model != "glm-5.3" or .effort != "max")] | length == 0) and
@@ -72,6 +87,9 @@ validate() {
     ([.compound_lanes[] | .selection] | all(. as $v | $selections | index($v) != null)) and
     ([.profiles[].lanes[], .compound_lanes[]] | all(legal_pair)) and
     ([.profiles[].lanes[] | select((.fallback // null) != null) | .fallback] - $profiles | length == 0) and
+    ([.profiles | to_entries[] | .value.lanes | to_entries[] as $lane |
+      select(($root.review_policy.review_lanes | index($lane.key)) != null) |
+      select(($lane.value.fallback // null) != null)] | length == 0) and
     ([.profiles | to_entries[] as $p | $p.value.lanes[] |
       select((.exact_evidence_ids | type) != "array" or (.context_evidence_ids | type) != "array")] | length == 0) and
     ([.profiles | to_entries[] as $p | $p.value.lanes[] as $lane |
@@ -216,9 +234,9 @@ validate() {
 
 profile_rows() {
   jq -c '
-    .profiles | to_entries[] as $p |
+    . as $root | .profiles | to_entries[] as $p |
     $p.value.lanes | to_entries[] |
-    {profile:$p.key,model:$p.value.model,harness:$p.value.harness,effort:$p.value.effort,
+    {profile:$p.key,model:$p.value.model,family:$root.model_families[$p.value.model],harness:$p.value.harness,effort:$p.value.effort,
      lane:.key,status:.value.status,selection:.value.selection,
      exact_evidence_ids:(.value.exact_evidence_ids // []),context_evidence_ids:(.value.context_evidence_ids // []),
      local_evaluation:(.value.local_evaluation // null),
@@ -260,37 +278,75 @@ case "$command" in
     jq --arg profile "$profile" '.profiles[$profile] + {profile:$profile}' "$GATES"
     ;;
   resolve)
-    shift; lane=""
+    shift; lane=""; producer_profile=""; producer_family=""
     while [ "$#" -gt 0 ]; do
-      case "$1" in --lane) lane="${2:-}"; shift 2 ;; --json) shift ;; *) die 64 "unknown resolve argument: $1" ;; esac
+      case "$1" in
+        --lane) lane="${2:-}"; shift 2 ;;
+        --producer-profile) producer_profile="${2:-}"; shift 2 ;;
+        --producer-family) producer_family="${2:-}"; shift 2 ;;
+        --json) shift ;;
+        *) die 64 "unknown resolve argument: $1" ;;
+      esac
     done
     [ -n "$lane" ] || die 64 "--lane is required"
+    if [ -n "$producer_profile" ] && [ -n "$producer_family" ]; then
+      die 64 "use only one of --producer-profile or --producer-family"
+    fi
     if jq -e --arg lane "$lane" '.compound_lanes[$lane] != null' "$GATES" >/dev/null; then
+      [ -z "$producer_profile$producer_family" ] || die 64 "producer identity applies only to review lanes"
       status="$(jq -r --arg lane "$lane" '.compound_lanes[$lane].status' "$GATES")"
       [ "$status" = manual-qualified ] || die 78 "compound lane '$lane' has non-dispatchable status '$status'"
       jq --arg lane "$lane" '.compound_lanes[$lane] + {lane:$lane,requires_explicit_choice:true}' "$GATES"
     else
       rows="$(profile_rows | jq -sc --arg lane "$lane" '[.[] | select(.lane == $lane)]')"
       [ "$rows" != "[]" ] || die 64 "unknown lane: $lane"
-      jq -n --arg lane "$lane" --argjson rows "$rows" '
+      review_lane="$(jq -r --arg lane "$lane" '(.review_policy.review_lanes | index($lane)) != null' "$GATES")"
+      if [ "$review_lane" = true ]; then
+        [ -n "$producer_profile$producer_family" ] || die 64 "review lane '$lane' requires --producer-profile or --producer-family"
+        if [ -n "$producer_profile" ]; then
+          jq -e --arg profile "$producer_profile" '.profiles[$profile] != null' "$GATES" >/dev/null \
+            || die 64 "unknown producer profile: $producer_profile"
+          producer_family="$(jq -r --arg profile "$producer_profile" '.model_families[.profiles[$profile].model]' "$GATES")"
+        else
+          jq -e --arg family "$producer_family" '.model_families | any(.[]; . == $family)' "$GATES" >/dev/null \
+            || die 64 "unknown producer family: $producer_family"
+        fi
+        eligible_count="$(jq -n --arg family "$producer_family" --argjson rows "$rows" \
+          '[$rows[] | select(.family != $family) | select(.selection != "blocked" and .status != "candidate" and .status != "disabled")] | length')"
+        [ "$eligible_count" -gt 0 ] || die 78 "no eligible cross-family reviewer for '$lane' and producer family '$producer_family'"
+      elif [ -n "$producer_profile$producer_family" ]; then
+        die 64 "producer identity applies only to review lanes"
+      fi
+      jq -n --arg lane "$lane" --arg producer_profile "$producer_profile" \
+        --arg producer_family "$producer_family" --argjson review_lane "$review_lane" --argjson rows "$rows" '
+        (if $review_lane then [$rows[] | select(.family != $producer_family)] else $rows end) as $eligible |
         {lane:$lane,
-         defaults:[$rows[] | select(.selection == "default" and (.status == "qualified" or .status == "provisional"))],
-         fallbacks:[$rows[] | select(.selection == "fallback" and (.status == "qualified" or .status == "provisional"))],
-         explicit:([$rows[] | select((.status == "qualified" or .status == "provisional" or .status == "manual-qualified"))] |
+         defaults:[$eligible[] | select(.selection == "default" and (.status == "qualified" or .status == "provisional"))],
+         fallbacks:[$eligible[] | select(.selection == "fallback" and (.status == "qualified" or .status == "provisional"))],
+         explicit:([$eligible[] | select((.status == "qualified" or .status == "provisional" or .status == "manual-qualified"))] |
                    [.[] | select(.selection == "preferred-explicit")] + [.[] | select(.selection == "explicit-only")]),
-         blocked:[$rows[] | select(.selection == "blocked" or .status == "candidate" or .status == "disabled")],
+         blocked:[$eligible[] | select(.selection == "blocked" or .status == "candidate" or .status == "disabled")],
+         excluded_same_family:(if $review_lane then [$rows[] | select(.family == $producer_family)] else [] end),
+         review_policy:(if $review_lane then
+           {require_cross_family:true,producer_profile:(if $producer_profile == "" then null else $producer_profile end),
+            producer_family:$producer_family,availability_must_be_verified:true}
+           else null end),
          automatic_dispatch:false}'
     fi
     ;;
   table)
     rows="$(profile_rows | jq -s '.')"
     if [ "$as_json" = 1 ]; then
-      jq -n --argjson profiles "$rows" --argjson compounds "$(jq '.compound_lanes' "$GATES")" \
-        '{profiles:$profiles,compound_lanes:$compounds}'
+      jq -n --argjson profiles "$rows" \
+        --argjson families "$(jq '.model_families' "$GATES")" \
+        --argjson review_policy "$(jq '.review_policy' "$GATES")" \
+        --argjson compounds "$(jq '.compound_lanes' "$GATES")" \
+        '{profiles:$profiles,model_families:$families,review_policy:$review_policy,compound_lanes:$compounds}'
     else
-      printf '| Profile | Exact variant | Lane | Exact evidence | Context | Local n | Confidence | Status | Selection | Fallback | Gap |\n'
-      printf '|---|---|---|---:|---:|---:|---|---|---|---|---|\n'
-      printf '%s\n' "$rows" | jq -r '.[] | "| `\(.profile)` | \(.model) / \(.harness) / `\(.effort)` | \(.lane) | \(.exact_evidence_ids | length) | \(.context_evidence_ids | length) | \(.local_evaluation.task_count // "—") | \(.local_evaluation.confidence // "—") | \(.status) | \(.selection) | \(.fallback // "—") | \(.evidence_gap // "—") |"'
+      printf '| Profile | Family | Exact variant | Lane | Exact evidence | Context | Local n | Confidence | Status | Selection | Fallback | Gap |\n'
+      printf '|---|---|---|---|---:|---:|---:|---|---|---|---|---|\n'
+      printf '%s\n' "$rows" | jq -r '.[] | "| `\(.profile)` | \(.family) | \(.model) / \(.harness) / `\(.effort)` | \(.lane) | \(.exact_evidence_ids | length) | \(.context_evidence_ids | length) | \(.local_evaluation.task_count // "—") | \(.local_evaluation.confidence // "—") | \(.status) | \(.selection) | \(.fallback // "—") | \(.evidence_gap // "—") |"'
+      printf '\nCross-family review required for: %s\n' "$(jq -r '.review_policy.review_lanes | join(", ")' "$GATES")"
       printf '\n| Compound lane | Members | Protocol | Status | Selection | Final authority |\n'
       printf '|---|---|---|---|---|---|\n'
       jq -r '.compound_lanes | to_entries[] | "| `\(.key)` | \(.value.members | join(" + ")) | \(.value.protocol) | \(.value.status) | \(.value.selection) | \(.value.final_authority) |"' "$GATES"

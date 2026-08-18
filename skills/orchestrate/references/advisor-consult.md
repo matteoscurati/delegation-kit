@@ -11,13 +11,13 @@ lanes by content (see the routing policy):
   architecture/trade-offs/synthesis, or Sol for feasibility/repository fit) — decomposition, architecture-moving risk, cross-attempt synthesis, the
   final go/no-go. This is the two-touch lane: consult #1 (plan) and #2 (ship) are
   mandatory; anything beyond needs a crossed commitment boundary.
-- **Taste and security review go to Senior** (the high-taste model, author: Opus)
-  — user-facing surfaces, and any security-shaped judgement. Route security here
-  **directly**: a security-shaped consult sent to Fable reroutes to Opus anyway, so
-  skip the tax and start on Senior.
+- **Material technical and security review goes to an eligible read-only
+  cross-family reviewer.** Resolve with the producer profile first; Opus and
+  Terra can both review at `max`, while Sol remains eligible only when the
+  producer is outside the OpenAI family. User-facing taste remains with the lead.
 
 Reach either as a one-shot Agent/Workflow call with the model pinned
-(`fable-judge`, Codex `sol-judge`, or `opus-reviewer`) and this prompt; force a
+(`fable-judge`, Codex `sol-judge`, or a resolved cross-family reviewer) and this prompt; force a
 structured return so nothing gets lost.
 
 For an explicitly approved `super-judgement`, do not use this single-consult

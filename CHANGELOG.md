@@ -4,6 +4,45 @@ All notable changes to delegation-kit are documented here.
 
 ## Unreleased
 
+## [0.17.0] — 2026-08-18
+
+### Changed
+
+- Reworked the native routing policy so Sonnet and Luna are limited to very
+  small, non-builder clerk/scout/routine-review tasks. The former
+  `sonnet-builder` and `terra-scout` profiles are retired; the old
+  `opus-reviewer/high` profile is replaced by a max-effort cross-family reviewer.
+- Added `opus-builder` at `claude-opus-5` / `max` and made it the fallback to
+  the default `terra-builder` at `gpt-5.6-terra` / `max`. Added separate
+  read-only `opus-reviewer` and `terra-reviewer` profiles, also at `max`, so both
+  high-level models can build or review without mixing permissions.
+- Added an explicit model-family registry and fail-closed cross-family review
+  rule. Every routine/material/security review resolution now requires the
+  producer profile or family, removes all same-family reviewers, and exposes the
+  exclusions in the router output. Runtime availability must still be checked;
+  no eligible reviewer means stop, not self-review.
+- This is a breaking routing migration: callers resolving a review lane must
+  now pass `--producer-profile` or `--producer-family`; omission exits `64`
+  instead of selecting a potentially same-family reviewer.
+- Promoted security review from the former manual Opus-only route to
+  producer-aware provisional defaults/fallbacks across Sol, Terra, and Opus.
+  The Opus path continues to disclose Anthropic's possible Opus 4.8 fallback
+  for classifier-flagged cyber requests; exact Opus 5 identity is not guaranteed
+  on that path. The former native `senior` route now has no operational profile.
+- Re-pinned the read-only `sol-judge` profile from `high` to `max` and
+  `fable-judge` from `xhigh` to its verified supported `max` on explicit owner
+  effort decisions. Both remain manually qualified and explicit-only; coding
+  rows at the exact max tuples are contextual, not judgement evidence.
+- Recorded a scoped installed-profile smoke for `opus-builder`: the exact
+  Opus/max request changed only its assigned file, passed `git diff --check`,
+  and surfaced `canonicalModel: claude-opus-5`. The lane remains provisional;
+  one synthetic edit is compatibility evidence, not general qualification.
+- Updated installation, cleanup, doctor, routing tests, and policy documents to
+  enforce the new role and family boundaries and remove stale installed profiles.
+- Fixed the release doctor so its missing-producer probe preserves the caller's
+  shell options, and added an end-to-end regression for Codex configurations
+  without a root-level `sandbox_mode`.
+
 ## [0.16.0] — 2026-08-17
 
 ### Added
