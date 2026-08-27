@@ -26,13 +26,51 @@ SANDBOX_PROFILE="delegation-kit"
 MAX_TURNS=40
 TIMEOUT_SECONDS="${DELEGATION_GROK_TIMEOUT_SECONDS:-900}"
 SOURCE_GROK_HOME="${DELEGATION_GROK_HOME:-${HOME:?HOME is required}/.grok}"
-GROK_BIN_STORE="${DELEGATION_GROK_BIN_STORE:-${DELEGATION_DATA_HOME:-${XDG_DATA_HOME:-$HOME/.local/share}/delegation-kit}/grok-cli}"
+DATA_HOME="${DELEGATION_DATA_HOME:-${XDG_DATA_HOME:-$HOME/.local/share}/delegation-kit}"
+GROK_BIN_STORE="${DELEGATION_GROK_BIN_STORE:-$DATA_HOME/grok-cli}"
+OAUTH_WAIT_SECONDS="${DELEGATION_GROK_OAUTH_WAIT_SECONDS:-5}"
+case "$OAUTH_WAIT_SECONDS" in ""|*[!0-9]*) OAUTH_WAIT_SECONDS=5 ;; esac
+GROK_SHLOCK_BIN="${DELEGATION_GROK_SHLOCK_BIN:-/usr/bin/shlock}"
 GROK_BIN=""
 GROK_BIN_SOURCE="none"
 GROK_CLI_VERSION="unknown"
 RUN_TMP=""
+ACTIVE_GROK_HOME=""
+OAUTH_LOCK_PATH=""
+OAUTH_LOCK_HELD=0
+OAUTH_LOCK_KIND=""
+OAUTH_BASELINE_HASH=""
+OAUTH_MODE="serialized"
+OAUTH_SYNC_STATUS="not_attempted"
+SHARED_OAUTH_DIR=""
+SHARED_OAUTH_GEN=""
+SHARED_POLICY_VERSION="delegation-grok-oauth-v1"
+RUN_SANDBOX_PROFILE=""
 
-cleanup() { [ -z "$RUN_TMP" ] || rm -rf -- "$RUN_TMP"; }
+release_oauth_lock() {
+  local owner_pid=""
+  [ "$OAUTH_LOCK_HELD" -eq 1 ] || return 0
+  if [ "$OAUTH_LOCK_KIND" = mkdir ]; then
+    if [ -d "$OAUTH_LOCK_PATH" ] && [ ! -L "$OAUTH_LOCK_PATH" ] &&
+        [ -f "$OAUTH_LOCK_PATH/owner" ]; then
+      owner_pid="$(<"$OAUTH_LOCK_PATH/owner")"
+      if [ "$owner_pid" = "$$" ]; then
+        rm -f -- "$OAUTH_LOCK_PATH/owner"
+        rmdir "$OAUTH_LOCK_PATH" >/dev/null 2>&1 || true
+      fi
+    fi
+  elif [ -f "$OAUTH_LOCK_PATH" ] && [ ! -L "$OAUTH_LOCK_PATH" ]; then
+    owner_pid="$(<"$OAUTH_LOCK_PATH")"
+    [ "$owner_pid" != "$$" ] || rm -f -- "$OAUTH_LOCK_PATH"
+  fi
+  OAUTH_LOCK_HELD=0
+  OAUTH_LOCK_KIND=""
+}
+
+cleanup() {
+  release_oauth_lock
+  [ -z "$RUN_TMP" ] || rm -rf -- "$RUN_TMP"
+}
 trap cleanup EXIT
 
 usage() {
@@ -44,6 +82,7 @@ Usage:
     [--effort <auto|high>] [--backend <auto|grok-build>] \
     --prompt-file <path> --output <path> --workdir <path> \
     [--metrics <path>] [--debug-dir <existing-private-directory>] \
+    [--oauth <serialized|shared>] \
     [--allow-provisional] [--evaluation --evaluation-manifest <path>] \
     [--preflight-only]
 
@@ -56,6 +95,14 @@ traverses the same pre-provider validation path as the real evaluation run,
 prints a delegation_policy_annotation_preflight_receipt_v1 receipt on stdout,
 and exits zero before provider dispatch and before any caller-visible artifact
 exists.
+
+`--oauth shared` (or DELEGATION_GROK_OAUTH_MODE=shared) allows concurrent
+operational dispatches. OAuth state lives in a runner-owned persistent
+generation under $DELEGATION_DATA_HOME/grok-shared-oauth. Concurrent Grok
+processes share that generation so the vendor auth lock can coordinate refresh,
+while a short kit lock protects generation adoption and atomic publication back
+to the ambient login. The default serialized mode holds the kit lock for the
+whole dispatch. Evaluation runs are always serialized.
 
 Exit codes: 64 invalid input, 69 unavailable/authentication failure,
 70 dispatch/extract failure, 75 temporary/rate-limit failure,
@@ -127,9 +174,343 @@ file_digest() {
   fi
 }
 
+credential_tokens_valid() {
+  local credential="$1"
+  [ -f "$credential" ] && [ ! -L "$credential" ] || return 1
+  jq -e '
+    type == "object" and
+    ([.[]? | objects |
+      select(((.key // "") | type == "string" and length > 0) and
+             ((.refresh_token // "") | type == "string" and length > 0))] |
+     length > 0)
+  ' "$credential" >/dev/null 2>&1
+}
+
+acquire_oauth_lock() {
+  local owner_pid="" lock_mtime=0 now=0 quarantine="" stale=0
+  [ -d "$SOURCE_GROK_HOME" ] && [ ! -L "$SOURCE_GROK_HOME" ] || return 1
+  if [ -x "$GROK_SHLOCK_BIN" ]; then
+    OAUTH_LOCK_PATH="$SOURCE_GROK_HOME/.delegation-kit-oauth.lock"
+    [ ! -L "$OAUTH_LOCK_PATH" ] || return 1
+    "$GROK_SHLOCK_BIN" -p "$$" -f "$OAUTH_LOCK_PATH" >/dev/null 2>&1 || return 2
+    OAUTH_LOCK_KIND="shlock"
+  else
+    OAUTH_LOCK_PATH="$SOURCE_GROK_HOME/.delegation-kit-oauth.lock.d"
+    [ ! -L "$OAUTH_LOCK_PATH" ] || return 1
+    if ! mkdir "$OAUTH_LOCK_PATH" 2>/dev/null; then
+      if [ -f "$OAUTH_LOCK_PATH/owner" ] && [ ! -L "$OAUTH_LOCK_PATH/owner" ]; then
+        owner_pid="$(<"$OAUTH_LOCK_PATH/owner")"
+      fi
+      if [[ "$owner_pid" =~ ^[1-9][0-9]*$ ]] && ! kill -0 "$owner_pid" 2>/dev/null; then
+        stale=1
+      elif [ -z "$owner_pid" ]; then
+        if lock_mtime="$(stat -f '%m' "$OAUTH_LOCK_PATH" 2>/dev/null)"; then :
+        elif lock_mtime="$(stat -c '%Y' "$OAUTH_LOCK_PATH" 2>/dev/null)"; then :
+        else lock_mtime=0
+        fi
+        now="$(date +%s)"
+        [ "$lock_mtime" -gt 0 ] && [ $((now - lock_mtime)) -ge 30 ] && stale=1
+      fi
+      [ "$stale" -eq 1 ] || return 2
+      quarantine="$OAUTH_LOCK_PATH.stale.$$"
+      mv "$OAUTH_LOCK_PATH" "$quarantine" 2>/dev/null || return 2
+      if [ -n "$owner_pid" ]; then
+        if [ ! -f "$quarantine/owner" ] ||
+            [ "$(<"$quarantine/owner")" != "$owner_pid" ]; then
+          mv "$quarantine" "$OAUTH_LOCK_PATH" 2>/dev/null || true
+          return 2
+        fi
+      fi
+      rm -f -- "$quarantine/owner"
+      rmdir "$quarantine" >/dev/null 2>&1 || return 1
+      mkdir "$OAUTH_LOCK_PATH" 2>/dev/null || return 2
+    fi
+    printf '%s\n' "$$" >"$OAUTH_LOCK_PATH/owner" || {
+      rmdir "$OAUTH_LOCK_PATH" >/dev/null 2>&1 || true
+      return 1
+    }
+    chmod 700 "$OAUTH_LOCK_PATH"
+    chmod 600 "$OAUTH_LOCK_PATH/owner"
+    OAUTH_LOCK_KIND="mkdir"
+  fi
+  OAUTH_LOCK_HELD=1
+}
+
+acquire_oauth_lock_wait() {
+  local deadline rc
+  deadline="$(( $(date +%s) + OAUTH_WAIT_SECONDS ))"
+  while :; do
+    rc=0
+    acquire_oauth_lock || rc=$?
+    [ "$rc" -eq 2 ] || return "$rc"
+    [ "$(date +%s)" -lt "$deadline" ] || return 2
+    sleep 1
+  done
+}
+
+shared_oauth_root() { printf '%s/grok-shared-oauth' "$DATA_HOME"; }
+
+read_shared_marker() {
+  local marker
+  marker="$(shared_oauth_root)/sync-marker.json"
+  [ -f "$marker" ] && [ ! -L "$marker" ] || return 1
+  jq -re '
+    select(.schema == "delegation_grok_shared_oauth_marker_v2") |
+    select((.generation | type == "string" and test("^gen-[0-9]+-[0-9]+$")) and
+           (.synced_sha256 | type == "string" and test("^[0-9a-f]{64}$")) and
+           (.policy_version | type == "string" and test("^[a-z0-9-]+$"))) |
+    "\(.generation) \(.synced_sha256) \(.policy_version)"
+  ' "$marker" 2>/dev/null
+}
+
+write_shared_marker() {
+  local generation="$1" synced_sha256="$2" root candidate
+  root="$(shared_oauth_root)"
+  candidate="$(mktemp "$root/.sync-marker.json.XXXXXX")" || return 1
+  if ! jq -n --arg generation "$generation" --arg synced_sha256 "$synced_sha256" \
+      --arg policy_version "$SHARED_POLICY_VERSION" \
+      '{schema:"delegation_grok_shared_oauth_marker_v2",
+        generation:$generation,synced_sha256:$synced_sha256,
+        policy_version:$policy_version}' >"$candidate" ||
+      ! chmod 600 "$candidate" || ! mv -f "$candidate" "$root/sync-marker.json"; then
+    rm -f -- "$candidate"
+    return 1
+  fi
+}
+
+write_grok_configuration() {
+  local grok_home="$1" config_path sandbox_path config_candidate sandbox_candidate
+  config_path="$grok_home/config.toml"
+  sandbox_path="$grok_home/sandbox.toml"
+  config_candidate="$(mktemp "$grok_home/.config.toml.delegation-grok.XXXXXX")" || return 1
+  sandbox_candidate="$(mktemp "$grok_home/.sandbox.toml.delegation-grok.XXXXXX")" || {
+    rm -f -- "$config_candidate"
+    return 1
+  }
+  cat >"$config_candidate" <<'EOF'
+[compat.claude]
+skills = false
+rules = false
+agents = false
+mcps = false
+hooks = false
+sessions = false
+
+[compat.cursor]
+skills = false
+rules = false
+agents = false
+mcps = false
+hooks = false
+sessions = false
+
+[compat.codex]
+sessions = false
+
+[workflows]
+enabled = false
+EOF
+  cat >"$sandbox_candidate" <<'EOF'
+[profiles.delegation-kit]
+extends = "strict"
+restrict_network = true
+
+[profiles.delegation-kit-read-only]
+extends = "read-only"
+restrict_network = true
+EOF
+  if ! chmod 600 "$config_candidate" "$sandbox_candidate" ||
+      ! mv -f "$config_candidate" "$config_path" ||
+      ! mv -f "$sandbox_candidate" "$sandbox_path"; then
+    rm -f -- "$config_candidate" "$sandbox_candidate"
+    return 1
+  fi
+}
+
+prepare_run_sandbox_profile() {
+  local base_profile="$1" sandbox_path candidate lock_rc=0
+  [ -n "$ACTIVE_GROK_HOME" ] || return 1
+  sandbox_path="$ACTIVE_GROK_HOME/sandbox.toml"
+  [ -f "$sandbox_path" ] && [ ! -L "$sandbox_path" ] || return 1
+  acquire_oauth_lock_wait || lock_rc=$?
+  [ "$lock_rc" -eq 0 ] || return "$lock_rc"
+  RUN_SANDBOX_PROFILE="delegation-kit-run-$$-$(date +%s)"
+  candidate="$(mktemp "$ACTIVE_GROK_HOME/.sandbox.toml.run.XXXXXX")" || {
+    release_oauth_lock
+    return 1
+  }
+  if ! cp "$sandbox_path" "$candidate" ||
+      ! printf '\n[profiles.%s]\nextends = "%s"\nrestrict_network = true\n' \
+        "$RUN_SANDBOX_PROFILE" "$base_profile" >>"$candidate" ||
+      ! chmod 600 "$candidate" || ! mv -f "$candidate" "$sandbox_path"; then
+    rm -f -- "$candidate"
+    release_oauth_lock
+    return 1
+  fi
+  release_oauth_lock
+}
+
+# Adopt one persistent Grok state generation. The kit lock is held only while
+# selecting or creating the generation; concurrent children then use the same
+# GROK_HOME, including the vendor's auth.json.lock, so only token refresh is
+# serialized. An external `grok login` changes the ambient hash and therefore
+# forces a new generation instead of being overwritten by an older run.
+seed_shared_oauth() {
+  local root marker marker_generation="" marker_sha="" marker_policy=""
+  local ambient_hash generation gen_dir stale lock_rc=0
+  root="$(shared_oauth_root)"
+  if [ -L "$root" ]; then
+    GROK_REASON="shared Grok OAuth root must not be a symlink"
+    return 69
+  fi
+  if ! mkdir -p "$root" || ! chmod 700 "$root"; then
+    GROK_REASON="could not create the shared Grok OAuth root"
+    return 69
+  fi
+  acquire_oauth_lock_wait || lock_rc=$?
+  if [ "$lock_rc" -eq 2 ]; then
+    GROK_REASON="another Grok invocation is updating OAuth state; retry after it finishes"
+    return 75
+  elif [ "$lock_rc" -ne 0 ]; then
+    GROK_REASON="could not secure the Grok OAuth credential"
+    return 69
+  fi
+  if ! ambient_hash="$(file_digest "$SOURCE_GROK_HOME/auth.json")"; then
+    GROK_REASON="could not fingerprint the ambient Grok OAuth credential"
+    release_oauth_lock
+    return 69
+  fi
+  if marker="$(read_shared_marker)"; then
+    marker_generation="${marker%% *}"
+    marker="${marker#* }"
+    marker_sha="${marker%% *}"
+    marker_policy="${marker##* }"
+  fi
+  if [ -n "$marker_generation" ] && [ "$marker_sha" = "$ambient_hash" ] &&
+      [ "$marker_policy" = "$SHARED_POLICY_VERSION" ] &&
+      [ ! -L "$root/$marker_generation" ] &&
+      credential_tokens_valid "$root/$marker_generation/auth.json" &&
+      [ -f "$root/$marker_generation/config.toml" ] &&
+      [ -f "$root/$marker_generation/sandbox.toml" ]; then
+    SHARED_OAUTH_GEN="$marker_generation"
+  else
+    generation="gen-$(date +%s)-$$"
+    gen_dir="$root/$generation"
+    if [ -e "$gen_dir" ] || [ -L "$gen_dir" ]; then
+      GROK_REASON="shared Grok OAuth generation path already exists"
+      release_oauth_lock
+      return 69
+    fi
+    if ! mkdir -p "$gen_dir" || ! chmod 700 "$gen_dir"; then
+      GROK_REASON="could not create a shared Grok OAuth generation"
+      release_oauth_lock
+      return 69
+    fi
+    if ! cp "$SOURCE_GROK_HOME/auth.json" "$gen_dir/auth.json" ||
+        ! chmod 600 "$gen_dir/auth.json" ||
+        ! write_grok_configuration "$gen_dir"; then
+      GROK_REASON="could not seed the shared Grok OAuth generation"
+      release_oauth_lock
+      return 69
+    fi
+    if ! write_shared_marker "$generation" "$ambient_hash"; then
+      GROK_REASON="could not record the shared Grok OAuth generation"
+      release_oauth_lock
+      return 69
+    fi
+    SHARED_OAUTH_GEN="$generation"
+  fi
+  # Keep the active generation plus the one it immediately superseded. A peer
+  # may still be finishing on that predecessor; older generations are dead
+  # credential copies and must not accumulate at rest.
+  for stale in "$root"/gen-*; do
+    [ -d "$stale" ] && [ ! -L "$stale" ] || continue
+    case "$(basename "$stale")" in
+      "$SHARED_OAUTH_GEN"|"$marker_generation") ;;
+      *) rm -rf -- "$stale" ;;
+    esac
+  done
+  release_oauth_lock
+  if ! SHARED_OAUTH_DIR="$(cd "$root/$SHARED_OAUTH_GEN" && pwd -P)"; then
+    GROK_REASON="could not resolve the shared Grok OAuth generation"
+    return 69
+  fi
+  return 0
+}
+
+# Publish a rotated shared credential back to the ambient login using optimistic
+# concurrency. Return 2 when an external login superseded this generation and 3
+# when publication is deferred because another short bookkeeping lock is busy.
+publish_shared_oauth() {
+  local marker marker_generation marker_sha marker_policy shared_credential shared_hash
+  local ambient_hash target_dir candidate lock_rc=0 rc=0
+  shared_credential="$SHARED_OAUTH_DIR/auth.json"
+  acquire_oauth_lock_wait || lock_rc=$?
+  [ "$lock_rc" -ne 2 ] || return 3
+  [ "$lock_rc" -eq 0 ] || return 1
+  if ! marker="$(read_shared_marker)"; then
+    rc=1
+  else
+    marker_generation="${marker%% *}"
+    marker="${marker#* }"
+    marker_sha="${marker%% *}"
+    marker_policy="${marker##* }"
+    if [ "$marker_generation" != "$SHARED_OAUTH_GEN" ]; then
+      rc=2
+    elif [ "$marker_policy" != "$SHARED_POLICY_VERSION" ]; then
+      rc=2
+    elif ! shared_hash="$(file_digest "$shared_credential")"; then
+      rc=1
+    elif [ "$shared_hash" = "$marker_sha" ]; then
+      rc=0
+    elif ! credential_tokens_valid "$shared_credential"; then
+      rc=1
+    elif [ ! -f "$SOURCE_GROK_HOME/auth.json" ] || [ -L "$SOURCE_GROK_HOME/auth.json" ]; then
+      rc=2
+    elif ! ambient_hash="$(file_digest "$SOURCE_GROK_HOME/auth.json")"; then
+      rc=1
+    elif [ "$ambient_hash" != "$marker_sha" ]; then
+      rc=2
+    else
+      target_dir="$SOURCE_GROK_HOME"
+      candidate="$(mktemp "$target_dir/.auth.json.delegation-grok.XXXXXX")" || rc=1
+      if [ "$rc" -eq 0 ]; then
+        if cp "$shared_credential" "$candidate" && chmod 600 "$candidate" &&
+            mv -f "$candidate" "$SOURCE_GROK_HOME/auth.json"; then
+          write_shared_marker "$SHARED_OAUTH_GEN" "$shared_hash" || rc=1
+        else
+          rm -f -- "$candidate"
+          rc=1
+        fi
+      fi
+    fi
+  fi
+  release_oauth_lock
+  return "$rc"
+}
+
+sync_serialized_oauth() {
+  local scratch_credential="$ACTIVE_GROK_HOME/auth.json"
+  local scratch_hash current_hash candidate
+  [ -f "$scratch_credential" ] && [ ! -L "$scratch_credential" ] || return 1
+  scratch_hash="$(file_digest "$scratch_credential")" || return 1
+  [ "$scratch_hash" != "$OAUTH_BASELINE_HASH" ] || return 0
+  credential_tokens_valid "$scratch_credential" || return 1
+  [ -f "$SOURCE_GROK_HOME/auth.json" ] && [ ! -L "$SOURCE_GROK_HOME/auth.json" ] || return 2
+  current_hash="$(file_digest "$SOURCE_GROK_HOME/auth.json")" || return 1
+  [ "$current_hash" = "$OAUTH_BASELINE_HASH" ] || return 2
+  candidate="$(mktemp "$SOURCE_GROK_HOME/.auth.json.delegation-grok.XXXXXX")" || return 1
+  if ! cp "$scratch_credential" "$candidate" || ! chmod 600 "$candidate" ||
+      ! mv -f "$candidate" "$SOURCE_GROK_HOME/auth.json"; then
+    rm -f -- "$candidate"
+    return 1
+  fi
+}
+
 observed_cli_version() {
   local bin="$1" probe_home="$2" version
-  version="$(HOME="$probe_home" "$bin" --version 2>/dev/null | head -1 || true)"
+  version="$(HOME="$probe_home" GROK_HOME="$probe_home/.grok" \
+    "$bin" --version 2>/dev/null | head -1 || true)"
   if [[ "$version" =~ ^grok[[:space:]]+([^[:space:]]+) ]]; then
     printf '%s\n' "${BASH_REMATCH[1]}"
   elif [ -n "$version" ]; then
@@ -141,11 +522,11 @@ observed_cli_version() {
 
 supports_required_interface() {
   local bin="$1" probe_home="$2" help inspect_help command_name
-  help="$(HOME="$probe_home" "$bin" --help 2>&1 || true)"
+  help="$(HOME="$probe_home" GROK_HOME="$probe_home/.grok" "$bin" --help 2>&1 || true)"
   # Parse the complete dispatch surface under `--help`. This catches removed or
   # renamed flags without starting a session, including hidden compatibility
   # flags that may not be printed in the top-level help.
-  HOME="$probe_home" "$bin" \
+  HOME="$probe_home" GROK_HOME="$probe_home/.grok" "$bin" \
     --prompt-file /dev/null \
     --model "$RUNTIME_MODEL" --reasoning-effort high \
     --permission-mode dontAsk --sandbox "$SANDBOX_PROFILE" \
@@ -159,9 +540,11 @@ supports_required_interface() {
     --help >/dev/null 2>&1 || return 1
   for command_name in models inspect; do
     grep -Eq "^[[:space:]]+$command_name([[:space:]]|$)" <<<"$help" || return 1
-    HOME="$probe_home" "$bin" "$command_name" --help >/dev/null 2>&1 || return 1
+    HOME="$probe_home" GROK_HOME="$probe_home/.grok" \
+      "$bin" "$command_name" --help >/dev/null 2>&1 || return 1
   done
-  inspect_help="$(HOME="$probe_home" "$bin" inspect --help 2>&1 || true)"
+  inspect_help="$(HOME="$probe_home" GROK_HOME="$probe_home/.grok" \
+    "$bin" inspect --help 2>&1 || true)"
   grep -q -- '--json' <<<"$inspect_help"
 }
 
@@ -242,55 +625,32 @@ timeout_bin() {
 }
 
 prepare_isolated_home() {
-  local isolated_home="$1" auth_path config_path sandbox_path
-  auth_path="$isolated_home/.grok/auth.json"
-  config_path="$isolated_home/.grok/config.toml"
-  sandbox_path="$isolated_home/.grok/sandbox.toml"
+  local isolated_home="$1" oauth_mode="${2:-serialized}"
   [ -r "$SOURCE_GROK_HOME/auth.json" ] || {
     GROK_REASON="Grok Build credentials missing; run: grok login"
     return 1
   }
-  mkdir -p "$isolated_home/.grok"
-  cp "$SOURCE_GROK_HOME/auth.json" "$auth_path"
-  chmod 600 "$auth_path"
-  cat >"$config_path" <<'EOF'
-[compat.claude]
-skills = false
-rules = false
-agents = false
-mcps = false
-hooks = false
-sessions = false
-
-[compat.cursor]
-skills = false
-rules = false
-agents = false
-mcps = false
-hooks = false
-sessions = false
-
-[compat.codex]
-sessions = false
-
-[workflows]
-enabled = false
-EOF
-  cat >"$sandbox_path" <<'EOF'
-[profiles.delegation-kit]
-extends = "strict"
-restrict_network = true
-
-[profiles.delegation-kit-read-only]
-extends = "read-only"
-restrict_network = true
-EOF
-  chmod 600 "$config_path" "$sandbox_path"
+  mkdir -p "$isolated_home" && chmod 700 "$isolated_home"
+  if [ "$oauth_mode" = shared ]; then
+    if [ -z "$SHARED_OAUTH_DIR" ] ||
+        ! credential_tokens_valid "$SHARED_OAUTH_DIR/auth.json"; then
+      GROK_REASON="shared Grok OAuth generation is unavailable"
+      return 1
+    fi
+    ACTIVE_GROK_HOME="$SHARED_OAUTH_DIR"
+  else
+    ACTIVE_GROK_HOME="$isolated_home/.grok"
+    mkdir -p "$ACTIVE_GROK_HOME"
+    cp "$SOURCE_GROK_HOME/auth.json" "$ACTIVE_GROK_HOME/auth.json"
+    chmod 600 "$ACTIVE_GROK_HOME/auth.json"
+    write_grok_configuration "$ACTIVE_GROK_HOME"
+  fi
 }
 
 inspect_isolation() {
   local isolated_home="$1" inspect_file="$2" inspect_workdir="${3:-$PWD}"
-  (cd "$inspect_workdir" && HOME="$isolated_home" "$GROK_BIN" inspect --json) \
+  (cd "$inspect_workdir" && HOME="$isolated_home" GROK_HOME="$ACTIVE_GROK_HOME" \
+    "$GROK_BIN" inspect --json) \
     >"$inspect_file" 2>/dev/null || {
     GROK_REASON="Grok Build isolation inspection failed"
     return 1
@@ -306,6 +666,18 @@ inspect_isolation() {
   }
 }
 
+sandbox_attested_for_run() {
+  local events_file="$1" profile="$2" workspace="$3" event
+  [ -f "$events_file" ] || return 1
+  while IFS= read -r event || [ -n "$event" ]; do
+    jq -e --arg profile "$profile" --arg workspace "$workspace" '
+      .event_type == "ProfileApplied" and .profile == $profile and
+      .enforced == true and .workspace == $workspace
+    ' <<<"$event" >/dev/null 2>&1 && return 0
+  done <"$events_file"
+  return 1
+}
+
 validate_gate_graph() {
   [ -x "$ROUTER" ] || return 1
   DELEGATION_ROUTING_GATES_FILE="$CENTRAL_GATES" \
@@ -314,17 +686,61 @@ validate_gate_graph() {
 }
 
 runtime_status() {
+  local oauth_mode="${1:-serialized}"
   GROK_REASON=""
   have jq || { GROK_REASON="jq is required"; return 1; }
   timeout_bin >/dev/null || { GROK_REASON="timeout or gtimeout is required"; return 1; }
   [[ "$TIMEOUT_SECONDS" =~ ^[1-9][0-9]*$ ]] \
     || { GROK_REASON="DELEGATION_GROK_TIMEOUT_SECONDS must be a positive integer"; return 1; }
-  local models status_tmp
+  local models status_tmp lock_rc=0 sync_rc=0 seed_rc=0
   status_tmp="$(mktemp -d "${TMPDIR:-/tmp}/delegation-grok-status.XXXXXX")"
   resolve_grok_bin "$status_tmp/probe" || { rm -rf -- "$status_tmp"; return 1; }
-  prepare_isolated_home "$status_tmp/home" || { rm -rf -- "$status_tmp"; return 1; }
-  models="$(HOME="$status_tmp/home" "$GROK_BIN" models 2>&1)" \
-    || { rm -rf -- "$status_tmp"; GROK_REASON="Grok Build model inventory unavailable; run: grok login"; return 1; }
+  if [ "$oauth_mode" = shared ]; then
+    seed_shared_oauth || seed_rc=$?
+    if [ "$seed_rc" -ne 0 ]; then
+      rm -rf -- "$status_tmp"
+      return 1
+    fi
+    prepare_isolated_home "$status_tmp/home" shared \
+      || { rm -rf -- "$status_tmp"; return 1; }
+  else
+    acquire_oauth_lock_wait || lock_rc=$?
+    if [ "$lock_rc" -eq 2 ]; then
+      rm -rf -- "$status_tmp"
+      GROK_REASON="another Grok invocation is using the OAuth refresh session"
+      return 1
+    elif [ "$lock_rc" -ne 0 ]; then
+      rm -rf -- "$status_tmp"
+      GROK_REASON="could not secure the Grok OAuth credential"
+      return 1
+    fi
+    prepare_isolated_home "$status_tmp/home" serialized \
+      || { rm -rf -- "$status_tmp"; release_oauth_lock; return 1; }
+    OAUTH_BASELINE_HASH="$(file_digest "$ACTIVE_GROK_HOME/auth.json")" \
+      || { rm -rf -- "$status_tmp"; release_oauth_lock; GROK_REASON="could not fingerprint Grok OAuth state"; return 1; }
+  fi
+  models="$(HOME="$status_tmp/home" GROK_HOME="$ACTIVE_GROK_HOME" "$GROK_BIN" models 2>&1)" || {
+    if [ "$oauth_mode" = shared ]; then publish_shared_oauth >/dev/null 2>&1 || true
+    else sync_serialized_oauth >/dev/null 2>&1 || true
+    fi
+    release_oauth_lock
+    rm -rf -- "$status_tmp"
+    GROK_REASON="Grok Build model inventory unavailable; run: grok login"
+    return 1
+  }
+  if [ "$oauth_mode" = shared ]; then publish_shared_oauth || sync_rc=$?
+  else sync_serialized_oauth || sync_rc=$?
+  fi
+  release_oauth_lock
+  if [ "$sync_rc" -eq 2 ]; then
+    rm -rf -- "$status_tmp"
+    GROK_REASON="Grok OAuth changed during status inspection; retry"
+    return 1
+  elif [ "$sync_rc" -ne 0 ] && [ "$sync_rc" -ne 3 ]; then
+    rm -rf -- "$status_tmp"
+    GROK_REASON="Grok OAuth refresh could not be persisted"
+    return 1
+  fi
   grep -Fq "You are logged in with grok.com." <<<"$models" \
     || { rm -rf -- "$status_tmp"; GROK_REASON="Grok Build is logged out; run: grok login"; return 1; }
   grep -Eq '^[[:space:]]*\*?[[:space:]]*grok-4\.6([[:space:]]|$)' <<<"$models" \
@@ -363,9 +779,12 @@ default_effort() {
 
 print_check() {
   local as_json="${1:-0}" available=false selected="none" lanes provisional
+  local oauth_mode="${DELEGATION_GROK_OAUTH_MODE:-serialized}"
+  case "$oauth_mode" in serialized|shared) ;; *) die 64 "invalid OAuth mode: $oauth_mode" ;; esac
   have jq || die 69 "jq is required"
   validate_gate_graph || die 78 "central and executable routing gates are missing, invalid, or inconsistent"
-  runtime_status && available=true || true
+  OAUTH_MODE="$oauth_mode"
+  runtime_status "$oauth_mode" && available=true || true
   lanes="$(qualified_lanes)"
   provisional="$(provisional_lanes)"
   [ "$available" = true ] && selected="$BACKEND"
@@ -378,7 +797,7 @@ print_check() {
       --arg cli_compatibility "$CLI_COMPATIBILITY" \
       --arg cli_source "$GROK_BIN_SOURCE" --arg cli_path "$GROK_BIN" \
       --arg sandbox "$SANDBOX_PROFILE" --argjson max_turns "$MAX_TURNS" \
-      --argjson timeout_seconds "$TIMEOUT_SECONDS" \
+      --argjson timeout_seconds "$TIMEOUT_SECONDS" --arg oauth_mode "$oauth_mode" \
       '{model:$model,runtime_model:$runtime_model,usage_model:$usage_model,
         runtime_cli_version:$cli_version,runtime_cli_compatibility:$cli_compatibility,
         runtime_cli_source:$cli_source,
@@ -387,13 +806,17 @@ print_check() {
         provisional_lanes:$provisional,backends:{"grok-build":{
           available:$available,reason:$reason,efforts:["high"],
           sandbox:$sandbox,permission_mode:"dontAsk",
+          oauth_modes:["serialized","shared"],oauth_mode:$oauth_mode,
+          runtime_home_isolated:true,
+          grok_home_mode:(if $oauth_mode == "shared" then "shared-generation" else "isolated-copy" end),
+          credential_state_shared:($oauth_mode == "shared"),
           max_turns:$max_turns,timeout_seconds:$timeout_seconds,
           isolated_home:true,plugins:false,mcp:false,terminal:false}}}'
   else
     printf 'Grok 4.6: selected=%s qualified=%s provisional=%s\n' "$selected" "$lanes" "$provisional"
-    printf '  grok-build: %s (%s; model=%s; cli=%s from %s; effort=high; sandbox=%s; max-turns=%s; timeout=%ss)\n' \
+    printf '  grok-build: %s (%s; model=%s; cli=%s from %s; effort=high; oauth=%s; sandbox=%s; max-turns=%s; timeout=%ss)\n' \
       "$available" "$GROK_REASON" "$RUNTIME_MODEL" "$GROK_CLI_VERSION" \
-      "$GROK_BIN_SOURCE" "$SANDBOX_PROFILE" "$MAX_TURNS" "$TIMEOUT_SECONDS"
+      "$GROK_BIN_SOURCE" "$oauth_mode" "$SANDBOX_PROFILE" "$MAX_TURNS" "$TIMEOUT_SECONDS"
   fi
 }
 
@@ -441,7 +864,11 @@ extract_result() {
      runtime_cli_version:$cli_version,runtime_cli_compatibility:$cli_compatibility,
      runtime_cli_source:$cli_source,
      sandbox:$sandbox,permission_mode:"dontAsk",
-     isolated_home:true,plugins:false,mcp:false,
+     oauth_mode:$oauth_mode,oauth_sync:$oauth_sync,
+     isolated_home:true,runtime_home_isolated:true,
+     grok_home_mode:(if $oauth_mode == "shared" then "shared-generation" else "isolated-copy" end),
+     credential_state_shared:($oauth_mode == "shared"),
+     plugins:false,mcp:false,
      terminal:false,
      max_turns:$max_turns,timeout_seconds:$timeout_seconds,
      started_at_epoch:$started,finished_at_epoch:now,
@@ -452,7 +879,8 @@ extract_result() {
      provider_cost_usd:$cost}
   ' --arg cli_version "$GROK_CLI_VERSION" --arg cli_compatibility "$CLI_COMPATIBILITY" \
     --arg cli_source "$GROK_BIN_SOURCE" \
-    --arg sandbox "$sandbox" \
+    --arg sandbox "$sandbox" --arg oauth_mode "$OAUTH_MODE" \
+    --arg oauth_sync "$OAUTH_SYNC_STATUS" \
     --argjson max_turns "$MAX_TURNS" --argjson timeout_seconds "$timeout_seconds" \
     "$response" >"$metrics"
 }
@@ -464,6 +892,7 @@ write_diagnostic() {
   jq -n --arg model "$MODEL" --arg runtime_model "$RUNTIME_MODEL" \
     --arg cli_version "$GROK_CLI_VERSION" --arg lane "$lane" \
     --arg cli_compatibility "$CLI_COMPATIBILITY" \
+    --arg oauth_mode "$OAUTH_MODE" --arg oauth_sync "$OAUTH_SYNC_STATUS" \
     --arg phase "$phase" --arg reason "$reason" --argjson rc "$rc" \
     --argjson started "$started" --argjson finished "$finished" \
     --argjson stdout_bytes "$(wc -c <"$response" | tr -d ' ')" \
@@ -472,6 +901,8 @@ write_diagnostic() {
     {model:$model,runtime_model:$runtime_model,runtime_cli_version:$cli_version,
      runtime_cli_compatibility:$cli_compatibility,
      backend:"grok-build",effort:"high",lane:$lane,phase:$phase,reason:$reason,
+     oauth_mode:$oauth_mode,oauth_sync:$oauth_sync,
+     grok_home_mode:(if $oauth_mode == "shared" then "shared-generation" else "isolated-copy" end),
      cli_exit_code:$rc,started_at_epoch:$started,finished_at_epoch:$finished,
      duration_seconds:($finished-$started),
      captured_bytes:{stdout:$stdout_bytes,stderr:$stderr_bytes},
@@ -492,6 +923,7 @@ preserve_debug() {
 run_command() {
   local lane="" effort="auto" backend="auto" prompt_file="" output="" workdir="" metrics="" debug_dir="" evaluation_manifest_path=""
   local allow_provisional=0 evaluation=0 preflight_only=0
+  local oauth_mode="${DELEGATION_GROK_OAUTH_MODE:-serialized}"
   while [ "$#" -gt 0 ]; do
     case "$1" in
       --lane) lane="${2:-}"; shift 2 ;;
@@ -502,6 +934,7 @@ run_command() {
       --workdir) workdir="${2:-}"; shift 2 ;;
       --metrics) metrics="${2:-}"; shift 2 ;;
       --debug-dir) debug_dir="${2:-}"; shift 2 ;;
+      --oauth) oauth_mode="${2:-}"; shift 2 ;;
       --allow-provisional) allow_provisional=1; shift ;;
       --evaluation) evaluation=1; shift ;;
       --evaluation-manifest) evaluation_manifest_path="${2:-}"; shift 2 ;;
@@ -513,9 +946,13 @@ run_command() {
   case "$lane" in builder|frontend-builder|policy-annotation) ;; *) die 64 "invalid lane: $lane" ;; esac
   case "$effort" in auto|high) ;; *) die 64 "invalid effort: $effort" ;; esac
   case "$backend" in auto|grok-build) ;; *) die 64 "invalid backend: $backend" ;; esac
+  case "$oauth_mode" in serialized|shared) ;; *) die 64 "invalid OAuth mode: $oauth_mode" ;; esac
+  OAUTH_MODE="$oauth_mode"
   [ -f "$prompt_file" ] || die 64 "prompt file missing: $prompt_file"
   [ -s "$prompt_file" ] || die 64 "prompt file must not be empty"
   if [ "$evaluation" = 1 ]; then [ -n "$evaluation_manifest_path" ] || die 64 "--evaluation requires --evaluation-manifest"; else [ -z "$evaluation_manifest_path" ] || die 64 "--evaluation-manifest requires --evaluation"; fi
+  [ "$evaluation" = 0 ] || [ "$oauth_mode" = serialized ] \
+    || die 64 "evaluation runs require serialized OAuth mode"
   [ "$preflight_only" = 0 ] || [ "$evaluation" = 1 ] || die 64 "--preflight-only requires --evaluation and --evaluation-manifest"
   [ -d "$workdir" ] || die 64 "workdir missing: $workdir"
   [ -z "$debug_dir" ] || [ -d "$debug_dir" ] || die 64 "debug directory missing: $debug_dir"
@@ -541,7 +978,7 @@ run_command() {
   cp -- "$prompt_file" "$RUN_TMP/prompt.txt" \
     || die 70 "could not snapshot prompt into runner-owned storage"
   [ "$evaluation" = 0 ] || evaluation_manifest "$evaluation_manifest_path" "$RUN_TMP/prompt.txt"
-  runtime_status || die 69 "$GROK_REASON"
+  runtime_status "$oauth_mode" || die 69 "$GROK_REASON"
 
   workdir="$(cd "$workdir" && pwd -P)"
   metrics="${metrics:-$output.metrics.json}"
@@ -579,7 +1016,22 @@ run_command() {
   # inspect it here, before any receipt, so an evaluation preflight traverses
   # exactly the same isolation path as the real dispatch, which reuses this
   # prepared state below instead of repeating it.
-  prepare_isolated_home "$RUN_TMP/home" || die 69 "$GROK_REASON"
+  local lock_rc=0 sync_rc=0 seed_rc=0
+  if [ "$oauth_mode" = shared ]; then
+    seed_shared_oauth || seed_rc=$?
+    [ "$seed_rc" -eq 0 ] || die "$seed_rc" "$GROK_REASON"
+    prepare_isolated_home "$RUN_TMP/home" shared || die 69 "$GROK_REASON"
+  else
+    acquire_oauth_lock_wait || lock_rc=$?
+    if [ "$lock_rc" -eq 2 ]; then
+      die 75 "another Grok invocation is using the OAuth refresh session; retry after it finishes"
+    elif [ "$lock_rc" -ne 0 ]; then
+      die 69 "could not secure the Grok OAuth credential"
+    fi
+    prepare_isolated_home "$RUN_TMP/home" serialized || die 69 "$GROK_REASON"
+    OAUTH_BASELINE_HASH="$(file_digest "$ACTIVE_GROK_HOME/auth.json")" \
+      || die 69 "could not fingerprint isolated Grok OAuth state"
+  fi
   inspect_isolation "$RUN_TMP/home" "$RUN_TMP/inspect.json" "$workdir" || die 69 "$GROK_REASON"
 
   # Preflight ends here: every pre-provider check the real evaluation run makes
@@ -591,6 +1043,7 @@ run_command() {
   fi
 
   local response result_tmp metrics_tmp stderr_file rc=0 started timer reason phase
+  local sandbox_events sandbox_event_start=0 sandbox_events_run
   local DEBUG_PATH=""
   response="$RUN_TMP/response.json"; result_tmp="$RUN_TMP/result.txt"
   metrics_tmp="$RUN_TMP/metrics.json"; stderr_file="$RUN_TMP/stderr.txt"
@@ -602,6 +1055,20 @@ run_command() {
   [ "$lane" != policy-annotation ] || execution_tools='grep,read_file,list_dir'
   local execution_sandbox="$SANDBOX_PROFILE"
   [ "$lane" != policy-annotation ] || execution_sandbox="delegation-kit-read-only"
+  if [ "$oauth_mode" = shared ]; then
+    local profile_rc=0 profile_base="strict"
+    [ "$lane" != policy-annotation ] || profile_base="read-only"
+    prepare_run_sandbox_profile "$profile_base" || profile_rc=$?
+    if [ "$profile_rc" -eq 2 ]; then
+      die 75 "could not secure the shared Grok sandbox profile; retry"
+    elif [ "$profile_rc" -ne 0 ]; then
+      die 69 "could not prepare a run-owned Grok sandbox profile"
+    fi
+    execution_sandbox="$RUN_SANDBOX_PROFILE"
+  fi
+  sandbox_events="$ACTIVE_GROK_HOME/sandbox-events.jsonl"
+  [ ! -f "$sandbox_events" ] || sandbox_event_start="$(wc -l <"$sandbox_events" | tr -d ' ')"
+  sandbox_events_run="$RUN_TMP/sandbox-events.run.jsonl"
   local -a grok_command=("$GROK_BIN" --prompt-file "$RUN_TMP/prompt.txt" \
     --model "$RUNTIME_MODEL" --reasoning-effort high \
     --permission-mode dontAsk --sandbox "$execution_sandbox" \
@@ -612,9 +1079,41 @@ run_command() {
     --max-turns "$MAX_TURNS" \
     --deny 'Edit(**/.grok/config.toml)' \
     --deny 'Edit(**/.grok/sandbox.toml)' \
-    --deny 'Edit(**/.grok/auth.json)')
-  (cd "$workdir" && HOME="$RUN_TMP/home" "$timer" -k 10 "$execution_timeout" "${grok_command[@]}") \
+    --deny 'Edit(**/.grok/auth.json)' \
+    --deny 'Edit(**/sandbox-events.jsonl)' \
+    --deny "Edit($ACTIVE_GROK_HOME/config.toml)" \
+    --deny "Edit($ACTIVE_GROK_HOME/sandbox.toml)" \
+    --deny "Edit($ACTIVE_GROK_HOME/auth.json)" \
+    --deny "Edit($ACTIVE_GROK_HOME/sandbox-events.jsonl)")
+  (cd "$workdir" && HOME="$RUN_TMP/home" GROK_HOME="$ACTIVE_GROK_HOME" \
+    "$timer" -k 10 "$execution_timeout" "${grok_command[@]}") \
     >"$response" 2>"$stderr_file" || rc=$?
+  if [ "$oauth_mode" = shared ]; then publish_shared_oauth || sync_rc=$?
+  else sync_serialized_oauth || sync_rc=$?
+  fi
+  case "$sync_rc" in
+    0) OAUTH_SYNC_STATUS="ok" ;;
+    2) OAUTH_SYNC_STATUS="conflict" ;;
+    3) OAUTH_SYNC_STATUS="deferred" ;;
+    *) OAUTH_SYNC_STATUS="failed" ;;
+  esac
+  release_oauth_lock
+  if [ "$sync_rc" -eq 2 ]; then
+    preserve_debug "$debug_dir" "$response" "$stderr_file"
+    write_diagnostic "$diagnostic" "oauth-sync" "oauth_conflict" "$rc" "$started" \
+      "$response" "$stderr_file" "$DEBUG_PATH"
+    die 75 "Grok OAuth changed during dispatch; sanitized diagnostic: $diagnostic"
+  elif [ "$sync_rc" -ne 0 ] && [ "$sync_rc" -ne 3 ]; then
+    preserve_debug "$debug_dir" "$response" "$stderr_file"
+    write_diagnostic "$diagnostic" "oauth-sync" "oauth_sync_failed" "$rc" "$started" \
+      "$response" "$stderr_file" "$DEBUG_PATH"
+    die 70 "Grok OAuth refresh could not be persisted; sanitized diagnostic: $diagnostic"
+  elif [ "$sync_rc" -eq 3 ]; then
+    preserve_debug "$debug_dir" "$response" "$stderr_file"
+    write_diagnostic "$diagnostic" "oauth-sync" "oauth_publish_deferred" "$rc" "$started" \
+      "$response" "$stderr_file" "$DEBUG_PATH"
+    die 75 "Grok OAuth publication was deferred; retry after the competing invocation finishes; sanitized diagnostic: $diagnostic"
+  fi
   if [ "$rc" -ne 0 ]; then
     phase="dispatch"; reason="dispatch_failed"
     [ "$rc" -ne 124 ] && [ "$rc" -ne 137 ] || reason="timeout"
@@ -629,9 +1128,12 @@ run_command() {
       *) die 70 "Grok Build dispatch failed (exit $rc); sanitized diagnostic: $diagnostic" ;;
     esac
   fi
-  jq -e --arg profile "$execution_sandbox" '
-    select(.event_type == "ProfileApplied" and .profile == $profile and .enforced == true)
-  ' "$RUN_TMP/home/.grok/sandbox-events.jsonl" >/dev/null 2>&1 || {
+  if [ -f "$sandbox_events" ]; then
+    tail -n "+$((sandbox_event_start + 1))" "$sandbox_events" >"$sandbox_events_run"
+  else
+    : >"$sandbox_events_run"
+  fi
+  sandbox_attested_for_run "$sandbox_events_run" "$execution_sandbox" "$workdir" || {
     preserve_debug "$debug_dir" "$response" "$stderr_file"
     write_diagnostic "$diagnostic" "sandbox" "sandbox_not_enforced" 0 "$started" \
       "$response" "$stderr_file" "$DEBUG_PATH"

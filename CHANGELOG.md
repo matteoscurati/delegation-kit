@@ -4,6 +4,38 @@ All notable changes to delegation-kit are documented here.
 
 ## Unreleased
 
+## [0.18.0] — 2026-08-27
+
+### Added
+
+- Added `delegation-grok run --oauth shared` for concurrent Grok Build workers.
+  Operational runs share one runner-owned persistent `GROK_HOME` generation,
+  use the vendor auth lock for refresh coordination, and hold the kit lock only
+  for generation adoption and atomic publication. External `grok login` wins a
+  conflict; corrupt or superseded OAuth state fails closed. Evaluations remain
+  serialized.
+
+### Fixed
+
+- Serialized Grok runs now hold an OAuth lock for the complete dispatch and
+  atomically publish validated refreshed credentials back to the ambient login,
+  instead of deleting a refreshed token with the ephemeral HOME. Sandbox
+  attestation uses a unique per-run profile and ignores peer/malformed events;
+  the agent cannot edit the credential, policy, or attestation files. Superseded
+  credential generations are bounded instead of accumulating at rest.
+
+### Verified
+
+- The 0.18.0 release candidate passed all 12 regression suites in 52 seconds,
+  59 routing checks, ShellCheck, evidence validation, version consistency, and
+  `git diff --check`. A real two-worker Grok 4.6/high smoke returned `PONG`
+  twice in about five seconds, left both workspaces empty, and finished with
+  ambient/shared OAuth hashes aligned. The provider did not separately expose
+  the effective content model, so the smoke is operational compatibility proof,
+  not strict model-identity evidence. The installed release candidate matched
+  source across the changed runner, gates, and skills; the live doctor command
+  completed with `57 OK, 0 WARN, 0 FAIL`.
+
 ## [0.17.0] — 2026-08-18
 
 ### Changed

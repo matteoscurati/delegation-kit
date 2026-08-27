@@ -4,15 +4,19 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 TMP="$(mktemp -d "${TMPDIR:-/tmp}/delegation-grok-tests.XXXXXX")"
 trap 'rm -rf -- "$TMP"' EXIT
+export DELEGATION_DATA_HOME="$TMP/runtime"
 mkdir -p "$TMP/bin" "$TMP/work" "$TMP/results" "$TMP/debug" "$TMP/grok-home"
 chmod 700 "$TMP/debug" "$TMP/grok-home"
-printf '%s\n' '{"test":"credential"}' >"$TMP/grok-home/auth.json"
+jq -n '{"https://auth.x.ai::test":{key:"initial-access",refresh_token:"initial-refresh",expires_at:"2099-01-01T00:00:00Z"}}' \
+  >"$TMP/grok-home/auth.json"
+chmod 600 "$TMP/grok-home/auth.json"
 
 fail() { printf 'grok runner test failed: %s\n' "$*" >&2; exit 1; }
 
 cat >"$TMP/bin/grok" <<'EOF'
 #!/usr/bin/env bash
 set -euo pipefail
+FAKE_GROK_HOME="${GROK_HOME:-$HOME/.grok}"
 case "${1:-}" in
   --help)
     printf '%s\n' \
@@ -53,6 +57,12 @@ case "${1:-}" in
     ;;
 esac
 args=" $* "
+sandbox_profile=""
+previous=""
+for argument in "$@"; do
+  if [ "$previous" = --sandbox ]; then sandbox_profile="$argument"; break; fi
+  previous="$argument"
+done
 for required in \
   '--model grok-4.6' '--reasoning-effort high' \
   '--permission-mode dontAsk' \
@@ -62,44 +72,120 @@ for required in \
   '--deny Edit(**/.grok/sandbox.toml)' '--deny Edit(**/.grok/auth.json)'; do
   case "$args" in *" $required "*) ;; *) printf 'missing required argument: %s\n' "$required" >&2; exit 2 ;; esac
 done
-if [[ "$args" == *" --sandbox delegation-kit-read-only "* ]]; then
-  sandbox_profile=delegation-kit-read-only
-  grep -q '^extends = "read-only"$' "$HOME/.grok/sandbox.toml" \
+if [ "$sandbox_profile" = delegation-kit-read-only ]; then
+  grep -q '^extends = "read-only"$' "$FAKE_GROK_HOME/sandbox.toml" \
     || { printf 'read-only sandbox profile is missing enforcement\n' >&2; exit 2; }
-  ! grep -q '^read_only = true$' "$HOME/.grok/sandbox.toml" \
+  ! grep -q '^read_only = true$' "$FAKE_GROK_HOME/sandbox.toml" \
     || { printf 'read-only sandbox profile uses unsupported boolean syntax\n' >&2; exit 2; }
   for required in '--tools grep,read_file,list_dir'; do
     case "$args" in *" $required "*) ;; *) printf 'missing read-only argument: %s\n' "$required" >&2; exit 2 ;; esac
   done
   case "$args" in *' --allow Edit(**) '*) printf 'read-only invocation exposed Edit\n' >&2; exit 2 ;; esac
 else
-  sandbox_profile=delegation-kit
+  case "$sandbox_profile" in
+    delegation-kit|delegation-kit-run-*) ;;
+    *) printf 'unexpected builder sandbox profile: %s\n' "$sandbox_profile" >&2; exit 2 ;;
+  esac
   for required in \
-    '--sandbox delegation-kit' \
     '--tools grep,read_file,search_replace,list_dir,todo_write' \
     '--allow Edit(**)'; do
     case "$args" in *" $required "*) ;; *) printf 'missing builder argument: %s\n' "$required" >&2; exit 2 ;; esac
   done
+  if [[ "$sandbox_profile" == delegation-kit-run-* ]]; then
+    grep -q "^\[profiles\.$sandbox_profile\]\$" "$FAKE_GROK_HOME/sandbox.toml" \
+      || { printf 'run-owned sandbox profile is missing\n' >&2; exit 2; }
+    case "$args" in
+      *' --deny Edit(**/sandbox-events.jsonl) '*) ;;
+      *) printf 'sandbox event glob is not denied\n' >&2; exit 2 ;;
+    esac
+    for protected in config.toml sandbox.toml auth.json sandbox-events.jsonl; do
+      case "$args" in
+        *" --deny Edit($FAKE_GROK_HOME/$protected) "*) ;;
+        *) printf 'shared Grok path is not denied: %s\n' "$protected" >&2; exit 2 ;;
+      esac
+    done
+  fi
 fi
 case "$args" in *" --help "*) exit 0 ;; esac
 [ -z "${GROK_FAKE_DISPATCH_LOG:-}" ] || printf 'dispatch\n' >>"$GROK_FAKE_DISPATCH_LOG"
+prompt_path=""
+previous=""
+for argument in "$@"; do
+  if [ "$previous" = --prompt-file ]; then prompt_path="$argument"; break; fi
+  previous="$argument"
+done
+prompt_text=""
+[ -z "$prompt_path" ] || prompt_text="$(<"$prompt_path")"
 case "${GROK_FAKE_MODE:-success}" in
   auth) printf 'raw secret login required status 401\n' >&2; exit 1 ;;
   rate) printf 'raw secret rate limit status 429\n' >&2; exit 1 ;;
   timeout) sleep 3; exit 0 ;;
 esac
-mkdir -p "$HOME/.grok"
+mkdir -p "$FAKE_GROK_HOME"
+case "$prompt_text" in
+  ROTATE_OAUTH)
+    jq -n '{"https://auth.x.ai::test":{key:"rotated-access",refresh_token:"rotated-refresh",expires_at:"2099-02-01T00:00:00Z"}}' \
+      >"$FAKE_GROK_HOME/auth.json"
+    ;;
+  HOLD_LOCK_ROTATE)
+    jq -n '{"https://auth.x.ai::test":{key:"deferred-access",refresh_token:"deferred-refresh",expires_at:"2099-04-01T00:00:00Z"}}' \
+      >"$FAKE_GROK_HOME/auth.json"
+    printf '%s\n' '1' >"${GROK_FAKE_KIT_LOCK:?kit lock path is required}"
+    ;;
+  REQUIRE_ROTATED_OAUTH)
+    jq -e '.[].key == "rotated-access" and .[].refresh_token == "rotated-refresh"' \
+      "$FAKE_GROK_HOME/auth.json" >/dev/null || exit 91
+    ;;
+  REQUIRE_EXTERNAL_OAUTH)
+    jq -e '.[].key == "external-access" and .[].refresh_token == "external-refresh"' \
+      "$FAKE_GROK_HOME/auth.json" >/dev/null || exit 91
+    ;;
+  REQUIRE_DEFERRED_OAUTH)
+    jq -e '.[].key == "deferred-access" and .[].refresh_token == "deferred-refresh"' \
+      "$FAKE_GROK_HOME/auth.json" >/dev/null || exit 91
+    ;;
+  CONCURRENT_LOGIN)
+    jq -n '{"https://auth.x.ai::test":{key:"isolated-access",refresh_token:"isolated-refresh",expires_at:"2099-02-01T00:00:00Z"}}' \
+      >"$FAKE_GROK_HOME/auth.json"
+    jq -n '{"https://auth.x.ai::test":{key:"external-access",refresh_token:"external-refresh",expires_at:"2099-03-01T00:00:00Z"}}' \
+      >"${GROK_FAKE_AMBIENT_AUTH:?ambient auth path is required}"
+    ;;
+  CORRUPT_OAUTH)
+    printf '{}\n' >"$FAKE_GROK_HOME/auth.json"
+    ;;
+  WAIT_FOR_PEER_A|WAIT_FOR_PEER_B)
+    sync_dir="${GROK_FAKE_SYNC_DIR:?sync directory is required}"
+    mkdir -p "$sync_dir"
+    if [ "$prompt_text" = WAIT_FOR_PEER_A ]; then own=peer-a; peer=peer-b; else own=peer-b; peer=peer-a; fi
+    : >"$sync_dir/$own"
+    for _ in $(seq 1 100); do [ -e "$sync_dir/$peer" ] && break; sleep 0.02; done
+    [ -e "$sync_dir/$peer" ] || exit 92
+    ;;
+esac
 case "${GROK_FAKE_MODE:-success}" in
   sandbox_missing) ;;
   sandbox_unenforced)
     jq -nc --arg profile "$sandbox_profile" \
-      '{event_type:"ProfileApplied",profile:$profile,enforced:false}' \
-      >"$HOME/.grok/sandbox-events.jsonl"
+      --arg workspace "$PWD" \
+      '{event_type:"ProfileApplied",profile:$profile,enforced:false,workspace:$workspace}' \
+      >>"$FAKE_GROK_HOME/sandbox-events.jsonl"
+    ;;
+  sandbox_no_workspace)
+    jq -nc --arg profile "$sandbox_profile" \
+      '{event_type:"ProfileApplied",profile:$profile,enforced:true}' \
+      >>"$FAKE_GROK_HOME/sandbox-events.jsonl"
+    ;;
+  sandbox_malformed_then_unterminated)
+    printf '{malformed\n' >>"$FAKE_GROK_HOME/sandbox-events.jsonl"
+    jq -nc --arg profile "$sandbox_profile" --arg workspace "$PWD" \
+      '{event_type:"ProfileApplied",profile:$profile,enforced:true,workspace:$workspace}' \
+      | tr -d '\n' >>"$FAKE_GROK_HOME/sandbox-events.jsonl"
     ;;
   *)
     jq -nc --arg profile "$sandbox_profile" \
-      '{event_type:"ProfileApplied",profile:$profile,enforced:true}' \
-      >"$HOME/.grok/sandbox-events.jsonl"
+      --arg workspace "$PWD" \
+      '{event_type:"ProfileApplied",profile:$profile,enforced:true,workspace:$workspace}' \
+      >>"$FAKE_GROK_HOME/sandbox-events.jsonl"
     ;;
 esac
 if [ "${GROK_FAKE_MODE:-success}" = malformed ]; then
@@ -170,13 +256,21 @@ EOF
 chmod 755 "$TMP/bin-incompatible/grok"
 
 run_grok() {
-  DELEGATION_GROK_HOME="$TMP/grok-home" DELEGATION_GROK_BIN_STORE="$TMP/store" \
+  DELEGATION_GROK_HOME="$TMP/grok-home" DELEGATION_DATA_HOME="$TMP/runtime" \
+    DELEGATION_GROK_BIN_STORE="$TMP/store" \
     PATH="$TMP/bin:$PATH" "$ROOT/bin/delegation-grok" "$@"
 }
 
 run_grok_updated() {
-  DELEGATION_GROK_HOME="$TMP/grok-home" DELEGATION_GROK_BIN_STORE="$TMP/store" \
+  DELEGATION_GROK_HOME="$TMP/grok-home" DELEGATION_DATA_HOME="$TMP/runtime" \
+    DELEGATION_GROK_BIN_STORE="$TMP/store" \
     PATH="$TMP/bin-updated:$PATH" "$ROOT/bin/delegation-grok" "$@"
+}
+
+start_grok_background_named() {
+  local name="$1"; shift
+  run_grok "$@" >"$TMP/$name.stdout" 2>"$TMP/$name.stderr" &
+  GROK_BACKGROUND_PID=$!
 }
 
 run_grok check --json >"$TMP/check.json"
@@ -190,6 +284,11 @@ jq -e '
   .qualified_lanes == [] and
   .backends["grok-build"].sandbox == "delegation-kit" and
   .backends["grok-build"].permission_mode == "dontAsk" and
+  .backends["grok-build"].oauth_mode == "serialized" and
+  .backends["grok-build"].oauth_modes == ["serialized","shared"] and
+  .backends["grok-build"].runtime_home_isolated == true and
+  .backends["grok-build"].grok_home_mode == "isolated-copy" and
+  .backends["grok-build"].credential_state_shared == false and
   .backends["grok-build"].max_turns == 40 and
   .backends["grok-build"].timeout_seconds == 900 and
   .backends["grok-build"].isolated_home == true and
@@ -197,6 +296,46 @@ jq -e '
   .backends["grok-build"].mcp == false
 ' "$TMP/check.json" >/dev/null || fail "check contract mismatch"
 ! grep -q 'run_terminal_cmd' "$TMP/check.json" || fail "terminal tool leaked into check contract"
+
+# Linux and minimal environments may not ship shlock. The portable atomic
+# directory fallback must authenticate and release its lock cleanly.
+DELEGATION_GROK_SHLOCK_BIN="$TMP/missing-shlock" run_grok check --json \
+  >"$TMP/check-mkdir-lock.json"
+jq -e '.selected_backend == "grok-build"' "$TMP/check-mkdir-lock.json" >/dev/null \
+  || fail "mkdir OAuth lock fallback did not authenticate"
+[ ! -e "$TMP/grok-home/.delegation-kit-oauth.lock.d" ] \
+  || fail "mkdir OAuth lock fallback leaked its lock directory"
+mkdir "$TMP/grok-home/.delegation-kit-oauth.lock.d"
+touch -t 200001010000 "$TMP/grok-home/.delegation-kit-oauth.lock.d"
+DELEGATION_GROK_SHLOCK_BIN="$TMP/missing-shlock" run_grok check --json \
+  >"$TMP/check-ownerless-lock-recovery.json"
+jq -e '.selected_backend == "grok-build"' \
+  "$TMP/check-ownerless-lock-recovery.json" >/dev/null \
+  || fail "ownerless mkdir OAuth lock did not recover"
+[ ! -e "$TMP/grok-home/.delegation-kit-oauth.lock.d" ] \
+  || fail "ownerless mkdir OAuth lock recovery leaked state"
+
+# Shared-mode health checks keep the JSON contract on unavailable credentials
+# and lock contention instead of exiting from inside generation seeding.
+cp "$TMP/grok-home/auth.json" "$TMP/auth-before-logged-out.json"
+printf '{}\n' >"$TMP/grok-home/auth.json"
+DELEGATION_GROK_OAUTH_MODE=shared run_grok check --json \
+  >"$TMP/check-shared-logged-out.json"
+jq -e '
+  .selected_backend == "none" and .backends["grok-build"].available == false and
+  (.backends["grok-build"].reason | test("unavailable|credentials|logged out"; "i"))
+' "$TMP/check-shared-logged-out.json" >/dev/null \
+  || fail "shared logged-out check did not return unavailable JSON"
+cp "$TMP/auth-before-logged-out.json" "$TMP/grok-home/auth.json"
+printf '%s\n' "$$" >"$TMP/grok-home/.delegation-kit-oauth.lock"
+DELEGATION_GROK_OAUTH_MODE=shared DELEGATION_GROK_OAUTH_WAIT_SECONDS=0 \
+  run_grok check --json >"$TMP/check-shared-busy.json"
+jq -e '
+  .selected_backend == "none" and .backends["grok-build"].available == false and
+  (.backends["grok-build"].reason | test("another Grok invocation"))
+' "$TMP/check-shared-busy.json" >/dev/null \
+  || fail "shared busy-lock check did not return unavailable JSON"
+rm -f -- "$TMP/grok-home/.delegation-kit-oauth.lock"
 
 rc=0
 run_grok run --lane builder --prompt-file "$TMP/prompt.txt" \
@@ -228,6 +367,212 @@ jq -e 'has("evaluation_receipt") | not' "$TMP/results/builder.txt.metrics.json" 
   || fail "non-evaluation run claimed an evaluation receipt"
 [ ! -e "$TMP/results/builder.txt.commit.json" ] \
   || fail "non-evaluation run wrote an evaluation commit marker"
+jq -e '.oauth_mode == "serialized" and .oauth_sync == "ok"' \
+  "$TMP/results/builder.txt.metrics.json" >/dev/null \
+  || fail "serialized OAuth metrics mismatch"
+[ ! -e "$TMP/grok-home/.delegation-kit-oauth.lock" ] \
+  || fail "serialized OAuth run leaked its shlock file"
+
+# Serialized mode holds the kit lock for the full dispatch and atomically
+# publishes a rotated credential back to the ambient Grok home.
+printf '%s\n' 'ROTATE_OAUTH' >"$TMP/rotate-oauth-prompt.txt"
+printf '%s\n' 'REQUIRE_ROTATED_OAUTH' >"$TMP/require-rotated-oauth-prompt.txt"
+run_grok run --lane builder --allow-provisional \
+  --prompt-file "$TMP/rotate-oauth-prompt.txt" \
+  --output "$TMP/results/serialized-rotate.txt" --workdir "$TMP/work"
+jq -e '.[].key == "rotated-access" and .[].refresh_token == "rotated-refresh"' \
+  "$TMP/grok-home/auth.json" >/dev/null \
+  || fail "serialized OAuth rotation was not published"
+run_grok run --lane builder --allow-provisional \
+  --prompt-file "$TMP/require-rotated-oauth-prompt.txt" \
+  --output "$TMP/results/serialized-require-rotated.txt" --workdir "$TMP/work"
+[ "$(cat "$TMP/results/serialized-require-rotated.txt")" = PONG ] \
+  || fail "next serialized run did not receive rotated OAuth"
+
+# Shared OAuth mode keeps one durable generation. Two children dispatch in
+# parallel while the vendor's shared auth lock is available in one GROK_HOME.
+jq -n '{"https://auth.x.ai::test":{key:"shared-initial",refresh_token:"shared-initial-refresh",expires_at:"2099-01-01T00:00:00Z"}}' \
+  >"$TMP/grok-home/auth.json"
+printf '%s\n' 'WAIT_FOR_PEER_A' >"$TMP/peer-a-prompt.txt"
+printf '%s\n' 'WAIT_FOR_PEER_B' >"$TMP/peer-b-prompt.txt"
+mkdir -p "$TMP/peer-sync"
+GROK_FAKE_SYNC_DIR="$TMP/peer-sync" start_grok_background_named shared-peer-a \
+  run --lane builder --allow-provisional --oauth shared \
+  --prompt-file "$TMP/peer-a-prompt.txt" \
+  --output "$TMP/results/shared-peer-a.txt" --workdir "$TMP/work"
+peer_a_pid="$GROK_BACKGROUND_PID"
+GROK_FAKE_SYNC_DIR="$TMP/peer-sync" start_grok_background_named shared-peer-b \
+  run --lane builder --allow-provisional --oauth shared \
+  --prompt-file "$TMP/peer-b-prompt.txt" \
+  --output "$TMP/results/shared-peer-b.txt" --workdir "$TMP/work"
+peer_b_pid="$GROK_BACKGROUND_PID"
+rc=0; wait "$peer_a_pid" || rc=$?
+[ "$rc" = 0 ] || fail "concurrent shared Grok run A failed with $rc"
+rc=0; wait "$peer_b_pid" || rc=$?
+[ "$rc" = 0 ] || fail "concurrent shared Grok run B failed with $rc"
+[ "$(cat "$TMP/results/shared-peer-a.txt")" = PONG ] &&
+  [ "$(cat "$TMP/results/shared-peer-b.txt")" = PONG ] \
+  || fail "concurrent shared Grok runs did not both answer"
+jq -e '.oauth_mode == "shared" and .oauth_sync == "ok"' \
+  "$TMP/results/shared-peer-a.txt.metrics.json" >/dev/null \
+  || fail "shared OAuth metrics mismatch"
+jq -e '
+  .runtime_home_isolated == true and .grok_home_mode == "shared-generation" and
+  .credential_state_shared == true
+' "$TMP/results/shared-peer-a.txt.metrics.json" >/dev/null \
+  || fail "shared Grok HOME metrics mismatch"
+SHARED_GROK_ROOT="$TMP/runtime/grok-shared-oauth"
+
+# One worker's event must never attest a peer, even in the same workdir. Run A
+# emits no event while B emits an enforced event under its own unique profile.
+mkdir -p "$TMP/peer-negative"
+GROK_FAKE_MODE=sandbox_missing GROK_FAKE_SYNC_DIR="$TMP/peer-negative" \
+  start_grok_background_named shared-negative-a \
+  run --lane builder --allow-provisional --oauth shared \
+  --prompt-file "$TMP/peer-a-prompt.txt" \
+  --output "$TMP/results/shared-negative-a.txt" --workdir "$TMP/work"
+negative_a_pid="$GROK_BACKGROUND_PID"
+GROK_FAKE_SYNC_DIR="$TMP/peer-negative" start_grok_background_named shared-negative-b \
+  run --lane builder --allow-provisional --oauth shared \
+  --prompt-file "$TMP/peer-b-prompt.txt" \
+  --output "$TMP/results/shared-negative-b.txt" --workdir "$TMP/work"
+negative_b_pid="$GROK_BACKGROUND_PID"
+rc_a=0; wait "$negative_a_pid" || rc_a=$?
+rc_b=0; wait "$negative_b_pid" || rc_b=$?
+[ "$rc_a" = 70 ] || fail "peer event cross-satisfied un-attested run A: $rc_a"
+[ "$rc_b" = 0 ] || fail "attested peer B failed with $rc_b"
+jq -e '.reason == "sandbox_not_enforced"' \
+  "$TMP/results/shared-negative-a.txt.error.json" >/dev/null \
+  || fail "un-attested peer did not report sandbox failure"
+
+rc=0
+GROK_FAKE_MODE=sandbox_no_workspace run_grok run --lane builder \
+  --allow-provisional --oauth shared --prompt-file "$TMP/prompt.txt" \
+  --output "$TMP/results/shared-no-workspace.txt" --workdir "$TMP/work" \
+  >/dev/null 2>&1 || rc=$?
+[ "$rc" = 70 ] || fail "workspace-less sandbox event returned $rc"
+GROK_FAKE_MODE=sandbox_malformed_then_unterminated run_grok run \
+  --lane builder --allow-provisional --oauth shared \
+  --prompt-file "$TMP/prompt.txt" \
+  --output "$TMP/results/shared-malformed-events.txt" --workdir "$TMP/work"
+[ "$(cat "$TMP/results/shared-malformed-events.txt")" = PONG ] \
+  || fail "line-by-line sandbox event parser rejected valid unterminated event"
+printf '\n' >>"$SHARED_GROK_ROOT/$(jq -r '.generation' "$SHARED_GROK_ROOT/sync-marker.json")/sandbox-events.jsonl"
+[ -f "$SHARED_GROK_ROOT/sync-marker.json" ] \
+  || fail "shared Grok OAuth marker was not written"
+shared_generation="$(jq -r '.generation' "$SHARED_GROK_ROOT/sync-marker.json")"
+[ -f "$SHARED_GROK_ROOT/$shared_generation/auth.json" ] \
+  || fail "shared Grok OAuth generation is missing"
+
+# A runner policy upgrade starts a new generation instead of mutating policy
+# under active peers. Superseded credential generations stay bounded to two.
+printf '%s\n' 'hooks = ["stale-hook"]' \
+  >"$SHARED_GROK_ROOT/$shared_generation/config.toml"
+jq '.policy_version = "obsolete-policy"' "$SHARED_GROK_ROOT/sync-marker.json" \
+  >"$TMP/obsolete-marker.json"
+mv "$TMP/obsolete-marker.json" "$SHARED_GROK_ROOT/sync-marker.json"
+run_grok run --lane builder --allow-provisional --oauth shared \
+  --prompt-file "$TMP/prompt.txt" \
+  --output "$TMP/results/shared-config-reconcile.txt" --workdir "$TMP/work"
+shared_generation_2="$(jq -r '.generation' "$SHARED_GROK_ROOT/sync-marker.json")"
+[ "$shared_generation_2" != "$shared_generation" ] \
+  || fail "shared Grok policy change reused the stale generation"
+! grep -q 'stale-hook' "$SHARED_GROK_ROOT/$shared_generation_2/config.toml" \
+  || fail "new shared Grok generation inherited stale policy"
+jq '.policy_version = "obsolete-again"' "$SHARED_GROK_ROOT/sync-marker.json" \
+  >"$TMP/obsolete-marker-again.json"
+mv "$TMP/obsolete-marker-again.json" "$SHARED_GROK_ROOT/sync-marker.json"
+run_grok run --lane builder --allow-provisional --oauth shared \
+  --prompt-file "$TMP/prompt.txt" \
+  --output "$TMP/results/shared-generation-prune.txt" --workdir "$TMP/work"
+[ "$(find "$SHARED_GROK_ROOT" -mindepth 1 -maxdepth 1 -type d -name 'gen-*' | wc -l | tr -d ' ')" -le 2 ] \
+  || fail "superseded Grok OAuth generations accumulated"
+
+# Refresh inside the shared generation is published atomically and consumed by
+# the following run rather than being deleted with a per-run HOME.
+run_grok run --lane builder --allow-provisional --oauth shared \
+  --prompt-file "$TMP/rotate-oauth-prompt.txt" \
+  --output "$TMP/results/shared-rotate.txt" --workdir "$TMP/work"
+jq -e '.[].key == "rotated-access" and .[].refresh_token == "rotated-refresh"' \
+  "$TMP/grok-home/auth.json" >/dev/null \
+  || fail "shared OAuth rotation was not published"
+run_grok run --lane builder --allow-provisional --oauth shared \
+  --prompt-file "$TMP/require-rotated-oauth-prompt.txt" \
+  --output "$TMP/results/shared-require-rotated.txt" --workdir "$TMP/work"
+
+# A manual login during a run always wins. The stale generation is rejected,
+# its output is not published, and the next run adopts a fresh generation.
+printf '%s\n' 'CONCURRENT_LOGIN' >"$TMP/concurrent-login-prompt.txt"
+rc=0
+GROK_FAKE_AMBIENT_AUTH="$TMP/grok-home/auth.json" run_grok run \
+  --lane builder --allow-provisional --oauth shared \
+  --prompt-file "$TMP/concurrent-login-prompt.txt" \
+  --output "$TMP/results/shared-concurrent-login.txt" --workdir "$TMP/work" \
+  >/dev/null 2>&1 || rc=$?
+[ "$rc" = 75 ] || fail "shared external login conflict returned $rc"
+[ ! -e "$TMP/results/shared-concurrent-login.txt" ] \
+  || fail "shared external login conflict published output"
+jq -e '.phase == "oauth-sync" and .reason == "oauth_conflict"' \
+  "$TMP/results/shared-concurrent-login.txt.error.json" >/dev/null \
+  || fail "shared external login conflict diagnostic mismatch"
+jq -e '.[].key == "external-access" and .[].refresh_token == "external-refresh"' \
+  "$TMP/grok-home/auth.json" >/dev/null \
+  || fail "shared publish overwrote external login"
+printf '%s\n' 'REQUIRE_EXTERNAL_OAUTH' >"$TMP/require-external-oauth-prompt.txt"
+run_grok run --lane builder --allow-provisional --oauth shared \
+  --prompt-file "$TMP/require-external-oauth-prompt.txt" \
+  --output "$TMP/results/shared-after-conflict.txt" --workdir "$TMP/work"
+
+# Malformed refreshed state never replaces the ambient login; the next shared
+# seed abandons the corrupt generation and heals from ambient state.
+printf '%s\n' 'CORRUPT_OAUTH' >"$TMP/corrupt-oauth-prompt.txt"
+cp "$TMP/grok-home/auth.json" "$TMP/oauth-before-corruption.json"
+rc=0
+run_grok run --lane builder --allow-provisional --oauth shared \
+  --prompt-file "$TMP/corrupt-oauth-prompt.txt" \
+  --output "$TMP/results/shared-corrupt.txt" --workdir "$TMP/work" \
+  >/dev/null 2>&1 || rc=$?
+[ "$rc" = 70 ] || fail "shared malformed OAuth returned $rc"
+[ ! -e "$TMP/results/shared-corrupt.txt" ] \
+  || fail "shared malformed OAuth published output"
+cmp -s "$TMP/oauth-before-corruption.json" "$TMP/grok-home/auth.json" \
+  || fail "shared malformed OAuth replaced ambient login"
+run_grok run --lane builder --allow-provisional --oauth shared \
+  --prompt-file "$TMP/require-external-oauth-prompt.txt" \
+  --output "$TMP/results/shared-heal.txt" --workdir "$TMP/work"
+[ "$(cat "$TMP/results/shared-heal.txt")" = PONG ] \
+  || fail "shared OAuth mode did not heal corrupt generation"
+
+# A rotated credential whose ambient publication is blocked remains durable in
+# the shared generation, but the completed result is not reported as success.
+printf '%s\n' 'HOLD_LOCK_ROTATE' >"$TMP/hold-lock-rotate-prompt.txt"
+rc=0
+GROK_FAKE_KIT_LOCK="$TMP/grok-home/.delegation-kit-oauth.lock" \
+  DELEGATION_GROK_OAUTH_WAIT_SECONDS=0 run_grok run \
+  --lane builder --allow-provisional --oauth shared \
+  --prompt-file "$TMP/hold-lock-rotate-prompt.txt" \
+  --output "$TMP/results/shared-deferred.txt" --workdir "$TMP/work" \
+  >/dev/null 2>&1 || rc=$?
+[ "$rc" = 75 ] || fail "deferred shared OAuth publication returned $rc"
+jq -e '.phase == "oauth-sync" and .reason == "oauth_publish_deferred"' \
+  "$TMP/results/shared-deferred.txt.error.json" >/dev/null \
+  || fail "deferred shared OAuth diagnostic mismatch"
+[ ! -e "$TMP/results/shared-deferred.txt" ] \
+  || fail "deferred shared OAuth published a successful output"
+rm -f -- "$TMP/grok-home/.delegation-kit-oauth.lock"
+printf '%s\n' 'REQUIRE_DEFERRED_OAUTH' >"$TMP/require-deferred-oauth-prompt.txt"
+run_grok run --lane builder --allow-provisional --oauth shared \
+  --prompt-file "$TMP/require-deferred-oauth-prompt.txt" \
+  --output "$TMP/results/shared-deferred-catchup.txt" --workdir "$TMP/work"
+jq -e '.[].key == "deferred-access" and .[].refresh_token == "deferred-refresh"' \
+  "$TMP/grok-home/auth.json" >/dev/null \
+  || fail "next shared run did not publish deferred OAuth rotation"
+
+rc=0
+run_grok run --lane builder --allow-provisional --oauth bogus \
+  --prompt-file "$TMP/prompt.txt" --output "$TMP/results/oauth-bogus.txt" \
+  --workdir "$TMP/work" >/dev/null 2>&1 || rc=$?
+[ "$rc" = 64 ] || fail "invalid OAuth mode returned $rc"
 
 GROK_FAKE_MODE=multi_usage run_grok run --lane builder --allow-provisional \
   --prompt-file "$TMP/prompt.txt" --output "$TMP/results/multi-usage.txt" \

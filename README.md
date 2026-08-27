@@ -10,7 +10,14 @@ It ships as a **reference implementation**: the author's concrete models
 external-evidence snapshot, and fail-closed local gates. Swap the models for your own tiers with
 [`ADAPTING.md`](./ADAPTING.md) — the *structure* is the transferable part.
 
-## Current release: 0.17.0
+## Current release: 0.18.0
+
+Version 0.18.0 adds safe parallel Grok Build dispatch through an explicit
+shared-OAuth generation, while retaining serialized OAuth as the default and
+keeping every Grok lane provisional/explicit-only. Serialized and shared runs
+both persist refresh rotation atomically; external login wins conflicts and
+malformed state fails closed. The exact two-worker live smoke returned `PONG`
+twice without worktree edits and left ambient/shared credential state aligned.
 
 Version 0.17.0 reserves Sonnet and Luna for very small,
 non-builder tasks. Opus 5 and GPT-5.6 Terra are high-level builders and
@@ -300,6 +307,12 @@ memory, subagents, web, plugins, MCP, compatibility imports, and automatic updat
 `delegation-kit` sandbox must attest OS enforcement before output is published;
 the permission mode is `dontAsk`, with only file edits explicitly allowed; the
 terminal tool is not exposed.
+OAuth is serialized by default and any refreshed credential is published back
+atomically. `--oauth shared` instead keeps one runner-owned Grok generation
+under `$DELEGATION_DATA_HOME/grok-shared-oauth`: concurrent workers use the
+same `GROK_HOME`, the vendor auth lock coordinates refresh, and the kit lock is
+held only to adopt the generation and publish it back. External `grok login`
+always wins an optimistic-concurrency conflict. Evaluations remain serialized.
 The lead remains responsible for running tests and every command after review.
 Failures expose sanitized metadata by default, with raw debug artifacts only
 through explicit `--debug-dir`. A separate `policy-annotation` candidate is
@@ -321,9 +334,28 @@ rather than running changed bytes.
 delegation-grok pin
 delegation-grok check --json
 delegation-grok run --lane builder --allow-provisional \
+  --oauth shared \
   --effort auto --backend auto --prompt-file "$brief" \
   --output "$result" --metrics "$metrics" --workdir "$repo"
 ```
+
+### Concurrent credential modes
+
+Parallelism is provider-local; the kit never uses one global credential lock.
+
+| Transport | Credential mode | Concurrent dispatch |
+|---|---|---|
+| Grok Build | rotating OAuth | explicit `--oauth shared`; serialized by default |
+| Kimi Code | rotating OAuth | explicit `--oauth shared`; serialized by default |
+| Gemini Antigravity | shared macOS Keychain | blocked until exact concurrent OAuth verification |
+| GLM / Qwen / DeepSeek API | bearer API key | parallel; provider quotas still apply |
+| Native Claude / Codex profiles | vendor-managed host credential store | governed by the vendor CLI and native agent fan-out limits |
+
+Shared OAuth means shared **credential state**, not shared agent state: prompts,
+workspaces, output, permissions, and runtime HOME remain per invocation. A
+provider is never moved from subscription OAuth to an API endpoint merely to
+gain concurrency, because that would change the measured harness and billing
+identity.
 
 Qwen3.8-Max is pinned to the Qwen Cloud Token Plan OpenAI-compatible endpoint at
 `xhigh`. Its dedicated `sk-sp-` key is stored separately and never imported

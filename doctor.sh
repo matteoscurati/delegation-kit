@@ -583,7 +583,17 @@ elif have delegation-grok; then
       (.runtime_cli_version | type == "string" and length > 0) and
       .backends["grok-build"].sandbox == "delegation-kit" and
       .backends["grok-build"].permission_mode == "dontAsk" and
+      (.backends["grok-build"].oauth_mode == "serialized" or
+       .backends["grok-build"].oauth_mode == "shared") and
+      .backends["grok-build"].oauth_modes == ["serialized","shared"] and
       .backends["grok-build"].isolated_home == true and
+      .backends["grok-build"].runtime_home_isolated == true and
+      ((.backends["grok-build"].oauth_mode == "shared" and
+        .backends["grok-build"].grok_home_mode == "shared-generation" and
+        .backends["grok-build"].credential_state_shared == true) or
+       (.backends["grok-build"].oauth_mode == "serialized" and
+        .backends["grok-build"].grok_home_mode == "isolated-copy" and
+        .backends["grok-build"].credential_state_shared == false)) and
       .backends["grok-build"].plugins == false and
       .backends["grok-build"].mcp == false and
       .backends["grok-build"].terminal == false and
