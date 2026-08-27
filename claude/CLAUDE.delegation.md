@@ -166,6 +166,11 @@ observed version is provenance only. An optional digest-checked private archive
 preserves the selected bytes independently of PATH; use
 `delegation-grok pin --force` for deliberate replacement. No other Grok lane is exposed, and failure
 never authorizes silent fallback.
+OAuth runs serialize by default and persist validated refreshes atomically.
+Parallel Grok workers must each pass `--oauth shared`; they use one
+runner-owned generation so the vendor auth lock coordinates refresh while
+workspaces, prompt state, and output remain isolated. External `grok login`
+supersedes the generation, and evaluations are always serialized.
 `policy-annotation` at `high` is the only evaluation-only exception: it is
 candidate/blocked, requires an allowlisted manifest and the read-only sandbox,
 and cannot create an operational route.

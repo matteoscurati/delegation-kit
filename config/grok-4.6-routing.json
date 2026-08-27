@@ -31,6 +31,10 @@
           "runtime_controls": {
             "sandbox": "delegation-kit",
             "isolated_home": true,
+            "runtime_home_isolated": true,
+            "oauth_modes": ["serialized", "shared"],
+            "grok_home_modes": ["isolated-copy", "shared-generation"],
+            "default_oauth_mode": "serialized",
             "permission_mode": "dontAsk",
             "max_turns": 40,
             "timeout_seconds": 900,
@@ -62,6 +66,10 @@
           "runtime_controls": {
             "sandbox": "delegation-kit",
             "isolated_home": true,
+            "runtime_home_isolated": true,
+            "oauth_modes": ["serialized", "shared"],
+            "grok_home_modes": ["isolated-copy", "shared-generation"],
+            "default_oauth_mode": "serialized",
             "permission_mode": "dontAsk",
             "max_turns": 40,
             "timeout_seconds": 900,
@@ -94,6 +102,9 @@
           "evaluation_manifest_sha256": [],
           "runtime_controls": {
             "sandbox": "delegation-kit-read-only",
+            "oauth_modes": ["serialized"],
+            "grok_home_modes": ["isolated-copy"],
+            "default_oauth_mode": "serialized",
             "permission_mode": "dontAsk",
             "tools": ["grep", "read_file", "list_dir"],
             "terminal": false

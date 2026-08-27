@@ -207,6 +207,10 @@
       "runtime_controls": {
         "sandbox": "delegation-kit",
         "isolated_home": true,
+        "runtime_home_isolated": true,
+        "oauth_modes": ["serialized", "shared"],
+        "grok_home_modes": ["isolated-copy", "shared-generation"],
+        "default_oauth_mode": "serialized",
         "permission_mode": "dontAsk",
         "max_turns": 40,
         "timeout_seconds": 900,

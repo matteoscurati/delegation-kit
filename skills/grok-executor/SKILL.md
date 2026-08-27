@@ -25,6 +25,7 @@ Write a bounded, self-contained implementation brief to a file and run:
 ```sh
 delegation-grok run \
   --lane <builder|frontend-builder> --allow-provisional \
+  [--oauth shared] \
   --backend auto --effort auto --prompt-file "$brief" \
   --output "$result" --metrics "$metrics" --workdir "$repo"
 ```
@@ -36,6 +37,14 @@ automatic updates, and requires the custom OS-enforced `delegation-kit` sandbox 
 successful enforcement before publishing output. Permission mode is `dontAsk`,
 with only file edits explicitly allowed; the terminal tool is not exposed. The
 lead runs all tests and commands after inspecting the diff.
+
+OAuth is serialized by default and refreshed credentials are published back
+atomically. When several Grok workers must run concurrently, every invocation
+must pass `--oauth shared`. The workers then use one runner-owned persistent
+Grok generation, the vendor auth lock coordinates refresh, and a short kit lock
+protects generation adoption and publication. Never mix a manual `grok login`
+with active work: the external login wins and affected runs fail temporarily.
+Evaluation runs never permit shared OAuth.
 
 Any CLI version is accepted when it exposes the required flags, authenticated
 `grok-4.6` inventory, isolation state, structured output, and sandbox

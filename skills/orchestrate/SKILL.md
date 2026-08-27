@@ -78,10 +78,14 @@ background subshells:
   builder at xhigh, and returns a patch rather than editing a worktree. Manifest-bound
   `policy-annotation` candidates are evaluation-only and never count as
   operational routes.
-  **Concurrency of the gated lanes:** Kimi workers can run in parallel only
-  when every dispatch passes `--oauth shared` — the default serializes on the
-  kit lock, so a wave of default-mode Kimi workers is one success and N-1
-  instant exit-75s. Treat a GLM coding-plan key as roughly one in-flight
+  **Concurrency of the gated lanes:** Kimi and Grok workers can run in parallel
+  only when every dispatch passes `--oauth shared`. Their defaults serialize on
+  a provider-local kit lock, so a same-provider wave in default mode is one
+  success and N-1 temporary exit-75s. Shared mode keeps workspaces and outputs
+  isolated while a runner-owned credential generation coordinates refresh.
+  The exact Grok smoke currently proves two concurrent workers; cap Grok at two
+  per same-provider wave until a higher ceiling is measured.
+  Treat a GLM coding-plan key as roughly one in-flight
   request: cap GLM at one worker per key per wave unless the owner has
   measured a higher ceiling, and on exit 75 read the diagnostic's `reason` —
   `rate_limited` retries with backoff, `quota_exhausted` waits for
