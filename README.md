@@ -146,9 +146,12 @@ The universal installer also adds `delegation-schema`, `delegation-glm`,
 `delegation-evidence`, the ZIP-only `delegation-epoch` importer, and the read-only
 central router `delegation-route` under
 `~/.local/bin`, with versioned gates under `~/.local/share/delegation-kit/`.
-GLM-5.3-Flash/max is staged as the sole GLM candidate. `clerk`, `scout`, and
-`builder` are blocked until the exact Claude-to-Z.AI pack passes; reviewer is
-disabled and policy annotation remains a separate blocked evaluation-only
+GLM-5.3-Flash/max is staged as the sole GLM candidate, but every lane remains
+blocked. The v2 task pack passed 9/9 operational checks; strict content-model
+identity is nevertheless `VOID` because retained evidence did not record a
+separately surfaced effective content model or complete `modelUsage`. This does
+not establish what the provider originally exposed. Reviewer
+is disabled and policy annotation remains a separate blocked evaluation-only
 candidate. Historical GLM-5.2 and GLM-5.3 receipts do not transfer to Flash.
 The runner refuses every blocked lane and every effort the gate did not pin,
 and also refuses execution unless at least one of Claude Code or Codex is
@@ -210,7 +213,10 @@ green. This owner preference does not rewrite high as the comparison winner.
 The replacement candidate uses the
 [`glm-5.3-flash-lane-qualification-v1` contract](./evaluation/glm-5.3-flash-lane-qualification-v1/README.md).
 It reuses the deterministic packs but requires fresh no-retry attempts at the
-exact `glm-5.3-flash` / `claude-zai` / `max` tuple before any lane opens.
+exact `glm-5.3-flash` / `claude-zai` / `max` tuple. The 2026-08-28 v2 run passed
+9/9 task attempts at score 1.0 with every builder checker green, but strict
+identity is `VOID` and no lane is promoted. The v1 sandbox failure remains a
+separate terminal pre-provider `VOID`.
 
 Gemini 3.7 Flash is staged through the installed Antigravity CLI (`agy`). Scout
 at `medium` and builder/frontend-builder at `high` are blocked candidates;

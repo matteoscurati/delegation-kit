@@ -18,13 +18,14 @@
 
 GLM-5.3-Flash is staged only through the installed `glm-executor` skill and the
 isolated Claude→Z.AI backend, keyed by `ZAI_API_KEY` or the 600-mode key the
-installer stored. The exact candidate tuple is `glm-5.3-flash/max`; clerk,
-scout, and builder remain candidate/blocked until the versioned local pack
-passes. Reviewer is disabled and policy annotation remains a separate blocked
-evaluation-only lane. Official launch evidence, Coding Plan access, and the
-earlier ox-alpha diagnostic do not transfer qualification across transports.
-Keep using an incumbent for ordinary work; never silently substitute or bypass
-the gate. Historical GLM-5.2 and GLM-5.3 receipts remain evidence only.
+installer stored. The exact candidate tuple is `glm-5.3-flash/max`, but every
+lane remains blocked. The 2026-08-28 v2 task pack passed 9/9 operational checks;
+strict identity is `VOID` because retained evidence did not record separately
+surfaced effective content identity or complete `modelUsage`. This does not
+establish what the provider originally exposed. The earlier v1
+sandbox failure is a separate terminal pre-provider `VOID`. Keep using an
+incumbent; never silently substitute or bypass the gate. Historical GLM-5.2 and
+GLM-5.3 receipts remain evidence only.
 
 ## Optional Gemini 3.7 Flash executor
 

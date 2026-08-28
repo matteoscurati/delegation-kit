@@ -7,10 +7,12 @@ All notable changes to delegation-kit are documented here.
 ### Changed
 
 - Staged `glm-5.3-flash` / `claude-zai` / `max` as the sole GLM replacement
-  candidate. The runner, central gate, installer, doctor, and evaluation
-  contract fail closed with every lane blocked until the exact no-retry pack
-  passes. Historical GLM-5.3 receipts and the earlier OpenRouter ox-alpha
-  diagnostic remain contextual and are not relabelled as Flash qualification.
+  candidate. The corrected v2 task pack passed 9/9 no-retry operational checks
+  at score 1.0 with every builder checker green, but strict identity is `VOID`:
+  retained v2 evidence did not record separately surfaced effective content
+  identity or complete `modelUsage`. No lane is promoted; this does not establish
+  what the provider originally exposed. Historical GLM-5.3 receipts
+  and the earlier OpenRouter ox-alpha diagnostic remain contextual.
 - Keep Claude Code and Bun temporary paths inside the evaluation scratch and
   preserve `USER` in the sanitized environment. The first Flash attempt never
   reached the provider because the frozen native CLI tried to create

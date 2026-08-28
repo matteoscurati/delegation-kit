@@ -2,12 +2,12 @@
   "model": "glm-5.3-flash",
   "profile_prefix": "glm53-flash-max",
   "status": "candidate",
-  "evaluated_at": null,
-  "source_run": null,
+  "evaluated_at": "2026-08-28T00:00:00Z",
+  "source_run": "2026-08-28-glm-5.3-flash-max-qualification-v2",
   "promoted_at": null,
   "external_evidence_file": "model-evidence.json",
   "external_evidence_ids": ["zai-glm-5.3-flash-launch-max-2026-08-28"],
-  "qualification_basis": "Pre-registered candidate for the exact glm-5.3-flash/claude-zai/max tuple. Official launch evidence and the earlier ox-alpha diagnostic are contextual only; every operational lane remains blocked until the exact local pack completes.",
+  "qualification_basis": "The v2 task pack completed 9/9 no-retry operational checks at score 1.0 with every builder checker passing, but the retained evidence did not record a separately surfaced effective content model or complete modelUsage. Exact identity therefore cannot be established, the strict evaluation is VOID, and every lane remains blocked. This does not establish what the provider originally exposed. The earlier v1 sandbox attempt is a separate terminal pre-provider VOID.",
   "qualified_lanes": [],
   "provisional_lanes": [],
   "lanes": {
@@ -19,8 +19,9 @@
           "status": "candidate",
           "selection": "blocked",
           "effort": "max",
-          "cost_per_task_usd": null,
-          "evaluation_manifest_sha256": []
+          "cost_per_task_usd": 0.004188,
+          "evaluation_manifest_sha256": [],
+          "local_result": {"run_id": "2026-08-28-glm-5.3-flash-max-qualification-v2", "outcome": "operational_compatibility_only", "task_count": 6, "repeats": 3, "valid_task_repeats": 3, "mean_score": 1.0, "mean_latency_seconds": 23.0, "strict_identity": "void"}
         }
       }
     },
@@ -32,8 +33,9 @@
           "status": "candidate",
           "selection": "blocked",
           "effort": "max",
-          "cost_per_task_usd": null,
-          "evaluation_manifest_sha256": []
+          "cost_per_task_usd": 0.021301,
+          "evaluation_manifest_sha256": [],
+          "local_result": {"run_id": "2026-08-28-glm-5.3-flash-max-qualification-v2", "outcome": "operational_compatibility_only", "task_count": 7, "repeats": 3, "valid_task_repeats": 3, "mean_score": 1.0, "mean_latency_seconds": 161.33, "strict_identity": "void"}
         }
       }
     },
@@ -45,8 +47,9 @@
           "status": "candidate",
           "selection": "blocked",
           "effort": "max",
-          "cost_per_task_usd": null,
-          "evaluation_manifest_sha256": []
+          "cost_per_task_usd": 0.01397,
+          "evaluation_manifest_sha256": [],
+          "local_result": {"run_id": "2026-08-28-glm-5.3-flash-max-qualification-v2", "outcome": "operational_compatibility_only", "task_count": 6, "repeats": 3, "valid_task_repeats": 3, "mean_score": 1.0, "all_checker_runs_pass": true, "mean_latency_seconds": 91.0, "strict_identity": "void"}
         }
       }
     },
@@ -71,7 +74,7 @@
           "selection": "blocked",
           "effort": "max",
           "evaluation_manifest_sha256": [],
-          "qualification_basis": "Evaluation-only candidate. Coding-lane qualification cannot promote or operationalize policy annotation."
+          "qualification_basis": "Evaluation-only candidate. Coding-lane evidence cannot promote or operationalize policy annotation."
         }
       }
     }

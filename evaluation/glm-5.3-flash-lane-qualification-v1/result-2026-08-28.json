@@ -1,0 +1,92 @@
+{
+  "schema_version": "delegation_glm_flash_qualification_result_v1",
+  "run_id": "2026-08-28-glm-5.3-flash-max-qualification-v2",
+  "evaluated_at": "2026-08-28T00:00:00Z",
+  "tuple": {
+    "model": "glm-5.3-flash",
+    "backend": "claude-zai",
+    "effort": "max"
+  },
+  "outcome": "void",
+  "operational_compatibility_outcome": "passed",
+  "strict_identity_outcome": "void",
+  "strict_identity_reason": "The retained v2 evidence recorded the requested/system-init model but did not retain a separately surfaced effective content model or complete modelUsage. The exact tuple cannot be attested under the contract. This does not establish what the provider originally exposed.",
+  "attempt_policy": {
+    "required_repeats_per_lane": 3,
+    "provider_attempts_per_repeat": 1,
+    "post_observation_retries": 0
+  },
+  "prior_terminal_void": {
+    "run_id": "2026-08-28-glm-5.3-flash-max-qualification-v1",
+    "lane": "clerk",
+    "repeat": 1,
+    "reason": "sandbox_temp_path",
+    "provider_reached": false,
+    "included_in_v2_scores": false
+  },
+  "lanes": {
+    "clerk": {
+      "task_count": 6,
+      "valid_task_repeats": 3,
+      "strict_identity_valid_repeats": 0,
+      "required_repeats": 3,
+      "mean_score": 1.0,
+      "elapsed_seconds": [29, 18, 22],
+      "total_elapsed_seconds": 69,
+      "provider_cost_usd": 0.075391,
+      "void_reasons": []
+    },
+    "scout": {
+      "task_count": 7,
+      "valid_task_repeats": 3,
+      "strict_identity_valid_repeats": 0,
+      "required_repeats": 3,
+      "mean_score": 1.0,
+      "elapsed_seconds": [194, 166, 124],
+      "total_elapsed_seconds": 484,
+      "provider_cost_usd": 0.447313,
+      "void_reasons": []
+    },
+    "builder": {
+      "task_count": 6,
+      "valid_task_repeats": 3,
+      "strict_identity_valid_repeats": 0,
+      "required_repeats": 3,
+      "mean_score": 1.0,
+      "all_checker_runs_pass": true,
+      "elapsed_seconds": [79, 88, 106],
+      "total_elapsed_seconds": 273,
+      "provider_cost_usd": 0.251462,
+      "void_reasons": []
+    }
+  },
+  "totals": {
+    "valid_task_attempts": 9,
+    "strict_identity_valid_attempts": 0,
+    "elapsed_seconds": 826,
+    "provider_cost_usd": 0.774166,
+    "tokens": {
+      "input": 37578,
+      "output": 19460,
+      "reasoning": 0,
+      "cache_read": 199552,
+      "cache_write": 0
+    }
+  },
+  "provenance": {
+    "runner_source_commit": "fc636398eb816fbb7159be88fce8dde501c88595",
+    "runner_sha256": "6a69acda564c2e43df11917da0693f54fbc243ba1b0472b962f36d90cbe36681",
+    "contract_sha256": "65e485da4a06b8e1a82c846cf0a259e14311ea3bbd8bf0c088929d8c9255b018",
+    "claude_code": "2.1.220 (Claude Code)",
+    "claude_binary_sha256": "8addc857f3fe64d5a0368af9ee50321b50afb4a6918ba3ef018ab84f5dbbe081",
+    "private_artifact_sha256": {
+      "aggregate": "e7230286cb56984e123f01cc9835cafb8499ad611125010e3aa1e7cdaeec91cb",
+      "scores": "dbc76a9fbba838ec95b9450b69e6b89eb2a2474d69d85b02046857a65c7100dc",
+      "provenance": "90b2b3e3ae50650b3c23fc8b7eb2cfb518c6b34d4a4b04783a380057fba20f30",
+      "clerk_manifest": "7bbe9d6d3305a02b731d917ab0b23d1d7796132f6c69acec3e1cb2061307d376",
+      "scout_manifest": "eaa12033dbae60b569a24f47de735a3620f2a8ddff2473b2beabf1e179c2341a",
+      "builder_manifest": "db05d1150b16f5f83f878046f0d32dbfd5dee60a5003817c00a0ee7cdeabee94"
+    }
+  },
+  "promotion_decision": "No lane is promoted. The v2 task pack is retained as operational compatibility evidence only; a fresh pack must separately attest requested model, effective content model, and all modelUsage participants. Reviewer and policy annotation remain blocked. The v1 sandbox VOID also remains terminal."
+}

@@ -1,20 +1,17 @@
 ---
 name: glm-executor
 description: >-
-  Inspect or evaluate the staged GLM-5.3-Flash route through delegation-glm.
-  Never bypass its gate or silently change model, effort, backend, or lane.
+  Inspect the staged GLM-5.3-Flash candidate through delegation-glm. No lane is
+  operational; never bypass its identity gate or silently substitute a tuple.
 ---
 
 # GLM-5.3-Flash executor bridge
 
-GLM-5.3-Flash is staged as an optional external executor, not a native Claude
-or Codex model. Before any attempt, run `delegation-glm check --json`. The
-candidate gate is pinned to `glm-5.3-flash` / `claude-zai` / `max`; no
-operational lane exists until the exact local pack passes. `clerk`, `scout`,
-and `builder` are candidate/blocked, reviewer is disabled, and policy annotation
-is a separate evaluation-only candidate. Installed bytes, Coding Plan access,
-official launch claims, and the earlier `ox-alpha` diagnostic do not qualify
-this transport.
+GLM-5.3-Flash is staged as an optional external candidate, not a native Claude
+or Codex model. Before any attempt, run `delegation-glm check --json`. The gate
+is pinned to `glm-5.3-flash` / `claude-zai` / `max`, but every operational lane
+is blocked. Reviewer is disabled and policy annotation remains a separate
+blocked evaluation-only candidate.
 
 Builder scope limit: the bridge dispatches the delegate at
 `--permission-mode acceptEdits` with no settings sources, so it can only apply
@@ -25,15 +22,19 @@ toolchain fixes that need exactly those actions are not routable to this lane;
 the lead closes them. Observed 2026-08-04: a toolchain dispatch returned
 analysis only (checks honestly marked unexecuted) for $0.88 and ~6.6 minutes.
 
-The frozen GLM-5.3 results remain immutable historical receipts and do not
-transfer to Flash. A versioned Flash evaluation may qualify clerk and scout
-explicit-only and may move builder only to provisional explicit-only. The
-installed routing JSON remains authoritative.
+The 2026-08-28 Flash v2 task pack completed 9/9 no-retry operational checks at
+score 1.0, with every builder checker passing. Strict identity is `VOID` because
+retained evidence did not record separately surfaced effective content identity
+or complete `modelUsage`; this does not establish what the provider originally
+exposed, and none of those task scores opens a lane. The earlier
+v1 sandbox failure remains a separate terminal pre-provider `VOID`. Frozen
+GLM-5.3 results remain historical and do not transfer.
 `delegation-evidence lane builder` shows the dated external rows: they provide
 context, not a local harness score and not permission to widen the gate.
 
-Ordinary work must remain on an incumbent until the gate promotes a lane. A
-manifest-bound qualification run uses the exact candidate tuple:
+Ordinary work must remain on an incumbent. Only a fresh manifest-bound
+qualification that separately attests requested model, effective content model,
+and all usage participants may create new evidence:
 
 ```sh
 delegation-glm run --lane <clerk|scout|builder> --effort max \
@@ -42,9 +43,8 @@ delegation-glm run --lane <clerk|scout|builder> --effort max \
 ```
 
 The isolated Claude→Z.AI backend needs a key: `ZAI_API_KEY` in the environment,
-else the 600-mode key the installer stored. Qualification is pinned to explicit
-`--effort max`; another effort is refused (78). After any future promotion,
-ordinary work should use `--effort auto` so the installed gate stays authoritative.
+else the 600-mode key the installer stored. The candidate is pinned to explicit
+`max`; another effort is refused (78). Ordinary dispatch remains refused.
 The capability probe has a ten-second fail-closed timeout. For a deliberate
 diagnostic with a separately verified native Claude Code binary, set
 `DELEGATION_GLM_CLAUDE_BIN` to its absolute executable path; this changes

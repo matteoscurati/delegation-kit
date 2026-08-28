@@ -21,3 +21,14 @@ of scope.
 Prompts, fixture repositories, raw streams, and per-attempt outputs stay in the
 ignored private `eval/` tree. Only a minimal non-sensitive aggregate may be
 published after every attempt has been scored.
+
+## 2026-08-28 result
+
+[`result-2026-08-28.json`](./result-2026-08-28.json) records the corrected v2
+aggregate. All nine no-retry task attempts passed at score 1.0, every builder
+checker passed, and provider-reported cost totaled $0.774166. Strict identity
+is nevertheless `VOID`: retained evidence did not record separately surfaced
+effective content identity or complete `modelUsage`, so no lane is promoted.
+This does not establish what the provider originally exposed. The
+earlier v1 attempt failed in the sandbox before any provider event and remains
+a separate terminal `VOID`.

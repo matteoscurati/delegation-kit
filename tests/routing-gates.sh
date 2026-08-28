@@ -34,8 +34,8 @@ jq -e '
 ' "$TMP/glm-check.json" >/dev/null
 pass=$((pass + 1))
 
-# GLM-5.3-Flash/max is registered as the sole candidate executable gate and
-# profile family. No lane is dispatchable before the exact local pack passes.
+# GLM-5.3-Flash/max is the sole candidate gate and profile family. Strict
+# identity is still VOID, so no lane is dispatchable.
 env DELEGATION_GLM_ROUTING_FILE="$ROOT/config/glm-5.3-flash-max-routing.json" \
   DELEGATION_GLM_CLAUDE_BIN=/usr/bin/true \
   bin/delegation-glm check --json >"$TMP/glm53-flash-max-check.json"

@@ -508,15 +508,47 @@ extract_claude() {
   fi
   jq -s --arg model "$MODEL" --arg backend "$backend" --arg effort "$effort" \
     --arg lane "$lane" --argjson started "$started" '
+    ([.[] | select(.type == "system" and .subtype == "init") | .model] | unique) as $init_models |
     ([.[] | select(.type == "result")] | last // {}) as $r |
     ($r.usage // {}) as $u |
-    {model:$model,backend:$backend,effort:$effort,lane:$lane,
+    ($r.effective_content_model // $r.canonicalModel // $r.model // null) as $effective |
+    ($r.modelUsage // $r.model_usage // {}) as $model_usage |
+    ($model_usage | to_entries | map({
+      model:.key,
+      input_tokens:(.value.inputTokens // .value.input_tokens // 0),
+      output_tokens:(.value.outputTokens // .value.output_tokens // 0),
+      reasoning_tokens:(.value.reasoningTokens // .value.reasoning_tokens // 0),
+      cache_read_tokens:(.value.cacheReadInputTokens // .value.cache_read_input_tokens // 0),
+      cache_write_tokens:(.value.cacheCreationInputTokens // .value.cache_creation_input_tokens // 0),
+      model_calls:(.value.modelCalls // .value.model_calls // 0),
+      cost_usd:(.value.costUSD // .value.cost_usd // 0)
+    })) as $participants |
+    ($participants | map(.input_tokens) | add // 0) as $participant_input |
+    ($participants | map(.output_tokens) | add // 0) as $participant_output |
+    ($participants | map(.reasoning_tokens) | add // 0) as $participant_reasoning |
+    ($participants | map(.cache_read_tokens) | add // 0) as $participant_cache_read |
+    ($participants | map(.cache_write_tokens) | add // 0) as $participant_cache_write |
+    ($participants | map(.cost_usd) | add // 0) as $participant_cost |
+    {model:$model,requested_model:$model,observed_init_models:$init_models,
+     effective_content_model:$effective,
+     exact_model_identity_attested:($effective == $model),
+     model_usage:$model_usage,usage_participants:$participants,
+     target_usage_participant_present:($model_usage | has($model)),
+     backend:$backend,effort:$effort,lane:$lane,
      started_at_epoch:$started,finished_at_epoch:now,
-     tokens:{input:($u.input_tokens // 0),output:($u.output_tokens // 0),
-             reasoning:($u.reasoning_tokens // 0),
-             cache_read:($u.cache_read_input_tokens // 0),
-             cache_write:($u.cache_creation_input_tokens // 0)},
-     provider_cost_usd:($r.total_cost_usd // 0)}' "$events" >"$metrics" || {
+     usage_source:(if ($participants | length) > 0 then "model_usage" else "provider_aggregate" end),
+     tokens:(if ($participants | length) > 0 then
+       {input:$participant_input,output:$participant_output,reasoning:$participant_reasoning,
+        cache_read:$participant_cache_read,cache_write:$participant_cache_write}
+       else
+       {input:($u.input_tokens // 0),output:($u.output_tokens // 0),
+        reasoning:($u.reasoning_tokens // 0),cache_read:($u.cache_read_input_tokens // 0),
+        cache_write:($u.cache_creation_input_tokens // 0)} end),
+     provider_aggregate_tokens:{input:($u.input_tokens // 0),output:($u.output_tokens // 0),
+       reasoning:($u.reasoning_tokens // 0),cache_read:($u.cache_read_input_tokens // 0),
+       cache_write:($u.cache_creation_input_tokens // 0)},
+     provider_cost_usd:(if ($participants | length) > 0 then $participant_cost else ($r.total_cost_usd // 0) end),
+     provider_total_cost_usd:($r.total_cost_usd // 0)}' "$events" >"$metrics" || {
     EXTRACT_REASON="invalid_stream"
     return 1
   }
@@ -811,6 +843,18 @@ run_command() {
         "$started" "$backend" "$effort" "$lane"; then
       phase="extract"
       reason="$EXTRACT_REASON"
+      final_rc=70
+    fi
+    if [ "$final_rc" -eq 0 ] && [ "$evaluation" = 1 ] &&
+        ! jq -e --arg model "$MODEL" '
+          .requested_model == $model and
+          .effective_content_model == $model and
+          .exact_model_identity_attested == true and
+          (.model_usage | type) == "object" and
+          (.usage_participants | type) == "array"
+        ' "$RUN_METRICS_TMP" >/dev/null 2>&1; then
+      phase="extract"
+      reason="strict_identity_evaluation_void"
       final_rc=70
     fi
     if [ "$final_rc" -eq 0 ] && [ "$evaluation" = 1 ] &&

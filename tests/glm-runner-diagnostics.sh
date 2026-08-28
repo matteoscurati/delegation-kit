@@ -190,10 +190,8 @@ exit 91
 FAKE_SLOW
 chmod +x "$TEST_TMP/bin/claude-slow"
 
-# Ordinary runner diagnostics use a synthetic qualified scout gate. The tracked
-# GLM-5.3-Flash gate intentionally stays candidate/blocked until the real pack
-# passes, so tests must not weaken that production state merely to exercise
-# transport and extraction behavior.
+# Ordinary runner diagnostics use a minimal synthetic qualified scout gate so
+# transport and extraction cases do not depend on unrelated operational lanes.
 jq '.profiles["glm53-flash-max-scout"].lanes.scout.status = "qualified" |
     .profiles["glm53-flash-max-scout"].lanes.scout.selection = "explicit-only" |
     del(.profiles["glm53-flash-max-scout"].lanes.scout.evaluation_manifest_sha256)' \
@@ -354,13 +352,25 @@ cat >"$TEST_TMP/fake-claude.c" <<'NATIVE_FAKE'
 
 static int emit_success(void) {
   puts("{\"type\":\"system\",\"subtype\":\"init\",\"model\":\"glm-5.3-flash\"}");
-  puts("{\"type\":\"result\",\"subtype\":\"success\",\"result\":\"PONG\",\"usage\":{\"input_tokens\":3,\"output_tokens\":1},\"total_cost_usd\":0.01}");
+  puts("{\"type\":\"result\",\"subtype\":\"success\",\"model\":\"glm-5.3-flash\",\"modelUsage\":{\"glm-5.3-flash\":{\"inputTokens\":3,\"outputTokens\":1}},\"result\":\"PONG\",\"usage\":{\"input_tokens\":3,\"output_tokens\":1},\"total_cost_usd\":0.01}");
   return 0;
 }
 
 static int emit_structured(const char *value) {
   puts("{\"type\":\"system\",\"subtype\":\"init\",\"model\":\"glm-5.3-flash\"}");
+  printf("{\"type\":\"result\",\"subtype\":\"success\",\"model\":\"glm-5.3-flash\",\"modelUsage\":{\"glm-5.3-flash\":{\"inputTokens\":3,\"outputTokens\":4}},\"result\":\"\",\"structured_output\":{\"status\":\"completed\",\"answers\":{\"value\":\"%s\"}},\"usage\":{\"input_tokens\":3,\"output_tokens\":4},\"total_cost_usd\":0.01}\n", value);
+  return 0;
+}
+
+static int emit_structured_without_identity(const char *value) {
+  puts("{\"type\":\"system\",\"subtype\":\"init\",\"model\":\"glm-5.3-flash\"}");
   printf("{\"type\":\"result\",\"subtype\":\"success\",\"result\":\"\",\"structured_output\":{\"status\":\"completed\",\"answers\":{\"value\":\"%s\"}},\"usage\":{\"input_tokens\":3,\"output_tokens\":4},\"total_cost_usd\":0.01}\n", value);
+  return 0;
+}
+
+static int emit_structured_multi_usage(const char *value) {
+  puts("{\"type\":\"system\",\"subtype\":\"init\",\"model\":\"glm-5.3-flash\"}");
+  printf("{\"type\":\"result\",\"subtype\":\"success\",\"model\":\"glm-5.3-flash\",\"modelUsage\":{\"glm-5.3-flash\":{\"inputTokens\":3,\"outputTokens\":4,\"cacheReadInputTokens\":2,\"cacheCreationInputTokens\":1,\"costUSD\":0.01},\"safety-classifier\":{\"inputTokens\":5,\"outputTokens\":2,\"cacheReadInputTokens\":1,\"cacheCreationInputTokens\":0,\"costUSD\":0.001}},\"result\":\"\",\"structured_output\":{\"status\":\"completed\",\"answers\":{\"value\":\"%s\"}},\"usage\":{\"input_tokens\":3,\"output_tokens\":4,\"cache_read_input_tokens\":2,\"cache_creation_input_tokens\":1},\"total_cost_usd\":0.01}\n", value);
   return 0;
 }
 
@@ -397,6 +407,8 @@ int main(int argc, char **argv) {
   }
   if (!mode || !*mode || strcmp(mode, "success") == 0) return emit_success();
   if (strcmp(mode, "structured_success") == 0) return emit_structured("PONG");
+  if (strcmp(mode, "structured_identity_missing") == 0) return emit_structured_without_identity("PONG");
+  if (strcmp(mode, "structured_multi_usage") == 0) return emit_structured_multi_usage("PONG");
   if (strcmp(mode, "builder_success") == 0) {
     FILE *file = fopen(".git/delegation-canary", "w");
     if (file) { fclose(file); return 91; }
@@ -408,7 +420,7 @@ int main(int argc, char **argv) {
     fputs("ignored but attested\n", file); fclose(file);
     if (chmod("ignored-artifact.txt", 0755) != 0) return 94;
     puts("{\"type\":\"system\",\"subtype\":\"init\",\"model\":\"glm-5.3-flash\"}");
-    puts("{\"type\":\"result\",\"subtype\":\"success\",\"result\":\"{\\\"status\\\":\\\"completed\\\"}\",\"usage\":{\"input_tokens\":4,\"output_tokens\":2},\"total_cost_usd\":0.02}");
+    puts("{\"type\":\"result\",\"subtype\":\"success\",\"model\":\"glm-5.3-flash\",\"modelUsage\":{\"glm-5.3-flash\":{\"inputTokens\":4,\"outputTokens\":2}},\"result\":\"{\\\"status\\\":\\\"completed\\\"}\",\"usage\":{\"input_tokens\":4,\"output_tokens\":2},\"total_cost_usd\":0.02}");
     return 0;
   }
   if (strcmp(mode, "read_isolation") == 0) {
@@ -640,6 +652,43 @@ assert_json "$TEST_TMP/results/lane-scout.out.metrics.json" '
 '
 [ -z "$(git -C "$LANE_SCOUT_WORK" status --porcelain=v1)" ] \
   || fail "generic scout evaluation modified its read-only fixture"
+
+PATH="$TEST_TMP/bin:$PATH" TMPDIR="$TEST_TMP/runtime" ZAI_API_KEY=fixture-key \
+  FAKE_CLAUDE_CASE=structured_multi_usage \
+  DELEGATION_ROUTING_GATES_FILE="$LANE_CENTRAL_GATE" \
+  DELEGATION_GLM_ROUTING_FILE="$LANE_EXECUTABLE_GATE" \
+  "$LANE_EVAL_ROOT/bin/delegation-glm" run \
+  --lane scout --effort max --backend claude-zai --evaluation \
+  --evaluation-manifest "$LANE_SCOUT_MANIFEST" \
+  --prompt-file "$TEST_TMP/prompt" \
+  --output "$TEST_TMP/results/lane-multi-usage.out" \
+  --workdir "$LANE_SCOUT_WORK"
+assert_json "$TEST_TMP/results/lane-multi-usage.out.metrics.json" '
+  .usage_source == "model_usage" and
+  .tokens == {input:8,output:6,reasoning:0,cache_read:3,cache_write:1} and
+  .provider_aggregate_tokens == {input:3,output:4,reasoning:0,cache_read:2,cache_write:1} and
+  .provider_cost_usd == 0.011 and .provider_total_cost_usd == 0.01 and
+  .target_usage_participant_present == true and
+  [.usage_participants[].model] == ["glm-5.3-flash","safety-classifier"]
+'
+
+rc=0
+PATH="$TEST_TMP/bin:$PATH" TMPDIR="$TEST_TMP/runtime" ZAI_API_KEY=fixture-key \
+  FAKE_CLAUDE_CASE=structured_identity_missing \
+  DELEGATION_ROUTING_GATES_FILE="$LANE_CENTRAL_GATE" \
+  DELEGATION_GLM_ROUTING_FILE="$LANE_EXECUTABLE_GATE" \
+  "$LANE_EVAL_ROOT/bin/delegation-glm" run \
+  --lane scout --effort max --backend claude-zai --evaluation \
+  --evaluation-manifest "$LANE_SCOUT_MANIFEST" \
+  --prompt-file "$TEST_TMP/prompt" \
+  --output "$TEST_TMP/results/lane-identity-missing.out" \
+  --workdir "$LANE_SCOUT_WORK" >/dev/null 2>&1 || rc=$?
+[ "$rc" -eq 70 ] || fail "missing strict identity returned $rc, expected 70"
+[ ! -e "$TEST_TMP/results/lane-identity-missing.out" ] &&
+  [ ! -e "$TEST_TMP/results/lane-identity-missing.out.metrics.json" ] \
+  || fail "missing strict identity published output or metrics"
+assert_json "$TEST_TMP/results/lane-identity-missing.out.error.json" \
+  '.phase == "extract" and .reason == "strict_identity_evaluation_void"'
 
 READ_CANARY_HOME="$(mktemp -d "$HOME/.delegation-glm-read-test.XXXXXX")"
 if [ "${DELEGATION_TEST_KEEP_TMP:-0}" = 1 ]; then

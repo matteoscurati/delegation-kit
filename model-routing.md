@@ -120,7 +120,7 @@ and `max`; `gpt-5.5` **refuses** `max` and enumerates a shorter set of its own.
 | gpt-5.6-luna | low · medium · high · xhigh · max |
 | sonnet-5 | low · medium · high |
 | gpt-5.5 | none · low · medium · high · xhigh (no `max`) |
-| glm-5.3-flash | max (staged candidate; no operational lane yet) |
+| glm-5.3-flash | max (staged candidate; no operational lane) |
 | kimi-k3 | max |
 | gemini-3.7-flash | medium (scout candidate) · high (editing candidate) |
 | deepseek-v4-pro | high · max (builder pinned to max, provisional) |
@@ -288,11 +288,14 @@ implementation.
 6. **Refresh or disable.** A stale evidence snapshot (currently >45 days) blocks
    new qualification decisions until its live sources are checked again.
 
-The frozen 2026-08-14 GLM-5.3 comparison remains historical evidence. The new
-candidate is GLM-5.3-Flash/`claude-zai`/`max`; clerk, scout, and builder stay
-blocked until a fresh exact pack passes, and reviewer remains disabled. Launch
-claims and the earlier ox-alpha diagnostic do not transfer across transports.
-After any future builder promotion, the lane runs at
+The frozen 2026-08-14 GLM-5.3 comparison remains historical evidence. The
+staged candidate is GLM-5.3-Flash/`claude-zai`/`max`, but every lane remains
+blocked. The v2 task pack passed 9/9 operational checks and every builder
+checker; strict content identity is `VOID` because retained v2 evidence did not
+record separately surfaced effective content identity or complete model usage.
+This does not establish what the provider originally exposed.
+Launch claims and the earlier ox-alpha diagnostic do not transfer across
+transports. Any future builder route would run at
 `--permission-mode acceptEdits` with no settings sources: the delegate can only
 apply in-workdir Edit/Write changes — it cannot run shell commands, and the
 harness refuses writes to sensitive files such as `.npmrc`. Environment and
