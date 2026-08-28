@@ -1,0 +1,79 @@
+{
+  "model": "glm-5.3-flash",
+  "profile_prefix": "glm53-flash-max",
+  "status": "candidate",
+  "evaluated_at": null,
+  "source_run": null,
+  "promoted_at": null,
+  "external_evidence_file": "model-evidence.json",
+  "external_evidence_ids": ["zai-glm-5.3-flash-launch-max-2026-08-28"],
+  "qualification_basis": "Pre-registered candidate for the exact glm-5.3-flash/claude-zai/max tuple. Official launch evidence and the earlier ox-alpha diagnostic are contextual only; every operational lane remains blocked until the exact local pack completes.",
+  "qualified_lanes": [],
+  "provisional_lanes": [],
+  "lanes": {
+    "clerk": {
+      "default_effort": "max",
+      "backends": {
+        "claude-zai": {
+          "qualified": false,
+          "status": "candidate",
+          "selection": "blocked",
+          "effort": "max",
+          "cost_per_task_usd": null,
+          "evaluation_manifest_sha256": []
+        }
+      }
+    },
+    "scout": {
+      "default_effort": "max",
+      "backends": {
+        "claude-zai": {
+          "qualified": false,
+          "status": "candidate",
+          "selection": "blocked",
+          "effort": "max",
+          "cost_per_task_usd": null,
+          "evaluation_manifest_sha256": []
+        }
+      }
+    },
+    "builder": {
+      "default_effort": "max",
+      "backends": {
+        "claude-zai": {
+          "qualified": false,
+          "status": "candidate",
+          "selection": "blocked",
+          "effort": "max",
+          "cost_per_task_usd": null,
+          "evaluation_manifest_sha256": []
+        }
+      }
+    },
+    "reviewer": {
+      "default_effort": "max",
+      "backends": {
+        "claude-zai": {
+          "qualified": false,
+          "status": "disabled",
+          "selection": "blocked",
+          "effort": "max",
+          "cost_per_task_usd": null
+        }
+      }
+    },
+    "policy-annotation": {
+      "default_effort": "max",
+      "backends": {
+        "claude-zai": {
+          "qualified": false,
+          "status": "candidate",
+          "selection": "blocked",
+          "effort": "max",
+          "evaluation_manifest_sha256": [],
+          "qualification_basis": "Evaluation-only candidate. Coding-lane qualification cannot promote or operationalize policy annotation."
+        }
+      }
+    }
+  }
+}

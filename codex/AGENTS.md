@@ -16,18 +16,15 @@
 
 ## Optional evaluated GLM executor
 
-GLM-5.3 is available only through the installed `glm-executor` skill. The current
-gate lists `clerk` and `scout` in `qualified_lanes`, with explicit-only
-selection. Builder is provisional after its first exact local pack and requires
-an explicit decision plus `--allow-provisional`. The bridge runs only through the isolated Claude→Z.AI
-backend, keyed by `ZAI_API_KEY` or the 600-mode key the installer stored. Prefer
-the incumbent for costly edits unless the provisional builder lane was selected deliberately. If the runtime or
-lane gate is absent, keep using the incumbent profile; never silently substitute.
-Every operational lane is pinned to `max`, selected explicitly by the owner.
-It is the only shipped GLM tuple: neither GLM-5.2 nor GLM-5.3/high has an
-installed or selectable route. Their frozen receipts remain historical evidence
-only. Reviewer is disabled; policy annotation remains candidate/blocked and
-evaluation-only at GLM-5.3/max.
+GLM-5.3-Flash is staged only through the installed `glm-executor` skill and the
+isolated Claude→Z.AI backend, keyed by `ZAI_API_KEY` or the 600-mode key the
+installer stored. The exact candidate tuple is `glm-5.3-flash/max`; clerk,
+scout, and builder remain candidate/blocked until the versioned local pack
+passes. Reviewer is disabled and policy annotation remains a separate blocked
+evaluation-only lane. Official launch evidence, Coding Plan access, and the
+earlier ox-alpha diagnostic do not transfer qualification across transports.
+Keep using an incumbent for ordinary work; never silently substitute or bypass
+the gate. Historical GLM-5.2 and GLM-5.3 receipts remain evidence only.
 
 ## Optional Gemini 3.7 Flash executor
 

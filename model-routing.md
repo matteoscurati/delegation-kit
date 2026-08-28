@@ -120,7 +120,7 @@ and `max`; `gpt-5.5` **refuses** `max` and enumerates a shorter set of its own.
 | gpt-5.6-luna | low · medium · high · xhigh · max |
 | sonnet-5 | low · medium · high |
 | gpt-5.5 | none · low · medium · high · xhigh (no `max`) |
-| glm-5.3 | max (only installed and selectable GLM tuple) |
+| glm-5.3-flash | max (staged candidate; no operational lane yet) |
 | kimi-k3 | max |
 | gemini-3.7-flash | medium (scout candidate) · high (editing candidate) |
 | deepseek-v4-pro | high · max (builder pinned to max, provisional) |
@@ -288,13 +288,11 @@ implementation.
 6. **Refresh or disable.** A stale evidence snapshot (currently >45 days) blocks
    new qualification decisions until its live sources are checked again.
 
-The frozen 2026-08-14 exact comparison measured both efforts; the owner later
-selected GLM-5.3/`claude-zai`/`max` as the sole operational tuple.
-Clerk and scout are qualified explicit-only; builder passed its first repeated
-GLM-5.3 pack and remains provisional explicit-only, so it still requires
-`--allow-provisional`. GLM-5.2/high and GLM-5.3/high remain only in frozen
-historical receipts, with no executable gate or selectable profile. Reviewer
-remains disabled. Builder runs at
+The frozen 2026-08-14 GLM-5.3 comparison remains historical evidence. The new
+candidate is GLM-5.3-Flash/`claude-zai`/`max`; clerk, scout, and builder stay
+blocked until a fresh exact pack passes, and reviewer remains disabled. Launch
+claims and the earlier ox-alpha diagnostic do not transfer across transports.
+After any future builder promotion, the lane runs at
 `--permission-mode acceptEdits` with no settings sources: the delegate can only
 apply in-workdir Edit/Write changes — it cannot run shell commands, and the
 harness refuses writes to sensitive files such as `.npmrc`. Environment and

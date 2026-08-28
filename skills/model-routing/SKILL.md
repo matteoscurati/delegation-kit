@@ -45,12 +45,12 @@ same graph directly and refuse drift.
   Fable and Sol reason independently, cross-review after both verdicts exist, and
   the lead decides. Never trigger it automatically.
 
-An optional external candidate such as GLM-5.3 earns one of these lanes only
-after its versioned evaluation gate allows that exact role. GLM clerk/scout are
-qualified explicit-only; builder is provisional explicit-only and requires
-`--allow-provisional`; reviewer is disabled. An installed CLI or visible model
-name is not qualification. The active GLM tuple is `glm-5.3/claude-zai/max`;
-no GLM-5.2 or GLM-5.3/high route is shipped or selectable.
+An optional external candidate such as GLM-5.3-Flash earns one of these lanes
+only after its versioned evaluation gate allows that exact role. The staged
+tuple is `glm-5.3-flash/claude-zai/max`; clerk, scout, and builder are blocked
+pending the exact local pack, while reviewer is disabled. An installed CLI,
+visible model name, official launch, or earlier test through another transport
+is not qualification. Historical GLM-5.3 results do not transfer.
 
 Kimi K3 is provisional for `clerk`, `scout`, `builder`, and `frontend-builder` at
 `max`; senior is a blocked candidate, while reviewer and judgement are disabled.

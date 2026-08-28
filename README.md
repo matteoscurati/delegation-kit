@@ -132,7 +132,7 @@ provisional/explicit-only behind `--allow-provisional`. See
 | 5 native profiles | `agents/*.toml` | `luna-clerk` · `terra-builder` (`max`, editing) · `terra-reviewer` (`max`, read-only cross-family) · `sol-reviewer` (`high`) · `sol-judge` (`max`, explicit judgement) |
 | 5 ephemeral profiles | `*.config.toml` | for `codex exec --ephemeral -p <name>` |
 | collaboration policy | appended to `AGENTS.md` | usage-aware routing **+ a Codex→Claude bridge** |
-| optional GLM skill | `skills/glm-executor/` | same fail-closed GLM-5.3/max executor path |
+| optional GLM skill | `skills/glm-executor/` | staged fail-closed GLM-5.3-Flash/max executor path |
 | optional Gemini skill | `skills/gemini-executor/` | same staged Gemini 3.7 Flash executor path |
 | optional Kimi skill | `skills/kimi-executor/` | same fail-closed provisional Kimi K3 path |
 | provisional Grok skill | `skills/grok-executor/` | same fail-closed Grok 4.6 builder path |
@@ -146,13 +146,12 @@ The universal installer also adds `delegation-schema`, `delegation-glm`,
 `delegation-evidence`, the ZIP-only `delegation-epoch` importer, and the read-only
 central router `delegation-route` under
 `~/.local/bin`, with versioned gates under `~/.local/share/delegation-kit/`.
-GLM-5.3/max `clerk` and `scout` are qualified but remain explicit-only; `builder` is
-provisional and requires an explicit decision plus `--allow-provisional`.
-Reviewer is disabled; policy annotation remains a blocked evaluation-only
-candidate at `glm-5.3/max`. The only shipped GLM gate is GLM-5.3/max: GLM-5.2
-and GLM-5.3/high have no installed or selectable profile. Their frozen comparison
-receipts remain historical evidence only. The runner refuses every
-blocked lane and every effort the gate did not pin, and also refuses execution unless at least one of Claude Code or Codex is
+GLM-5.3-Flash/max is staged as the sole GLM candidate. `clerk`, `scout`, and
+`builder` are blocked until the exact Claude-to-Z.AI pack passes; reviewer is
+disabled and policy annotation remains a separate blocked evaluation-only
+candidate. Historical GLM-5.2 and GLM-5.3 receipts do not transfer to Flash.
+The runner refuses every blocked lane and every effort the gate did not pin,
+and also refuses execution unless at least one of Claude Code or Codex is
 installed; it is an agent option, not a standalone GLM client. The installer asks
 for the Z.AI API key and stores it in `~/.local/share/delegation-kit/config/zai.env`
 (mode 600); an explicit `ZAI_API_KEY` in the environment overrides it.
@@ -190,7 +189,7 @@ dispatch. Historical schemas and frozen evaluation protocols are never
 rewritten; a manifest still binds the normative file and the committed runner
 source binds the compiler implementation.
 
-Qualification of the current GLM lanes uses the public
+The historical GLM-5.3 qualification used the public
 [`glm-5.3-lane-comparison-v1` contract](./evaluation/glm-5.3-lane-comparison-v1/README.md).
 Each attempt is pinned to `glm-5.3` / `claude-zai` / `high|max` and to hashes of the
 prompt, contract, output schema, runner, runner commit, and fixture commit. The
@@ -207,6 +206,11 @@ aggregate that passes the preregistered thresholds may justify a public gate
 change. The owner subsequently chose max as the sole operational effort; a
 separate exact-runner max requalification passed 9/9 with every builder checker
 green. This owner preference does not rewrite high as the comparison winner.
+
+The replacement candidate uses the
+[`glm-5.3-flash-lane-qualification-v1` contract](./evaluation/glm-5.3-flash-lane-qualification-v1/README.md).
+It reuses the deterministic packs but requires fresh no-retry attempts at the
+exact `glm-5.3-flash` / `claude-zai` / `max` tuple before any lane opens.
 
 Gemini 3.7 Flash is staged through the installed Antigravity CLI (`agy`). Scout
 at `medium` and builder/frontend-builder at `high` are blocked candidates;

@@ -4,6 +4,14 @@ All notable changes to delegation-kit are documented here.
 
 ## Unreleased
 
+### Changed
+
+- Staged `glm-5.3-flash` / `claude-zai` / `max` as the sole GLM replacement
+  candidate. The runner, central gate, installer, doctor, and evaluation
+  contract fail closed with every lane blocked until the exact no-retry pack
+  passes. Historical GLM-5.3 receipts and the earlier OpenRouter ox-alpha
+  diagnostic remain contextual and are not relabelled as Flash qualification.
+
 ## [0.18.0] — 2026-08-27
 
 ### Added
