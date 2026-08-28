@@ -416,10 +416,18 @@ int main(int argc, char **argv) {
     const char *source = getenv("FAKE_FORBIDDEN_SOURCE");
     const char *host = getenv("FAKE_FORBIDDEN_HOST");
     const char *config = getenv("CLAUDE_CONFIG_DIR");
+    const char *tmpdir = getenv("TMPDIR");
+    const char *bun_tmpdir = getenv("BUN_TMPDIR");
+    const char *claude_tmpdir = getenv("CLAUDE_TMPDIR");
+    const char *claude_code_tmpdir = getenv("CLAUDE_CODE_TMPDIR");
+    const char *user = getenv("USER");
     char scratch[4096];
     char value[32];
     FILE *file;
-    if (!home || !source || !host || !config) return 95;
+    if (!home || !source || !host || !config || !tmpdir || !bun_tmpdir ||
+        !claude_tmpdir || !claude_code_tmpdir || !user || !*user) return 95;
+    if (strcmp(tmpdir, bun_tmpdir) != 0 || strcmp(tmpdir, claude_tmpdir) != 0 ||
+        strcmp(tmpdir, claude_code_tmpdir) != 0) return 102;
     if (readable(home) || readable(source) || readable(host)) return 96;
     file = fopen("fixture.txt", "r");
     if (!file || !fgets(value, sizeof(value), file)) return 97;

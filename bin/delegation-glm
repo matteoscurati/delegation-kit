@@ -770,6 +770,7 @@ run_command() {
     cd "$workdir"
     if [ "$evaluation" = 1 ]; then
       env -i PATH="/usr/bin:/bin" LANG="${LANG:-C}" NO_COLOR=1 CI=1 \
+        USER="${USER:-$(id -un)}" \
         FAKE_CLAUDE_CASE="${FAKE_CLAUDE_CASE:-}" \
         FAKE_FORBIDDEN_HOME="${FAKE_FORBIDDEN_HOME:-}" \
         FAKE_FORBIDDEN_SOURCE="${FAKE_FORBIDDEN_SOURCE:-}" \
@@ -777,7 +778,8 @@ run_command() {
         ANTHROPIC_AUTH_TOKEN="$ZAI_API_KEY" \
         ANTHROPIC_BASE_URL="https://api.z.ai/api/anthropic" \
         ANTHROPIC_DEFAULT_OPUS_MODEL="$MODEL" \
-        HOME="$tmp/home" TMPDIR="$tmp" \
+        HOME="$tmp/home" TMPDIR="$tmp" BUN_TMPDIR="$tmp" \
+        CLAUDE_TMPDIR="$tmp" CLAUDE_CODE_TMPDIR="$tmp" \
         CLAUDE_CONFIG_DIR="$tmp/claude-config" \
         CLAUDE_CODE_SIMPLE=1 CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1 \
         API_TIMEOUT_MS=3000000 \

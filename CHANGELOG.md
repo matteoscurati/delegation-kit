@@ -11,6 +11,10 @@ All notable changes to delegation-kit are documented here.
   contract fail closed with every lane blocked until the exact no-retry pack
   passes. Historical GLM-5.3 receipts and the earlier OpenRouter ox-alpha
   diagnostic remain contextual and are not relabelled as Flash qualification.
+- Keep Claude Code and Bun temporary paths inside the evaluation scratch and
+  preserve `USER` in the sanitized environment. The first Flash attempt never
+  reached the provider because the frozen native CLI tried to create
+  `/tmp/claude-501`; that attempt remains a terminal `VOID`.
 
 ## [0.18.0] — 2026-08-27
 
