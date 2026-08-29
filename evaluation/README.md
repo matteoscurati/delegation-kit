@@ -37,7 +37,7 @@ promotes nor mutates a gate and does not qualify broad architecture/trade-off
 judgement. Dedicated runners pin the exact configured model, harness, and
 highest supported effort before provider dispatch: Kimi K3/native at `max`,
 Qwen Token Plan at `xhigh`, DeepSeek V4 Pro through the official API at `max`,
-GLM-5.3/Claude-to-Z.AI at `max`, and Grok
+GLM-5.3-Flash/Claude-to-Z.AI at `max`, and Grok
 4.5/Grok Build at `high`. The central gate also records blocked Fable, Opus, and
 Sol policy-annotation candidates; those profiles still require their own frozen
 transport harness and an allowlisted manifest before they may supply evidence.
@@ -177,6 +177,11 @@ selected high by its preregistered efficiency rule; no independent tracked
 source had a GLM-5.3 row on that date. The later max-only operational route is
 an explicit owner preference backed by a separate 9/9 exact-runner
 requalification, not a relabelling of the comparison result.
+- [Z.ai's GLM-5.3-Flash launch](https://z.ai/blog/glm-5.3-flash), observed
+  2026-08-28, verifies the `glm-5.3-flash` model code, Coding Plan availability,
+  max-effort recommendation, and the provider's statement that the prerelease
+  model was ox-alpha. Those claims and the earlier OpenRouter diagnostic remain
+  contextual until the exact Claude-to-Z.AI pack passes.
 
 ### Local harness evaluation with OpenBench
 
@@ -255,7 +260,7 @@ compares it against the snapshot, so a mismatch is a signal to re-read, not a
 failure. New relevant families include FrontierCode, FrontierSWE, APEX Agents,
 Blueprint-Bench 2, and Epoch Capabilities Index. Exact model-name records exist
 for Fable 5, Opus 5, Sonnet 5, GLM-5.2, all three GPT-5.6 tiers, Grok 4.5, and
-Kimi K3; GLM-5.3, Gemini 3.7 Flash, DeepSeek V4 Pro, and Qwen3.8-Max have no exact model-name ZIP
+Kimi K3; GLM-5.3, GLM-5.3-Flash, Gemini 3.7 Flash, DeepSeek V4 Pro, and Qwen3.8-Max have no exact model-name ZIP
 record. Unknown harness or effort remains contextual, so the archive does not
 qualify a production lane by itself.
 

@@ -7,17 +7,23 @@ promote a provisional or candidate lane.
 
 ## Verified snapshot
 
-The 0.18.0 release-candidate gate was verified on **2026-08-27** on macOS
-26.5.1 with Codex CLI `0.149.1` and Claude Code `2.1.246`. It passed all 12
-regression suites in 52 seconds, including 59 central routing checks, plus
+The 0.19.0 release-candidate gate was verified on **2026-08-29** on macOS
+26.5.1 with ambient Codex CLI `0.150.1` and ambient Claude Code `2.1.250`.
+The manifest-bound v4 pack deliberately retained its frozen native Claude Code
+`2.1.220` binary. The release candidate passed all 12 regression suites in 52
+seconds, including 59 central routing checks, plus
 ShellCheck, evidence validation, and the eight-check version gate. The exact
-Grok shared-OAuth smoke described below ran two workers concurrently and left
-the ambient credential aligned. The candidate was then installed from the
-reviewed checkout: changed runner/gates/skills matched source byte-for-byte,
-`doctor.sh --ping --ping-grok` reported `57 OK, 0 WARN, 0 FAIL`, Grok returned
-`PONG`, and both Claude bridge directions remained reachable. A fresh reinstall
-from the merged/tagged commit remains a post-release requirement. Numeric
-vendor versions are provenance only wherever the runner uses capability probing.
+GLM-5.3-Flash v4 pack passed 9/9 no-retry attempts at score 1.0: all 204
+assistant events were attributed to Flash, terminal usage named the sole
+canonical first-party Flash participant, and all builder checkers passed.
+Independent cross-family review returned `SHIP`. A clean release-candidate
+install matched source across the GLM runner, central/executable gates, and both
+installed executor skills. Static doctor reported `55 OK, 0 WARN, 0 FAIL`;
+`doctor.sh --ping --ping-glm` reported `58 OK, 0 WARN, 0 FAIL`, including a
+qualified GLM-5.3-Flash `PONG` and both bridge directions reachable. A fresh
+reinstall from the merged/tagged commit remains required before the release is
+considered complete. Numeric vendor versions are provenance only
+wherever the runner uses capability probing.
 
 The role-oriented semantic matrix below was last exercised in full on
 **2026-08-05**, in one pass, against a single disposable fixture carrying a
@@ -82,6 +88,7 @@ fail-closed.
 | Codex ephemeral profiles | `luna-clerk`, `terra-scout`, `terra-builder`, `sol-reviewer`, `sol-judge` | All five role-appropriate at their pinned efforts, after reinstalling so the installed bytes carried the 0.13.0 re-pin. `luna-clerk` at `max` aggregated correctly; `terra-scout` at `medium` mapped the module and flagged the conflict; `sol-reviewer` at `high` named the off-by-one; `sol-judge` at `high` returned the right verdict with reasoning; `terra-builder` at `max` turned the check green with a one-line diff touching **only** `src/window.py`. The four read-only profiles left the fixture clean. |
 | Codex native profiles | the same five roles under `~/.codex/agents/` | Model, effort, sandbox, role declarations, and installed bytes match the shipped definitions, with `luna-clerk` at `max`, `terra-scout` at `medium`, and `terra-builder` at `max` in both the agent and the ephemeral-profile copies. |
 | GLM-5.3/max | `clerk`, `scout`, `builder` | The exact high/max comparison ran serially with three no-retry attempts per lane on one frozen runner. Both efforts scored 1.0 in all nine attempts and every builder checker passed. The owner subsequently selected max as the sole operational effort. Clerk and scout are qualified explicit-only and builder is provisional explicit-only; 5.2 and 5.3/high remain solely as frozen historical receipts and have no gate or profile. |
+| GLM-5.3-Flash/max | `clerk`, `scout`, `builder` | The exact v4 pack passed 9/9 no-retry attempts at score 1.0, all 204 assistant events carried the exact Flash identity, every terminal `modelUsage` had the sole canonical first-party Flash participant, and every builder checker passed. Clerk/scout are qualified explicit-only; builder is provisional explicit-only. V1-v3 remain terminal and are not relabelled. |
 | Gemini 3.7 Flash | none (staged candidates) | The bridge is re-pinned to the new model, but the current local Antigravity session cannot attest exact inventory or OAuth. The previous 3.6 scout smoke is historical and does not transfer. Scout/medium and editing/high stay candidate/blocked; the runner remains prompt-only with an isolated workspace/home and explicit tool denials. |
 | Kimi K3 | `clerk`, `scout`, `builder`, `frontend-builder` | All four passed at native `max`. Clerk aggregated correctly; scout mapped the module and located the off-by-one by line; builder turned the check green confined to `src/window.py`; frontend-builder made the CSS component theme-aware through `prefers-color-scheme`, editing only `style.css`. The capability, sandbox, pin/tamper, signal, timeout, OAuth-finalization, and diagnostics regressions pass, including the shared-OAuth concurrency cases, and the live two-parallel `--oauth shared` smoke passed 2026-08-04 with a real mid-run token rotation. All operational lanes remain provisional; `builder` and `frontend-builder` are `preferred-explicit` as of 0.13.0 while `clerk`/`scout` stay `explicit-only`, and every one still requires `--allow-provisional`. |
 | Grok 4.6 | `builder`, `frontend-builder` | Introduced at `grok-build/high` on an explicit owner replacement decision. Current public builder and WebDev rows are contextual because their harnesses differ from the installed CLI. The final 2026-08-27 exact-runner concurrency smoke launched two `--oauth shared` workers simultaneously with distinct run-owned sandbox profiles: both returned `PONG` in about five seconds, attested their own sandbox event, left separate workspaces untouched, and finished with ambient/shared credential hashes aligned. The provider did not separately expose the effective content model, so this is operational compatibility evidence rather than strict identity qualification. Both lanes remain provisional and `preferred-explicit` and require `--allow-provisional`. |

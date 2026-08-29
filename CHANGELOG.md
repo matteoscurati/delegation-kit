@@ -2,7 +2,41 @@
 
 All notable changes to delegation-kit are documented here.
 
-## Unreleased
+## [0.19.0] — 2026-08-29
+
+### Changed
+
+- Promote `glm-5.3-flash` / `claude-zai` / `max` as the sole GLM route after
+  the exact v4 pack passed 9/9 no-retry attempts at score 1.0. All 204 assistant
+  events carried the exact Flash identity, every terminal `modelUsage` reported
+  the sole canonical first-party Flash participant, and every builder checker
+  passed. Clerk/scout are qualified explicit-only; builder is provisional
+  explicit-only. Historical GLM-5.3 and Flash v1-v3 evidence is not relabelled.
+- Keep Claude Code and Bun temporary paths inside the evaluation scratch and
+  preserve `USER` in the sanitized environment. The first Flash attempt never
+  reached the provider because the frozen native CLI tried to create
+  `/tmp/claude-501`; that attempt remains a terminal `VOID`.
+- Record the terminal v3 identity probe and align future strict extraction with
+  the actual Claude Code/Z.AI stream: content-bearing assistant events expose
+  `message.model`, while `modelUsage` carries `canonicalModel` and `provider`.
+  V3 is not relabelled; the fresh v4 pack supplies the evidence used by the
+  promotion recorded above.
+
+### Verified
+
+- The exact v4 pack completed 9/9 no-retry attempts at score 1.0 for
+  `glm-5.3-flash` / `claude-zai` / `max`; all 204 assistant events had complete
+  Flash attribution, every usage record named the sole canonical first-party
+  Flash participant, and all three builder checkers passed 6/6 tests.
+- The release candidate passed all 12 regression suites in 52 seconds, 59
+  routing checks, ShellCheck, JSON/evidence validation, the eight-check version
+  gate, `git diff --check`, and independent cross-family review with verdict
+  `SHIP`.
+- A clean release-candidate install matched source across the GLM runner, both
+  gates, and the Claude/Codex executor skills. Static doctor reported
+  `55 OK, 0 WARN, 0 FAIL`; `doctor.sh --ping --ping-glm` reported
+  `58 OK, 0 WARN, 0 FAIL`, with GLM-5.3-Flash and both bridge directions
+  returning `PONG`/reachable.
 
 ## [0.18.0] — 2026-08-27
 

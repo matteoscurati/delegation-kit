@@ -11,7 +11,7 @@ while [ -L "$SOURCE" ]; do
   [[ "$SOURCE" = /* ]] || SOURCE="$SOURCE_DIR/$SOURCE"
 done
 ROOT="$(cd "$(dirname "$SOURCE")/.." && pwd)"
-ROUTING_FILE="${DELEGATION_GLM_ROUTING_FILE:-$ROOT/config/glm-5.3-max-routing.json}"
+ROUTING_FILE="${DELEGATION_GLM_ROUTING_FILE:-$ROOT/config/glm-5.3-flash-max-routing.json}"
 CENTRAL_GATES="${DELEGATION_ROUTING_GATES_FILE:-$ROOT/config/routing-gates.json}"
 ROUTER="$ROOT/bin/delegation-route"
 SCHEMA_COMPILER="$ROOT/bin/delegation-schema"
@@ -85,8 +85,8 @@ load_gate_identity() {
   [ -r "$ROUTING_FILE" ] || die 78 "cannot read executable GLM gate $ROUTING_FILE"
   MODEL="$(jq -r '.model // empty' "$ROUTING_FILE" 2>/dev/null)"
   PROFILE_PREFIX="$(jq -r '.profile_prefix // empty' "$ROUTING_FILE" 2>/dev/null)"
-  [ "$MODEL" = "glm-5.3" ] \
-    || die 78 "executable GLM gate must select glm-5.3"
+  [ "$MODEL" = "glm-5.3-flash" ] \
+    || die 78 "executable GLM gate must select glm-5.3-flash"
   [[ "$PROFILE_PREFIX" =~ ^[a-z0-9-]+$ ]] \
     || die 78 "executable GLM gate has an invalid profile prefix"
 }
@@ -508,15 +508,74 @@ extract_claude() {
   fi
   jq -s --arg model "$MODEL" --arg backend "$backend" --arg effort "$effort" \
     --arg lane "$lane" --argjson started "$started" '
+    ([.[] | select(.type == "system" and .subtype == "init") | .model] | unique) as $init_models |
+    ([.[] | select(.type == "assistant")]) as $assistant_events |
+    ($assistant_events | length) as $assistant_event_count |
+    ([$assistant_events[] | .message.model? |
+      select(type == "string" and length > 0)]) as $attributed_assistant_models |
+    ($attributed_assistant_models | unique) as $assistant_models |
+    ($assistant_event_count - ($attributed_assistant_models | length)) as $assistant_model_missing |
+    ([$attributed_assistant_models[] | select(. != $model)] | length) as $assistant_model_mismatch |
     ([.[] | select(.type == "result")] | last // {}) as $r |
     ($r.usage // {}) as $u |
-    {model:$model,backend:$backend,effort:$effort,lane:$lane,
+    ($r.effective_content_model // $r.canonicalModel // $r.model // null) as $result_effective |
+    (if $result_effective != null then $result_effective
+     elif ($assistant_models | length) == 1 then $assistant_models[0]
+     else null end) as $effective |
+    (if $result_effective != null then "result"
+     elif ($assistant_models | length) == 1 then "assistant_events"
+     else null end) as $effective_source |
+    ($r.modelUsage // $r.model_usage // {}) as $model_usage |
+    ($model_usage | to_entries | map({
+      model:.key,
+      canonical_model:(.value.canonicalModel // .value.canonical_model // null),
+      provider:(.value.provider // null),
+      input_tokens:(.value.inputTokens // .value.input_tokens // 0),
+      output_tokens:(.value.outputTokens // .value.output_tokens // 0),
+      reasoning_tokens:(.value.reasoningTokens // .value.reasoning_tokens // 0),
+      cache_read_tokens:(.value.cacheReadInputTokens // .value.cache_read_input_tokens // 0),
+      cache_write_tokens:(.value.cacheCreationInputTokens // .value.cache_creation_input_tokens // 0),
+      model_calls:(.value.modelCalls // .value.model_calls // 0),
+      cost_usd:(.value.costUSD // .value.cost_usd // 0)
+    })) as $participants |
+    ($participants | map(.input_tokens) | add // 0) as $participant_input |
+    ($participants | map(.output_tokens) | add // 0) as $participant_output |
+    ($participants | map(.reasoning_tokens) | add // 0) as $participant_reasoning |
+    ($participants | map(.cache_read_tokens) | add // 0) as $participant_cache_read |
+    ($participants | map(.cache_write_tokens) | add // 0) as $participant_cache_write |
+    ($participants | map(.cost_usd) | add // 0) as $participant_cost |
+    {model:$model,requested_model:$model,observed_init_models:$init_models,
+     observed_assistant_models:$assistant_models,
+     assistant_event_count:$assistant_event_count,
+     assistant_model_attributed_count:($attributed_assistant_models | length),
+     assistant_model_missing_or_malformed_count:$assistant_model_missing,
+     assistant_model_mismatch_count:$assistant_model_mismatch,
+     effective_content_model:$effective,effective_content_model_source:$effective_source,
+     exact_model_identity_attested:(
+       $init_models == [$model] and $assistant_event_count > 0 and
+       $assistant_model_missing == 0 and $assistant_model_mismatch == 0 and
+       $assistant_models == [$model] and
+       $effective == $model and
+       any($participants[]; .model == $model and .canonical_model == $model and .provider == "firstParty")),
+     model_usage:$model_usage,usage_participants:$participants,
+     target_usage_participant_present:($model_usage | has($model)),
+     target_usage_identity_attested:any($participants[];
+       .model == $model and .canonical_model == $model and .provider == "firstParty"),
+     backend:$backend,effort:$effort,lane:$lane,
      started_at_epoch:$started,finished_at_epoch:now,
-     tokens:{input:($u.input_tokens // 0),output:($u.output_tokens // 0),
-             reasoning:($u.reasoning_tokens // 0),
-             cache_read:($u.cache_read_input_tokens // 0),
-             cache_write:($u.cache_creation_input_tokens // 0)},
-     provider_cost_usd:($r.total_cost_usd // 0)}' "$events" >"$metrics" || {
+     usage_source:(if ($participants | length) > 0 then "model_usage" else "provider_aggregate" end),
+     tokens:(if ($participants | length) > 0 then
+       {input:$participant_input,output:$participant_output,reasoning:$participant_reasoning,
+        cache_read:$participant_cache_read,cache_write:$participant_cache_write}
+       else
+       {input:($u.input_tokens // 0),output:($u.output_tokens // 0),
+        reasoning:($u.reasoning_tokens // 0),cache_read:($u.cache_read_input_tokens // 0),
+        cache_write:($u.cache_creation_input_tokens // 0)} end),
+     provider_aggregate_tokens:{input:($u.input_tokens // 0),output:($u.output_tokens // 0),
+       reasoning:($u.reasoning_tokens // 0),cache_read:($u.cache_read_input_tokens // 0),
+       cache_write:($u.cache_creation_input_tokens // 0)},
+     provider_cost_usd:(if ($participants | length) > 0 then $participant_cost else ($r.total_cost_usd // 0) end),
+     provider_total_cost_usd:($r.total_cost_usd // 0)}' "$events" >"$metrics" || {
     EXTRACT_REASON="invalid_stream"
     return 1
   }
@@ -770,6 +829,7 @@ run_command() {
     cd "$workdir"
     if [ "$evaluation" = 1 ]; then
       env -i PATH="/usr/bin:/bin" LANG="${LANG:-C}" NO_COLOR=1 CI=1 \
+        USER="${USER:-$(id -un)}" \
         FAKE_CLAUDE_CASE="${FAKE_CLAUDE_CASE:-}" \
         FAKE_FORBIDDEN_HOME="${FAKE_FORBIDDEN_HOME:-}" \
         FAKE_FORBIDDEN_SOURCE="${FAKE_FORBIDDEN_SOURCE:-}" \
@@ -777,7 +837,8 @@ run_command() {
         ANTHROPIC_AUTH_TOKEN="$ZAI_API_KEY" \
         ANTHROPIC_BASE_URL="https://api.z.ai/api/anthropic" \
         ANTHROPIC_DEFAULT_OPUS_MODEL="$MODEL" \
-        HOME="$tmp/home" TMPDIR="$tmp" \
+        HOME="$tmp/home" TMPDIR="$tmp" BUN_TMPDIR="$tmp" \
+        CLAUDE_TMPDIR="$tmp" CLAUDE_CODE_TMPDIR="$tmp" \
         CLAUDE_CONFIG_DIR="$tmp/claude-config" \
         CLAUDE_CODE_SIMPLE=1 CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1 \
         API_TIMEOUT_MS=3000000 \
@@ -809,6 +870,27 @@ run_command() {
         "$started" "$backend" "$effort" "$lane"; then
       phase="extract"
       reason="$EXTRACT_REASON"
+      final_rc=70
+    fi
+    if [ "$final_rc" -eq 0 ] && [ "$evaluation" = 1 ] &&
+        ! jq -e --arg model "$MODEL" '
+          .requested_model == $model and
+          .observed_init_models == [$model] and
+          .observed_assistant_models == [$model] and
+          .assistant_event_count > 0 and
+          .assistant_model_attributed_count == .assistant_event_count and
+          .assistant_model_missing_or_malformed_count == 0 and
+          .assistant_model_mismatch_count == 0 and
+          .effective_content_model == $model and
+          .effective_content_model_source != null and
+          .exact_model_identity_attested == true and
+          .target_usage_participant_present == true and
+          .target_usage_identity_attested == true and
+          (.model_usage | type) == "object" and
+          (.usage_participants | type) == "array"
+        ' "$RUN_METRICS_TMP" >/dev/null 2>&1; then
+      phase="extract"
+      reason="strict_identity_evaluation_void"
       final_rc=70
     fi
     if [ "$final_rc" -eq 0 ] && [ "$evaluation" = 1 ] &&

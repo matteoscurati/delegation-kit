@@ -1,22 +1,18 @@
 ---
 name: glm-executor
 description: >-
-  Dispatch a gate-approved GLM-5.3 lane through delegation-glm. Qualified lanes
-  remain explicit-only; provisional lanes require an explicit
-  --allow-provisional decision. Never use it as a silent fallback.
+  Dispatch a gate-approved GLM-5.3-Flash lane through delegation-glm. Qualified
+  lanes remain explicit-only; builder requires an explicit provisional decision.
 ---
 
-# GLM-5.3 executor bridge
+# GLM-5.3-Flash executor bridge
 
-GLM-5.3 is an optional external executor, not a native Claude or Codex model.
-Before dispatch, run `delegation-glm check --json`. The current gate exposes
-`clerk` and `scout` in `qualified_lanes`, but keeps them explicit-only rather
-than making either an automatic default. `builder` is provisional after its
-first exact local pack; use it only after an explicit decision and pass
-`--allow-provisional`. Every operational lane is pinned to `high`; the evaluated
-`max` tuple remains blocked because it matched quality but used more elapsed
-time and provider-reported cost. Reviewer is disabled; policy annotation is candidate/blocked and may
-run only through a separately allowlisted evaluation manifest.
+GLM-5.3-Flash is an optional external executor, not a native Claude or Codex
+model. Before dispatch, run `delegation-glm check --json`. The gate is pinned
+to `glm-5.3-flash` / `claude-zai` / `max`: clerk and scout are qualified
+explicit-only, while builder is provisional explicit-only and requires an
+explicit decision plus `--allow-provisional`. Reviewer is disabled and policy
+annotation remains a separate blocked evaluation-only candidate.
 
 Builder scope limit: the bridge dispatches the delegate at
 `--permission-mode acceptEdits` with no settings sources, so it can only apply
@@ -27,13 +23,11 @@ toolchain fixes that need exactly those actions are not routable to this lane;
 the lead closes them. Observed 2026-08-04: a toolchain dispatch returned
 analysis only (checks honestly marked unexecuted) for $0.88 and ~6.6 minutes.
 
-The frozen 2026-08-14 comparison ran three no-retry attempts per lane at both
-`high` and `max`; both efforts scored 1.0 throughout and passed every builder
-checker. The owner subsequently selected max as the sole operational effort.
-GLM-5.2 and GLM-5.3/high survive only in immutable historical receipts. Clerk
-and scout qualify explicit-only, while builder stops at provisional. Reviewer is not
-dispatchable. The installed routing JSON remains
-authoritative if a later versioned evaluation changes that set.
+The 2026-08-29 Flash v4 pack passed 9/9 no-retry attempts at score 1.0.
+All 204 assistant events carried the exact Flash identity, every terminal
+`modelUsage` contained the sole canonical first-party Flash participant, and
+every builder checker passed. Earlier v1-v3 runs remain terminal and are not
+relabelled. The installed routing JSON remains authoritative.
 `delegation-evidence lane builder` shows the dated external rows: they provide
 context, not a local harness score and not permission to widen the gate.
 
@@ -47,10 +41,10 @@ delegation-glm run --lane builder --effort auto --allow-provisional \
   --backend auto --prompt-file "$brief" --output "$result" --workdir "$repo"
 ```
 
-`auto` and `claude-zai` both resolve to the isolated Claude→Z.AI backend, which
-needs a key: `ZAI_API_KEY` in the environment, else the 600-mode key the
-installer stored. Keep `--effort auto`; an explicit effort the gate did not pin
-is refused (78), and only an `--evaluation` run may measure a new combination.
+The isolated Claude→Z.AI backend needs a key: `ZAI_API_KEY` in the environment,
+else the 600-mode key the installer stored. Keep `--effort auto` for ordinary
+work so the max-only gate remains authoritative; another explicit effort is
+refused (78).
 The capability probe has a ten-second fail-closed timeout. For a deliberate
 diagnostic with a separately verified native Claude Code binary, set
 `DELEGATION_GLM_CLAUDE_BIN` to its absolute executable path; this changes

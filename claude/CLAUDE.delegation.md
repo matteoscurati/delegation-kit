@@ -55,20 +55,15 @@ enter only in short bursts. This file is the always-loaded policy; the
 
 ### Optional evaluated GLM executor
 
-GLM-5.3 may replace an executor profile only through the installed
-`glm-executor` skill. The current gate reports `clerk` and `scout` in
-`qualified_lanes`, while retaining explicit-only selection. `builder` is
-provisional after its first exact local pack and requires an explicit decision
-plus `--allow-provisional`. The bridge pins GLM-5.3 and runs only through the isolated Claude→Z.AI
-backend, keyed by `ZAI_API_KEY` or the 600-mode key the installer stored. All
-operational lanes route at `max`, selected explicitly by the owner, and an
-effort the gate did not pin is refused. GLM-5.2 and GLM-5.3/high have no
-installed or selectable route; their frozen receipts are historical only.
-Reviewer remains disabled.
-Never silently substitute another model or promote an unevaluated lane.
-Policy annotation remains candidate/blocked and may run only through a
-separately allowlisted GLM-5.3/max evaluation manifest. It never inherits this
-coding qualification or qualifies broad judgement.
+GLM-5.3-Flash is available only through the installed `glm-executor` skill and the
+isolated Claude→Z.AI backend, keyed by `ZAI_API_KEY` or the 600-mode key the
+installer stored. The exact tuple is `glm-5.3-flash/max`: clerk and scout are
+qualified explicit-only; builder is provisional explicit-only and requires an
+explicit decision plus `--allow-provisional`. V4 passed 9/9 no-retry attempts
+with all 204 assistant events attributed to Flash and sole canonical first-party
+Flash `modelUsage`; earlier v1-v3 runs remain terminal. Reviewer is disabled and
+policy annotation remains blocked. Never silently substitute another model or
+bypass the gate.
 
 ### Optional Gemini 3.7 Flash executor
 
@@ -213,7 +208,7 @@ CVP when exact Opus 5 identity is mandatory.
   uses `security`. A model never reviews its own output or output from a sibling
   model in the same family, even through a separate profile.
 - **Picking among the external builders:** they are not interchangeable. Kimi K3
-  and Grok 4.6 are `preferred-explicit` by explicit owner decision; GLM-5.3,
+  and Grok 4.6 are `preferred-explicit` by explicit owner decision; GLM-5.3-Flash,
   Qwen3.8-Max, and DeepSeek V4 Pro stay plain `explicit-only`. Grok 4.6's current public rows use
   non-production harnesses, so they are contextual rather than exact. Preference
   is not qualification — every one of them still needs an explicit decision and

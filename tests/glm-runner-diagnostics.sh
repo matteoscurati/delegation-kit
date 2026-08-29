@@ -24,7 +24,7 @@ fi
 case "${FAKE_CLAUDE_CASE:-success}" in
   success)
     printf '%s\n' \
-      '{"type":"system","subtype":"init","model":"glm-5.3"}' \
+      '{"type":"system","subtype":"init","model":"glm-5.3-flash"}' \
       '{"type":"result","subtype":"success","result":"PONG","usage":{"input_tokens":3,"output_tokens":1},"total_cost_usd":0.01}'
     ;;
   builder_success)
@@ -33,7 +33,7 @@ case "${FAKE_CLAUDE_CASE:-success}" in
     printf '%s\n' 'ignored but attested' >ignored-artifact.txt
     chmod 755 ignored-artifact.txt
     printf '%s\n' \
-      '{"type":"system","subtype":"init","model":"glm-5.3"}' \
+      '{"type":"system","subtype":"init","model":"glm-5.3-flash"}' \
       '{"type":"result","subtype":"success","result":"{\"status\":\"completed\"}","usage":{"input_tokens":4,"output_tokens":2},"total_cost_usd":0.02}'
     ;;
   read_isolation)
@@ -48,21 +48,21 @@ case "${FAKE_CLAUDE_CASE:-success}" in
     ! /usr/bin/id
     ! /usr/bin/env
     printf '%s\n' \
-      '{"type":"system","subtype":"init","model":"glm-5.3"}' \
+      '{"type":"system","subtype":"init","model":"glm-5.3-flash"}' \
       '{"type":"result","subtype":"success","result":"","structured_output":{"status":"completed","answers":{"value":"ISOLATED"}},"usage":{"input_tokens":3,"output_tokens":4},"total_cost_usd":0.01}'
     ;;
   structured_success)
     printf '%s\n' \
-      '{"type":"system","subtype":"init","model":"glm-5.3"}' \
+      '{"type":"system","subtype":"init","model":"glm-5.3-flash"}' \
       '{"type":"result","subtype":"success","result":"","structured_output":{"status":"completed","answers":{"value":"PONG"}},"usage":{"input_tokens":3,"output_tokens":4},"total_cost_usd":0.01}'
     ;;
   process_exit)
-    printf '%s\n' '{"type":"system","subtype":"init","model":"glm-5.3"}'
+    printf '%s\n' '{"type":"system","subtype":"init","model":"glm-5.3-flash"}'
     printf '%s\n' 'provider connection closed' >&2
     exit 42
     ;;
   malformed)
-    printf '%s\n' '{"type":"system","subtype":"init","model":"glm-5.3"}' '{broken'
+    printf '%s\n' '{"type":"system","subtype":"init","model":"glm-5.3-flash"}' '{broken'
     ;;
   primitive)
     printf '%s\n' '"SECRET_PAYLOAD"'
@@ -77,51 +77,51 @@ case "${FAKE_CLAUDE_CASE:-success}" in
     ;;
   mixed_init)
     printf '%s\n' \
-      '{"type":"system","subtype":"init","model":"glm-5.3"}' \
+      '{"type":"system","subtype":"init","model":"glm-5.3-flash"}' \
       '{"type":"system","subtype":"init","model":"SECRET_PAYLOAD"}' \
       '{"type":"result","subtype":"success","result":"PONG"}'
     ;;
   missing_result|missing_result_debug)
     printf '%s\n' \
-      '{"type":"system","subtype":"init","model":"glm-5.3"}' \
+      '{"type":"system","subtype":"init","model":"glm-5.3-flash"}' \
       '{"type":"SECRET_PAYLOAD","message":"SECRET_PAYLOAD"}'
     ;;
   empty_result)
     printf '%s\n' \
-      '{"type":"system","subtype":"init","model":"glm-5.3"}' \
+      '{"type":"system","subtype":"init","model":"glm-5.3-flash"}' \
       '{"type":"result","subtype":"success","result":""}'
     ;;
   terminal_empty_result)
     printf '%s\n' \
-      '{"type":"system","subtype":"init","model":"glm-5.3"}' \
+      '{"type":"system","subtype":"init","model":"glm-5.3-flash"}' \
       '{"type":"result","subtype":"success","result":"SECRET_PAYLOAD"}' \
       '{"type":"result","subtype":"success","result":""}'
     ;;
   result_error)
     printf '%s\n' \
-      '{"type":"system","subtype":"init","model":"glm-5.3"}' \
+      '{"type":"system","subtype":"init","model":"glm-5.3-flash"}' \
       '{"type":"result","subtype":"SECRET_PAYLOAD","is_error":true,"result":"SECRET_PAYLOAD"}'
     ;;
   unknown_result_subtype)
     printf '%s\n' \
-      '{"type":"system","subtype":"init","model":"glm-5.3"}' \
+      '{"type":"system","subtype":"init","model":"glm-5.3-flash"}' \
       '{"type":"result","subtype":"SECRET_PAYLOAD","result":"PONG"}'
     ;;
   numeric_result_subtype)
     printf '%s\n' \
-      '{"type":"system","subtype":"init","model":"glm-5.3"}' \
+      '{"type":"system","subtype":"init","model":"glm-5.3-flash"}' \
       '{"type":"result","subtype":123,"result":"PONG"}'
     ;;
   auth)
     printf '%s\n' \
-      '{"type":"system","subtype":"init","model":"glm-5.3"}' \
+      '{"type":"system","subtype":"init","model":"glm-5.3-flash"}' \
       '{"type":"system","subtype":"api_retry","error_status":401,"message":"SECRET_PAYLOAD"}' \
       '{"type":"result","subtype":"error_during_execution","is_error":true,"result":""}'
     exit 1
     ;;
   auth_mixed)
     printf '%s\n' \
-      '{"type":"system","subtype":"init","model":"glm-5.3"}' \
+      '{"type":"system","subtype":"init","model":"glm-5.3-flash"}' \
       '{"type":"system","subtype":"api_retry","error_status":401}' \
       '{"type":"system","subtype":"api_retry","error_status":429}' \
       '{"type":"result","subtype":"error_during_execution","is_error":true,"result":""}'
@@ -130,14 +130,14 @@ case "${FAKE_CLAUDE_CASE:-success}" in
     ;;
   rate)
     printf '%s\n' \
-      '{"type":"system","subtype":"init","model":"glm-5.3"}' \
+      '{"type":"system","subtype":"init","model":"glm-5.3-flash"}' \
       '{"type":"system","subtype":"api_retry","error_status":429,"message":"SECRET_PAYLOAD"}' \
       '{"type":"result","subtype":"error_during_execution","is_error":true,"result":""}'
     exit 1
     ;;
   quota)
     printf '%s\n' \
-      '{"type":"system","subtype":"init","model":"glm-5.3"}' \
+      '{"type":"system","subtype":"init","model":"glm-5.3-flash"}' \
       '{"type":"system","subtype":"api_retry","error_status":429}' \
       '{"type":"rate_limit_event","resets_at":1754400000,"message":"SECRET_PAYLOAD"}' \
       '{"type":"result","subtype":"error_during_execution","is_error":true,"result":""}'
@@ -146,14 +146,14 @@ case "${FAKE_CLAUDE_CASE:-success}" in
     ;;
   rate_stderr)
     printf '%s\n' \
-      '{"type":"system","subtype":"init","model":"glm-5.3"}' \
+      '{"type":"system","subtype":"init","model":"glm-5.3-flash"}' \
       '{"type":"result","subtype":"error_during_execution","is_error":true,"result":""}'
     printf '%s\n' 'Too Many Requests SECRET_PAYLOAD' >&2
     exit 1
     ;;
   extract_no_reclassify)
     printf '%s\n' \
-      '{"type":"system","subtype":"init","model":"glm-5.3"}' \
+      '{"type":"system","subtype":"init","model":"glm-5.3-flash"}' \
       '{"type":"system","subtype":"api_retry","error_status":429}' \
       '{"type":"result","subtype":"success","is_error":false,"result":""}'
     ;;
@@ -173,7 +173,7 @@ if [ "${1:-}" = "--help" ]; then
   exit 0
 fi
 printf '%s\n' \
-  '{"type":"system","subtype":"init","model":"glm-5.3"}' \
+  '{"type":"system","subtype":"init","model":"glm-5.3-flash"}' \
   '{"type":"result","subtype":"success","result":"OVERRIDE","usage":{"input_tokens":3,"output_tokens":1},"total_cost_usd":0.01}'
 FAKE_OVERRIDE
 chmod +x "$TEST_TMP/bin/claude-override"
@@ -189,6 +189,22 @@ fi
 exit 91
 FAKE_SLOW
 chmod +x "$TEST_TMP/bin/claude-slow"
+
+# Ordinary runner diagnostics use a minimal synthetic qualified scout gate so
+# transport and extraction cases do not depend on unrelated operational lanes.
+jq '.profiles["glm53-flash-max-scout"].lanes.scout.status = "qualified" |
+    .profiles["glm53-flash-max-scout"].lanes.scout.selection = "explicit-only" |
+    del(.profiles["glm53-flash-max-scout"].lanes.scout.evaluation_manifest_sha256)' \
+  "$ROOT/config/routing-gates.json" >"$TEST_TMP/operational-central.json"
+jq '.lanes.scout.backends["claude-zai"].qualified = true |
+    .lanes.scout.backends["claude-zai"].status = "qualified" |
+    .lanes.scout.backends["claude-zai"].selection = "explicit-only" |
+    .lanes.scout.backends["claude-zai"].evaluation_manifest_sha256 = [] |
+    .qualified_lanes = ["clerk","scout"] |
+    .provisional_lanes = ["builder"]' \
+  "$ROOT/config/glm-5.3-flash-max-routing.json" >"$TEST_TMP/operational-executable.json"
+export DELEGATION_ROUTING_GATES_FILE="$TEST_TMP/operational-central.json"
+export DELEGATION_GLM_ROUTING_FILE="$TEST_TMP/operational-executable.json"
 
 fail() {
   printf 'FAIL: %s\n' "$*" >&2
@@ -233,7 +249,7 @@ printf 'stale diagnostic\n' >"$TEST_TMP/results/success.out.error.json"
 run_case success 0
 [ "$(cat "$TEST_TMP/results/success.out")" = PONG ] || fail "success output mismatch"
 assert_json "$TEST_TMP/results/success.out.metrics.json" \
-  '.model == "glm-5.3" and .tokens.input == 3 and .tokens.output == 1'
+  '.model == "glm-5.3-flash" and .tokens.input == 3 and .tokens.output == 1'
 [ ! -e "$TEST_TMP/results/success.out.error.json" ] || fail "success wrote an error diagnostic"
 
 PATH="$TEST_TMP/bin:$PATH" TMPDIR="$TEST_TMP/runtime" \
@@ -335,14 +351,37 @@ cat >"$TEST_TMP/fake-claude.c" <<'NATIVE_FAKE'
 #include <unistd.h>
 
 static int emit_success(void) {
-  puts("{\"type\":\"system\",\"subtype\":\"init\",\"model\":\"glm-5.3\"}");
-  puts("{\"type\":\"result\",\"subtype\":\"success\",\"result\":\"PONG\",\"usage\":{\"input_tokens\":3,\"output_tokens\":1},\"total_cost_usd\":0.01}");
+  puts("{\"type\":\"system\",\"subtype\":\"init\",\"model\":\"glm-5.3-flash\"}");
+  puts("{\"type\":\"assistant\",\"message\":{\"model\":\"glm-5.3-flash\"}}");
+  puts("{\"type\":\"result\",\"subtype\":\"success\",\"modelUsage\":{\"glm-5.3-flash\":{\"canonicalModel\":\"glm-5.3-flash\",\"provider\":\"firstParty\",\"inputTokens\":3,\"outputTokens\":1}},\"result\":\"PONG\",\"usage\":{\"input_tokens\":3,\"output_tokens\":1},\"total_cost_usd\":0.01}");
   return 0;
 }
 
 static int emit_structured(const char *value) {
-  puts("{\"type\":\"system\",\"subtype\":\"init\",\"model\":\"glm-5.3\"}");
+  puts("{\"type\":\"system\",\"subtype\":\"init\",\"model\":\"glm-5.3-flash\"}");
+  puts("{\"type\":\"assistant\",\"message\":{\"model\":\"glm-5.3-flash\"}}");
+  printf("{\"type\":\"result\",\"subtype\":\"success\",\"modelUsage\":{\"glm-5.3-flash\":{\"canonicalModel\":\"glm-5.3-flash\",\"provider\":\"firstParty\",\"inputTokens\":3,\"outputTokens\":4}},\"result\":\"\",\"structured_output\":{\"status\":\"completed\",\"answers\":{\"value\":\"%s\"}},\"usage\":{\"input_tokens\":3,\"output_tokens\":4},\"total_cost_usd\":0.01}\n", value);
+  return 0;
+}
+
+static int emit_structured_without_identity(const char *value) {
+  puts("{\"type\":\"system\",\"subtype\":\"init\",\"model\":\"glm-5.3-flash\"}");
   printf("{\"type\":\"result\",\"subtype\":\"success\",\"result\":\"\",\"structured_output\":{\"status\":\"completed\",\"answers\":{\"value\":\"%s\"}},\"usage\":{\"input_tokens\":3,\"output_tokens\":4},\"total_cost_usd\":0.01}\n", value);
+  return 0;
+}
+
+static int emit_structured_partial_identity(const char *value) {
+  puts("{\"type\":\"system\",\"subtype\":\"init\",\"model\":\"glm-5.3-flash\"}");
+  puts("{\"type\":\"assistant\",\"message\":{\"model\":\"glm-5.3-flash\"}}");
+  puts("{\"type\":\"assistant\",\"message\":{}}");
+  printf("{\"type\":\"result\",\"subtype\":\"success\",\"modelUsage\":{\"glm-5.3-flash\":{\"canonicalModel\":\"glm-5.3-flash\",\"provider\":\"firstParty\",\"inputTokens\":3,\"outputTokens\":4}},\"result\":\"\",\"structured_output\":{\"status\":\"completed\",\"answers\":{\"value\":\"%s\"}},\"usage\":{\"input_tokens\":3,\"output_tokens\":4},\"total_cost_usd\":0.01}\n", value);
+  return 0;
+}
+
+static int emit_structured_multi_usage(const char *value) {
+  puts("{\"type\":\"system\",\"subtype\":\"init\",\"model\":\"glm-5.3-flash\"}");
+  puts("{\"type\":\"assistant\",\"message\":{\"model\":\"glm-5.3-flash\"}}");
+  printf("{\"type\":\"result\",\"subtype\":\"success\",\"modelUsage\":{\"glm-5.3-flash\":{\"canonicalModel\":\"glm-5.3-flash\",\"provider\":\"firstParty\",\"inputTokens\":3,\"outputTokens\":4,\"cacheReadInputTokens\":2,\"cacheCreationInputTokens\":1,\"costUSD\":0.01},\"safety-classifier\":{\"canonicalModel\":\"safety-classifier\",\"provider\":\"firstParty\",\"inputTokens\":5,\"outputTokens\":2,\"cacheReadInputTokens\":1,\"cacheCreationInputTokens\":0,\"costUSD\":0.001}},\"result\":\"\",\"structured_output\":{\"status\":\"completed\",\"answers\":{\"value\":\"%s\"}},\"usage\":{\"input_tokens\":3,\"output_tokens\":4,\"cache_read_input_tokens\":2,\"cache_creation_input_tokens\":1},\"total_cost_usd\":0.01}\n", value);
   return 0;
 }
 
@@ -379,6 +418,9 @@ int main(int argc, char **argv) {
   }
   if (!mode || !*mode || strcmp(mode, "success") == 0) return emit_success();
   if (strcmp(mode, "structured_success") == 0) return emit_structured("PONG");
+  if (strcmp(mode, "structured_identity_missing") == 0) return emit_structured_without_identity("PONG");
+  if (strcmp(mode, "structured_partial_identity") == 0) return emit_structured_partial_identity("PONG");
+  if (strcmp(mode, "structured_multi_usage") == 0) return emit_structured_multi_usage("PONG");
   if (strcmp(mode, "builder_success") == 0) {
     FILE *file = fopen(".git/delegation-canary", "w");
     if (file) { fclose(file); return 91; }
@@ -389,8 +431,9 @@ int main(int argc, char **argv) {
     if (!file) return 93;
     fputs("ignored but attested\n", file); fclose(file);
     if (chmod("ignored-artifact.txt", 0755) != 0) return 94;
-    puts("{\"type\":\"system\",\"subtype\":\"init\",\"model\":\"glm-5.3\"}");
-    puts("{\"type\":\"result\",\"subtype\":\"success\",\"result\":\"{\\\"status\\\":\\\"completed\\\"}\",\"usage\":{\"input_tokens\":4,\"output_tokens\":2},\"total_cost_usd\":0.02}");
+    puts("{\"type\":\"system\",\"subtype\":\"init\",\"model\":\"glm-5.3-flash\"}");
+    puts("{\"type\":\"assistant\",\"message\":{\"model\":\"glm-5.3-flash\"}}");
+    puts("{\"type\":\"result\",\"subtype\":\"success\",\"modelUsage\":{\"glm-5.3-flash\":{\"canonicalModel\":\"glm-5.3-flash\",\"provider\":\"firstParty\",\"inputTokens\":4,\"outputTokens\":2}},\"result\":\"{\\\"status\\\":\\\"completed\\\"}\",\"usage\":{\"input_tokens\":4,\"output_tokens\":2},\"total_cost_usd\":0.02}");
     return 0;
   }
   if (strcmp(mode, "read_isolation") == 0) {
@@ -398,10 +441,18 @@ int main(int argc, char **argv) {
     const char *source = getenv("FAKE_FORBIDDEN_SOURCE");
     const char *host = getenv("FAKE_FORBIDDEN_HOST");
     const char *config = getenv("CLAUDE_CONFIG_DIR");
+    const char *tmpdir = getenv("TMPDIR");
+    const char *bun_tmpdir = getenv("BUN_TMPDIR");
+    const char *claude_tmpdir = getenv("CLAUDE_TMPDIR");
+    const char *claude_code_tmpdir = getenv("CLAUDE_CODE_TMPDIR");
+    const char *user = getenv("USER");
     char scratch[4096];
     char value[32];
     FILE *file;
-    if (!home || !source || !host || !config) return 95;
+    if (!home || !source || !host || !config || !tmpdir || !bun_tmpdir ||
+        !claude_tmpdir || !claude_code_tmpdir || !user || !*user) return 95;
+    if (strcmp(tmpdir, bun_tmpdir) != 0 || strcmp(tmpdir, claude_tmpdir) != 0 ||
+        strcmp(tmpdir, claude_code_tmpdir) != 0) return 102;
     if (readable(home) || readable(source) || readable(host)) return 96;
     file = fopen("fixture.txt", "r");
     if (!file || !fgets(value, sizeof(value), file)) return 97;
@@ -446,23 +497,24 @@ jq -n \
   --arg contract_sha256 "$(sha256 "$EVAL_ROOT/evaluation/test-fixtures/contract.txt")" \
   --arg output_schema_sha256 "$(sha256 "$EVAL_ROOT/evaluation/test-fixtures/output-schema.json")" \
   --arg source_commit "$EVAL_BASE_COMMIT" \
-  '{schema:"delegation_policy_annotation_evaluation_v1",profile:"glm53-max-policy-annotation",lane:"policy-annotation",model:"glm-5.3",backend:"claude-zai",effort:"max",prompt_sha256:$prompt_sha256,runner_source_commit:$source_commit,runner_sha256:$runner_sha256,contract_path:"evaluation/test-fixtures/contract.txt",contract_sha256:$contract_sha256,output_schema_path:"evaluation/test-fixtures/output-schema.json",output_schema_sha256:$output_schema_sha256,timeout_seconds:60,max_output_chars:1024}' \
+  '{schema:"delegation_policy_annotation_evaluation_v1",profile:"glm53-flash-max-policy-annotation",lane:"policy-annotation",model:"glm-5.3-flash",backend:"claude-zai",effort:"max",prompt_sha256:$prompt_sha256,runner_source_commit:$source_commit,runner_sha256:$runner_sha256,contract_path:"evaluation/test-fixtures/contract.txt",contract_sha256:$contract_sha256,output_schema_path:"evaluation/test-fixtures/output-schema.json",output_schema_sha256:$output_schema_sha256,timeout_seconds:60,max_output_chars:1024}' \
   >"$TEST_TMP/glm-evaluation-manifest.json"
 GLM_MANIFEST_SHA="$(sha256 "$TEST_TMP/glm-evaluation-manifest.json")"
 jq --arg hash "$GLM_MANIFEST_SHA" '
-  .profiles["glm53-max-policy-annotation"].lanes["policy-annotation"].evaluation_manifest_sha256 = [$hash]
+  .profiles["glm53-flash-max-policy-annotation"].lanes["policy-annotation"].evaluation_manifest_sha256 = [$hash]
 ' "$EVAL_ROOT/config/routing-gates.json" >"$TEST_TMP/glm-central.json"
 mv "$TEST_TMP/glm-central.json" "$EVAL_ROOT/config/routing-gates.json"
 jq --arg hash "$GLM_MANIFEST_SHA" '
   .lanes["policy-annotation"].backends["claude-zai"].evaluation_manifest_sha256 = [$hash]
-' "$EVAL_ROOT/config/glm-5.3-max-routing.json" >"$TEST_TMP/glm-routing.json"
-mv "$TEST_TMP/glm-routing.json" "$EVAL_ROOT/config/glm-5.3-max-routing.json"
-git -C "$EVAL_ROOT" add config/routing-gates.json config/glm-5.3-max-routing.json
+' "$EVAL_ROOT/config/glm-5.3-flash-max-routing.json" >"$TEST_TMP/glm-routing.json"
+mv "$TEST_TMP/glm-routing.json" "$EVAL_ROOT/config/glm-5.3-flash-max-routing.json"
+git -C "$EVAL_ROOT" add config/routing-gates.json config/glm-5.3-flash-max-routing.json
 git -C "$EVAL_ROOT" commit -qm 'allowlist GLM evaluation fixture'
 
 PATH="$TEST_TMP/bin:$PATH" TMPDIR="$TEST_TMP/runtime" ZAI_API_KEY=fixture-key \
   FAKE_CLAUDE_CASE=success \
-  DELEGATION_GLM_ROUTING_FILE="$EVAL_ROOT/config/glm-5.3-max-routing.json" \
+  DELEGATION_ROUTING_GATES_FILE="$EVAL_ROOT/config/routing-gates.json" \
+  DELEGATION_GLM_ROUTING_FILE="$EVAL_ROOT/config/glm-5.3-flash-max-routing.json" \
   "$EVAL_ROOT/bin/delegation-glm" run \
   --lane policy-annotation --effort max --backend claude-zai --evaluation \
   --evaluation-manifest "$TEST_TMP/glm-evaluation-manifest.json" \
@@ -471,25 +523,26 @@ PATH="$TEST_TMP/bin:$PATH" TMPDIR="$TEST_TMP/runtime" ZAI_API_KEY=fixture-key \
 [ "$(cat "$TEST_TMP/results/policy-annotation.out")" = PONG ] \
   || fail "policy-annotation output mismatch"
 assert_json "$TEST_TMP/results/policy-annotation.out.metrics.json" \
-  '.lane == "policy-annotation" and .model == "glm-5.3" and .effort == "max"'
+  '.lane == "policy-annotation" and .model == "glm-5.3-flash" and .effort == "max"'
 
 jq '.max_output_chars = 2' "$TEST_TMP/glm-evaluation-manifest.json" \
   >"$TEST_TMP/glm-small-output-manifest.json"
 GLM_SMALL_SHA="$(sha256 "$TEST_TMP/glm-small-output-manifest.json")"
 jq --arg first "$GLM_MANIFEST_SHA" --arg second "$GLM_SMALL_SHA" '
-  .profiles["glm53-max-policy-annotation"].lanes["policy-annotation"].evaluation_manifest_sha256 = [$first, $second]
+  .profiles["glm53-flash-max-policy-annotation"].lanes["policy-annotation"].evaluation_manifest_sha256 = [$first, $second]
 ' "$EVAL_ROOT/config/routing-gates.json" >"$TEST_TMP/glm-central-small.json"
 mv "$TEST_TMP/glm-central-small.json" "$EVAL_ROOT/config/routing-gates.json"
 jq --arg first "$GLM_MANIFEST_SHA" --arg second "$GLM_SMALL_SHA" '
   .lanes["policy-annotation"].backends["claude-zai"].evaluation_manifest_sha256 = [$first, $second]
-' "$EVAL_ROOT/config/glm-5.3-max-routing.json" >"$TEST_TMP/glm-routing-small.json"
-mv "$TEST_TMP/glm-routing-small.json" "$EVAL_ROOT/config/glm-5.3-max-routing.json"
-git -C "$EVAL_ROOT" add config/routing-gates.json config/glm-5.3-max-routing.json
+' "$EVAL_ROOT/config/glm-5.3-flash-max-routing.json" >"$TEST_TMP/glm-routing-small.json"
+mv "$TEST_TMP/glm-routing-small.json" "$EVAL_ROOT/config/glm-5.3-flash-max-routing.json"
+git -C "$EVAL_ROOT" add config/routing-gates.json config/glm-5.3-flash-max-routing.json
 git -C "$EVAL_ROOT" commit -qm 'allowlist GLM output-limit fixture'
 rc=0
 PATH="$TEST_TMP/bin:$PATH" TMPDIR="$TEST_TMP/runtime" ZAI_API_KEY=fixture-key \
   FAKE_CLAUDE_CASE=success \
-  DELEGATION_GLM_ROUTING_FILE="$EVAL_ROOT/config/glm-5.3-max-routing.json" \
+  DELEGATION_ROUTING_GATES_FILE="$EVAL_ROOT/config/routing-gates.json" \
+  DELEGATION_GLM_ROUTING_FILE="$EVAL_ROOT/config/glm-5.3-flash-max-routing.json" \
   "$EVAL_ROOT/bin/delegation-glm" run \
   --lane policy-annotation --effort max --backend claude-zai --evaluation \
   --evaluation-manifest "$TEST_TMP/glm-small-output-manifest.json" \
@@ -554,7 +607,7 @@ make_lane_manifest() {
     --arg contract_sha256 "$LANE_CONTRACT_SHA" \
     --arg output_schema_path "$LANE_SCHEMA_PATH" \
     --arg output_schema_sha256 "$LANE_SCHEMA_SHA" \
-    '{schema:"delegation_glm_lane_evaluation_v1",profile:("glm53-max-" + $lane),lane:$lane,model:"glm-5.3",backend:"claude-zai",effort:"max",permission_mode:$permission,workdir_mode:$workdir_mode,prompt_sha256:$prompt_sha256,runner_source_commit:$runner_source_commit,runner_sha256:$runner_sha256,workdir_commit:$workdir_commit,contract_path:$contract_path,contract_sha256:$contract_sha256,output_schema_path:$output_schema_path,output_schema_sha256:$output_schema_sha256,task_count:3,timeout_seconds:60,max_output_chars:1024,max_cost_usd:2}' \
+    '{schema:"delegation_glm_lane_evaluation_v1",profile:("glm53-flash-max-" + $lane),lane:$lane,model:"glm-5.3-flash",backend:"claude-zai",effort:"max",permission_mode:$permission,workdir_mode:$workdir_mode,prompt_sha256:$prompt_sha256,runner_source_commit:$runner_source_commit,runner_sha256:$runner_sha256,workdir_commit:$workdir_commit,contract_path:$contract_path,contract_sha256:$contract_sha256,output_schema_path:$output_schema_path,output_schema_sha256:$output_schema_sha256,task_count:3,timeout_seconds:60,max_output_chars:1024,max_cost_usd:2}' \
     >"$destination"
 }
 
@@ -568,12 +621,12 @@ LANE_BUILDER_MANIFEST_SHA="$(sha256 "$LANE_BUILDER_MANIFEST")"
 LANE_CENTRAL_GATE="$TEST_TMP/lane-central.json"
 LANE_EXECUTABLE_GATE="$TEST_TMP/lane-executable.json"
 jq --arg scout "$LANE_SCOUT_MANIFEST_SHA" --arg builder "$LANE_BUILDER_MANIFEST_SHA" '
-  .profiles["glm53-max-scout"].lanes.scout.status = "provisional" |
-  .profiles["glm53-max-scout"].lanes.scout.selection = "explicit-only" |
-  .profiles["glm53-max-builder"].lanes.builder.status = "candidate" |
-  .profiles["glm53-max-builder"].lanes.builder.selection = "blocked" |
-  .profiles["glm53-max-scout"].lanes.scout.evaluation_manifest_sha256 = [$scout] |
-  .profiles["glm53-max-builder"].lanes.builder.evaluation_manifest_sha256 = [$builder]
+  .profiles["glm53-flash-max-scout"].lanes.scout.status = "provisional" |
+  .profiles["glm53-flash-max-scout"].lanes.scout.selection = "explicit-only" |
+  .profiles["glm53-flash-max-builder"].lanes.builder.status = "candidate" |
+  .profiles["glm53-flash-max-builder"].lanes.builder.selection = "blocked" |
+  .profiles["glm53-flash-max-scout"].lanes.scout.evaluation_manifest_sha256 = [$scout] |
+  .profiles["glm53-flash-max-builder"].lanes.builder.evaluation_manifest_sha256 = [$builder]
 ' "$LANE_EVAL_ROOT/config/routing-gates.json" >"$LANE_CENTRAL_GATE"
 jq --arg scout "$LANE_SCOUT_MANIFEST_SHA" --arg builder "$LANE_BUILDER_MANIFEST_SHA" '
   .status = "provisional" |
@@ -587,7 +640,7 @@ jq --arg scout "$LANE_SCOUT_MANIFEST_SHA" --arg builder "$LANE_BUILDER_MANIFEST_
   .lanes.builder.backends["claude-zai"].selection = "blocked" |
   .lanes.scout.backends["claude-zai"].evaluation_manifest_sha256 = [$scout] |
   .lanes.builder.backends["claude-zai"].evaluation_manifest_sha256 = [$builder]
-' "$LANE_EVAL_ROOT/config/glm-5.3-max-routing.json" >"$LANE_EXECUTABLE_GATE"
+' "$LANE_EVAL_ROOT/config/glm-5.3-flash-max-routing.json" >"$LANE_EXECUTABLE_GATE"
 
 PATH="$TEST_TMP/bin:$PATH" TMPDIR="$TEST_TMP/runtime" ZAI_API_KEY=fixture-key \
   FAKE_CLAUDE_CASE=structured_success DELEGATION_ROUTING_GATES_FILE="$LANE_CENTRAL_GATE" \
@@ -612,6 +665,70 @@ assert_json "$TEST_TMP/results/lane-scout.out.metrics.json" '
 '
 [ -z "$(git -C "$LANE_SCOUT_WORK" status --porcelain=v1)" ] \
   || fail "generic scout evaluation modified its read-only fixture"
+
+PATH="$TEST_TMP/bin:$PATH" TMPDIR="$TEST_TMP/runtime" ZAI_API_KEY=fixture-key \
+  FAKE_CLAUDE_CASE=structured_multi_usage \
+  DELEGATION_ROUTING_GATES_FILE="$LANE_CENTRAL_GATE" \
+  DELEGATION_GLM_ROUTING_FILE="$LANE_EXECUTABLE_GATE" \
+  "$LANE_EVAL_ROOT/bin/delegation-glm" run \
+  --lane scout --effort max --backend claude-zai --evaluation \
+  --evaluation-manifest "$LANE_SCOUT_MANIFEST" \
+  --prompt-file "$TEST_TMP/prompt" \
+  --output "$TEST_TMP/results/lane-multi-usage.out" \
+  --workdir "$LANE_SCOUT_WORK"
+assert_json "$TEST_TMP/results/lane-multi-usage.out.metrics.json" '
+  .usage_source == "model_usage" and
+  .observed_assistant_models == ["glm-5.3-flash"] and
+  .assistant_event_count == 1 and .assistant_model_attributed_count == 1 and
+  .assistant_model_missing_or_malformed_count == 0 and .assistant_model_mismatch_count == 0 and
+  .effective_content_model == "glm-5.3-flash" and
+  .effective_content_model_source == "assistant_events" and
+  .exact_model_identity_attested == true and
+  .target_usage_identity_attested == true and
+  .tokens == {input:8,output:6,reasoning:0,cache_read:3,cache_write:1} and
+  .provider_aggregate_tokens == {input:3,output:4,reasoning:0,cache_read:2,cache_write:1} and
+  .provider_cost_usd == 0.011 and .provider_total_cost_usd == 0.01 and
+  .target_usage_participant_present == true and
+  [.usage_participants[].model] == ["glm-5.3-flash","safety-classifier"] and
+  .usage_participants[0].canonical_model == "glm-5.3-flash" and
+  .usage_participants[0].provider == "firstParty"
+'
+
+rc=0
+PATH="$TEST_TMP/bin:$PATH" TMPDIR="$TEST_TMP/runtime" ZAI_API_KEY=fixture-key \
+  FAKE_CLAUDE_CASE=structured_identity_missing \
+  DELEGATION_ROUTING_GATES_FILE="$LANE_CENTRAL_GATE" \
+  DELEGATION_GLM_ROUTING_FILE="$LANE_EXECUTABLE_GATE" \
+  "$LANE_EVAL_ROOT/bin/delegation-glm" run \
+  --lane scout --effort max --backend claude-zai --evaluation \
+  --evaluation-manifest "$LANE_SCOUT_MANIFEST" \
+  --prompt-file "$TEST_TMP/prompt" \
+  --output "$TEST_TMP/results/lane-identity-missing.out" \
+  --workdir "$LANE_SCOUT_WORK" >/dev/null 2>&1 || rc=$?
+[ "$rc" -eq 70 ] || fail "missing strict identity returned $rc, expected 70"
+[ ! -e "$TEST_TMP/results/lane-identity-missing.out" ] &&
+  [ ! -e "$TEST_TMP/results/lane-identity-missing.out.metrics.json" ] \
+  || fail "missing strict identity published output or metrics"
+assert_json "$TEST_TMP/results/lane-identity-missing.out.error.json" \
+  '.phase == "extract" and .reason == "strict_identity_evaluation_void"'
+
+rc=0
+PATH="$TEST_TMP/bin:$PATH" TMPDIR="$TEST_TMP/runtime" ZAI_API_KEY=fixture-key \
+  FAKE_CLAUDE_CASE=structured_partial_identity \
+  DELEGATION_ROUTING_GATES_FILE="$LANE_CENTRAL_GATE" \
+  DELEGATION_GLM_ROUTING_FILE="$LANE_EXECUTABLE_GATE" \
+  "$LANE_EVAL_ROOT/bin/delegation-glm" run \
+  --lane scout --effort max --backend claude-zai --evaluation \
+  --evaluation-manifest "$LANE_SCOUT_MANIFEST" \
+  --prompt-file "$TEST_TMP/prompt" \
+  --output "$TEST_TMP/results/lane-partial-identity.out" \
+  --workdir "$LANE_SCOUT_WORK" >/dev/null 2>&1 || rc=$?
+[ "$rc" -eq 70 ] || fail "partial strict identity returned $rc, expected 70"
+[ ! -e "$TEST_TMP/results/lane-partial-identity.out" ] &&
+  [ ! -e "$TEST_TMP/results/lane-partial-identity.out.metrics.json" ] \
+  || fail "partial strict identity published output or metrics"
+assert_json "$TEST_TMP/results/lane-partial-identity.out.error.json" \
+  '.phase == "extract" and .reason == "strict_identity_evaluation_void"'
 
 READ_CANARY_HOME="$(mktemp -d "$HOME/.delegation-glm-read-test.XXXXXX")"
 if [ "${DELEGATION_TEST_KEEP_TMP:-0}" = 1 ]; then

@@ -333,6 +333,16 @@
       "scope": "Official model identity, Coding Plan availability, one-million-token context, effort mapping, and launch benchmark claims for coding, agent, and cybersecurity tasks.",
       "limitations": "First-party launch claims use several harnesses and incompletely reported effort settings. They are contextual only and do not attest the exact delegation-glm runner. No independent tracked source had a GLM-5.3 row on the observation date; general API dollar pricing was not yet published."
     },
+    "zai-glm-5.3-flash-launch-2026-08-28": {
+      "name": "Z.ai GLM-5.3-Flash launch",
+      "url": "https://z.ai/blog/glm-5.3-flash",
+      "documentation_url": "https://docs.z.ai/guides/vlm/glm-5.3-flash",
+      "observed_at": "2026-08-28",
+      "data_date": "2026-08-28",
+      "category": "first-party-release-evidence",
+      "scope": "Official glm-5.3-flash model code, Coding Plan availability, max-effort recommendation, one-million-token context, native multimodal input, and launch benchmark claims. Z.ai also identifies the pre-release model as ox-alpha.",
+      "limitations": "First-party launch claims are contextual only and do not attest the exact delegation-glm Claude-to-Z.AI runner. The earlier ox-alpha diagnostic used a different OpenRouter transport and cannot qualify this route."
+    },
     "cursorbench-3.2-2026-08-12": {
       "name": "CursorBench 3.2",
       "url": "https://cursor.com/cursorbench",
@@ -1847,6 +1857,24 @@
           "exploitgym_solved": 105,
           "exploitgym_total": 130,
           "exploitbench_pass_pct": 54.4
+        }
+      }
+    },
+    {
+      "id": "zai-glm-5.3-flash-launch-max-2026-08-28",
+      "model": "glm-5.3-flash",
+      "harness": "zai-reported-mixed",
+      "effort": "max",
+      "source": "zai-glm-5.3-flash-launch-2026-08-28",
+      "contextual_only": true,
+      "note": "The provider recommends max effort and reports mixed launch harnesses. These results support evaluation priority but do not qualify the claude-zai lane.",
+      "metrics": {
+        "coding": {
+          "deep_swe_v1_1_pass_pct": 63.4,
+          "zai_code_bench_v1_pass_pct": 29.0
+        },
+        "agent": {
+          "automation_bench_pass_pct": 48.8
         }
       }
     }

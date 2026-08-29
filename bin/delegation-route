@@ -16,7 +16,7 @@ if [ -n "${DELEGATION_GLM_ROUTING_FILE:-}" ]; then
   GLM_GATES=("$DELEGATION_GLM_ROUTING_FILE")
 else
   GLM_GATES=(
-    "$ROOT/config/glm-5.3-max-routing.json"
+    "$ROOT/config/glm-5.3-flash-max-routing.json"
   )
 fi
 KIMI_GATE="${DELEGATION_KIMI_ROUTING_FILE:-$ROOT/config/kimi-k3-routing.json}"
@@ -80,7 +80,7 @@ validate() {
       $p.key] - $root.review_policy.eligible_reviewer_profiles | length == 0) and
     ([.profiles[] | .model, .harness, .effort] | all(type == "string" and length > 0)) and
     ([.profiles[] | select(.harness == "claude-zai") |
-      select(.model != "glm-5.3" or .effort != "max")] | length == 0) and
+      select(.model != "glm-5.3-flash" or .effort != "max")] | length == 0) and
     ([.profiles[].lanes[] | .status] | all(. as $v | $statuses | index($v) != null)) and
     ([.profiles[].lanes[] | .selection] | all(. as $v | $selections | index($v) != null)) and
     ([.compound_lanes[] | .status] | all(. as $v | $statuses | index($v) != null)) and
@@ -103,7 +103,7 @@ validate() {
     ([.profiles | to_entries[] as $p | $p.value.lanes | to_entries[] as $lane |
       select($lane.value.evaluation_manifest_sha256? != null) |
       ($lane.key == "policy-annotation") or
-      ($p.value.model == "glm-5.3" and $p.value.harness == "claude-zai" and $p.value.effort == "max" and
+      ($p.value.model == "glm-5.3-flash" and $p.value.harness == "claude-zai" and $p.value.effort == "max" and
        (["clerk","scout","builder"] | index($lane.key)) != null and
        (($lane.value.status == "provisional" and $lane.value.selection == "explicit-only") or
         ($lane.value.status == "candidate" and $lane.value.selection == "blocked")))] | all) and
@@ -166,7 +166,7 @@ validate() {
        {key:.key,value:{status:.value.status,selection:.value.selection,effort:$p.value.effort,evaluation_manifest_sha256:(.value.evaluation_manifest_sha256 // [])}}] | from_entries as $expected |
       [$b.lanes | to_entries[] |
        {key:.key,value:{status:.value.backends["claude-zai"].status,selection:.value.backends["claude-zai"].selection,effort:(.value.backends["claude-zai"].effort // .value.default_effort),evaluation_manifest_sha256:(.value.backends["claude-zai"].evaluation_manifest_sha256 // [])}}] | from_entries as $actual |
-      ($b.model == "glm-5.3") and
+      ($b.model == "glm-5.3-flash") and
       ($prefix | type == "string" and length > 0) and
       ([ $central[0].profiles | to_entries[] | select(.key | startswith($prefix + "-")) |
          select(.value.model != $b.model or .value.harness != "claude-zai" or .value.effort != "max") ] | length == 0) and

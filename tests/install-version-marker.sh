@@ -34,7 +34,7 @@ esac
 EOF
 chmod 700 "$TEST_TOOLS/claude"
 
-# Seed an upgrade-shaped install: stale Grok 4.5 and GLM 5.2/high gates plus a
+# Seed an upgrade-shaped install: stale Grok 4.5 and retired GLM gates plus a
 # digest-valid Grok archive. The installer must remove the stale gates and
 # recognize the retained archive only after current routing files exist.
 mkdir -p "$DATA/config" "$DATA/grok-cli/current" "$GROK_TEST_HOME"
@@ -42,6 +42,7 @@ printf '%s\n' '{}' >"$GROK_TEST_HOME/auth.json"
 printf '%s\n' '{}' >"$DATA/config/grok-4.5-routing.json"
 printf '%s\n' '{}' >"$DATA/config/glm-5.2-routing.json"
 printf '%s\n' '{}' >"$DATA/config/glm-5.3-high-routing.json"
+printf '%s\n' '{}' >"$DATA/config/glm-5.3-max-routing.json"
 printf '%s\n' '{}' >"$DATA/config/gemini-3.6-flash-routing.json"
 cat >"$DATA/grok-cli/current/grok" <<'EOF'
 #!/usr/bin/env bash
@@ -90,8 +91,10 @@ env CLAUDE_HOME="$TMP/claude" CODEX_HOME="$TMP/codex" \
   || fail 'upgrade retained the stale GLM 5.2 gate'
 [ ! -e "$DATA/config/glm-5.3-high-routing.json" ] \
   || fail 'upgrade retained the stale GLM 5.3/high gate'
-[ -f "$DATA/config/glm-5.3-max-routing.json" ] \
-  || fail 'upgrade did not install the GLM 5.3/max gate'
+[ ! -e "$DATA/config/glm-5.3-max-routing.json" ] \
+  || fail 'upgrade retained the retired GLM 5.3/max gate'
+[ -f "$DATA/config/glm-5.3-flash-max-routing.json" ] \
+  || fail 'upgrade did not install the GLM 5.3-Flash/max gate'
 [ ! -e "$DATA/config/gemini-3.6-flash-routing.json" ] \
   || fail 'upgrade retained the stale Gemini 3.6 gate'
 [ -f "$DATA/config/gemini-3.7-flash-routing.json" ] \

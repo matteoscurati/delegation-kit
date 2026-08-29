@@ -10,7 +10,17 @@ It ships as a **reference implementation**: the author's concrete models
 external-evidence snapshot, and fail-closed local gates. Swap the models for your own tiers with
 [`ADAPTING.md`](./ADAPTING.md) — the *structure* is the transferable part.
 
-## Current release: 0.18.0
+## Current release: 0.19.0
+
+Version 0.19.0 replaces the previous GLM route with the exact
+`glm-5.3-flash` / `claude-zai` / `max` tuple after a manifest-bound v4 pack
+passed all nine no-retry attempts at score 1.0. Every one of the 204 assistant
+events carried the Flash identity, terminal usage named the sole canonical
+first-party Flash participant, and all builder checkers passed. Clerk and scout
+are qualified explicit-only; builder remains provisional explicit-only. The
+runner now confines Claude/Bun temporary state and fails closed on incomplete,
+partial, or mismatched model identity. Earlier v1-v3 attempts remain terminal
+and are not relabelled.
 
 Version 0.18.0 adds safe parallel Grok Build dispatch through an explicit
 shared-OAuth generation, while retaining serialized OAuth as the default and
@@ -132,7 +142,7 @@ provisional/explicit-only behind `--allow-provisional`. See
 | 5 native profiles | `agents/*.toml` | `luna-clerk` · `terra-builder` (`max`, editing) · `terra-reviewer` (`max`, read-only cross-family) · `sol-reviewer` (`high`) · `sol-judge` (`max`, explicit judgement) |
 | 5 ephemeral profiles | `*.config.toml` | for `codex exec --ephemeral -p <name>` |
 | collaboration policy | appended to `AGENTS.md` | usage-aware routing **+ a Codex→Claude bridge** |
-| optional GLM skill | `skills/glm-executor/` | same fail-closed GLM-5.3/max executor path |
+| optional GLM skill | `skills/glm-executor/` | fail-closed GLM-5.3-Flash/max executor; clerk/scout qualified, builder provisional |
 | optional Gemini skill | `skills/gemini-executor/` | same staged Gemini 3.7 Flash executor path |
 | optional Kimi skill | `skills/kimi-executor/` | same fail-closed provisional Kimi K3 path |
 | provisional Grok skill | `skills/grok-executor/` | same fail-closed Grok 4.6 builder path |
@@ -146,13 +156,15 @@ The universal installer also adds `delegation-schema`, `delegation-glm`,
 `delegation-evidence`, the ZIP-only `delegation-epoch` importer, and the read-only
 central router `delegation-route` under
 `~/.local/bin`, with versioned gates under `~/.local/share/delegation-kit/`.
-GLM-5.3/max `clerk` and `scout` are qualified but remain explicit-only; `builder` is
-provisional and requires an explicit decision plus `--allow-provisional`.
-Reviewer is disabled; policy annotation remains a blocked evaluation-only
-candidate at `glm-5.3/max`. The only shipped GLM gate is GLM-5.3/max: GLM-5.2
-and GLM-5.3/high have no installed or selectable profile. Their frozen comparison
-receipts remain historical evidence only. The runner refuses every
-blocked lane and every effort the gate did not pin, and also refuses execution unless at least one of Claude Code or Codex is
+GLM-5.3-Flash/max is the sole GLM route. The exact v4 pack passed 9/9 no-retry
+attempts at score 1.0: all 204 assistant events were attributed to Flash, every
+terminal `modelUsage` contained the sole canonical first-party Flash participant,
+and all builder checkers passed. `clerk` and `scout` are qualified explicit-only;
+`builder` is provisional explicit-only and requires `--allow-provisional`.
+Reviewer is disabled and policy annotation remains blocked. Historical v1-v3
+runs remain terminal and are not relabelled.
+The runner refuses every blocked lane and every effort the gate did not pin,
+and also refuses execution unless at least one of Claude Code or Codex is
 installed; it is an agent option, not a standalone GLM client. The installer asks
 for the Z.AI API key and stores it in `~/.local/share/delegation-kit/config/zai.env`
 (mode 600); an explicit `ZAI_API_KEY` in the environment overrides it.
@@ -190,7 +202,7 @@ dispatch. Historical schemas and frozen evaluation protocols are never
 rewritten; a manifest still binds the normative file and the committed runner
 source binds the compiler implementation.
 
-Qualification of the current GLM lanes uses the public
+The historical GLM-5.3 qualification used the public
 [`glm-5.3-lane-comparison-v1` contract](./evaluation/glm-5.3-lane-comparison-v1/README.md).
 Each attempt is pinned to `glm-5.3` / `claude-zai` / `high|max` and to hashes of the
 prompt, contract, output schema, runner, runner commit, and fixture commit. The
@@ -207,6 +219,14 @@ aggregate that passes the preregistered thresholds may justify a public gate
 change. The owner subsequently chose max as the sole operational effort; a
 separate exact-runner max requalification passed 9/9 with every builder checker
 green. This owner preference does not rewrite high as the comparison winner.
+
+The replacement candidate uses the
+[`glm-5.3-flash-lane-qualification-v1` contract](./evaluation/glm-5.3-flash-lane-qualification-v1/README.md).
+It reuses the deterministic packs but requires fresh no-retry attempts at the
+exact `glm-5.3-flash` / `claude-zai` / `max` tuple. The 2026-08-29 v4 run passed
+9/9 attempts with complete assistant-event and canonical first-party identity.
+Clerk and scout qualify explicit-only; builder becomes provisional explicit-only.
+Earlier v1-v3 runs remain terminal.
 
 Gemini 3.7 Flash is staged through the installed Antigravity CLI (`agy`). Scout
 at `medium` and builder/frontend-builder at `high` are blocked candidates;
