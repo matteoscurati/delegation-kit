@@ -352,13 +352,15 @@ cat >"$TEST_TMP/fake-claude.c" <<'NATIVE_FAKE'
 
 static int emit_success(void) {
   puts("{\"type\":\"system\",\"subtype\":\"init\",\"model\":\"glm-5.3-flash\"}");
-  puts("{\"type\":\"result\",\"subtype\":\"success\",\"model\":\"glm-5.3-flash\",\"modelUsage\":{\"glm-5.3-flash\":{\"inputTokens\":3,\"outputTokens\":1}},\"result\":\"PONG\",\"usage\":{\"input_tokens\":3,\"output_tokens\":1},\"total_cost_usd\":0.01}");
+  puts("{\"type\":\"assistant\",\"message\":{\"model\":\"glm-5.3-flash\"}}");
+  puts("{\"type\":\"result\",\"subtype\":\"success\",\"modelUsage\":{\"glm-5.3-flash\":{\"canonicalModel\":\"glm-5.3-flash\",\"provider\":\"firstParty\",\"inputTokens\":3,\"outputTokens\":1}},\"result\":\"PONG\",\"usage\":{\"input_tokens\":3,\"output_tokens\":1},\"total_cost_usd\":0.01}");
   return 0;
 }
 
 static int emit_structured(const char *value) {
   puts("{\"type\":\"system\",\"subtype\":\"init\",\"model\":\"glm-5.3-flash\"}");
-  printf("{\"type\":\"result\",\"subtype\":\"success\",\"model\":\"glm-5.3-flash\",\"modelUsage\":{\"glm-5.3-flash\":{\"inputTokens\":3,\"outputTokens\":4}},\"result\":\"\",\"structured_output\":{\"status\":\"completed\",\"answers\":{\"value\":\"%s\"}},\"usage\":{\"input_tokens\":3,\"output_tokens\":4},\"total_cost_usd\":0.01}\n", value);
+  puts("{\"type\":\"assistant\",\"message\":{\"model\":\"glm-5.3-flash\"}}");
+  printf("{\"type\":\"result\",\"subtype\":\"success\",\"modelUsage\":{\"glm-5.3-flash\":{\"canonicalModel\":\"glm-5.3-flash\",\"provider\":\"firstParty\",\"inputTokens\":3,\"outputTokens\":4}},\"result\":\"\",\"structured_output\":{\"status\":\"completed\",\"answers\":{\"value\":\"%s\"}},\"usage\":{\"input_tokens\":3,\"output_tokens\":4},\"total_cost_usd\":0.01}\n", value);
   return 0;
 }
 
@@ -368,9 +370,18 @@ static int emit_structured_without_identity(const char *value) {
   return 0;
 }
 
+static int emit_structured_partial_identity(const char *value) {
+  puts("{\"type\":\"system\",\"subtype\":\"init\",\"model\":\"glm-5.3-flash\"}");
+  puts("{\"type\":\"assistant\",\"message\":{\"model\":\"glm-5.3-flash\"}}");
+  puts("{\"type\":\"assistant\",\"message\":{}}");
+  printf("{\"type\":\"result\",\"subtype\":\"success\",\"modelUsage\":{\"glm-5.3-flash\":{\"canonicalModel\":\"glm-5.3-flash\",\"provider\":\"firstParty\",\"inputTokens\":3,\"outputTokens\":4}},\"result\":\"\",\"structured_output\":{\"status\":\"completed\",\"answers\":{\"value\":\"%s\"}},\"usage\":{\"input_tokens\":3,\"output_tokens\":4},\"total_cost_usd\":0.01}\n", value);
+  return 0;
+}
+
 static int emit_structured_multi_usage(const char *value) {
   puts("{\"type\":\"system\",\"subtype\":\"init\",\"model\":\"glm-5.3-flash\"}");
-  printf("{\"type\":\"result\",\"subtype\":\"success\",\"model\":\"glm-5.3-flash\",\"modelUsage\":{\"glm-5.3-flash\":{\"inputTokens\":3,\"outputTokens\":4,\"cacheReadInputTokens\":2,\"cacheCreationInputTokens\":1,\"costUSD\":0.01},\"safety-classifier\":{\"inputTokens\":5,\"outputTokens\":2,\"cacheReadInputTokens\":1,\"cacheCreationInputTokens\":0,\"costUSD\":0.001}},\"result\":\"\",\"structured_output\":{\"status\":\"completed\",\"answers\":{\"value\":\"%s\"}},\"usage\":{\"input_tokens\":3,\"output_tokens\":4,\"cache_read_input_tokens\":2,\"cache_creation_input_tokens\":1},\"total_cost_usd\":0.01}\n", value);
+  puts("{\"type\":\"assistant\",\"message\":{\"model\":\"glm-5.3-flash\"}}");
+  printf("{\"type\":\"result\",\"subtype\":\"success\",\"modelUsage\":{\"glm-5.3-flash\":{\"canonicalModel\":\"glm-5.3-flash\",\"provider\":\"firstParty\",\"inputTokens\":3,\"outputTokens\":4,\"cacheReadInputTokens\":2,\"cacheCreationInputTokens\":1,\"costUSD\":0.01},\"safety-classifier\":{\"canonicalModel\":\"safety-classifier\",\"provider\":\"firstParty\",\"inputTokens\":5,\"outputTokens\":2,\"cacheReadInputTokens\":1,\"cacheCreationInputTokens\":0,\"costUSD\":0.001}},\"result\":\"\",\"structured_output\":{\"status\":\"completed\",\"answers\":{\"value\":\"%s\"}},\"usage\":{\"input_tokens\":3,\"output_tokens\":4,\"cache_read_input_tokens\":2,\"cache_creation_input_tokens\":1},\"total_cost_usd\":0.01}\n", value);
   return 0;
 }
 
@@ -408,6 +419,7 @@ int main(int argc, char **argv) {
   if (!mode || !*mode || strcmp(mode, "success") == 0) return emit_success();
   if (strcmp(mode, "structured_success") == 0) return emit_structured("PONG");
   if (strcmp(mode, "structured_identity_missing") == 0) return emit_structured_without_identity("PONG");
+  if (strcmp(mode, "structured_partial_identity") == 0) return emit_structured_partial_identity("PONG");
   if (strcmp(mode, "structured_multi_usage") == 0) return emit_structured_multi_usage("PONG");
   if (strcmp(mode, "builder_success") == 0) {
     FILE *file = fopen(".git/delegation-canary", "w");
@@ -420,7 +432,8 @@ int main(int argc, char **argv) {
     fputs("ignored but attested\n", file); fclose(file);
     if (chmod("ignored-artifact.txt", 0755) != 0) return 94;
     puts("{\"type\":\"system\",\"subtype\":\"init\",\"model\":\"glm-5.3-flash\"}");
-    puts("{\"type\":\"result\",\"subtype\":\"success\",\"model\":\"glm-5.3-flash\",\"modelUsage\":{\"glm-5.3-flash\":{\"inputTokens\":4,\"outputTokens\":2}},\"result\":\"{\\\"status\\\":\\\"completed\\\"}\",\"usage\":{\"input_tokens\":4,\"output_tokens\":2},\"total_cost_usd\":0.02}");
+    puts("{\"type\":\"assistant\",\"message\":{\"model\":\"glm-5.3-flash\"}}");
+    puts("{\"type\":\"result\",\"subtype\":\"success\",\"modelUsage\":{\"glm-5.3-flash\":{\"canonicalModel\":\"glm-5.3-flash\",\"provider\":\"firstParty\",\"inputTokens\":4,\"outputTokens\":2}},\"result\":\"{\\\"status\\\":\\\"completed\\\"}\",\"usage\":{\"input_tokens\":4,\"output_tokens\":2},\"total_cost_usd\":0.02}");
     return 0;
   }
   if (strcmp(mode, "read_isolation") == 0) {
@@ -665,11 +678,20 @@ PATH="$TEST_TMP/bin:$PATH" TMPDIR="$TEST_TMP/runtime" ZAI_API_KEY=fixture-key \
   --workdir "$LANE_SCOUT_WORK"
 assert_json "$TEST_TMP/results/lane-multi-usage.out.metrics.json" '
   .usage_source == "model_usage" and
+  .observed_assistant_models == ["glm-5.3-flash"] and
+  .assistant_event_count == 1 and .assistant_model_attributed_count == 1 and
+  .assistant_model_missing_or_malformed_count == 0 and .assistant_model_mismatch_count == 0 and
+  .effective_content_model == "glm-5.3-flash" and
+  .effective_content_model_source == "assistant_events" and
+  .exact_model_identity_attested == true and
+  .target_usage_identity_attested == true and
   .tokens == {input:8,output:6,reasoning:0,cache_read:3,cache_write:1} and
   .provider_aggregate_tokens == {input:3,output:4,reasoning:0,cache_read:2,cache_write:1} and
   .provider_cost_usd == 0.011 and .provider_total_cost_usd == 0.01 and
   .target_usage_participant_present == true and
-  [.usage_participants[].model] == ["glm-5.3-flash","safety-classifier"]
+  [.usage_participants[].model] == ["glm-5.3-flash","safety-classifier"] and
+  .usage_participants[0].canonical_model == "glm-5.3-flash" and
+  .usage_participants[0].provider == "firstParty"
 '
 
 rc=0
@@ -688,6 +710,24 @@ PATH="$TEST_TMP/bin:$PATH" TMPDIR="$TEST_TMP/runtime" ZAI_API_KEY=fixture-key \
   [ ! -e "$TEST_TMP/results/lane-identity-missing.out.metrics.json" ] \
   || fail "missing strict identity published output or metrics"
 assert_json "$TEST_TMP/results/lane-identity-missing.out.error.json" \
+  '.phase == "extract" and .reason == "strict_identity_evaluation_void"'
+
+rc=0
+PATH="$TEST_TMP/bin:$PATH" TMPDIR="$TEST_TMP/runtime" ZAI_API_KEY=fixture-key \
+  FAKE_CLAUDE_CASE=structured_partial_identity \
+  DELEGATION_ROUTING_GATES_FILE="$LANE_CENTRAL_GATE" \
+  DELEGATION_GLM_ROUTING_FILE="$LANE_EXECUTABLE_GATE" \
+  "$LANE_EVAL_ROOT/bin/delegation-glm" run \
+  --lane scout --effort max --backend claude-zai --evaluation \
+  --evaluation-manifest "$LANE_SCOUT_MANIFEST" \
+  --prompt-file "$TEST_TMP/prompt" \
+  --output "$TEST_TMP/results/lane-partial-identity.out" \
+  --workdir "$LANE_SCOUT_WORK" >/dev/null 2>&1 || rc=$?
+[ "$rc" -eq 70 ] || fail "partial strict identity returned $rc, expected 70"
+[ ! -e "$TEST_TMP/results/lane-partial-identity.out" ] &&
+  [ ! -e "$TEST_TMP/results/lane-partial-identity.out.metrics.json" ] \
+  || fail "partial strict identity published output or metrics"
+assert_json "$TEST_TMP/results/lane-partial-identity.out.error.json" \
   '.phase == "extract" and .reason == "strict_identity_evaluation_void"'
 
 READ_CANARY_HOME="$(mktemp -d "$HOME/.delegation-glm-read-test.XXXXXX")"

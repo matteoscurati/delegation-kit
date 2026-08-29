@@ -29,6 +29,10 @@ or complete `modelUsage`; this does not establish what the provider originally
 exposed, and none of those task scores opens a lane. The earlier
 v1 sandbox failure remains a separate terminal pre-provider `VOID`. Frozen
 GLM-5.3 results remain historical and do not transfer.
+The terminal v3 probe observed `glm-5.3-flash` on every content-bearing
+assistant event and as the sole `modelUsage` entry with matching
+`canonicalModel` and `provider=firstParty`. Its runner did not yet accept that
+real schema, so v3 remains `VOID`; only a fresh v4 pack may qualify a lane.
 `delegation-evidence lane builder` shows the dated external rows: they provide
 context, not a local harness score and not permission to widen the gate.
 

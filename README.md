@@ -153,6 +153,9 @@ separately surfaced effective content model or complete `modelUsage`. This does
 not establish what the provider originally exposed. Reviewer
 is disabled and policy annotation remains a separate blocked evaluation-only
 candidate. Historical GLM-5.2 and GLM-5.3 receipts do not transfer to Flash.
+The terminal v3 probe subsequently observed Flash on every assistant message
+and as the sole canonical first-party `modelUsage` entry, but its runner did not
+yet accept that schema; a fresh v4 pack is required.
 The runner refuses every blocked lane and every effort the gate did not pin,
 and also refuses execution unless at least one of Claude Code or Codex is
 installed; it is an agent option, not a standalone GLM client. The installer asks

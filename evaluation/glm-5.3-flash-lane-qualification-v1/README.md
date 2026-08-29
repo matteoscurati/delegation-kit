@@ -32,3 +32,14 @@ effective content identity or complete `modelUsage`, so no lane is promoted.
 This does not establish what the provider originally exposed. The
 earlier v1 attempt failed in the sandbox before any provider event and remains
 a separate terminal `VOID`.
+
+## 2026-08-29 identity probe
+
+[`result-2026-08-29-v3.json`](./result-2026-08-29-v3.json) records one fresh
+manifest-bound clerk attempt. It reached Z.AI and completed the task, but the
+runner published no result because it expected a top-level result model. The
+private stream showed the real identity shape instead: every assistant event
+reported `message.model = glm-5.3-flash`, and the sole `modelUsage` participant
+reported `canonicalModel = glm-5.3-flash` with `provider = firstParty`. No
+classifier participant appeared. V3 remains terminal `VOID`; the corrected
+parser requires a fresh v4 pack.

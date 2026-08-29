@@ -17,6 +17,10 @@ All notable changes to delegation-kit are documented here.
   preserve `USER` in the sanitized environment. The first Flash attempt never
   reached the provider because the frozen native CLI tried to create
   `/tmp/claude-501`; that attempt remains a terminal `VOID`.
+- Record the terminal v3 identity probe and align future strict extraction with
+  the actual Claude Code/Z.AI stream: content-bearing assistant events expose
+  `message.model`, while `modelUsage` carries `canonicalModel` and `provider`.
+  V3 is not relabelled; every lane remains blocked pending a fresh v4 pack.
 
 ## [0.18.0] — 2026-08-27
 

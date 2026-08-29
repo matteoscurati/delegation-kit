@@ -294,6 +294,9 @@ blocked. The v2 task pack passed 9/9 operational checks and every builder
 checker; strict content identity is `VOID` because retained v2 evidence did not
 record separately surfaced effective content identity or complete model usage.
 This does not establish what the provider originally exposed.
+The terminal v3 probe later observed Flash on every assistant message and as
+the sole canonical first-party usage participant, but cannot be relabelled; a
+fresh v4 pack is required.
 Launch claims and the earlier ox-alpha diagnostic do not transfer across
 transports. Any future builder route would run at
 `--permission-mode acceptEdits` with no settings sources: the delegate can only

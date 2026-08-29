@@ -1,0 +1,49 @@
+{
+  "schema_version": "delegation_glm_flash_identity_probe_result_v1",
+  "run_id": "2026-08-29-glm-5.3-flash-identity-probe-v3",
+  "observed_at": "2026-08-29T00:00:00Z",
+  "tuple": {
+    "requested_model": "glm-5.3-flash",
+    "backend": "claude-zai",
+    "effort": "max",
+    "lane": "clerk"
+  },
+  "outcome": "void",
+  "void_reason": "runner_identity_extraction_mismatch",
+  "provider_reached": true,
+  "provider_attempts": 1,
+  "post_observation_retries": 0,
+  "task_output_published": false,
+  "observed_identity_shape": {
+    "system_init_models": ["glm-5.3-flash"],
+    "assistant_event_count": 8,
+    "assistant_message_models": ["glm-5.3-flash"],
+    "terminal_result_subtype": "success",
+    "terminal_result_top_level_model": null,
+    "model_usage_participants": [
+      {
+        "model": "glm-5.3-flash",
+        "canonical_model": "glm-5.3-flash",
+        "provider": "firstParty",
+        "input_tokens": 2830,
+        "output_tokens": 445,
+        "cache_read_tokens": 2624,
+        "cache_write_tokens": 0,
+        "cost_usd": 0.026587
+      }
+    ],
+    "auxiliary_classifier_participant_present": false,
+    "documented_safety_signal": null
+  },
+  "interpretation": "Claude Code/Z.AI expressed content identity on each assistant message and canonical billing identity inside modelUsage, rather than through result.model. The v3 runner required result.model and therefore correctly published no qualification result. V3 remains terminal and cannot be relabelled; a fresh v4 pack is required after updating the parser to the observed schema.",
+  "provenance": {
+    "runner_source_commit": "54e4b81c0e89bf815b847dddbb86b032bccc8059",
+    "runner_sha256": "d408b9a5f12079f9822b133f88ee40393db796a4920f609e063d8003bdb29287",
+    "provenance_sha256": "a9e6e1281a64400fc95da8048415ebce17bc5a20430faedd4595568dabb48c9d",
+    "clerk_manifest_sha256": "087542c46e1a1ebf99f9fe742ae87517bc3bea587a3e3aa2b33d5224f3479a46",
+    "sanitized_diagnostic_sha256": "ecac3a237e21492463f7f0bcfca25f842d8da6227d216e0bdf152cc88c085e1a",
+    "attempt_receipt_sha256": "fc03e655aa60614361b97a0d26acaa59aaf37878e49524d7597a40b220a0351b",
+    "private_raw_event_stream_sha256": "3a3d39bc0a010f55b73adba4418e9553c9ea47acfafdda686ce05d0613da8600"
+  },
+  "promotion_decision": "No lane is promoted. A fresh manifest-bound v4 pack must validate the observed assistant.message.model and modelUsage canonicalModel/provider fields with the corrected runner."
+}

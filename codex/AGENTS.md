@@ -26,6 +26,9 @@ establish what the provider originally exposed. The earlier v1
 sandbox failure is a separate terminal pre-provider `VOID`. Keep using an
 incumbent; never silently substitute or bypass the gate. Historical GLM-5.2 and
 GLM-5.3 receipts remain evidence only.
+The terminal v3 probe observed Flash on every assistant message and as the sole
+canonical first-party `modelUsage` participant, but its runner did not yet
+accept that schema. V3 cannot be relabelled; a fresh v4 pack is required.
 
 ## Optional Gemini 3.7 Flash executor
 
