@@ -442,7 +442,7 @@ if ! have jq; then
   warn "jq not on PATH — delegation-glm cannot run"
 elif have delegation-glm; then
   glm_check="$(delegation-glm check --json 2>/dev/null || true)"
-  if [ -n "$glm_check" ] && printf '%s' "$glm_check" | jq -e '.model == "glm-5.3-flash" and (.efforts == [] or .efforts == ["max"])' >/dev/null 2>&1; then
+  if [ -n "$glm_check" ] && printf '%s' "$glm_check" | jq -e '.model == "glm-5.3-flash" and .efforts == ["max"]' >/dev/null 2>&1; then
     ok "delegation-glm installed and pinned to glm-5.3-flash/max"
     glm_selected="$(printf '%s' "$glm_check" | jq -r '.selected_backend')"
     glm_lanes="$(printf '%s' "$glm_check" | jq -r '.qualified_lanes | join(",")')"

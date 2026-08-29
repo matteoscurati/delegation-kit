@@ -1,28 +1,26 @@
 {
   "model": "glm-5.3-flash",
   "profile_prefix": "glm53-flash-max",
-  "status": "candidate",
-  "evaluated_at": "2026-08-28T00:00:00Z",
-  "source_run": "2026-08-28-glm-5.3-flash-max-qualification-v2",
-  "latest_identity_probe": "2026-08-29-glm-5.3-flash-identity-probe-v3",
-  "promoted_at": null,
+  "status": "provisional",
+  "evaluated_at": "2026-08-29T00:00:00Z",
+  "source_run": "2026-08-29-glm-5.3-flash-max-qualification-v4",
+  "promoted_at": "2026-08-29T00:00:00Z",
   "external_evidence_file": "model-evidence.json",
   "external_evidence_ids": ["zai-glm-5.3-flash-launch-max-2026-08-28"],
-  "qualification_basis": "The v2 task pack completed 9/9 no-retry operational checks at score 1.0 with every builder checker passing, but retained evidence could not establish strict identity. The terminal v3 probe then observed glm-5.3-flash on every assistant message plus canonicalModel=glm-5.3-flash and provider=firstParty in the sole modelUsage entry; its runner did not yet accept that real schema, so v3 remains VOID. Every lane stays blocked pending a fresh v4 pack. The earlier v1 sandbox attempt is a separate terminal pre-provider VOID.",
-  "qualified_lanes": [],
-  "provisional_lanes": [],
+  "qualification_basis": "The exact glm-5.3-flash/claude-zai/max v4 pack completed three no-retry attempts per lane at score 1.0 with every builder checker passing. All 204 assistant events were attributed to glm-5.3-flash, with zero missing or mismatched identities; every terminal modelUsage contained the sole canonical glm-5.3-flash participant with provider=firstParty. Clerk and scout qualify explicit-only; builder remains provisional explicit-only. Earlier v1, v2, and v3 runs remain terminal and are not relabelled.",
+  "qualified_lanes": ["clerk", "scout"],
+  "provisional_lanes": ["builder"],
   "lanes": {
     "clerk": {
       "default_effort": "max",
       "backends": {
         "claude-zai": {
-          "qualified": false,
-          "status": "candidate",
-          "selection": "blocked",
+          "qualified": true,
+          "status": "qualified",
+          "selection": "explicit-only",
           "effort": "max",
-          "cost_per_task_usd": 0.004188,
-          "evaluation_manifest_sha256": [],
-          "local_result": {"run_id": "2026-08-28-glm-5.3-flash-max-qualification-v2", "outcome": "operational_compatibility_only", "task_count": 6, "repeats": 3, "valid_task_repeats": 3, "mean_score": 1.0, "mean_latency_seconds": 23.0, "strict_identity": "void"}
+          "cost_per_task_usd": 0.004978,
+          "local_result": {"run_id": "2026-08-29-glm-5.3-flash-max-qualification-v4", "outcome": "passed", "task_count": 6, "repeats": 3, "valid_repeats": 3, "strict_identity_valid_repeats": 3, "mean_score": 1.0, "mean_latency_seconds": 28.67, "confidence": "bounded-repeated"}
         }
       }
     },
@@ -30,13 +28,12 @@
       "default_effort": "max",
       "backends": {
         "claude-zai": {
-          "qualified": false,
-          "status": "candidate",
-          "selection": "blocked",
+          "qualified": true,
+          "status": "qualified",
+          "selection": "explicit-only",
           "effort": "max",
-          "cost_per_task_usd": 0.021301,
-          "evaluation_manifest_sha256": [],
-          "local_result": {"run_id": "2026-08-28-glm-5.3-flash-max-qualification-v2", "outcome": "operational_compatibility_only", "task_count": 7, "repeats": 3, "valid_task_repeats": 3, "mean_score": 1.0, "mean_latency_seconds": 161.33, "strict_identity": "void"}
+          "cost_per_task_usd": 0.018398,
+          "local_result": {"run_id": "2026-08-29-glm-5.3-flash-max-qualification-v4", "outcome": "passed", "task_count": 7, "repeats": 3, "valid_repeats": 3, "strict_identity_valid_repeats": 3, "mean_score": 1.0, "mean_latency_seconds": 166.0, "confidence": "bounded-repeated"}
         }
       }
     },
@@ -45,12 +42,11 @@
       "backends": {
         "claude-zai": {
           "qualified": false,
-          "status": "candidate",
-          "selection": "blocked",
+          "status": "provisional",
+          "selection": "explicit-only",
           "effort": "max",
-          "cost_per_task_usd": 0.01397,
-          "evaluation_manifest_sha256": [],
-          "local_result": {"run_id": "2026-08-28-glm-5.3-flash-max-qualification-v2", "outcome": "operational_compatibility_only", "task_count": 6, "repeats": 3, "valid_task_repeats": 3, "mean_score": 1.0, "all_checker_runs_pass": true, "mean_latency_seconds": 91.0, "strict_identity": "void"}
+          "cost_per_task_usd": 0.012774,
+          "local_result": {"run_id": "2026-08-29-glm-5.3-flash-max-qualification-v4", "outcome": "passed", "task_count": 6, "repeats": 3, "valid_repeats": 3, "strict_identity_valid_repeats": 3, "mean_score": 1.0, "all_checker_runs_pass": true, "mean_latency_seconds": 70.67, "confidence": "bounded-repeated"}
         }
       }
     },
@@ -75,7 +71,7 @@
           "selection": "blocked",
           "effort": "max",
           "evaluation_manifest_sha256": [],
-          "qualification_basis": "Evaluation-only candidate. Coding-lane evidence cannot promote or operationalize policy annotation."
+          "qualification_basis": "Evaluation-only candidate. Coding-lane qualification cannot promote or operationalize policy annotation."
         }
       }
     }

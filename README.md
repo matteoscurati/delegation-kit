@@ -146,16 +146,13 @@ The universal installer also adds `delegation-schema`, `delegation-glm`,
 `delegation-evidence`, the ZIP-only `delegation-epoch` importer, and the read-only
 central router `delegation-route` under
 `~/.local/bin`, with versioned gates under `~/.local/share/delegation-kit/`.
-GLM-5.3-Flash/max is staged as the sole GLM candidate, but every lane remains
-blocked. The v2 task pack passed 9/9 operational checks; strict content-model
-identity is nevertheless `VOID` because retained evidence did not record a
-separately surfaced effective content model or complete `modelUsage`. This does
-not establish what the provider originally exposed. Reviewer
-is disabled and policy annotation remains a separate blocked evaluation-only
-candidate. Historical GLM-5.2 and GLM-5.3 receipts do not transfer to Flash.
-The terminal v3 probe subsequently observed Flash on every assistant message
-and as the sole canonical first-party `modelUsage` entry, but its runner did not
-yet accept that schema; a fresh v4 pack is required.
+GLM-5.3-Flash/max is the sole GLM route. The exact v4 pack passed 9/9 no-retry
+attempts at score 1.0: all 204 assistant events were attributed to Flash, every
+terminal `modelUsage` contained the sole canonical first-party Flash participant,
+and all builder checkers passed. `clerk` and `scout` are qualified explicit-only;
+`builder` is provisional explicit-only and requires `--allow-provisional`.
+Reviewer is disabled and policy annotation remains blocked. Historical v1-v3
+runs remain terminal and are not relabelled.
 The runner refuses every blocked lane and every effort the gate did not pin,
 and also refuses execution unless at least one of Claude Code or Codex is
 installed; it is an agent option, not a standalone GLM client. The installer asks
@@ -216,10 +213,10 @@ green. This owner preference does not rewrite high as the comparison winner.
 The replacement candidate uses the
 [`glm-5.3-flash-lane-qualification-v1` contract](./evaluation/glm-5.3-flash-lane-qualification-v1/README.md).
 It reuses the deterministic packs but requires fresh no-retry attempts at the
-exact `glm-5.3-flash` / `claude-zai` / `max` tuple. The 2026-08-28 v2 run passed
-9/9 task attempts at score 1.0 with every builder checker green, but strict
-identity is `VOID` and no lane is promoted. The v1 sandbox failure remains a
-separate terminal pre-provider `VOID`.
+exact `glm-5.3-flash` / `claude-zai` / `max` tuple. The 2026-08-29 v4 run passed
+9/9 attempts with complete assistant-event and canonical first-party identity.
+Clerk and scout qualify explicit-only; builder becomes provisional explicit-only.
+Earlier v1-v3 runs remain terminal.
 
 Gemini 3.7 Flash is staged through the installed Antigravity CLI (`agy`). Scout
 at `medium` and builder/frontend-builder at `high` are blocked candidates;

@@ -200,8 +200,8 @@ jq '.lanes.scout.backends["claude-zai"].qualified = true |
     .lanes.scout.backends["claude-zai"].status = "qualified" |
     .lanes.scout.backends["claude-zai"].selection = "explicit-only" |
     .lanes.scout.backends["claude-zai"].evaluation_manifest_sha256 = [] |
-    .qualified_lanes = ["scout"] |
-    .provisional_lanes = []' \
+    .qualified_lanes = ["clerk","scout"] |
+    .provisional_lanes = ["builder"]' \
   "$ROOT/config/glm-5.3-flash-max-routing.json" >"$TEST_TMP/operational-executable.json"
 export DELEGATION_ROUTING_GATES_FILE="$TEST_TMP/operational-central.json"
 export DELEGATION_GLM_ROUTING_FILE="$TEST_TMP/operational-executable.json"
@@ -630,7 +630,7 @@ jq --arg scout "$LANE_SCOUT_MANIFEST_SHA" --arg builder "$LANE_BUILDER_MANIFEST_
 ' "$LANE_EVAL_ROOT/config/routing-gates.json" >"$LANE_CENTRAL_GATE"
 jq --arg scout "$LANE_SCOUT_MANIFEST_SHA" --arg builder "$LANE_BUILDER_MANIFEST_SHA" '
   .status = "provisional" |
-  .qualified_lanes = [] |
+  .qualified_lanes = ["clerk"] |
   .provisional_lanes = ["scout"] |
   .lanes.scout.backends["claude-zai"].qualified = false |
   .lanes.scout.backends["claude-zai"].status = "provisional" |

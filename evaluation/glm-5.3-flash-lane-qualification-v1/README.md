@@ -43,3 +43,13 @@ reported `message.model = glm-5.3-flash`, and the sole `modelUsage` participant
 reported `canonicalModel = glm-5.3-flash` with `provider = firstParty`. No
 classifier participant appeared. V3 remains terminal `VOID`; the corrected
 parser requires a fresh v4 pack.
+
+## 2026-08-29 qualification
+
+[`result-2026-08-29-v4.json`](./result-2026-08-29-v4.json) records the final
+exact pack. All nine no-retry attempts passed at score 1.0; all 204 assistant
+events had complete Flash attribution; every terminal `modelUsage` contained
+the sole canonical `glm-5.3-flash` participant with `provider=firstParty`; and
+all builder checkers passed. Clerk and scout qualify explicit-only, while
+builder becomes provisional explicit-only. V1-v3 remain terminal and are not
+relabelled.

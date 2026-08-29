@@ -1,0 +1,96 @@
+{
+  "schema_version": "delegation_glm_flash_qualification_result_v2",
+  "run_id": "2026-08-29-glm-5.3-flash-max-qualification-v4",
+  "evaluated_at": "2026-08-29T00:00:00Z",
+  "tuple": {
+    "model": "glm-5.3-flash",
+    "backend": "claude-zai",
+    "effort": "max"
+  },
+  "outcome": "passed",
+  "attempt_policy": {
+    "required_repeats_per_lane": 3,
+    "provider_attempts_per_repeat": 1,
+    "post_observation_retries": 0
+  },
+  "prior_terminal_runs": [
+    {"run_id": "2026-08-28-glm-5.3-flash-max-qualification-v1", "outcome": "void", "reason": "sandbox_temp_path", "provider_reached": false},
+    {"run_id": "2026-08-28-glm-5.3-flash-max-qualification-v2", "outcome": "void", "reason": "strict_identity_evidence_not_retained", "provider_reached": true},
+    {"run_id": "2026-08-29-glm-5.3-flash-identity-probe-v3", "outcome": "void", "reason": "runner_identity_extraction_mismatch", "provider_reached": true}
+  ],
+  "identity": {
+    "strict_identity_valid_attempts": 9,
+    "assistant_event_count": 204,
+    "assistant_model_attributed_count": 204,
+    "assistant_model_missing_or_malformed_count": 0,
+    "assistant_model_mismatch_count": 0,
+    "observed_init_models": ["glm-5.3-flash"],
+    "observed_assistant_models": ["glm-5.3-flash"],
+    "usage_models": ["glm-5.3-flash"],
+    "canonical_models": ["glm-5.3-flash"],
+    "providers": ["firstParty"],
+    "surfaced_auxiliary_classifier_participant": false
+  },
+  "lanes": {
+    "clerk": {
+      "task_count": 6,
+      "valid_repeats": 3,
+      "required_repeats": 3,
+      "mean_score": 1.0,
+      "elapsed_seconds": [33, 19, 34],
+      "total_elapsed_seconds": 86,
+      "provider_cost_usd": 0.089595,
+      "void_reasons": []
+    },
+    "scout": {
+      "task_count": 7,
+      "valid_repeats": 3,
+      "required_repeats": 3,
+      "mean_score": 1.0,
+      "elapsed_seconds": [257, 120, 121],
+      "total_elapsed_seconds": 498,
+      "provider_cost_usd": 0.386353,
+      "void_reasons": []
+    },
+    "builder": {
+      "task_count": 6,
+      "valid_repeats": 3,
+      "required_repeats": 3,
+      "mean_score": 1.0,
+      "all_checker_runs_pass": true,
+      "elapsed_seconds": [64, 80, 68],
+      "total_elapsed_seconds": 212,
+      "provider_cost_usd": 0.229925,
+      "void_reasons": []
+    }
+  },
+  "totals": {
+    "valid_attempts": 9,
+    "elapsed_seconds": 796,
+    "provider_cost_usd": 0.705873,
+    "provider_total_cost_usd": 0.705873,
+    "tokens": {
+      "input": 38443,
+      "output": 17514,
+      "reasoning": 0,
+      "cache_read": 151616,
+      "cache_write": 0
+    }
+  },
+  "provenance": {
+    "runner_source_commit": "e12881edaef42b64080be03b0b6fbd1c2658c0bf",
+    "runner_sha256": "0c09fc5d09491a042f111b74e42e67a2a313531940b5f1c0c7ba55d44e2ba3f1",
+    "contract_sha256": "65e485da4a06b8e1a82c846cf0a259e14311ea3bbd8bf0c088929d8c9255b018",
+    "claude_code": "2.1.220 (Claude Code)",
+    "claude_binary_sha256": "8addc857f3fe64d5a0368af9ee50321b50afb4a6918ba3ef018ab84f5dbbe081",
+    "private_artifact_sha256": {
+      "aggregate": "3e29247da7f3b1ad0fedd9c281482e25cd48fd9e4e3f1a48ee42b13886e9fb72",
+      "scores": "0e7215d5c579d5dc8e0605e65a78d096982fe521314eed94c697db6225df2b0c",
+      "provenance": "e5b66c190c55f4fe3cb0b9c7658bdc4dcd27d1848b10ef9a19f55417621eedf3",
+      "clerk_manifest": "0a419b8767036ef9b70d7d42d450328dfd73f394c6c21618c4444b5e4014d251",
+      "scout_manifest": "0c344308b5a63dc1b3a2d0bf369f3f068e8a008dc0c673d1bd4a1ca41a7cb476",
+      "builder_manifest": "54710831d4fae597304055d75c7a0714e91de909c10ebfcb8e1f005bc26131c3"
+    }
+  },
+  "promotion_decision": "Clerk and scout qualify explicit-only. Builder becomes provisional explicit-only and still requires an explicit decision plus --allow-provisional. Reviewer and policy annotation remain blocked. Earlier v1, v2, and v3 runs remain terminal and are not relabelled."
+}

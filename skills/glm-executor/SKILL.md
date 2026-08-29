@@ -1,17 +1,18 @@
 ---
 name: glm-executor
 description: >-
-  Inspect the staged GLM-5.3-Flash candidate through delegation-glm. No lane is
-  operational; never bypass its identity gate or silently substitute a tuple.
+  Dispatch a gate-approved GLM-5.3-Flash lane through delegation-glm. Qualified
+  lanes remain explicit-only; builder requires an explicit provisional decision.
 ---
 
 # GLM-5.3-Flash executor bridge
 
-GLM-5.3-Flash is staged as an optional external candidate, not a native Claude
-or Codex model. Before any attempt, run `delegation-glm check --json`. The gate
-is pinned to `glm-5.3-flash` / `claude-zai` / `max`, but every operational lane
-is blocked. Reviewer is disabled and policy annotation remains a separate
-blocked evaluation-only candidate.
+GLM-5.3-Flash is an optional external executor, not a native Claude or Codex
+model. Before dispatch, run `delegation-glm check --json`. The gate is pinned
+to `glm-5.3-flash` / `claude-zai` / `max`: clerk and scout are qualified
+explicit-only, while builder is provisional explicit-only and requires an
+explicit decision plus `--allow-provisional`. Reviewer is disabled and policy
+annotation remains a separate blocked evaluation-only candidate.
 
 Builder scope limit: the bridge dispatches the delegate at
 `--permission-mode acceptEdits` with no settings sources, so it can only apply
@@ -22,33 +23,28 @@ toolchain fixes that need exactly those actions are not routable to this lane;
 the lead closes them. Observed 2026-08-04: a toolchain dispatch returned
 analysis only (checks honestly marked unexecuted) for $0.88 and ~6.6 minutes.
 
-The 2026-08-28 Flash v2 task pack completed 9/9 no-retry operational checks at
-score 1.0, with every builder checker passing. Strict identity is `VOID` because
-retained evidence did not record separately surfaced effective content identity
-or complete `modelUsage`; this does not establish what the provider originally
-exposed, and none of those task scores opens a lane. The earlier
-v1 sandbox failure remains a separate terminal pre-provider `VOID`. Frozen
-GLM-5.3 results remain historical and do not transfer.
-The terminal v3 probe observed `glm-5.3-flash` on every content-bearing
-assistant event and as the sole `modelUsage` entry with matching
-`canonicalModel` and `provider=firstParty`. Its runner did not yet accept that
-real schema, so v3 remains `VOID`; only a fresh v4 pack may qualify a lane.
+The 2026-08-29 Flash v4 pack passed 9/9 no-retry attempts at score 1.0.
+All 204 assistant events carried the exact Flash identity, every terminal
+`modelUsage` contained the sole canonical first-party Flash participant, and
+every builder checker passed. Earlier v1-v3 runs remain terminal and are not
+relabelled. The installed routing JSON remains authoritative.
 `delegation-evidence lane builder` shows the dated external rows: they provide
 context, not a local harness score and not permission to widen the gate.
 
-Ordinary work must remain on an incumbent. Only a fresh manifest-bound
-qualification that separately attests requested model, effective content model,
-and all usage participants may create new evidence:
+Write the self-contained worker brief to a file, then run:
 
 ```sh
-delegation-glm run --lane <clerk|scout|builder> --effort max \
-  --backend claude-zai --evaluation --evaluation-manifest "$manifest" \
-  --prompt-file "$brief" --output "$result" --workdir "$fixture"
+delegation-glm run --lane <clerk|scout> --effort auto \
+  --backend auto --prompt-file "$brief" --output "$result" --workdir "$repo"
+
+delegation-glm run --lane builder --effort auto --allow-provisional \
+  --backend auto --prompt-file "$brief" --output "$result" --workdir "$repo"
 ```
 
 The isolated Claude→Z.AI backend needs a key: `ZAI_API_KEY` in the environment,
-else the 600-mode key the installer stored. The candidate is pinned to explicit
-`max`; another effort is refused (78). Ordinary dispatch remains refused.
+else the 600-mode key the installer stored. Keep `--effort auto` for ordinary
+work so the max-only gate remains authoritative; another explicit effort is
+refused (78).
 The capability probe has a ten-second fail-closed timeout. For a deliberate
 diagnostic with a separately verified native Claude Code binary, set
 `DELEGATION_GLM_CLAUDE_BIN` to its absolute executable path; this changes

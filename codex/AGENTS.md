@@ -16,19 +16,14 @@
 
 ## Optional evaluated GLM executor
 
-GLM-5.3-Flash is staged only through the installed `glm-executor` skill and the
+GLM-5.3-Flash is available only through the installed `glm-executor` skill and the
 isolated Claude→Z.AI backend, keyed by `ZAI_API_KEY` or the 600-mode key the
-installer stored. The exact candidate tuple is `glm-5.3-flash/max`, but every
-lane remains blocked. The 2026-08-28 v2 task pack passed 9/9 operational checks;
-strict identity is `VOID` because retained evidence did not record separately
-surfaced effective content identity or complete `modelUsage`. This does not
-establish what the provider originally exposed. The earlier v1
-sandbox failure is a separate terminal pre-provider `VOID`. Keep using an
-incumbent; never silently substitute or bypass the gate. Historical GLM-5.2 and
-GLM-5.3 receipts remain evidence only.
-The terminal v3 probe observed Flash on every assistant message and as the sole
-canonical first-party `modelUsage` participant, but its runner did not yet
-accept that schema. V3 cannot be relabelled; a fresh v4 pack is required.
+installer stored. The exact tuple is `glm-5.3-flash/max`: clerk and scout are
+qualified explicit-only; builder is provisional explicit-only and requires an
+explicit decision plus `--allow-provisional`. V4 passed 9/9 no-retry attempts
+with all 204 assistant events attributed to Flash and sole canonical first-party
+Flash `modelUsage`; earlier v1-v3 runs remain terminal. Reviewer is disabled and
+policy annotation remains blocked. Never silently substitute or bypass the gate.
 
 ## Optional Gemini 3.7 Flash executor
 

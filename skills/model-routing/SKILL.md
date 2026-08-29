@@ -46,10 +46,11 @@ same graph directly and refuse drift.
   the lead decides. Never trigger it automatically.
 
 An optional external model such as GLM-5.3-Flash earns a lane only after its
-versioned evaluation gate allows that exact role. The staged tuple is
-`glm-5.3-flash/claude-zai/max`, but every lane is blocked because retained v2
-evidence did not record separately surfaced effective content identity or
-complete model usage. Historical GLM-5.3 results do not transfer.
+versioned evaluation gate allows that exact role. The active tuple is
+`glm-5.3-flash/claude-zai/max`: clerk and scout are qualified explicit-only;
+builder is provisional explicit-only and requires `--allow-provisional`;
+reviewer is disabled. V4 passed complete task and identity checks; earlier
+GLM-5.3 and Flash v1-v3 evidence does not transfer or get relabelled.
 
 Kimi K3 is provisional for `clerk`, `scout`, `builder`, and `frontend-builder` at
 `max`; senior is a blocked candidate, while reviewer and judgement are disabled.

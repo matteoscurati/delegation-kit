@@ -28,20 +28,19 @@ expect_success bin/delegation-route check --json
 bin/delegation-glm check --json >"$TMP/glm-check.json"
 jq -e '
   .model == "glm-5.3-flash" and
-  .qualified_lanes == [] and
-  .provisional_lanes == [] and
-  .efforts == []
+  .qualified_lanes == ["clerk","scout"] and
+  .provisional_lanes == ["builder"] and
+  .efforts == ["max"]
 ' "$TMP/glm-check.json" >/dev/null
 pass=$((pass + 1))
 
-# GLM-5.3-Flash/max is the sole candidate gate and profile family. Strict
-# identity is still VOID, so no lane is dispatchable.
+# GLM-5.3-Flash/max is the sole executable gate and profile family.
 env DELEGATION_GLM_ROUTING_FILE="$ROOT/config/glm-5.3-flash-max-routing.json" \
   DELEGATION_GLM_CLAUDE_BIN=/usr/bin/true \
   bin/delegation-glm check --json >"$TMP/glm53-flash-max-check.json"
 jq -e '
-  .model == "glm-5.3-flash" and .qualified_lanes == [] and
-  .provisional_lanes == [] and .efforts == []
+  .model == "glm-5.3-flash" and .qualified_lanes == ["clerk","scout"] and
+  .provisional_lanes == ["builder"] and .efforts == ["max"]
 ' "$TMP/glm53-flash-max-check.json" >/dev/null
 pass=$((pass + 1))
 [ ! -e config/glm-5.2-routing.json ] && [ ! -e config/glm-5.3-high-routing.json ] &&
@@ -49,7 +48,7 @@ pass=$((pass + 1))
 pass=$((pass + 1))
 bin/delegation-route lane builder --json >"$TMP/builder-candidates.json"
 jq -e '
-  any(.[]; .profile == "glm53-flash-max-builder" and .status == "candidate" and .selection == "blocked") and
+  any(.[]; .profile == "glm53-flash-max-builder" and .status == "provisional" and .selection == "explicit-only") and
   all(.[]; (.model == "glm-5.2" or .model == "glm-5.3") | not)
 ' "$TMP/builder-candidates.json" >/dev/null
 pass=$((pass + 1))
@@ -235,8 +234,8 @@ jq '.lanes.scout.backends["claude-zai"].evaluation_manifest_sha256 =
     .lanes.scout.backends["claude-zai"].status = "provisional" |
     .lanes.scout.backends["claude-zai"].qualified = false |
     .lanes.scout.backends["claude-zai"].selection = "explicit-only" |
-    .qualified_lanes = [] |
-    .provisional_lanes = ["scout"]' \
+    .qualified_lanes = ["clerk"] |
+    .provisional_lanes = ["builder","scout"]' \
   config/glm-5.3-flash-max-routing.json >"$TMP/glm-lane-executable.json"
 env DELEGATION_ROUTING_GATES_FILE="$TMP/glm-lane-central.json" \
   DELEGATION_GLM_ROUTING_FILE="$TMP/glm-lane-executable.json" \
