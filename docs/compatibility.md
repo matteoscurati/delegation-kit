@@ -7,17 +7,23 @@ promote a provisional or candidate lane.
 
 ## Verified snapshot
 
-The 0.18.0 release-candidate gate was verified on **2026-08-27** on macOS
-26.5.1 with Codex CLI `0.149.1` and Claude Code `2.1.246`. It passed all 12
-regression suites in 52 seconds, including 59 central routing checks, plus
+The 0.19.0 release-candidate gate was verified on **2026-08-29** on macOS
+26.5.1 with ambient Codex CLI `0.150.1` and ambient Claude Code `2.1.250`.
+The manifest-bound v4 pack deliberately retained its frozen native Claude Code
+`2.1.220` binary. The release candidate passed all 12 regression suites in 52
+seconds, including 59 central routing checks, plus
 ShellCheck, evidence validation, and the eight-check version gate. The exact
-Grok shared-OAuth smoke described below ran two workers concurrently and left
-the ambient credential aligned. The candidate was then installed from the
-reviewed checkout: changed runner/gates/skills matched source byte-for-byte,
-`doctor.sh --ping --ping-grok` reported `57 OK, 0 WARN, 0 FAIL`, Grok returned
-`PONG`, and both Claude bridge directions remained reachable. A fresh reinstall
-from the merged/tagged commit remains a post-release requirement. Numeric
-vendor versions are provenance only wherever the runner uses capability probing.
+GLM-5.3-Flash v4 pack passed 9/9 no-retry attempts at score 1.0: all 204
+assistant events were attributed to Flash, terminal usage named the sole
+canonical first-party Flash participant, and all builder checkers passed.
+Independent cross-family review returned `SHIP`. A clean release-candidate
+install matched source across the GLM runner, central/executable gates, and both
+installed executor skills. Static doctor reported `55 OK, 0 WARN, 0 FAIL`;
+`doctor.sh --ping --ping-glm` reported `58 OK, 0 WARN, 0 FAIL`, including a
+qualified GLM-5.3-Flash `PONG` and both bridge directions reachable. A fresh
+reinstall from the merged/tagged commit remains required before the release is
+considered complete. Numeric vendor versions are provenance only
+wherever the runner uses capability probing.
 
 The role-oriented semantic matrix below was last exercised in full on
 **2026-08-05**, in one pass, against a single disposable fixture carrying a

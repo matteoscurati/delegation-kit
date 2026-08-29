@@ -208,7 +208,7 @@ CVP when exact Opus 5 identity is mandatory.
   uses `security`. A model never reviews its own output or output from a sibling
   model in the same family, even through a separate profile.
 - **Picking among the external builders:** they are not interchangeable. Kimi K3
-  and Grok 4.6 are `preferred-explicit` by explicit owner decision; GLM-5.3,
+  and Grok 4.6 are `preferred-explicit` by explicit owner decision; GLM-5.3-Flash,
   Qwen3.8-Max, and DeepSeek V4 Pro stay plain `explicit-only`. Grok 4.6's current public rows use
   non-production harnesses, so they are contextual rather than exact. Preference
   is not qualification — every one of them still needs an explicit decision and

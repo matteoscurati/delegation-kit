@@ -10,7 +10,17 @@ It ships as a **reference implementation**: the author's concrete models
 external-evidence snapshot, and fail-closed local gates. Swap the models for your own tiers with
 [`ADAPTING.md`](./ADAPTING.md) — the *structure* is the transferable part.
 
-## Current release: 0.18.0
+## Current release: 0.19.0
+
+Version 0.19.0 replaces the previous GLM route with the exact
+`glm-5.3-flash` / `claude-zai` / `max` tuple after a manifest-bound v4 pack
+passed all nine no-retry attempts at score 1.0. Every one of the 204 assistant
+events carried the Flash identity, terminal usage named the sole canonical
+first-party Flash participant, and all builder checkers passed. Clerk and scout
+are qualified explicit-only; builder remains provisional explicit-only. The
+runner now confines Claude/Bun temporary state and fails closed on incomplete,
+partial, or mismatched model identity. Earlier v1-v3 attempts remain terminal
+and are not relabelled.
 
 Version 0.18.0 adds safe parallel Grok Build dispatch through an explicit
 shared-OAuth generation, while retaining serialized OAuth as the default and
@@ -132,7 +142,7 @@ provisional/explicit-only behind `--allow-provisional`. See
 | 5 native profiles | `agents/*.toml` | `luna-clerk` · `terra-builder` (`max`, editing) · `terra-reviewer` (`max`, read-only cross-family) · `sol-reviewer` (`high`) · `sol-judge` (`max`, explicit judgement) |
 | 5 ephemeral profiles | `*.config.toml` | for `codex exec --ephemeral -p <name>` |
 | collaboration policy | appended to `AGENTS.md` | usage-aware routing **+ a Codex→Claude bridge** |
-| optional GLM skill | `skills/glm-executor/` | staged fail-closed GLM-5.3-Flash/max executor path |
+| optional GLM skill | `skills/glm-executor/` | fail-closed GLM-5.3-Flash/max executor; clerk/scout qualified, builder provisional |
 | optional Gemini skill | `skills/gemini-executor/` | same staged Gemini 3.7 Flash executor path |
 | optional Kimi skill | `skills/kimi-executor/` | same fail-closed provisional Kimi K3 path |
 | provisional Grok skill | `skills/grok-executor/` | same fail-closed Grok 4.6 builder path |

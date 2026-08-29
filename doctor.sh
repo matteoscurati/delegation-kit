@@ -7,7 +7,7 @@
 # Usage: ./doctor.sh [--ping] [--ping-glm] [--ping-kimi] [--ping-grok]
 #   --ping   also does a live round-trip (real API calls, costs a few tokens per
 #            side). Off by default; static checks are free.
-#   --ping-glm does a separate paid GLM-5.3/max ping, but only for a qualified lane.
+#   --ping-glm does a separate paid GLM-5.3-Flash/max ping, but only for a qualified lane.
 #   --ping-kimi does a separate Kimi K3 ping through a qualified lane, or an
 #               explicitly selected provisional read-only lane when no lane is qualified.
 #   --ping-grok does a paid Grok 4.6 ping through its provisional builder gate.
