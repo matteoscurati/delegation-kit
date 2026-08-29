@@ -153,8 +153,9 @@ provisional/explicit-only behind `--allow-provisional`. See
 The universal installer also adds `delegation-schema`, `delegation-glm`,
 `delegation-gemini`, `delegation-kimi`, `delegation-deepseek`,
 `delegation-grok`, `delegation-qwen`,
-`delegation-evidence`, the ZIP-only `delegation-epoch` importer, and the read-only
-central router `delegation-route` under
+`delegation-evidence`, the ZIP-only `delegation-epoch` importer, the read-only
+central router `delegation-route`, and the read-only
+`delegation-executor-contract` validator under
 `~/.local/bin`, with versioned gates under `~/.local/share/delegation-kit/`.
 GLM-5.3-Flash/max is the sole GLM route. The exact v4 pack passed 9/9 no-retry
 attempts at score 1.0: all 204 assistant events were attributed to Flash, every
@@ -417,6 +418,68 @@ output path. It never persists the ZIP, extracts a corpus into the checkout, or
 edits `config/model-evidence.json` or a routing gate. The Airtable/`epochai`
 client is intentionally out of scope.
 
+The six external executor families share one **common contract**:
+[`config/external-executor-contract.json`](./config/external-executor-contract.json),
+validated by `delegation-executor-contract` and documented in
+[`docs/external-executors.md`](./docs/external-executors.md). It fixes one
+vocabulary for permission classes, requested/observed/effective identity, usage
+participation, envelope field names, and the 64/69/70/75/78/130 dispatch exit
+codes — so drift between six runners becomes detectable instead of invisible.
+
+There are exactly three permission classes, mutually exclusive and exhaustive:
+`read-only`, `text-patch` (no filesystem access; the lane returns a patch the
+lead applies and verifies), and `worktree-edit` (scoped writes inside the
+delegated worktree). Every lane also states its permission mode, tool allowlist,
+worktree access and write scope, and whether terminal, network, MCP, plugins,
+and subagents are `denied` or `permission-mode-gated`. Those five capability
+fields are mandatory and never `null`; `permission_mode` and the tool allowlist
+may be null only where the runner genuinely pins no mode or passes no allowlist,
+and `permission-mode-gated` is a narrowed claim about the pinned mode rather
+than a denial. `check` compares all ten controls against the family's executable
+gate exactly, and fails if a gate row omits the block, omits a field, or carries
+one the contract does not declare, so a permission drift cannot pass by simply
+leaving something unstated.
+
+Runtime isolation is stated precisely rather than generously. `isolated_home`
+means the runner pins a private `HOME` for an ordinary dispatch; the narrower
+`isolated_config_dir` means only the harness's configuration directory is
+redirected per run. An ordinary `delegation-glm` dispatch redirects
+`CLAUDE_CONFIG_DIR` and leaves `HOME` as the caller's — only its evaluation path
+pins a temporary `HOME` — so GLM declares `isolated_home: false` and
+`isolated_config_dir: true`, and `check` compares those claims against the gate.
+
+`validate` checks a runner's own status, result, or diagnostic artifact against
+the common envelope, and with `--family` against that family's identity and
+usage-accounting contract: requested/runtime/effective model consistency,
+participant shape, real target participation (the billing identity is kept
+separate from the content identity), nonnegative tokens and cost, ordered
+timestamps, and stable diagnostic phase/reason semantics. Types are enforced on
+every field an artifact actually carries, including each participant field and
+each token counter, so `input_tokens: "ten"` or `cost_usd: "free"` fails instead
+of being read as zero; and a reported lane list must be exactly the lanes the
+contract puts in that state for the family.
+
+**The contract describes and validates; each provider runner remains the sole
+enforcement authority.** It adds no permission, no route, and no universal
+dispatch layer — no runner reads it, and the regression suite asserts that.
+Provider-specific attestations stay provider-specific: Kimi's search-runtime
+digests, Grok's sandbox and OAuth state, and GLM's identity accounting are
+reported as extension fields and pass, so nothing here can weaken a runner's own
+checks. What extensions may not carry is a credential or raw provider content:
+key names such as `api_key`, `authorization`, `token`, `credential`, `secret`,
+`prompt`, or a raw request/response body are rejected recursively, as are
+bearer-token- and private-key-shaped values. That is a name and shape filter, not
+a secrecy proof — it cannot see a credential hidden under an innocuous key name.
+A lane's `status`/`selection` mirror the gates; promoting one is still an
+explicit owner decision made there.
+
+```sh
+delegation-executor-contract check --json
+delegation-executor-contract table
+delegation-executor-contract validate --envelope result \
+  --file "$metrics" --family grok-4.6
+```
+
 The central decision file is [`config/routing-gates.json`](./config/routing-gates.json).
 It is the dispatch authority: GLM, Gemini, Kimi, Grok, Qwen, and DeepSeek validate it against their complete
 backend gates before every check/run, and refuse drift. Exact and contextual
@@ -463,6 +526,7 @@ Run the fail-closed regression suite after changing a gate:
 
 ```sh
 tests/routing-gates.sh
+tests/external-executor-contract.sh
 tests/epoch-zip.sh
 tests/glm-runner-diagnostics.sh
 tests/gemini-runner-diagnostics.sh

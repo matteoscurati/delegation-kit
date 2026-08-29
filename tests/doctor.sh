@@ -7,6 +7,7 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 TMP="$(mktemp -d "${TMPDIR:-/tmp}/delegation-doctor-tests.XXXXXX")"
 trap 'rm -rf -- "$TMP"' EXIT
+command -v jq >/dev/null 2>&1 || { printf 'jq is required\n' >&2; exit 69; }
 
 TEST_TOOLS="$TMP/test-tools"
 mkdir -p "$TMP/claude" "$TMP/codex" "$TMP/data" "$TEST_TOOLS"
@@ -69,5 +70,53 @@ grep -Fq '[ OK ] opus-builder pinned to claude-opus-5/max' "$TMP/plugin-doctor.l
 grep -Fq '[ OK ] opus-reviewer pinned to claude-opus-5/max and cross-family only' "$TMP/plugin-doctor.log"
 grep -Fq '[ OK ] fable-judge pinned to fable/max and read-only judgement' "$TMP/plugin-doctor.log"
 grep -Fq '[ OK ] sonnet-reviewer pinned to sonnet/medium, tool-read-only, and cross-family only' "$TMP/plugin-doctor.log"
+grep -Fq '== External executor contract ==' "$TMP/plugin-doctor.log" || {
+  printf 'doctor did not report on the external executor contract\n' >&2
+  exit 1
+}
+
+# With the contract command and gates installed, doctor must validate them
+# statically — no provider is contacted — and say who still enforces.
+CONTRACT_DATA="$TMP/contract-data"
+CONTRACT_BIN="$TMP/contract-bin"
+mkdir -p "$CONTRACT_DATA/bin" "$CONTRACT_DATA/config" "$CONTRACT_BIN"
+cp "$ROOT/bin/delegation-executor-contract" "$CONTRACT_DATA/bin/delegation-executor-contract"
+cp "$ROOT"/config/*.json "$CONTRACT_DATA/config/"
+chmod 755 "$CONTRACT_DATA/bin/delegation-executor-contract"
+ln -sfn "$CONTRACT_DATA/bin/delegation-executor-contract" \
+  "$CONTRACT_BIN/delegation-executor-contract"
+if env PATH="$CONTRACT_BIN:$TEST_TOOLS:$PATH" CLAUDE_HOME="$TMP/claude" \
+    CODEX_HOME="$TMP/codex" DELEGATION_DATA_HOME="$CONTRACT_DATA" \
+    "$ROOT/doctor.sh" >"$TMP/contract-doctor.log" 2>&1; then
+  :
+else
+  :
+fi
+grep -Fq '[ OK ] external executor contract valid' "$TMP/contract-doctor.log" || {
+  sed 's/^/    /' "$TMP/contract-doctor.log" >&2
+  printf 'doctor did not validate the installed external executor contract\n' >&2
+  exit 1
+}
+grep -Fq 'each provider runner still enforces its own permissions' "$TMP/contract-doctor.log" || {
+  printf 'doctor did not restate the runner-enforcement boundary\n' >&2
+  exit 1
+}
+
+# A contract that disagrees with the installed gates is a FAIL, not a pass.
+jq '.families["grok-4.6"].lanes.builder.permission_class = "read-only"' \
+  "$ROOT/config/external-executor-contract.json" \
+  >"$CONTRACT_DATA/config/external-executor-contract.json"
+if env PATH="$CONTRACT_BIN:$TEST_TOOLS:$PATH" CLAUDE_HOME="$TMP/claude" \
+    CODEX_HOME="$TMP/codex" DELEGATION_DATA_HOME="$CONTRACT_DATA" \
+    "$ROOT/doctor.sh" >"$TMP/contract-drift.log" 2>&1; then
+  :
+else
+  :
+fi
+grep -Fq '[FAIL] external executor contract is missing, invalid' "$TMP/contract-drift.log" || {
+  sed 's/^/    /' "$TMP/contract-drift.log" >&2
+  printf 'doctor accepted a contract that contradicts the installed gates\n' >&2
+  exit 1
+}
 
 printf 'doctor end-to-end regression passed\n'

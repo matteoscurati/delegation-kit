@@ -253,6 +253,17 @@ chmod 755 "$DATA_HOME/bin/delegation-route"
 ln -sfn "$DATA_HOME/bin/delegation-route" "$BIN_HOME/delegation-route"
 echo "Routing gates -> $BIN_HOME/delegation-route (decisions: $DATA_HOME/config/routing-gates.json)"
 
+# The common external-executor contract. It describes and validates the shared
+# vocabulary — permission classes, identity/usage fields, envelope shapes, exit
+# codes — and grants nothing: each provider runner keeps enforcing its own
+# permissions. Installed after the gates it cross-checks.
+cp "$KIT/bin/delegation-executor-contract" "$DATA_HOME/bin/delegation-executor-contract"
+cp "$KIT/config/external-executor-contract.json" \
+  "$DATA_HOME/config/external-executor-contract.json"
+chmod 755 "$DATA_HOME/bin/delegation-executor-contract"
+ln -sfn "$DATA_HOME/bin/delegation-executor-contract" "$BIN_HOME/delegation-executor-contract"
+echo "Executor contract -> $BIN_HOME/delegation-executor-contract (contract: $DATA_HOME/config/external-executor-contract.json; describes only, runners still enforce)"
+
 # A vendor auto-update replaces the ambient Grok CLI and prunes its own download
 # cache. Validate/retain the archive only after the current router, evidence,
 # central gate, and executable gate have all been installed atomically.

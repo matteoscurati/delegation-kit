@@ -101,6 +101,19 @@ env CLAUDE_HOME="$TMP/claude" CODEX_HOME="$TMP/codex" \
   || fail 'upgrade did not install the Gemini 3.7 gate'
 [ -f "$DATA/config/deepseek-v4-pro-routing.json" ] && [ -x "$DATA/bin/delegation-deepseek" ] \
   || fail 'install did not include the DeepSeek V4 Pro gate and runner'
+# The common external-executor contract must be installed alongside the gates it
+# cross-checks, and the installed copy must validate against those copies.
+[ -f "$DATA/config/external-executor-contract.json" ] && [ -x "$DATA/bin/delegation-executor-contract" ] \
+  || fail 'install did not include the external-executor contract and its command'
+[ -L "$TMP/bin/delegation-executor-contract" ] \
+  || fail 'install did not link delegation-executor-contract onto the bin path'
+"$DATA/bin/delegation-executor-contract" check --json >"$TMP/contract-check.json" 2>"$TMP/contract-check.err" \
+  || { sed 's/^/    /' "$TMP/contract-check.err" >&2; fail 'the installed contract command failed its own check'; }
+jq -e '.valid == true and .read_only == true and .grants_permissions == false and
+       .enforcement_authority == "provider-runner" and .families == 6 and
+       .permission_classes == ["read-only","text-patch","worktree-edit"] and
+       .exit_codes == [64,69,70,75,78,130]' "$TMP/contract-check.json" >/dev/null \
+  || fail 'the installed contract does not describe the expected families or classes'
 [ -f "$TMP/claude/skills/deepseek-executor/SKILL.md" ] && [ -f "$TMP/codex/skills/deepseek-executor/SKILL.md" ] \
   || fail 'install did not include the DeepSeek executor skill on both surfaces'
 [ -f "$TMP/claude/agents/opus-builder.md" ] \
@@ -196,6 +209,22 @@ env CLAUDE_HOME="$TMP/claude2" CODEX_HOME="$TMP/codex2" \
   || { sed 's/^/    /' "$TMP/install2.log" >&2; fail '--claude-only install failed'; }
 [ "$(jq -r '.scope' "$TMP/data2/installed-version.json")" = "claude-only" ] \
   || fail 'a --claude-only install did not record a claude-only scope'
+ok
+
+# Uninstalling that second tree must remove the contract command and its data
+# without touching the credentials/archives the uninstaller deliberately keeps.
+[ -f "$TMP/data2/config/external-executor-contract.json" ] \
+  || fail 'the --claude-only install did not include the contract file'
+env CLAUDE_HOME="$TMP/claude2" CODEX_HOME="$TMP/codex2" \
+    DELEGATION_BIN_HOME="$TMP/bin2" DELEGATION_DATA_HOME="$TMP/data2" \
+    "$ROOT/uninstall.sh" </dev/null >"$TMP/uninstall2.log" 2>&1 \
+  || { sed 's/^/    /' "$TMP/uninstall2.log" >&2; fail 'uninstall.sh exited non-zero'; }
+[ ! -e "$TMP/bin2/delegation-executor-contract" ] \
+  || fail 'uninstall left the contract command on the bin path'
+[ ! -e "$TMP/data2/config/external-executor-contract.json" ] \
+  || fail 'uninstall left the installed contract file behind'
+[ ! -e "$TMP/bin2/delegation-route" ] \
+  || fail 'uninstall left the router on the bin path'
 ok
 
 doctor_section() { # runs doctor against $1 as DATA_HOME, prints its version block

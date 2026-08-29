@@ -436,6 +436,35 @@ else
   warn "delegation-route not installed — re-run ./install.sh"
 fi
 
+# ---- common external-executor contract ----
+# Static only: the contract describes what the runners already do and is checked
+# against the installed gates. No provider is contacted.
+hdr "External executor contract"
+contract_file="$DATA_HOME/config/external-executor-contract.json"
+if ! have jq; then
+  warn "jq not on PATH — the external-executor contract cannot be validated"
+elif ! have delegation-executor-contract; then
+  warn "delegation-executor-contract not installed — re-run ./install.sh"
+elif [ ! -r "$contract_file" ]; then
+  bad "installed contract missing at $contract_file — re-run ./install.sh"
+else
+  contract_check="$(delegation-executor-contract check --json 2>/dev/null || true)"
+  if [ -n "$contract_check" ] && printf '%s' "$contract_check" | jq -e '
+      .valid == true and .read_only == true and
+      .grants_permissions == false and
+      .enforcement_authority == "provider-runner" and
+      .families == 6 and
+      .permission_classes == ["read-only","text-patch","worktree-edit"] and
+      .exit_codes == [64,69,70,75,78,130]
+    ' >/dev/null 2>&1; then
+    ok "external executor contract valid ($(printf '%s' "$contract_check" | jq -r '.lane_declarations') lane declarations across $(printf '%s' "$contract_check" | jq -r '.families') families)"
+    info "the contract describes and validates; each provider runner still enforces its own permissions"
+    info "permission classes: read-only, text-patch, worktree-edit — declaring a lane grants it nothing"
+  else
+    bad "external executor contract is missing, invalid, or disagrees with the installed gates — re-run ./install.sh"
+  fi
+fi
+
 # ---- optional GLM-5.3-Flash external executor ----
 hdr "GLM-5.3-Flash optional executor"
 if ! have jq; then

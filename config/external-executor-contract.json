@@ -1,0 +1,1732 @@
+{
+  "schema_version": 1,
+  "contract_version": "1.0.0",
+  "updated_at": "2026-08-29T00:00:00Z",
+  "central_routing_gate": "routing-gates.json",
+  "authority": {
+    "role": "describe-and-validate",
+    "enforcement_authority": "provider-runner",
+    "grants_permissions": false,
+    "creates_dispatch_layer": false,
+    "changes_routing_decisions": false,
+    "notes": [
+      "This contract is a common vocabulary. It describes what each external executor already does and lets a validator detect drift. It never enforces anything at dispatch time.",
+      "Each provider runner remains the sole enforcement authority for its own permissions, sandbox, credentials, and refusals. A lane declared here is not thereby permitted; config/routing-gates.json and the runner's own executable gate decide that.",
+      "A declaration in this file adds no capability. If a runner and this contract disagree, the runner wins at runtime and the disagreement is a validation failure to be fixed here, never a reason to widen a runner.",
+      "Provider-specific attestations (identity proofs, sandbox receipts, evaluation manifests) are deliberately outside the common required set. The common contract must never be used to justify relaxing one of them.",
+      "Every security-relevant runtime control declared for a lane is mirrored in that family's executable gate and compared exactly. A missing, null, or unknown control is a validation failure, never a silently skipped check."
+    ]
+  },
+  "vocabularies": {
+    "permission_classes": {
+      "read-only": {
+        "worktree_writes": false,
+        "returns_patch": false,
+        "summary": "The runner grants no write capability over the delegated worktree and the lane's product is analysis text. Includes prompt-only transports used for non-editing lanes."
+      },
+      "text-patch": {
+        "worktree_writes": false,
+        "returns_patch": true,
+        "summary": "The runner grants no write capability; the lane returns patch text that the lead applies and verifies. Distinguished from read-only because a diff still has to be applied and checked."
+      },
+      "worktree-edit": {
+        "worktree_writes": true,
+        "returns_patch": false,
+        "summary": "The runner grants scoped write access to the delegated worktree and the executor edits files in place. The lead still reads and verifies the diff."
+      }
+    },
+    "worktree_access_values": [
+      "none",
+      "read",
+      "read-write"
+    ],
+    "write_scope_values": [
+      "none",
+      "workdir"
+    ],
+    "tool_policy_modes": [
+      "allowlist",
+      "permission-mode",
+      "prompt-only"
+    ],
+    "transport_kinds": [
+      "agent-cli",
+      "agent-cli-prompt-only",
+      "chat-completions"
+    ],
+    "capability_values": {
+      "denied": "The runner removes the capability from the executor: an explicit deny entry, an omission from a runner-passed tool allowlist, or a transport that has no such tool at all. The claim is about the runner's own invocation and is compared exactly against the family's executable gate.",
+      "permission-mode-gated": "The runner does not remove the capability; whether a call succeeds follows from the permission mode the runner pins inside the harness. This is a deliberately narrowed claim — the contract asserts the pinned mode, not a denial — and only a lane that pins a permission mode may use it."
+    },
+    "phase_values": [
+      "dispatch",
+      "extract",
+      "identity",
+      "oauth-sync",
+      "output",
+      "publish",
+      "sandbox"
+    ],
+    "usage_source_values": [
+      "model_usage",
+      "provider_aggregate"
+    ],
+    "effective_content_identity_values": {
+      "must-equal-requested": "The family reports an effective-content identity and it must equal the requested model. A reported value that differs, or an identity attestation asserted without it, is a validation failure.",
+      "not-reported": "The family reports no effective-content identity at all. An artifact that carries one is a validation failure, because the transport cannot substantiate it."
+    },
+    "identity_kinds": {
+      "requested": "The exact model the caller asked the runner to pin. Comes from the gate, never from the provider response.",
+      "observed": "Model identity seen in provider events or the response body: init events, per-message attribution, or the response model field.",
+      "effective_content": "The model the provider says actually produced the content. May differ from requested identity when a provider substitutes.",
+      "usage_participant": "A model named in the provider's own usage/billing accounting for the run. Presence proves participation in billing, not authorship of the content."
+    },
+    "usage_participation_values": {
+      "first-party-model-usage": "Per-model usage participants with a canonical model name and a first-party provider marker.",
+      "model-usage-participants": "Per-model usage participants without a provider-identity marker.",
+      "provider-usage-totals": "Aggregate provider token counters only; no per-model participant breakdown.",
+      "none": "The transport reports no usage; token counters are absent, zero, or null and must not be read as measured cost."
+    },
+    "qualification_status_values": [
+      "disabled",
+      "candidate",
+      "provisional",
+      "qualified",
+      "manual-qualified"
+    ],
+    "selection_values": [
+      "default",
+      "fallback",
+      "preferred-explicit",
+      "explicit-only",
+      "blocked"
+    ],
+    "lane_values": [
+      "clerk",
+      "scout",
+      "builder",
+      "frontend-builder",
+      "reviewer",
+      "senior",
+      "judgement",
+      "policy-annotation"
+    ]
+  },
+  "exit_codes": {
+    "64": {
+      "name": "invalid_input",
+      "universal": true,
+      "retryable": false,
+      "meaning": "Invalid caller input: unknown argument, missing or colliding path, or a flag combination the runner refuses."
+    },
+    "69": {
+      "name": "unavailable",
+      "universal": true,
+      "retryable": false,
+      "meaning": "Runtime, login, entitlement, key, or quota-window unavailability. The lane may be legal but nothing can run."
+    },
+    "70": {
+      "name": "dispatch_failure",
+      "universal": true,
+      "retryable": false,
+      "meaning": "Dispatch, sandbox, extraction, or publication failure, including unclassified provider failure."
+    },
+    "75": {
+      "name": "temporary_failure",
+      "universal": true,
+      "retryable": true,
+      "meaning": "Temporary condition: rate limit, overload, 5xx, timeout, or a transient credential conflict. Retry after backoff, and only after reading the diagnostic reason."
+    },
+    "78": {
+      "name": "gate_refusal",
+      "universal": true,
+      "retryable": false,
+      "meaning": "The routing gate refused: lane not dispatchable, effort not pinned, gates inconsistent, or an explicit decision was not supplied."
+    },
+    "130": {
+      "name": "caller_cancelled",
+      "universal": false,
+      "retryable": false,
+      "meaning": "The caller cancelled (INT/TERM). The runner stopped the child, published what it could, and released its locks."
+    }
+  },
+  "envelopes": {
+    "status": {
+      "produced_by": "<runner> check --json",
+      "extensions_permitted": true,
+      "required": [
+        "model",
+        "efforts",
+        "selected_backend",
+        "qualified_lanes",
+        "provisional_lanes",
+        "backends"
+      ],
+      "common_optional": [
+        "candidate_lanes",
+        "runtime_model",
+        "runtime_cli_version",
+        "runtime_cli_compatibility"
+      ],
+      "field_types": {
+        "model": "string",
+        "efforts": "array",
+        "selected_backend": "string",
+        "qualified_lanes": "array",
+        "provisional_lanes": "array",
+        "backends": "object",
+        "candidate_lanes": "array",
+        "runtime_model": "string",
+        "runtime_cli_version": "string|null",
+        "runtime_cli_compatibility": "string"
+      },
+      "nonnegative_fields": [],
+      "none_backend_value": "none",
+      "lane_status_fields": {
+        "qualified_lanes": ["qualified", "manual-qualified"],
+        "provisional_lanes": ["provisional"],
+        "candidate_lanes": ["candidate"]
+      }
+    },
+    "result": {
+      "produced_by": "<runner> run --metrics <path>",
+      "extensions_permitted": true,
+      "required": [
+        "model",
+        "backend",
+        "effort",
+        "lane",
+        "started_at_epoch",
+        "finished_at_epoch",
+        "tokens",
+        "provider_cost_usd"
+      ],
+      "common_optional": [
+        "requested_model",
+        "runtime_model",
+        "effective_content_model",
+        "exact_model_identity_attested",
+        "usage_participants",
+        "target_usage_participant_present",
+        "usage_source",
+        "usage_reported",
+        "duration_seconds",
+        "provider_total_cost_usd"
+      ],
+      "field_types": {
+        "model": "string",
+        "backend": "string",
+        "effort": "string",
+        "lane": "string",
+        "started_at_epoch": "number",
+        "finished_at_epoch": "number",
+        "tokens": "object|null",
+        "provider_cost_usd": "number|null",
+        "requested_model": "string",
+        "runtime_model": "string",
+        "effective_content_model": "string|null",
+        "exact_model_identity_attested": "boolean",
+        "usage_participants": "array",
+        "target_usage_participant_present": "boolean",
+        "usage_source": "string",
+        "usage_reported": "boolean",
+        "duration_seconds": "number",
+        "provider_total_cost_usd": "number|null"
+      },
+      "closed_value_fields": [
+        "lane",
+        "usage_source"
+      ],
+      "nonnegative_fields": [
+        "started_at_epoch",
+        "finished_at_epoch",
+        "duration_seconds",
+        "provider_cost_usd",
+        "provider_total_cost_usd"
+      ],
+      "ordered_epoch_pair": [
+        "started_at_epoch",
+        "finished_at_epoch"
+      ],
+      "token_counter_field": "tokens",
+      "token_counter_value_type": "number"
+    },
+    "diagnostic": {
+      "produced_by": "<runner> run, on failure, at <output>.error.json",
+      "extensions_permitted": true,
+      "required": [
+        "phase",
+        "reason"
+      ],
+      "common_optional": [
+        "model",
+        "backend",
+        "effort",
+        "lane",
+        "schema_version",
+        "cli_exit_code",
+        "elapsed_seconds",
+        "duration_seconds",
+        "debug_dir",
+        "debug_path"
+      ],
+      "field_types": {
+        "phase": "string",
+        "reason": "string",
+        "model": "string",
+        "backend": "string",
+        "effort": "string",
+        "lane": "string",
+        "schema_version": "integer",
+        "cli_exit_code": "integer|null",
+        "elapsed_seconds": "number",
+        "duration_seconds": "number",
+        "debug_dir": "string|null",
+        "debug_path": "string|null"
+      },
+      "closed_value_fields": [
+        "lane",
+        "phase"
+      ],
+      "nonnegative_fields": [
+        "elapsed_seconds",
+        "duration_seconds"
+      ],
+      "reason_pattern": "^[a-z][a-z0-9_]*$",
+      "secrecy": "A diagnostic is sanitized metadata. `phase` is drawn from the closed phase vocabulary and `reason` must be a stable lower-snake-case slug, never a message. Credentials, prompts, and raw provider bodies are rejected by the extension policy below; they live only under an explicit private --debug-dir."
+    }
+  },
+  "usage_accounting": {
+    "participant_fields": {
+      "model": "string",
+      "canonical_model": "string|null",
+      "provider": "string|null",
+      "input_tokens": "number",
+      "output_tokens": "number",
+      "reasoning_tokens": "number",
+      "cache_read_tokens": "number",
+      "cache_write_tokens": "number",
+      "model_calls": "number",
+      "cost_usd": "number"
+    },
+    "required_participant_fields": [
+      "model"
+    ],
+    "nonnegative_participant_fields": [
+      "input_tokens",
+      "output_tokens",
+      "reasoning_tokens",
+      "cache_read_tokens",
+      "cache_write_tokens",
+      "model_calls",
+      "cost_usd"
+    ],
+    "rules": [
+      "The participant field map is closed. A participant object carrying a key that is not declared here is a validation failure, and so is a participant missing its `model` name or carrying a negative counter.",
+      "The map is also closed by type. Every field a participant actually carries is checked against the type declared here, including the nullable ones: `canonical_model` and `provider` may be a name or null and nothing else, and every token, cache, reasoning, call, and cost counter must be a nonnegative number. A counter reported as a string or an array is a validation failure, never a value coerced to zero.",
+      "The same rule holds for the result envelope's token counter object: every counter it carries must satisfy `token_counter_value_type` and be nonnegative. Type checking reaches the declared envelope fields, this participant map, and that counter object; provider extension objects are governed by `extension_policy` instead, and the contract does not claim to type them.",
+      "A usage participant proves billing participation for the run, not that the model produced the content. Content authorship is the effective-content identity, reported separately.",
+      "An empty or absent participant list means the transport reports no per-model usage. It is never evidence that the requested model ran alone, and `target_usage_participant_present` must then be false.",
+      "`target_usage_participant_present` is true exactly when a participant carries the family's declared usage-participant model. A family whose usage-participant model differs from its content model keeps the two apart: the billing identity may never be reported as the effective-content identity.",
+      "A family whose usage participation is `none` reports zero counters, or a null counter object, and no participants. Those zeros must not be read as measured cost. A null counter object is the absence of the whole measurement; an individual counter still has to be a number.",
+      "Cost aggregated from participants and any provider total are reported separately; neither silently replaces the other."
+    ]
+  },
+  "extension_policy": {
+    "provider_extensions_permitted": true,
+    "recursive": true,
+    "applies_to": "every key name and string value at any depth of a validated status, result, or diagnostic artifact, including provider extension objects",
+    "rejected_key_names": [
+      "api_key", "apikey", "authorization", "auth", "token", "access_token",
+      "refresh_token", "id_token", "bearer", "bearer_token", "credential",
+      "credentials", "client_secret", "secret", "secrets", "secret_key",
+      "password", "passphrase", "private_key", "session_key", "cookie",
+      "set_cookie", "prompt", "prompt_text", "raw_prompt", "system_prompt",
+      "user_prompt", "messages", "request", "response", "request_body",
+      "response_body", "raw_request", "raw_response", "provider_request",
+      "provider_response", "body", "raw_body", "payload", "content", "text",
+      "output_text", "completion", "choices", "transcript", "stdout", "stderr",
+      "events"
+    ],
+    "rejected_key_substrings": [
+      "api_key", "apikey", "access_token", "refresh_token", "auth_token",
+      "oauth_token", "bearer_token", "client_secret", "secret_key",
+      "private_key", "password", "passphrase"
+    ],
+    "rejected_value_patterns": [
+      "^Bearer .",
+      "^sk-[A-Za-z0-9_-]{16,}$",
+      "^xai-[A-Za-z0-9_-]{16,}$",
+      "^gsk_[A-Za-z0-9_-]{16,}$",
+      "^ghp_[A-Za-z0-9]{20,}$",
+      "^-----BEGIN [A-Z ]*PRIVATE KEY-----"
+    ],
+    "notes": [
+      "Provider extension fields stay supported: a runner's own attestations — Kimi's search-runtime digests, Grok's sandbox and OAuth state, GLM's assistant-event identity accounting — are reported as extension fields and pass.",
+      "What is rejected is narrow and mechanical: a key whose name is a credential or raw-content name, a key containing a credential substring, or a string value shaped like a bearer token or private key. Digests of sensitive material (`prompt_sha256`) are the safe form and are deliberately allowed.",
+      "This is a shape check on the artifact, not a secrecy proof. It cannot detect a credential stored under an innocuous key name, and the contract must not be read as promising that it can."
+    ]
+  },
+  "executable_gate_controls": {
+    "location": "lanes.<lane>.backends.<backend>.runtime_controls",
+    "required_fields": [
+      "permission_mode",
+      "worktree_edits",
+      "worktree_access",
+      "write_scope",
+      "terminal",
+      "network",
+      "mcp",
+      "plugins",
+      "subagents",
+      "tools"
+    ],
+    "cross_checked_against": {
+      "permission_mode": "lane.tool_policy.permission_mode",
+      "worktree_edits": "lane.tool_policy.write_scope == \"workdir\"",
+      "worktree_access": "lane.worktree_access",
+      "write_scope": "lane.tool_policy.write_scope",
+      "terminal": "lane.tool_policy.terminal",
+      "network": "lane.tool_policy.network",
+      "mcp": "lane.tool_policy.mcp",
+      "plugins": "lane.tool_policy.plugins",
+      "subagents": "lane.tool_policy.subagents",
+      "tools": "lane.tool_policy.allowed_tools"
+    },
+    "descriptive_fields": [
+      "sandbox",
+      "isolated_home",
+      "isolated_config_dir",
+      "runtime_home_isolated",
+      "oauth_modes",
+      "grok_home_modes",
+      "default_oauth_mode",
+      "max_turns",
+      "timeout_seconds",
+      "transport"
+    ],
+    "isolation_cross_checked_against": {
+      "isolated_home": "family.runtime_isolation.isolated_home",
+      "isolated_config_dir": "family.runtime_isolation.isolated_config_dir"
+    },
+    "notes": [
+      "Every executable gate row for a declared lane must carry a runtime_controls object with all ten required fields present. A missing object, a missing field, or a field the contract does not know is a validation failure — the check is never skipped because a field happens to be absent.",
+      "The ten required fields are compared exactly against the lane declaration. Of the descriptive fields, only the isolation fields listed in `isolation_cross_checked_against` are compared against the family's `runtime_isolation`, because an overstated isolation claim reads as a security property: a gate row that states one must state exactly the declared value, and a family that declares one must have it stated by at least one row of its own gate. A row may omit an isolation field — it then claims nothing — but it may never claim an isolation the family does not declare. The contract makes no claim about the remaining descriptive fields.",
+      "`isolated_home` means the runner pins a private HOME for an ordinary dispatch, not merely inside an evaluation harness. `isolated_config_dir` is the narrower and separate claim that only the harness's own configuration directory is redirected per run: `delegation-glm` sets CLAUDE_CONFIG_DIR and leaves HOME as the caller's, so its ordinary lanes declare isolated_home false and isolated_config_dir true.",
+      "runtime_controls is descriptive metadata only. No runner reads it; it exists so a permission drift between a lane declaration and its executable gate is detectable."
+    ]
+  },
+  "families": {
+    "glm-5.3-flash": {
+      "provider_family": "zai",
+      "model": "glm-5.3-flash",
+      "runner": "delegation-glm",
+      "harness": "claude-zai",
+      "backend": "claude-zai",
+      "transport": "agent-cli",
+      "executable_gate": "glm-5.3-flash-max-routing.json",
+      "efforts": [
+        "max"
+      ],
+      "runtime_isolation": {
+        "isolated_home": false,
+        "isolated_config_dir": true,
+        "sandbox": null
+      },
+      "identity": {
+        "requested_model": "glm-5.3-flash",
+        "runtime_model": null,
+        "observed_identity_sources": [
+          "system-init-event",
+          "assistant-event",
+          "result-event"
+        ],
+        "identity_attested_field": "exact_model_identity_attested",
+        "usage_participation": "first-party-model-usage",
+        "effective_content_identity": "must-equal-requested",
+        "usage_participant_model": "glm-5.3-flash",
+        "usage_participant_provider": "firstParty",
+        "usage_participant_canonical_model": true
+      },
+      "exit_codes_emitted": [
+        64,
+        69,
+        70,
+        75,
+        78
+      ],
+      "envelope_fields": {
+        "status": [
+          "model",
+          "efforts",
+          "selected_backend",
+          "qualified_lanes",
+          "provisional_lanes",
+          "backends"
+        ],
+        "result": [
+          "model",
+          "backend",
+          "effort",
+          "lane",
+          "started_at_epoch",
+          "finished_at_epoch",
+          "tokens",
+          "provider_cost_usd",
+          "requested_model",
+          "effective_content_model",
+          "exact_model_identity_attested",
+          "usage_participants",
+          "target_usage_participant_present",
+          "usage_source",
+          "provider_total_cost_usd"
+        ],
+        "diagnostic": [
+          "phase",
+          "reason",
+          "model",
+          "backend",
+          "effort",
+          "lane",
+          "schema_version",
+          "cli_exit_code",
+          "elapsed_seconds",
+          "debug_dir"
+        ]
+      },
+      "lanes": {
+        "clerk": {
+          "central_profile": "glm53-flash-max-clerk",
+          "effort": "max",
+          "status": "qualified",
+          "selection": "explicit-only",
+          "dispatchable": true,
+          "requires_explicit_decision": true,
+          "requires_allow_provisional": false,
+          "evaluation_only": false,
+          "permission_class": "read-only",
+          "worktree_access": "read",
+          "tool_policy": {
+            "mode": "permission-mode",
+            "permission_mode": "plan",
+            "allowed_tools": null,
+            "write_scope": "none",
+            "terminal": "permission-mode-gated",
+            "network": "permission-mode-gated",
+            "mcp": "denied",
+            "plugins": "denied",
+            "subagents": "permission-mode-gated"
+          }
+        },
+        "scout": {
+          "central_profile": "glm53-flash-max-scout",
+          "effort": "max",
+          "status": "qualified",
+          "selection": "explicit-only",
+          "dispatchable": true,
+          "requires_explicit_decision": true,
+          "requires_allow_provisional": false,
+          "evaluation_only": false,
+          "permission_class": "read-only",
+          "worktree_access": "read",
+          "tool_policy": {
+            "mode": "permission-mode",
+            "permission_mode": "plan",
+            "allowed_tools": null,
+            "write_scope": "none",
+            "terminal": "permission-mode-gated",
+            "network": "permission-mode-gated",
+            "mcp": "denied",
+            "plugins": "denied",
+            "subagents": "permission-mode-gated"
+          }
+        },
+        "builder": {
+          "central_profile": "glm53-flash-max-builder",
+          "effort": "max",
+          "status": "provisional",
+          "selection": "explicit-only",
+          "dispatchable": true,
+          "requires_explicit_decision": true,
+          "requires_allow_provisional": true,
+          "evaluation_only": false,
+          "permission_class": "worktree-edit",
+          "worktree_access": "read-write",
+          "tool_policy": {
+            "mode": "permission-mode",
+            "permission_mode": "acceptEdits",
+            "allowed_tools": null,
+            "write_scope": "workdir",
+            "terminal": "permission-mode-gated",
+            "network": "permission-mode-gated",
+            "mcp": "denied",
+            "plugins": "denied",
+            "subagents": "permission-mode-gated"
+          }
+        },
+        "reviewer": {
+          "central_profile": "glm53-flash-max-reviewer",
+          "effort": "max",
+          "status": "disabled",
+          "selection": "blocked",
+          "dispatchable": false,
+          "requires_explicit_decision": false,
+          "requires_allow_provisional": false,
+          "evaluation_only": false,
+          "permission_class": "read-only",
+          "worktree_access": "none",
+          "tool_policy": {
+            "mode": "permission-mode",
+            "permission_mode": "plan",
+            "allowed_tools": null,
+            "write_scope": "none",
+            "terminal": "permission-mode-gated",
+            "network": "permission-mode-gated",
+            "mcp": "denied",
+            "plugins": "denied",
+            "subagents": "permission-mode-gated"
+          }
+        },
+        "policy-annotation": {
+          "central_profile": "glm53-flash-max-policy-annotation",
+          "effort": "max",
+          "status": "candidate",
+          "selection": "blocked",
+          "dispatchable": false,
+          "requires_explicit_decision": false,
+          "requires_allow_provisional": false,
+          "evaluation_only": true,
+          "permission_class": "read-only",
+          "worktree_access": "read",
+          "tool_policy": {
+            "mode": "permission-mode",
+            "permission_mode": "plan",
+            "allowed_tools": null,
+            "write_scope": "none",
+            "terminal": "permission-mode-gated",
+            "network": "permission-mode-gated",
+            "mcp": "denied",
+            "plugins": "denied",
+            "subagents": "permission-mode-gated"
+          }
+        }
+      }
+    },
+    "kimi-k3": {
+      "provider_family": "moonshot",
+      "model": "kimi-k3",
+      "runner": "delegation-kimi",
+      "harness": "kimi-code-cli",
+      "backend": "native",
+      "transport": "agent-cli",
+      "executable_gate": "kimi-k3-routing.json",
+      "efforts": [
+        "max"
+      ],
+      "runtime_isolation": {
+        "isolated_home": true,
+        "sandbox": "macos-sandbox-exec"
+      },
+      "identity": {
+        "requested_model": "kimi-k3",
+        "runtime_model": "kimi-code/k3",
+        "observed_identity_sources": [
+          "runtime-config-probe"
+        ],
+        "identity_attested_field": null,
+        "usage_participation": "none",
+        "effective_content_identity": "not-reported",
+        "usage_participant_model": null,
+        "usage_participant_provider": null,
+        "usage_participant_canonical_model": false
+      },
+      "exit_codes_emitted": [
+        64,
+        69,
+        70,
+        75,
+        78,
+        130
+      ],
+      "envelope_fields": {
+        "status": [
+          "model",
+          "efforts",
+          "selected_backend",
+          "qualified_lanes",
+          "provisional_lanes",
+          "backends",
+          "runtime_cli_version",
+          "runtime_cli_compatibility"
+        ],
+        "result": [
+          "model",
+          "backend",
+          "effort",
+          "lane",
+          "started_at_epoch",
+          "finished_at_epoch",
+          "tokens",
+          "provider_cost_usd",
+          "usage_reported"
+        ],
+        "diagnostic": [
+          "phase",
+          "reason"
+        ]
+      },
+      "lanes": {
+        "clerk": {
+          "central_profile": "kimi-k3",
+          "effort": "max",
+          "status": "provisional",
+          "selection": "explicit-only",
+          "dispatchable": true,
+          "requires_explicit_decision": true,
+          "requires_allow_provisional": true,
+          "evaluation_only": false,
+          "permission_class": "read-only",
+          "worktree_access": "read",
+          "tool_policy": {
+            "mode": "allowlist",
+            "permission_mode": "auto",
+            "allowed_tools": [
+              "Read",
+              "Glob",
+              "Grep",
+              "TodoList"
+            ],
+            "write_scope": "none",
+            "terminal": "denied",
+            "network": "denied",
+            "mcp": "denied",
+            "plugins": "denied",
+            "subagents": "denied"
+          }
+        },
+        "scout": {
+          "central_profile": "kimi-k3",
+          "effort": "max",
+          "status": "provisional",
+          "selection": "explicit-only",
+          "dispatchable": true,
+          "requires_explicit_decision": true,
+          "requires_allow_provisional": true,
+          "evaluation_only": false,
+          "permission_class": "read-only",
+          "worktree_access": "read",
+          "tool_policy": {
+            "mode": "allowlist",
+            "permission_mode": "auto",
+            "allowed_tools": [
+              "Read",
+              "Glob",
+              "Grep",
+              "TodoList"
+            ],
+            "write_scope": "none",
+            "terminal": "denied",
+            "network": "denied",
+            "mcp": "denied",
+            "plugins": "denied",
+            "subagents": "denied"
+          }
+        },
+        "builder": {
+          "central_profile": "kimi-k3",
+          "effort": "max",
+          "status": "provisional",
+          "selection": "preferred-explicit",
+          "dispatchable": true,
+          "requires_explicit_decision": true,
+          "requires_allow_provisional": true,
+          "evaluation_only": false,
+          "permission_class": "worktree-edit",
+          "worktree_access": "read-write",
+          "tool_policy": {
+            "mode": "allowlist",
+            "permission_mode": "auto",
+            "allowed_tools": [
+              "Read",
+              "Glob",
+              "Grep",
+              "TodoList",
+              "Write",
+              "Edit"
+            ],
+            "write_scope": "workdir",
+            "terminal": "denied",
+            "network": "denied",
+            "mcp": "denied",
+            "plugins": "denied",
+            "subagents": "denied"
+          }
+        },
+        "frontend-builder": {
+          "central_profile": "kimi-k3",
+          "effort": "max",
+          "status": "provisional",
+          "selection": "preferred-explicit",
+          "dispatchable": true,
+          "requires_explicit_decision": true,
+          "requires_allow_provisional": true,
+          "evaluation_only": false,
+          "permission_class": "worktree-edit",
+          "worktree_access": "read-write",
+          "tool_policy": {
+            "mode": "allowlist",
+            "permission_mode": "auto",
+            "allowed_tools": [
+              "Read",
+              "Glob",
+              "Grep",
+              "TodoList",
+              "Write",
+              "Edit",
+              "ReadMediaFile"
+            ],
+            "write_scope": "workdir",
+            "terminal": "denied",
+            "network": "denied",
+            "mcp": "denied",
+            "plugins": "denied",
+            "subagents": "denied"
+          }
+        },
+        "senior": {
+          "central_profile": "kimi-k3",
+          "effort": "max",
+          "status": "candidate",
+          "selection": "blocked",
+          "dispatchable": false,
+          "requires_explicit_decision": false,
+          "requires_allow_provisional": false,
+          "evaluation_only": false,
+          "permission_class": "read-only",
+          "worktree_access": "none",
+          "tool_policy": {
+            "mode": "allowlist",
+            "permission_mode": null,
+            "allowed_tools": [],
+            "write_scope": "none",
+            "terminal": "denied",
+            "network": "denied",
+            "mcp": "denied",
+            "plugins": "denied",
+            "subagents": "denied"
+          }
+        },
+        "reviewer": {
+          "central_profile": "kimi-k3",
+          "effort": "max",
+          "status": "disabled",
+          "selection": "blocked",
+          "dispatchable": false,
+          "requires_explicit_decision": false,
+          "requires_allow_provisional": false,
+          "evaluation_only": false,
+          "permission_class": "read-only",
+          "worktree_access": "none",
+          "tool_policy": {
+            "mode": "allowlist",
+            "permission_mode": null,
+            "allowed_tools": [],
+            "write_scope": "none",
+            "terminal": "denied",
+            "network": "denied",
+            "mcp": "denied",
+            "plugins": "denied",
+            "subagents": "denied"
+          }
+        },
+        "judgement": {
+          "central_profile": "kimi-k3",
+          "effort": "max",
+          "status": "disabled",
+          "selection": "blocked",
+          "dispatchable": false,
+          "requires_explicit_decision": false,
+          "requires_allow_provisional": false,
+          "evaluation_only": false,
+          "permission_class": "read-only",
+          "worktree_access": "none",
+          "tool_policy": {
+            "mode": "allowlist",
+            "permission_mode": null,
+            "allowed_tools": [],
+            "write_scope": "none",
+            "terminal": "denied",
+            "network": "denied",
+            "mcp": "denied",
+            "plugins": "denied",
+            "subagents": "denied"
+          }
+        },
+        "policy-annotation": {
+          "central_profile": "kimi-k3",
+          "effort": "max",
+          "status": "candidate",
+          "selection": "blocked",
+          "dispatchable": false,
+          "requires_explicit_decision": false,
+          "requires_allow_provisional": false,
+          "evaluation_only": true,
+          "permission_class": "read-only",
+          "worktree_access": "none",
+          "tool_policy": {
+            "mode": "allowlist",
+            "permission_mode": "auto",
+            "allowed_tools": [],
+            "write_scope": "none",
+            "terminal": "denied",
+            "network": "denied",
+            "mcp": "denied",
+            "plugins": "denied",
+            "subagents": "denied"
+          }
+        }
+      }
+    },
+    "grok-4.6": {
+      "provider_family": "xai",
+      "model": "grok-4.6",
+      "runner": "delegation-grok",
+      "harness": "grok-build-cli",
+      "backend": "grok-build",
+      "transport": "agent-cli",
+      "executable_gate": "grok-4.6-routing.json",
+      "efforts": [
+        "high"
+      ],
+      "runtime_isolation": {
+        "isolated_home": true,
+        "sandbox": "delegation-kit"
+      },
+      "identity": {
+        "requested_model": "grok-4.6",
+        "runtime_model": "grok-4.6",
+        "observed_identity_sources": [
+          "result-event"
+        ],
+        "identity_attested_field": "exact_model_identity_attested",
+        "usage_participation": "model-usage-participants",
+        "effective_content_identity": "must-equal-requested",
+        "usage_participant_model": "grok-4.6-build",
+        "usage_participant_provider": null,
+        "usage_participant_canonical_model": false
+      },
+      "exit_codes_emitted": [
+        64,
+        69,
+        70,
+        75,
+        78
+      ],
+      "envelope_fields": {
+        "status": [
+          "model",
+          "efforts",
+          "selected_backend",
+          "qualified_lanes",
+          "provisional_lanes",
+          "backends",
+          "runtime_model",
+          "runtime_cli_version",
+          "runtime_cli_compatibility"
+        ],
+        "result": [
+          "model",
+          "backend",
+          "effort",
+          "lane",
+          "started_at_epoch",
+          "finished_at_epoch",
+          "tokens",
+          "provider_cost_usd",
+          "requested_model",
+          "runtime_model",
+          "effective_content_model",
+          "exact_model_identity_attested",
+          "usage_participants",
+          "target_usage_participant_present",
+          "duration_seconds"
+        ],
+        "diagnostic": [
+          "phase",
+          "reason",
+          "model",
+          "backend",
+          "effort",
+          "lane",
+          "cli_exit_code",
+          "duration_seconds",
+          "debug_path"
+        ]
+      },
+      "lanes": {
+        "builder": {
+          "central_profile": "grok-build",
+          "effort": "high",
+          "status": "provisional",
+          "selection": "preferred-explicit",
+          "dispatchable": true,
+          "requires_explicit_decision": true,
+          "requires_allow_provisional": true,
+          "evaluation_only": false,
+          "permission_class": "worktree-edit",
+          "worktree_access": "read-write",
+          "tool_policy": {
+            "mode": "allowlist",
+            "permission_mode": "dontAsk",
+            "allowed_tools": [
+              "grep",
+              "read_file",
+              "search_replace",
+              "list_dir",
+              "todo_write"
+            ],
+            "write_scope": "workdir",
+            "terminal": "denied",
+            "network": "denied",
+            "mcp": "denied",
+            "plugins": "denied",
+            "subagents": "denied"
+          }
+        },
+        "frontend-builder": {
+          "central_profile": "grok-build",
+          "effort": "high",
+          "status": "provisional",
+          "selection": "preferred-explicit",
+          "dispatchable": true,
+          "requires_explicit_decision": true,
+          "requires_allow_provisional": true,
+          "evaluation_only": false,
+          "permission_class": "worktree-edit",
+          "worktree_access": "read-write",
+          "tool_policy": {
+            "mode": "allowlist",
+            "permission_mode": "dontAsk",
+            "allowed_tools": [
+              "grep",
+              "read_file",
+              "search_replace",
+              "list_dir",
+              "todo_write"
+            ],
+            "write_scope": "workdir",
+            "terminal": "denied",
+            "network": "denied",
+            "mcp": "denied",
+            "plugins": "denied",
+            "subagents": "denied"
+          }
+        },
+        "policy-annotation": {
+          "central_profile": "grok-build",
+          "effort": "high",
+          "status": "candidate",
+          "selection": "blocked",
+          "dispatchable": false,
+          "requires_explicit_decision": false,
+          "requires_allow_provisional": false,
+          "evaluation_only": true,
+          "permission_class": "read-only",
+          "worktree_access": "read",
+          "tool_policy": {
+            "mode": "allowlist",
+            "permission_mode": "dontAsk",
+            "allowed_tools": [
+              "grep",
+              "read_file",
+              "list_dir"
+            ],
+            "write_scope": "none",
+            "terminal": "denied",
+            "network": "denied",
+            "mcp": "denied",
+            "plugins": "denied",
+            "subagents": "denied"
+          }
+        }
+      }
+    },
+    "qwen3.8-max": {
+      "provider_family": "alibaba",
+      "model": "qwen3.8-max",
+      "runner": "delegation-qwen",
+      "harness": "token-plan-openai",
+      "backend": "token-plan-openai",
+      "transport": "chat-completions",
+      "executable_gate": "qwen3.8-max-routing.json",
+      "efforts": [
+        "xhigh"
+      ],
+      "runtime_isolation": {
+        "isolated_home": null,
+        "sandbox": null
+      },
+      "identity": {
+        "requested_model": "qwen3.8-max",
+        "runtime_model": "qwen3.8-max",
+        "observed_identity_sources": [
+          "response-body"
+        ],
+        "identity_attested_field": null,
+        "usage_participation": "provider-usage-totals",
+        "effective_content_identity": "not-reported",
+        "usage_participant_model": null,
+        "usage_participant_provider": null,
+        "usage_participant_canonical_model": false
+      },
+      "exit_codes_emitted": [
+        64,
+        69,
+        70,
+        75,
+        78
+      ],
+      "envelope_fields": {
+        "status": [
+          "model",
+          "efforts",
+          "selected_backend",
+          "qualified_lanes",
+          "provisional_lanes",
+          "backends",
+          "candidate_lanes"
+        ],
+        "result": [
+          "model",
+          "backend",
+          "effort",
+          "lane",
+          "started_at_epoch",
+          "finished_at_epoch",
+          "tokens",
+          "provider_cost_usd"
+        ],
+        "diagnostic": [
+          "phase",
+          "reason",
+          "model",
+          "backend",
+          "effort",
+          "lane",
+          "schema_version",
+          "elapsed_seconds",
+          "debug_dir"
+        ]
+      },
+      "lanes": {
+        "builder": {
+          "central_profile": "qwen3.8-max",
+          "effort": "xhigh",
+          "status": "provisional",
+          "selection": "explicit-only",
+          "dispatchable": true,
+          "requires_explicit_decision": true,
+          "requires_allow_provisional": true,
+          "evaluation_only": false,
+          "permission_class": "text-patch",
+          "worktree_access": "none",
+          "tool_policy": {
+            "mode": "prompt-only",
+            "permission_mode": null,
+            "allowed_tools": [],
+            "write_scope": "none",
+            "terminal": "denied",
+            "network": "denied",
+            "mcp": "denied",
+            "plugins": "denied",
+            "subagents": "denied"
+          }
+        },
+        "clerk": {
+          "central_profile": "qwen3.8-max",
+          "effort": "xhigh",
+          "status": "candidate",
+          "selection": "blocked",
+          "dispatchable": false,
+          "requires_explicit_decision": false,
+          "requires_allow_provisional": false,
+          "evaluation_only": false,
+          "permission_class": "read-only",
+          "worktree_access": "none",
+          "tool_policy": {
+            "mode": "prompt-only",
+            "permission_mode": null,
+            "allowed_tools": [],
+            "write_scope": "none",
+            "terminal": "denied",
+            "network": "denied",
+            "mcp": "denied",
+            "plugins": "denied",
+            "subagents": "denied"
+          }
+        },
+        "scout": {
+          "central_profile": "qwen3.8-max",
+          "effort": "xhigh",
+          "status": "candidate",
+          "selection": "blocked",
+          "dispatchable": false,
+          "requires_explicit_decision": false,
+          "requires_allow_provisional": false,
+          "evaluation_only": false,
+          "permission_class": "read-only",
+          "worktree_access": "none",
+          "tool_policy": {
+            "mode": "prompt-only",
+            "permission_mode": null,
+            "allowed_tools": [],
+            "write_scope": "none",
+            "terminal": "denied",
+            "network": "denied",
+            "mcp": "denied",
+            "plugins": "denied",
+            "subagents": "denied"
+          }
+        },
+        "reviewer": {
+          "central_profile": "qwen3.8-max",
+          "effort": "xhigh",
+          "status": "candidate",
+          "selection": "blocked",
+          "dispatchable": false,
+          "requires_explicit_decision": false,
+          "requires_allow_provisional": false,
+          "evaluation_only": false,
+          "permission_class": "read-only",
+          "worktree_access": "none",
+          "tool_policy": {
+            "mode": "prompt-only",
+            "permission_mode": null,
+            "allowed_tools": [],
+            "write_scope": "none",
+            "terminal": "denied",
+            "network": "denied",
+            "mcp": "denied",
+            "plugins": "denied",
+            "subagents": "denied"
+          }
+        },
+        "senior": {
+          "central_profile": "qwen3.8-max",
+          "effort": "xhigh",
+          "status": "candidate",
+          "selection": "blocked",
+          "dispatchable": false,
+          "requires_explicit_decision": false,
+          "requires_allow_provisional": false,
+          "evaluation_only": false,
+          "permission_class": "read-only",
+          "worktree_access": "none",
+          "tool_policy": {
+            "mode": "prompt-only",
+            "permission_mode": null,
+            "allowed_tools": [],
+            "write_scope": "none",
+            "terminal": "denied",
+            "network": "denied",
+            "mcp": "denied",
+            "plugins": "denied",
+            "subagents": "denied"
+          }
+        },
+        "judgement": {
+          "central_profile": "qwen3.8-max",
+          "effort": "xhigh",
+          "status": "disabled",
+          "selection": "blocked",
+          "dispatchable": false,
+          "requires_explicit_decision": false,
+          "requires_allow_provisional": false,
+          "evaluation_only": false,
+          "permission_class": "read-only",
+          "worktree_access": "none",
+          "tool_policy": {
+            "mode": "prompt-only",
+            "permission_mode": null,
+            "allowed_tools": [],
+            "write_scope": "none",
+            "terminal": "denied",
+            "network": "denied",
+            "mcp": "denied",
+            "plugins": "denied",
+            "subagents": "denied"
+          }
+        },
+        "policy-annotation": {
+          "central_profile": "qwen3.8-max",
+          "effort": "xhigh",
+          "status": "candidate",
+          "selection": "blocked",
+          "dispatchable": false,
+          "requires_explicit_decision": false,
+          "requires_allow_provisional": false,
+          "evaluation_only": true,
+          "permission_class": "read-only",
+          "worktree_access": "none",
+          "tool_policy": {
+            "mode": "prompt-only",
+            "permission_mode": null,
+            "allowed_tools": [],
+            "write_scope": "none",
+            "terminal": "denied",
+            "network": "denied",
+            "mcp": "denied",
+            "plugins": "denied",
+            "subagents": "denied"
+          }
+        }
+      }
+    },
+    "deepseek-v4-pro": {
+      "provider_family": "deepseek",
+      "model": "deepseek-v4-pro",
+      "runner": "delegation-deepseek",
+      "harness": "deepseek-api",
+      "backend": "deepseek-api",
+      "transport": "chat-completions",
+      "executable_gate": "deepseek-v4-pro-routing.json",
+      "efforts": [
+        "max"
+      ],
+      "runtime_isolation": {
+        "isolated_home": null,
+        "sandbox": null
+      },
+      "identity": {
+        "requested_model": "deepseek-v4-pro",
+        "runtime_model": "deepseek-v4-pro",
+        "observed_identity_sources": [
+          "response-body"
+        ],
+        "identity_attested_field": null,
+        "usage_participation": "provider-usage-totals",
+        "effective_content_identity": "not-reported",
+        "usage_participant_model": null,
+        "usage_participant_provider": null,
+        "usage_participant_canonical_model": false
+      },
+      "exit_codes_emitted": [
+        64,
+        69,
+        70,
+        75,
+        78
+      ],
+      "envelope_fields": {
+        "status": [
+          "model",
+          "efforts",
+          "selected_backend",
+          "qualified_lanes",
+          "provisional_lanes",
+          "backends",
+          "candidate_lanes"
+        ],
+        "result": [
+          "model",
+          "backend",
+          "effort",
+          "lane",
+          "started_at_epoch",
+          "finished_at_epoch",
+          "tokens",
+          "provider_cost_usd"
+        ],
+        "diagnostic": [
+          "phase",
+          "reason",
+          "model",
+          "backend",
+          "effort",
+          "lane",
+          "schema_version",
+          "elapsed_seconds",
+          "debug_dir"
+        ]
+      },
+      "lanes": {
+        "builder": {
+          "central_profile": "deepseek-v4-pro",
+          "effort": "max",
+          "status": "provisional",
+          "selection": "explicit-only",
+          "dispatchable": true,
+          "requires_explicit_decision": true,
+          "requires_allow_provisional": true,
+          "evaluation_only": false,
+          "permission_class": "text-patch",
+          "worktree_access": "none",
+          "tool_policy": {
+            "mode": "prompt-only",
+            "permission_mode": null,
+            "allowed_tools": [],
+            "write_scope": "none",
+            "terminal": "denied",
+            "network": "denied",
+            "mcp": "denied",
+            "plugins": "denied",
+            "subagents": "denied"
+          }
+        },
+        "clerk": {
+          "central_profile": "deepseek-v4-pro",
+          "effort": "max",
+          "status": "candidate",
+          "selection": "blocked",
+          "dispatchable": false,
+          "requires_explicit_decision": false,
+          "requires_allow_provisional": false,
+          "evaluation_only": false,
+          "permission_class": "read-only",
+          "worktree_access": "none",
+          "tool_policy": {
+            "mode": "prompt-only",
+            "permission_mode": null,
+            "allowed_tools": [],
+            "write_scope": "none",
+            "terminal": "denied",
+            "network": "denied",
+            "mcp": "denied",
+            "plugins": "denied",
+            "subagents": "denied"
+          }
+        },
+        "scout": {
+          "central_profile": "deepseek-v4-pro",
+          "effort": "max",
+          "status": "candidate",
+          "selection": "blocked",
+          "dispatchable": false,
+          "requires_explicit_decision": false,
+          "requires_allow_provisional": false,
+          "evaluation_only": false,
+          "permission_class": "read-only",
+          "worktree_access": "none",
+          "tool_policy": {
+            "mode": "prompt-only",
+            "permission_mode": null,
+            "allowed_tools": [],
+            "write_scope": "none",
+            "terminal": "denied",
+            "network": "denied",
+            "mcp": "denied",
+            "plugins": "denied",
+            "subagents": "denied"
+          }
+        },
+        "reviewer": {
+          "central_profile": "deepseek-v4-pro",
+          "effort": "max",
+          "status": "candidate",
+          "selection": "blocked",
+          "dispatchable": false,
+          "requires_explicit_decision": false,
+          "requires_allow_provisional": false,
+          "evaluation_only": false,
+          "permission_class": "read-only",
+          "worktree_access": "none",
+          "tool_policy": {
+            "mode": "prompt-only",
+            "permission_mode": null,
+            "allowed_tools": [],
+            "write_scope": "none",
+            "terminal": "denied",
+            "network": "denied",
+            "mcp": "denied",
+            "plugins": "denied",
+            "subagents": "denied"
+          }
+        },
+        "senior": {
+          "central_profile": "deepseek-v4-pro",
+          "effort": "max",
+          "status": "candidate",
+          "selection": "blocked",
+          "dispatchable": false,
+          "requires_explicit_decision": false,
+          "requires_allow_provisional": false,
+          "evaluation_only": false,
+          "permission_class": "read-only",
+          "worktree_access": "none",
+          "tool_policy": {
+            "mode": "prompt-only",
+            "permission_mode": null,
+            "allowed_tools": [],
+            "write_scope": "none",
+            "terminal": "denied",
+            "network": "denied",
+            "mcp": "denied",
+            "plugins": "denied",
+            "subagents": "denied"
+          }
+        },
+        "judgement": {
+          "central_profile": "deepseek-v4-pro",
+          "effort": "max",
+          "status": "disabled",
+          "selection": "blocked",
+          "dispatchable": false,
+          "requires_explicit_decision": false,
+          "requires_allow_provisional": false,
+          "evaluation_only": false,
+          "permission_class": "read-only",
+          "worktree_access": "none",
+          "tool_policy": {
+            "mode": "prompt-only",
+            "permission_mode": null,
+            "allowed_tools": [],
+            "write_scope": "none",
+            "terminal": "denied",
+            "network": "denied",
+            "mcp": "denied",
+            "plugins": "denied",
+            "subagents": "denied"
+          }
+        },
+        "policy-annotation": {
+          "central_profile": "deepseek-v4-pro",
+          "effort": "max",
+          "status": "candidate",
+          "selection": "blocked",
+          "dispatchable": false,
+          "requires_explicit_decision": false,
+          "requires_allow_provisional": false,
+          "evaluation_only": true,
+          "permission_class": "read-only",
+          "worktree_access": "none",
+          "tool_policy": {
+            "mode": "prompt-only",
+            "permission_mode": null,
+            "allowed_tools": [],
+            "write_scope": "none",
+            "terminal": "denied",
+            "network": "denied",
+            "mcp": "denied",
+            "plugins": "denied",
+            "subagents": "denied"
+          }
+        }
+      }
+    },
+    "gemini-3.7-flash": {
+      "provider_family": "google",
+      "model": "gemini-3.7-flash",
+      "runner": "delegation-gemini",
+      "harness": "agy",
+      "backend": "agy",
+      "transport": "agent-cli-prompt-only",
+      "executable_gate": "gemini-3.7-flash-routing.json",
+      "efforts": [
+        "medium",
+        "high"
+      ],
+      "runtime_isolation": {
+        "isolated_home": true,
+        "sandbox": "agy-sandbox"
+      },
+      "identity": {
+        "requested_model": "gemini-3.7-flash",
+        "runtime_model": "gemini-3.7-flash-<effort>",
+        "observed_identity_sources": [
+          "runtime-inventory-probe"
+        ],
+        "identity_attested_field": null,
+        "usage_participation": "none",
+        "effective_content_identity": "not-reported",
+        "usage_participant_model": null,
+        "usage_participant_provider": null,
+        "usage_participant_canonical_model": false
+      },
+      "exit_codes_emitted": [
+        64,
+        69,
+        70,
+        75,
+        78
+      ],
+      "envelope_fields": {
+        "status": [
+          "model",
+          "efforts",
+          "selected_backend",
+          "qualified_lanes",
+          "provisional_lanes",
+          "backends"
+        ],
+        "result": [
+          "model",
+          "backend",
+          "effort",
+          "lane",
+          "started_at_epoch",
+          "finished_at_epoch",
+          "tokens",
+          "provider_cost_usd",
+          "runtime_model",
+          "duration_seconds"
+        ],
+        "diagnostic": [
+          "phase",
+          "reason",
+          "model",
+          "backend",
+          "effort",
+          "lane",
+          "schema_version",
+          "cli_exit_code",
+          "elapsed_seconds",
+          "debug_dir"
+        ]
+      },
+      "lanes": {
+        "scout": {
+          "central_profile": "gemini-3.7-flash-scout",
+          "effort": "medium",
+          "status": "candidate",
+          "selection": "blocked",
+          "dispatchable": false,
+          "requires_explicit_decision": false,
+          "requires_allow_provisional": false,
+          "evaluation_only": false,
+          "permission_class": "read-only",
+          "worktree_access": "none",
+          "tool_policy": {
+            "mode": "prompt-only",
+            "permission_mode": "plan",
+            "allowed_tools": [],
+            "write_scope": "none",
+            "terminal": "denied",
+            "network": "denied",
+            "mcp": "denied",
+            "plugins": "denied",
+            "subagents": "denied"
+          }
+        },
+        "builder": {
+          "central_profile": "gemini-3.7-flash-builder",
+          "effort": "high",
+          "status": "candidate",
+          "selection": "blocked",
+          "dispatchable": false,
+          "requires_explicit_decision": false,
+          "requires_allow_provisional": false,
+          "evaluation_only": false,
+          "permission_class": "text-patch",
+          "worktree_access": "none",
+          "tool_policy": {
+            "mode": "prompt-only",
+            "permission_mode": "plan",
+            "allowed_tools": [],
+            "write_scope": "none",
+            "terminal": "denied",
+            "network": "denied",
+            "mcp": "denied",
+            "plugins": "denied",
+            "subagents": "denied"
+          }
+        },
+        "frontend-builder": {
+          "central_profile": "gemini-3.7-flash-frontend-builder",
+          "effort": "high",
+          "status": "candidate",
+          "selection": "blocked",
+          "dispatchable": false,
+          "requires_explicit_decision": false,
+          "requires_allow_provisional": false,
+          "evaluation_only": false,
+          "permission_class": "text-patch",
+          "worktree_access": "none",
+          "tool_policy": {
+            "mode": "prompt-only",
+            "permission_mode": "plan",
+            "allowed_tools": [],
+            "write_scope": "none",
+            "terminal": "denied",
+            "network": "denied",
+            "mcp": "denied",
+            "plugins": "denied",
+            "subagents": "denied"
+          }
+        },
+        "reviewer": {
+          "central_profile": "gemini-3.7-flash-reviewer",
+          "effort": "high",
+          "status": "disabled",
+          "selection": "blocked",
+          "dispatchable": false,
+          "requires_explicit_decision": false,
+          "requires_allow_provisional": false,
+          "evaluation_only": false,
+          "permission_class": "read-only",
+          "worktree_access": "none",
+          "tool_policy": {
+            "mode": "prompt-only",
+            "permission_mode": "plan",
+            "allowed_tools": [],
+            "write_scope": "none",
+            "terminal": "denied",
+            "network": "denied",
+            "mcp": "denied",
+            "plugins": "denied",
+            "subagents": "denied"
+          }
+        },
+        "judgement": {
+          "central_profile": "gemini-3.7-flash-judgement",
+          "effort": "high",
+          "status": "disabled",
+          "selection": "blocked",
+          "dispatchable": false,
+          "requires_explicit_decision": false,
+          "requires_allow_provisional": false,
+          "evaluation_only": false,
+          "permission_class": "read-only",
+          "worktree_access": "none",
+          "tool_policy": {
+            "mode": "prompt-only",
+            "permission_mode": "plan",
+            "allowed_tools": [],
+            "write_scope": "none",
+            "terminal": "denied",
+            "network": "denied",
+            "mcp": "denied",
+            "plugins": "denied",
+            "subagents": "denied"
+          }
+        }
+      }
+    }
+  },
+  "known_divergences": [
+    {
+      "family": "kimi-k3",
+      "envelope": "diagnostic",
+      "detail": "delegation-kimi names the envelope `schema` (delegation_kimi_error_v1) rather than `schema_version`, carries `exit_code`/`vendor_exit_code` instead of `cli_exit_code`, and omits model/backend/effort/lane. Only phase and reason are common."
+    },
+    {
+      "family": "grok-4.6",
+      "envelope": "diagnostic",
+      "detail": "delegation-grok emits no `schema_version` and names the debug pointer `debug_path` rather than `debug_dir`."
+    },
+    {
+      "family": "kimi-k3",
+      "envelope": "result",
+      "detail": "The native Kimi transport reports no usage: `usage_reported` is false, every token counter is 0 and provider_cost_usd is null. Those zeros are not measured cost."
+    },
+    {
+      "family": "gemini-3.7-flash",
+      "envelope": "result",
+      "detail": "The prompt-only Antigravity transport reports no usage: tokens and provider_cost_usd are null."
+    },
+    {
+      "family": "glm-5.3-flash",
+      "envelope": "status",
+      "detail": "delegation-glm additionally reports a `host` object because the runner refuses to act as a standalone GLM client unless Claude Code or Codex is installed. That precondition is runner-specific and stays outside the common contract."
+    }
+  ]
+}

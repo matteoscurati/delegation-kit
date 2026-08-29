@@ -383,6 +383,50 @@ jq '.runtime_cli_compatibility = "version-pinned"' \
 expect_failure 65 env DELEGATION_GROK_ROUTING_FILE="$TMP/bad-grok-compatibility.json" \
   bin/delegation-route check --json
 
+# runtime_controls is descriptive metadata for the external-executor contract.
+# The router must not read it: stripping it from every external gate changes no
+# route decision, and the router still accepts the gate. (The contract command
+# is the thing that refuses the stripped gate; that is asserted in
+# tests/external-executor-contract.sh.)
+bin/delegation-route table --json >"$TMP/route-table-before.json"
+for gate in glm-5.3-flash-max-routing kimi-k3-routing grok-4.6-routing \
+            qwen3.8-max-routing deepseek-v4-pro-routing gemini-3.7-flash-routing; do
+  jq 'if has("lanes") then .lanes |= with_entries(
+        .value.backends |= with_entries(.value |= del(.runtime_controls))) else . end' \
+    "config/$gate.json" >"$TMP/stripped-$gate.json"
+done
+env DELEGATION_GLM_ROUTING_FILE="$TMP/stripped-glm-5.3-flash-max-routing.json" \
+  DELEGATION_KIMI_ROUTING_FILE="$TMP/stripped-kimi-k3-routing.json" \
+  DELEGATION_GROK_ROUTING_FILE="$TMP/stripped-grok-4.6-routing.json" \
+  DELEGATION_QWEN_ROUTING_FILE="$TMP/stripped-qwen3.8-max-routing.json" \
+  DELEGATION_DEEPSEEK_ROUTING_FILE="$TMP/stripped-deepseek-v4-pro-routing.json" \
+  DELEGATION_GEMINI_ROUTING_FILE="$TMP/stripped-gemini-3.7-flash-routing.json" \
+  bin/delegation-route check --json >/dev/null
+env DELEGATION_GLM_ROUTING_FILE="$TMP/stripped-glm-5.3-flash-max-routing.json" \
+  DELEGATION_KIMI_ROUTING_FILE="$TMP/stripped-kimi-k3-routing.json" \
+  DELEGATION_GROK_ROUTING_FILE="$TMP/stripped-grok-4.6-routing.json" \
+  DELEGATION_QWEN_ROUTING_FILE="$TMP/stripped-qwen3.8-max-routing.json" \
+  DELEGATION_DEEPSEEK_ROUTING_FILE="$TMP/stripped-deepseek-v4-pro-routing.json" \
+  DELEGATION_GEMINI_ROUTING_FILE="$TMP/stripped-gemini-3.7-flash-routing.json" \
+  bin/delegation-route table --json >"$TMP/route-table-after.json"
+cmp -s "$TMP/route-table-before.json" "$TMP/route-table-after.json" \
+  || { printf 'runtime_controls metadata changed a route decision\n' >&2; exit 1; }
+pass=$((pass + 1))
+
+# Descriptive though it is, the isolation metadata must describe what the runner
+# actually does. An ordinary delegation-glm dispatch redirects CLAUDE_CONFIG_DIR
+# and leaves HOME as the caller's; only the evaluation path pins a temporary
+# HOME. Every GLM row therefore states config-only isolation.
+jq -e '
+  [.lanes[].backends["claude-zai"].runtime_controls] as $rows |
+  ($rows | length) == 5 and
+  ($rows | all(.isolated_home == false and .isolated_config_dir == true))
+' config/glm-5.3-flash-max-routing.json >/dev/null \
+  || { printf 'a GLM gate row claims an isolated HOME the runner does not create\n' >&2; exit 1; }
+[ "$(grep -c 'HOME="\$tmp/home"' bin/delegation-glm)" = 1 ] \
+  || { printf 'delegation-glm HOME handling moved; recheck the isolation metadata\n' >&2; exit 1; }
+pass=$((pass + 1))
+
 # For a non-OpenAI/non-Anthropic producer, Sol remains the default material
 # reviewer and both max-effort Opus/Terra reviewers remain available fallbacks.
 bin/delegation-route resolve --lane material-review --producer-family deepseek --json >"$TMP/material-review.json"
