@@ -331,7 +331,7 @@ validate_vocabularies() {
     (.vocabularies.qualification_status_values | sort) ==
       (["candidate","disabled","manual-qualified","provisional","qualified"]) and
     (.vocabularies.selection_values | sort) ==
-      (["blocked","default","explicit-only","fallback","preferred-explicit"])
+      (["blocked","explicit-only"])
   ' "$CONTRACT" >/dev/null \
     || die 65 "status/selection vocabularies do not match the documented enums"
   # The capability vocabulary is closed at the two claims this command can make
@@ -556,9 +556,7 @@ validate_families() {
           (($l.selection != "blocked") and
            ($l.status == "qualified" or $l.status == "provisional" or $l.status == "manual-qualified"))) and
         ($l.requires_allow_provisional == ($l.dispatchable and $l.status == "provisional")) and
-        ($l.requires_explicit_decision ==
-          ($l.dispatchable and
-           ($l.selection == "explicit-only" or $l.selection == "preferred-explicit"))) and
+        ($l.requires_explicit_decision == $l.dispatchable) and
         ($l.evaluation_only | if . then $l.dispatchable == false else true end) and
         (if $l.permission_class == "worktree-edit"
          then $l.worktree_access == "read-write" and $l.tool_policy.write_scope == "workdir"
