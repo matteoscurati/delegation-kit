@@ -53,6 +53,37 @@ jq -e '
 ' "$TMP/builder-candidates.json" >/dev/null
 pass=$((pass + 1))
 
+# Delegation is user-directed: there are no automatic/default/fallback routes,
+# and a dispatch decision never carries to another dispatch implicitly.
+jq -e '
+  (.activation_policy.mode == "user-directed" and
+   .activation_policy.scope == "per-dispatch" and
+   .activation_policy.assistant_may_list_choices == true and
+   .activation_policy.assistant_may_select_profile_only_when_user_authorizes_selection == true and
+   .activation_policy.authorization_carries_to_retries == false and
+   .activation_policy.authorization_carries_to_review == false and
+   .activation_policy.automatic_dispatch == false and
+   (.activation_policy.basis | type == "string" and length > 0)) and
+  .selection_values == ["explicit-only", "blocked"] and
+  all(.profiles[].lanes[];
+      (.selection == "explicit-only" or .selection == "blocked") and
+      (has("fallback") | not))
+' config/routing-gates.json >/dev/null
+pass=$((pass + 1))
+
+for gate in \
+  config/glm-5.3-flash-max-routing.json \
+  config/kimi-k3-routing.json \
+  config/gemini-3.7-flash-routing.json \
+  config/grok-4.6-routing.json \
+  config/qwen3.8-max-routing.json \
+  config/deepseek-v4-pro-routing.json
+do
+  jq -e 'all(.lanes[].backends[];
+    .selection == "explicit-only" or .selection == "blocked")' "$gate" >/dev/null
+done
+pass=$((pass + 1))
+
 # The repository owns reusable qualification assets only. Downstream-project
 # packs stay in their owning repository, and every central allowlist hash must
 # resolve to a committed delegation-kit qualification manifest.
@@ -77,11 +108,10 @@ jq -e '
   .effort == "max" and
   (.lanes | keys) == ["builder"] and
   .lanes.builder.status == "provisional" and
-  .lanes.builder.selection == "fallback" and
+  .lanes.builder.selection == "explicit-only" and
   .lanes.builder.exact_evidence_ids == ["aa-claude-opus-5-max"] and
   .lanes.builder.local_evaluation.run_id == "2026-08-17-opus-builder-named-profile-smoke" and
-  .lanes.builder.local_evaluation.all_checker_runs_pass == true and
-  .lanes.builder.fallback == "terra-builder"
+  .lanes.builder.local_evaluation.all_checker_runs_pass == true
 ' "$TMP/opus-builder.json" >/dev/null
 grep -Fxq 'model: claude-opus-5' agents/opus-builder.md
 grep -Fxq 'effort: max' agents/opus-builder.md
@@ -103,23 +133,42 @@ grep -Fxq 'model_reasoning_effort = "max"' codex/profiles/terra-reviewer.config.
 grep -Fxq 'sandbox_mode = "read-only"' codex/profiles/terra-reviewer.config.toml
 pass=$((pass + 1))
 
-# Builder routing is Terra/max by default and Opus/max as its cross-provider
-# fallback; neither small non-builder model may appear on the builder lane.
+# Builder routing is user-directed: no defaults, no fallbacks, only choices.
 bin/delegation-route resolve --lane builder --json >"$TMP/builder-routing.json"
 jq -e '
-  ([.defaults[] | select(.profile == "terra-builder" and .effort == "max")] | length) == 1 and
-  ([.fallbacks[] | select(.profile == "opus-builder" and .effort == "max")] | length) == 1 and
-  ([.defaults[],.fallbacks[],.explicit[],.blocked[]] |
-    all(.profile != "sonnet-builder" and .profile != "luna-clerk"))
+  .requires_user_direction == true and
+  .automatic_dispatch == false and
+  .selection_validated == false and
+  .selected == null and
+  ([.choices[].profile] | sort) ==
+    ["deepseek-v4-pro","glm53-flash-max-builder","grok-build","kimi-k3",
+     "opus-builder","qwen3.8-max","terra-builder"] and
+  all(.choices[]; .selection == "explicit-only")
 ' "$TMP/builder-routing.json" >/dev/null
 pass=$((pass + 1))
 
-# Scout defaults to small read-only Sonnet work and Terra has no non-builder
-# operational profile.
+bin/delegation-route resolve --lane builder \
+  --selected-profile terra-builder --json >"$TMP/selected-builder.json"
+jq -e '
+  .requires_user_direction == true and
+  .automatic_dispatch == false and
+  .selection_validated == true and
+  .selected.profile == "terra-builder" and
+  .selected.lane == "builder"
+' "$TMP/selected-builder.json" >/dev/null
+pass=$((pass + 1))
+
+expect_failure 78 bin/delegation-route resolve --lane builder \
+  --selected-profile sonnet-scout --json
+
+# Scout presents the read-only scouts as choices, and Terra has no non-builder
+# profile; Kimi remains selectable only through an explicit user decision.
 bin/delegation-route resolve --lane scout --json >"$TMP/scout-routing.json"
 jq -e '
-  [.defaults[].profile] == ["sonnet-scout"] and
-  ([.defaults[],.fallbacks[],.explicit[],.blocked[]] | all(.profile != "terra-scout"))
+  .requires_user_direction == true and
+  ([.choices[].profile] | sort) ==
+    ["glm53-flash-max-scout","kimi-k3","sonnet-scout"] and
+  ([.choices[],.blocked[]] | all(.profile != "terra-scout"))
 ' "$TMP/scout-routing.json" >/dev/null
 pass=$((pass + 1))
 
@@ -130,24 +179,22 @@ expect_failure 64 bin/delegation-route resolve --lane security --json
 # Terra/OpenAI output can be reviewed by Opus/Anthropic, never by Terra or Sol.
 bin/delegation-route resolve --lane security --producer-profile terra-builder --json >"$TMP/security-routing.json"
 jq -e '
-  (.defaults | length) == 0 and
-  [.fallbacks[].profile] == ["opus-reviewer"] and
-  .fallbacks[0].provider_fallback.possible == true and
-  .fallbacks[0].provider_fallback.target_model == "claude-opus-4.8" and
-  .fallbacks[0].provider_fallback.exact_variant_guaranteed == false and
+  .requires_user_direction == true and
+  ([.choices[].profile] | sort) == ["opus-reviewer"] and
+  .choices[0].provider_fallback.possible == true and
+  .choices[0].provider_fallback.target_model == "claude-opus-4.8" and
+  .choices[0].provider_fallback.exact_variant_guaranteed == false and
   ([.excluded_same_family[].profile] | sort) == ["sol-reviewer","terra-reviewer"] and
   .review_policy.producer_family == "openai" and
   .review_policy.require_cross_family == true
 ' "$TMP/security-routing.json" >/dev/null
 pass=$((pass + 1))
 
-# Row-local fallback metadata must not point at a same-family reviewer after the
-# producer-dependent filter. The resolved groups are the only fallback authority.
+# No row-local fallback hints exist anywhere in the user-directed gates.
 bin/delegation-route resolve --lane routine-review --producer-profile terra-builder --json >"$TMP/routine-routing.json"
 jq -e '
-  [.defaults[].profile] == ["sonnet-reviewer"] and
-  .defaults[0].fallback == null and
-  [.fallbacks[].profile] == ["opus-reviewer"] and
+  ([.choices[].profile] | sort) == ["opus-reviewer","sonnet-reviewer"] and
+  all(.choices[]; .fallback == null) and
   ([.excluded_same_family[].profile] | sort) == ["sol-reviewer","terra-reviewer"]
 ' "$TMP/routine-routing.json" >/dev/null
 pass=$((pass + 1))
@@ -159,8 +206,8 @@ jq '.profiles["opus-reviewer"].lanes.security.provider_fallback.exact_variant_gu
 expect_failure 65 env DELEGATION_ROUTING_GATES_FILE="$TMP/bad-provider-fallback.json" \
   bin/delegation-route check --json
 
-# Review fallbacks are producer-dependent groups, never row-local profile hints
-# that could point back into the producer's family after filtering.
+# A review row that re-acquires a row-local fallback hint is refused: the
+# property itself is forbidden under user-directed activation.
 jq '.profiles["sonnet-reviewer"].lanes["routine-review"].fallback = "sol-reviewer"' \
   config/routing-gates.json >"$TMP/bad-review-fallback.json"
 expect_failure 65 env DELEGATION_ROUTING_GATES_FILE="$TMP/bad-review-fallback.json" \
@@ -169,19 +216,17 @@ expect_failure 65 env DELEGATION_ROUTING_GATES_FILE="$TMP/bad-review-fallback.js
 # Opus/Anthropic output can be reviewed by Sol or Terra, never by Opus itself.
 bin/delegation-route resolve --lane material-review --producer-profile opus-builder --json >"$TMP/opus-produced-review.json"
 jq -e '
-  [.defaults[].profile] == ["sol-reviewer"] and
-  [.fallbacks[].profile] == ["terra-reviewer"] and
-  [.excluded_same_family[].profile] == ["opus-reviewer"] and
+  ([.choices[].profile] | sort) == ["sol-reviewer","terra-reviewer"] and
+  ([.excluded_same_family[].profile] == ["opus-reviewer"]) and
   .review_policy.producer_family == "anthropic"
 ' "$TMP/opus-produced-review.json" >/dev/null
 pass=$((pass + 1))
 
 # A third-family producer keeps every sufficiently advanced cross-family
-# reviewer available, with Sol as default and Terra/Opus as fallbacks.
+# reviewer available as a choice, with no ranking attached.
 bin/delegation-route resolve --lane material-review --producer-profile kimi-k3 --json >"$TMP/kimi-produced-review.json"
 jq -e '
-  [.defaults[].profile] == ["sol-reviewer"] and
-  ([.fallbacks[].profile] | sort) == ["opus-reviewer","terra-reviewer"] and
+  ([.choices[].profile] | sort) == ["opus-reviewer","sol-reviewer","terra-reviewer"] and
   (.excluded_same_family | length) == 0 and
   .review_policy.producer_family == "moonshot" and
   .review_policy.availability_must_be_verified == true
@@ -200,8 +245,10 @@ jq '.review_policy.eligible_reviewer_profiles -= ["opus-reviewer"]' \
   config/routing-gates.json >"$TMP/missing-reviewer-allowlist.json"
 expect_failure 65 env DELEGATION_ROUTING_GATES_FILE="$TMP/missing-reviewer-allowlist.json" bin/delegation-route check --json
 
-# Illegal status/selection pairs must fail schema validation.
-jq '.profiles["kimi-k3"].lanes.judgement.selection = "explicit-only"' \
+# Illegal status/selection pairs must fail schema validation. Judgement is
+# manual-qualified and may only pair with explicit-only; "default" is now
+# outside the vocabulary entirely and must fail too.
+jq '.profiles["kimi-k3"].lanes.judgement.selection = "default"' \
   config/routing-gates.json >"$TMP/bad-pair.json"
 expect_failure 65 env DELEGATION_ROUTING_GATES_FILE="$TMP/bad-pair.json" \
   bin/delegation-route check --json
@@ -260,10 +307,10 @@ jq '.profiles["sol-reviewer"].lanes["material-review"].exact_evidence_ids = ["aa
 expect_failure 65 env DELEGATION_ROUTING_GATES_FILE="$TMP/bad-domain.json" \
   bin/delegation-route check --json
 
-# Fallbacks must resolve to installed profile names.
-jq '.profiles["luna-clerk"].lanes.clerk.fallback = "missing-profile"' \
-  config/routing-gates.json >"$TMP/bad-fallback.json"
-expect_failure 65 env DELEGATION_ROUTING_GATES_FILE="$TMP/bad-fallback.json" \
+# The user-directed vocabulary rejects anything but explicit-only/blocked.
+jq '.profiles["luna-clerk"].lanes.clerk.selection = "fallback"' \
+  config/routing-gates.json >"$TMP/bad-selection.json"
+expect_failure 65 env DELEGATION_ROUTING_GATES_FILE="$TMP/bad-selection.json" \
   bin/delegation-route check --json
 
 # Executable gates are checked bidirectionally, including extra lanes and arrays.
@@ -427,28 +474,27 @@ jq -e '
   || { printf 'delegation-glm HOME handling moved; recheck the isolation metadata\n' >&2; exit 1; }
 pass=$((pass + 1))
 
-# For a non-OpenAI/non-Anthropic producer, Sol remains the default material
-# reviewer and both max-effort Opus/Terra reviewers remain available fallbacks.
+# For a non-OpenAI/non-Anthropic producer, all three advanced reviewers stay
+# selectable with no ranking, and Sol keeps its measured effort metadata.
 bin/delegation-route resolve --lane material-review --producer-family deepseek --json >"$TMP/material-review.json"
 jq -e '
-  [.defaults[].profile] == ["sol-reviewer"] and
-  ([.fallbacks[].profile] | sort) == ["opus-reviewer","terra-reviewer"] and
-  (.explicit | length) == 0 and
-  (.defaults[0].model == "gpt-5.6-sol") and
-  (.defaults[0].effort == "high") and
-  (.defaults[0].status == "provisional") and
+  .requires_user_direction == true and
+  ([.choices[].profile] | sort) == ["opus-reviewer","sol-reviewer","terra-reviewer"] and
+  (first(.choices[] | select(.profile == "sol-reviewer")).model == "gpt-5.6-sol") and
+  (first(.choices[] | select(.profile == "sol-reviewer")).effort == "high") and
+  (first(.choices[] | select(.profile == "sol-reviewer")).status == "provisional") and
   (.review_policy.producer_family == "deepseek")
 ' "$TMP/material-review.json" >/dev/null
 pass=$((pass + 1))
 
 # Technical judgement stays a manual, explicit choice alongside Fable, and
-# disabled/candidate profiles never leak into an operational group.
+# disabled/candidate profiles never leak into the choice set.
 bin/delegation-route resolve --lane judgement --json >"$TMP/judgement.json"
-jq -e '(.defaults | length) == 0 and (.fallbacks | length) == 0 and
-       ([.explicit[].profile] | sort) == ["fable-judge","sol-judge"] and
-       (first(.explicit[] | select(.profile == "fable-judge")).effort == "max") and
-       (first(.explicit[] | select(.profile == "sol-judge")).effort == "max") and
-       (first(.explicit[] | select(.profile == "sol-judge")).context_evidence_ids | index("aa-codex-gpt-5.6-sol-max") != null) and
+jq -e '.requires_user_direction == true and
+       ([.choices[].profile] | sort) == ["fable-judge","sol-judge"] and
+       (first(.choices[] | select(.profile == "fable-judge")).effort == "max") and
+       (first(.choices[] | select(.profile == "sol-judge")).effort == "max") and
+       (first(.choices[] | select(.profile == "sol-judge")).context_evidence_ids | index("aa-codex-gpt-5.6-sol-max") != null) and
        ([.blocked[].profile] | index("kimi-k3") != null) and
        ([.blocked[].profile] | index("qwen3.8-max") != null)' "$TMP/judgement.json" >/dev/null
 grep -Fxq 'model_reasoning_effort = "max"' codex/agents/sol-judge.toml
@@ -476,7 +522,7 @@ pass=$((pass + 1))
 # Opus and Sol-max profiles; it must never leak into an operational group.
 bin/delegation-route resolve --lane policy-annotation --json >"$TMP/policy-annotation.json"
 jq -e '
-  (.defaults | length) == 0 and (.fallbacks | length) == 0 and (.explicit | length) == 0 and
+  (.choices | length) == 0 and
   ([.blocked[].profile] | sort) ==
     ["deepseek-v4-pro","fable-policy-annotator","glm53-flash-max-policy-annotation","grok-build","kimi-k3",
      "opus-policy-annotator","qwen3.8-max","sol-max-policy-annotator"]
