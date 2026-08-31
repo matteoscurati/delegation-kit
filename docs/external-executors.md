@@ -54,6 +54,10 @@ Two descriptive fields sit alongside the class and are checked against it:
 `worktree-edit` requires `read-write` + `workdir`; every other class requires
 `write_scope: none` and forbids `read-write`.
 
+Every `text-patch` lane additionally carries a `patch_policy` block — see
+[the patch verifier](#the-patch-verifier-for-text-patch-lanes) below — and no
+lane of any other class may carry one.
+
 ## Runtime controls, and how drift is caught
 
 Every lane declares a complete `tool_policy`. There is no optional field and no
@@ -138,7 +142,183 @@ policy-annotation lane is non-dispatchable. Blocked and candidate lanes are
 declared so the contract stays complete, and the validator refuses a contract in
 which any of them becomes dispatchable.
 
+The four `text-patch` lanes — Qwen and DeepSeek `builder`, plus the two blocked
+Gemini lanes — each declare the versioned patch policy that
+[`delegation-patch-verify`](#the-patch-verifier-for-text-patch-lanes) enforces.
+
 Run `delegation-executor-contract table` for the full 35-row picture.
+
+## The patch verifier, for `text-patch` lanes
+
+A `text-patch` lane has no filesystem, no tools, and no terminal. Its product is
+diff text, and somebody has to apply it. That somebody is the lead — which means
+the trust boundary is not at dispatch, where the runner stands, but at the point
+where a human pastes a stranger's diff into their own repository.
+
+[`config/external-patch-policy.json`](../config/external-patch-policy.json) is
+the versioned policy for that moment, and `delegation-patch-verify` enforces it.
+
+**The verifier never applies a patch.** It parses it, holds it against the
+policy, fixes the strip level from the header shape, asks `git apply --check`
+whether the patch applies at that one level, and prints a receipt. Applying and
+testing stay with the lead.
+
+Authority is split three ways and is never merged:
+
+| actor | enforces |
+|---|---|
+| `delegation-patch-verify` | patch safety: confinement, shape, limits, applicability |
+| the provider runner | transport, credentials, sandbox, tools, refusals |
+| the lead | applying the patch, running the tests, deciding it is correct |
+
+A clean receipt is a **confinement** statement. It says the diff touches only
+ordinary files inside the worktree and applies cleanly at a known `-p`. It says
+nothing about whether the change is right, and it promotes nothing.
+
+### The lead's workflow, exactly
+
+```sh
+# 1. verify — read-only; nothing is applied and nothing is written
+delegation-patch-verify check \
+  --patch "$patch" --workdir "$repo" --json >receipt.json
+
+# 2. inspect the receipt: verdict, paths, operations, and the strip level
+jq '{verdict, file_count, operations, strip, files: [.files[].path], violations}' receipt.json
+
+# 3. the LEAD applies it, with the strip level the receipt recorded
+git -C "$repo" apply -p"$(jq -r '.strip.chosen' receipt.json)" -- "$patch"
+
+# 4. the LEAD runs the tests — provider output is never proof that a change works
+( cd "$repo" && ./run-tests.sh )
+
+# 5. cross-family review of the result, per the routing rules
+```
+
+Step 3 is the only step that writes, and it is not the verifier's step. If the
+verdict is anything but `accepted`, stop: read the diff by hand, or ask the lane
+for a patch that does not need the exception.
+
+### What the default policy refuses
+
+Fail-closed throughout. A shape the policy does not recognise is rejected, never
+skipped.
+
+| area | rule |
+|---|---|
+| the patch file | regular file, not a symlink, owned by the caller, not group- or world-writable, non-empty, under `max_patch_bytes`, no NUL bytes, no CR |
+| the worktree | a real directory, not a symlink, with an in-tree `.git` that is not a symlink, and which is the worktree **top level** |
+| the diff | unified diff text only; prose, truncated hunks, malformed headers, binary patches, and `Binary files … differ` are all refused |
+| paths | no absolute, UNC, drive-letter, backslashed, empty, `..`-traversing, `.`-component, or out-of-charset path; a path that is not representable is refused *without being echoed* |
+| denied paths | `.git`, `.gitattributes`/`.gitmodules`, hook and CI directories, `.env*`/`.envrc`, shell startup files, ssh material, keys, certificates, credential stores, cloud config, and this kit's own provider auth directories |
+| modes | `new file mode` must be `100644`; `120000` (symlink) and `160000` (submodule) are refused anywhere; `old mode`/`new mode` pairs are refused outright |
+| operations | add and modify are allowed; **delete is refused by default**; rename and copy are refused with no override |
+| limits | changed file count, path length, patch bytes, patch lines, hunks per file and in total, and added lines per file and in total |
+| strip level | the header shape fixes the level, before git is consulted; a shape that fixes none is rejected, not guessed at |
+
+### The strip level, exactly
+
+The level is a property of the patch text, not of whatever happens to apply.
+Two header shapes are recognised, because the lanes really produce them:
+
+| shape | headers | level |
+|---|---|---|
+| `git-prefixed` | `a/<rest>` opposite `b/<rest>`, rests equal, `/dev/null` for the missing side of an add or delete | `-p1` |
+| `unprefixed` | no real side begins with `a/` or `b/` — what `delegation-qwen` emits left to itself | `-p0` |
+
+Anything else fixes nothing and is refused before `git apply` runs: `a/x`
+opposite `a/x` does not say whether `a` is the prefix or a directory
+(`unpaired_path_prefixes`), and a patch mixing the two shapes across files is
+`mixed_path_prefixes`. `git apply --check` is then asked one question — does the
+patch apply at *that* level — and the answer decides the verdict.
+
+The other candidate is probed too, recorded as `strip.alternate_applies`, and
+never chosen (`strip.alternate_chosen` is always `false`):
+
+* For `git-prefixed`, the other candidate is `-p0`, which is not a second
+  reading — it is the patch with its prefix left on, naming `a/…` and `b/…`
+  paths the receipt does not list. **Every ordinary add applies that way**,
+  because `b/src/x` does not exist and `--check` will happily create it. That
+  reading is refused, not counted as an alternative.
+* For `unprefixed`, the other candidate is `-p1`, which drops a real leading
+  component and lands on a different existing file — and `-p1` is git's own
+  default, so a lead can reach it by habit. A patch that also applies there has
+  a second reading reachable by accident and is rejected as
+  `ambiguous_strip_level`.
+
+There is exactly one override, `--allow-delete`. It permits `deleted file mode`
+entries, is recorded in the receipt as `allow_flags.allow_delete`, and relaxes
+nothing else — path confinement, the denied list, and the limits all still
+apply. Renames have no override at all: a rename is a delete plus an add wearing
+one name, and the lead should see both halves.
+
+### Read-only, and how that is attested
+
+The verifier writes nothing: not the worktree, not the index, not the git
+control directory, not the patch file, not any global configuration. It attests
+that rather than asserting it. Four digests — the patch, the worktree state
+(`status --porcelain -uall` plus the unstaged and staged diffs), the index, and
+the git control directory (HEAD, config, packed refs, ref listing, index digest)
+— are taken before and after and compared. A difference is reported as
+`verdict: attestation-failed` and exit 70, and is a failure of *this command*
+rather than a property of the patch.
+
+Every `git` call runs with `GIT_CONFIG_NOSYSTEM`, `GIT_CONFIG_GLOBAL`/`_SYSTEM`
+pointed at `/dev/null`, `GIT_ATTR_NOSYSTEM`, `GIT_OPTIONAL_LOCKS=0`, `HOME` and
+`XDG_CONFIG_HOME` redirected to an empty private directory, `core.hooksPath`
+disabled, and every inherited `GIT_DIR`/`GIT_WORK_TREE`/object-directory
+variable unset. `git apply` is given `--check` and never `--unsafe-paths`,
+`--index`, `--cached`, `--3way`, or `--directory`, and it is reached only after
+every structural and path rule has already passed — a denied path is never
+handed to git at all.
+
+### The receipt carries no patch content
+
+Only paths, counts, operation names, rule identifiers, and digests. No context
+line, no added or removed line, and no `@@` section heading is ever captured;
+git's stderr is discarded because it quotes patch context on failure; and a path
+that fails the representability screen is reported as a rule, never as bytes.
+The regression suite plants sentinels in a patch body and in a section heading
+and fails if either reaches the receipt.
+
+### How the contract requires it
+
+Every `text-patch` lane declares the same block, and nothing else may:
+
+```json
+"patch_policy": {
+  "policy_file": "external-patch-policy.json",
+  "policy_version": "1.0.0",
+  "verifier": "delegation-patch-verify",
+  "verification_required": true,
+  "applied_by": "lead"
+}
+```
+
+`delegation-executor-contract check` fails on a missing, stale, or mismatched
+block, on a block attached to a lane that returns no patch, and on a policy file
+that has drifted open — deletions allowed by default, mode changes permitted,
+`--unsafe-paths` no longer refused, a denied-path class removed. The four
+governed lanes today are `qwen3.8-max.builder`, `deepseek-v4-pro.builder`, and
+the two **blocked** Gemini lanes. Blocked lanes are held to the same rule on
+purpose: a declaration that is wrong while blocked becomes wrong and operational
+the day it is promoted.
+
+The reference declares a requirement. It grants nothing, promotes nothing, and
+no runner reads it — the regression suite asserts that neither the six runners
+nor `delegation-route` calls the verifier. It is a tool the lead runs.
+
+Exit codes are the verifier's own: `0` accepted, `64` invalid input, `65`
+rejected by policy, `66` unreadable patch or unusable worktree, `69` missing
+dependency, `70` the read-only attestation failed.
+
+```sh
+delegation-patch-verify policy            # the policy, in full
+delegation-patch-verify check --patch "$patch" --workdir "$repo" --json
+delegation-patch-verify check --patch "$patch" --workdir "$repo" --allow-delete
+```
+
+Override for tests and diagnostics only:
+`DELEGATION_EXTERNAL_PATCH_POLICY_FILE`.
 
 ## Identity, usage, permission, qualification
 
@@ -302,17 +482,20 @@ delegation-executor-contract table             # every declaration, as Markdown
 
 delegation-executor-contract validate --envelope result \
   --file "$metrics" --family grok-4.6 --json
+
+delegation-patch-verify check --patch "$patch" --workdir "$repo" --json
 ```
 
 `check` is what CI, `doctor.sh`, and a gate change should run. It validates the
 contract, then cross-checks every declaration against `routing-gates.json`
-(model, harness, effort, status, selection, and coverage in **both** directions)
-and against each executable gate (model, lane set, status, selection, effort, and
-all ten `runtime_controls` fields, which every gate row must declare in full).
+(model, harness, effort, status, selection, and coverage in **both** directions),
+against each executable gate (model, lane set, status, selection, effort, and
+all ten `runtime_controls` fields, which every gate row must declare in full),
+and against `config/external-patch-policy.json` for the `text-patch` lanes.
 
 Overrides, for tests and diagnostics only:
 `DELEGATION_EXECUTOR_CONTRACT_FILE`, `DELEGATION_ROUTING_GATES_FILE`,
-`DELEGATION_EXECUTOR_GATE_DIR`.
+`DELEGATION_EXECUTOR_GATE_DIR`, `DELEGATION_EXTERNAL_PATCH_POLICY_FILE`.
 
 ## Changing it
 
@@ -329,3 +512,10 @@ A contract edit is a *description* change and must follow reality:
 4. If a runner genuinely diverges from the common envelope, record it in
    `known_divergences`. A recorded gap is honest; a silently relaxed required
    field is not.
+5. A change to `config/external-patch-policy.json` is a change to a **trust
+   boundary**, not a limit tweak. Bump `policy_version`, update the
+   `patch_policy` block on the top-level reference *and* on every `text-patch`
+   lane — they are compared exactly — and run
+   `tests/external-patch-verify.sh`. Never widen the policy to make a
+   particular patch pass; a patch the policy refuses is one the lead reads by
+   hand.

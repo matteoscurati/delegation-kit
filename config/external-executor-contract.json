@@ -367,6 +367,21 @@
       "This is a shape check on the artifact, not a secrecy proof. It cannot detect a credential stored under an innocuous key name, and the contract must not be read as promising that it can."
     ]
   },
+  "patch_policy": {
+    "policy_file": "external-patch-policy.json",
+    "policy_version": "1.0.0",
+    "verifier": "delegation-patch-verify",
+    "required_for_permission_class": "text-patch",
+    "verification_required": true,
+    "applied_by": "lead",
+    "enforcement_authority": "patch-verifier",
+    "grants_permissions": false,
+    "notes": [
+      "A text-patch lane has no filesystem and no tools: its product is diff text that somebody still has to apply. This reference names the versioned policy that governs the reading of that text and the command that enforces it. It adds no capability to any lane and promotes nothing.",
+      "Every text-patch lane must carry an identical patch_policy block and no other lane may carry one. A missing, stale, or mismatched block fails `delegation-executor-contract check`, blocked lanes included: a declaration that is wrong while blocked would become wrong and operational on the day it is promoted.",
+      "Authority stays split three ways and is never merged. The verifier enforces patch safety, the provider runner enforces transport and permissions, and the lead is the only actor that applies a patch and runs its tests. A clean receipt is a confinement statement, never a correctness one."
+    ]
+  },
   "executable_gate_controls": {
     "location": "lanes.<lane>.backends.<backend>.runtime_controls",
     "required_fields": [
@@ -1130,6 +1145,13 @@
           "evaluation_only": false,
           "permission_class": "text-patch",
           "worktree_access": "none",
+          "patch_policy": {
+            "policy_file": "external-patch-policy.json",
+            "policy_version": "1.0.0",
+            "verifier": "delegation-patch-verify",
+            "verification_required": true,
+            "applied_by": "lead"
+          },
           "tool_policy": {
             "mode": "prompt-only",
             "permission_mode": null,
@@ -1361,6 +1383,13 @@
           "evaluation_only": false,
           "permission_class": "text-patch",
           "worktree_access": "none",
+          "patch_policy": {
+            "policy_file": "external-patch-policy.json",
+            "policy_version": "1.0.0",
+            "verifier": "delegation-patch-verify",
+            "verification_required": true,
+            "applied_by": "lead"
+          },
           "tool_policy": {
             "mode": "prompt-only",
             "permission_mode": null,
@@ -1618,6 +1647,13 @@
           "evaluation_only": false,
           "permission_class": "text-patch",
           "worktree_access": "none",
+          "patch_policy": {
+            "policy_file": "external-patch-policy.json",
+            "policy_version": "1.0.0",
+            "verifier": "delegation-patch-verify",
+            "verification_required": true,
+            "applied_by": "lead"
+          },
           "tool_policy": {
             "mode": "prompt-only",
             "permission_mode": "plan",
@@ -1641,6 +1677,13 @@
           "evaluation_only": false,
           "permission_class": "text-patch",
           "worktree_access": "none",
+          "patch_policy": {
+            "policy_file": "external-patch-policy.json",
+            "policy_version": "1.0.0",
+            "verifier": "delegation-patch-verify",
+            "verification_required": true,
+            "applied_by": "lead"
+          },
           "tool_policy": {
             "mode": "prompt-only",
             "permission_mode": "plan",

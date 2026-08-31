@@ -27,6 +27,7 @@ ROOT="$(cd "$(dirname "$SOURCE")/.." && pwd)"
 CONTRACT="${DELEGATION_EXECUTOR_CONTRACT_FILE:-$ROOT/config/external-executor-contract.json}"
 GATES="${DELEGATION_ROUTING_GATES_FILE:-$ROOT/config/routing-gates.json}"
 GATE_DIR="${DELEGATION_EXECUTOR_GATE_DIR:-$ROOT/config}"
+PATCH_POLICY="${DELEGATION_EXTERNAL_PATCH_POLICY_FILE:-}"
 
 usage() {
   cat <<'EOF'
@@ -50,6 +51,10 @@ usage: delegation-executor-contract <command> [--json]
 Exit codes: 64 invalid input, 65 validation failure, 66 unreadable file,
 69 missing dependency. These are the inspector's own codes; the 64/69/70/75/78/130
 vocabulary it describes belongs to the provider runners.
+
+`check` also cross-checks every text-patch lane against the versioned patch
+policy in config/external-patch-policy.json, which `delegation-patch-verify`
+enforces. That reference declares a requirement, never a permission.
 
 The contract describes and validates. It never dispatches, never edits a gate,
 and never grants a permission: each runner enforces its own. Provider extension
@@ -83,7 +88,7 @@ validate_structure() {
 
     (. | only(["schema_version","contract_version","updated_at","central_routing_gate",
                "authority","vocabularies","exit_codes","envelopes","usage_accounting",
-               "extension_policy","executable_gate_controls",
+               "extension_policy","patch_policy","executable_gate_controls",
                "families","known_divergences"])) and
     (.schema_version == 1) and
     (.contract_version | test("^[0-9]+\\.[0-9]+\\.[0-9]+$")) and
@@ -186,6 +191,22 @@ validate_structure() {
     (.extension_policy.rejected_value_patterns | string_array) and
     (.extension_policy.notes | type == "array" and length > 0 and all(.[]; nonempty_string)) and
 
+    # The patch-policy reference is a requirement, not a grant. Every field is
+    # mandatory and pinned: a reference that could say "verification optional"
+    # or "applied by the runner" would describe a different trust boundary.
+    (.patch_policy | only(["policy_file","policy_version","verifier",
+                           "required_for_permission_class","verification_required",
+                           "applied_by","enforcement_authority","grants_permissions","notes"])) and
+    (.patch_policy.policy_file | test("^[A-Za-z0-9._-]+\\.json$")) and
+    (.patch_policy.policy_version | test("^[0-9]+\\.[0-9]+\\.[0-9]+$")) and
+    (.patch_policy.verifier | test("^delegation-[a-z0-9-]+$")) and
+    (.patch_policy.required_for_permission_class | nonempty_string) and
+    (.patch_policy.verification_required == true) and
+    (.patch_policy.applied_by == "lead") and
+    (.patch_policy.enforcement_authority == "patch-verifier") and
+    (.patch_policy.grants_permissions == false) and
+    (.patch_policy.notes | type == "array" and length > 0 and all(.[]; nonempty_string)) and
+
     (.executable_gate_controls | only(["location","required_fields","cross_checked_against",
                                        "descriptive_fields","isolation_cross_checked_against",
                                        "notes"])) and
@@ -246,7 +267,9 @@ validate_structure() {
       (.lanes | all(.[];
         only(["central_profile","effort","status","selection","dispatchable",
               "requires_explicit_decision","requires_allow_provisional","evaluation_only",
-              "permission_class","worktree_access","tool_policy"]) and
+              "permission_class","worktree_access","patch_policy","tool_policy"]) and
+        ((.patch_policy // {}) |
+          only(["policy_file","policy_version","verifier","verification_required","applied_by"])) and
         (.central_profile | nonempty_string) and (.effort | nonempty_string) and
         (.status | nonempty_string) and (.selection | nonempty_string) and
         (.dispatchable | type == "boolean") and
@@ -337,6 +360,92 @@ validate_vocabularies() {
     ($contract[0].vocabularies.qualification_status_values | sort) == ($gates[0].status_values | sort) and
     ($contract[0].vocabularies.selection_values | sort) == ($gates[0].selection_values | sort)
   ' >/dev/null || die 65 "status/selection vocabularies disagree with the central routing gate"
+  # The class the patch policy governs must be a real class, and it must be the
+  # one whose product is a patch. Pointing the requirement at a class that
+  # returns no patch would leave the lanes that do return one unguarded.
+  jq -e '
+    . as $root | $root.patch_policy.required_for_permission_class as $cls |
+    ($root.vocabularies.permission_classes | has($cls)) and
+    ($root.vocabularies.permission_classes[$cls].returns_patch == true) and
+    ([$root.vocabularies.permission_classes | to_entries[] |
+       select(.value.returns_patch) | .key] == [$cls])
+  ' "$CONTRACT" >/dev/null \
+    || die 65 "the patch policy does not govern exactly the permission class whose product is a patch"
+}
+
+# ---------------------------------------------------------------------------
+# 2b. The versioned patch policy the text-patch lanes point at. The contract
+#     declares a requirement; config/external-patch-policy.json is the policy
+#     delegation-patch-verify enforces, and the two must agree exactly. A
+#     policy that has drifted open — deletes allowed, mode changes permitted,
+#     `--unsafe-paths` no longer refused — fails here rather than being
+#     discovered after a patch has already been applied.
+# ---------------------------------------------------------------------------
+patch_policy_file() {
+  if [ -n "$PATCH_POLICY" ]; then printf '%s' "$PATCH_POLICY"
+  else printf '%s/%s' "$GATE_DIR" "$(jq -r '.patch_policy.policy_file' "$CONTRACT")"; fi
+}
+
+validate_patch_policy() {
+  local file
+  file="$(patch_policy_file)"
+  [ -r "$file" ] || die 66 "cannot read patch policy $file"
+  jq -e . "$file" >/dev/null 2>&1 || die 65 "invalid patch policy JSON: $file"
+  jq -e -n --slurpfile contract "$CONTRACT" --slurpfile policy "$file" '
+    $contract[0].patch_policy as $c | $policy[0] as $p |
+    ($p.schema_version == 1) and
+    ($p.policy_version == $c.policy_version) and
+    ($p.verifier == $c.verifier) and
+    ($p.applies_to_permission_class == $c.required_for_permission_class) and
+    ($p.authority.role == "validate-and-describe") and
+    ($p.authority.enforcement_authority == $c.enforcement_authority) and
+    ($p.authority.applied_by == $c.applied_by) and
+    ($p.authority.applies_patch == false) and
+    ($p.authority.writes_worktree == false) and
+    ($p.authority.grants_permissions == false) and
+    (["max_patch_bytes","max_patch_lines","max_files","max_path_bytes",
+      "max_hunks_per_file","max_hunks_total","max_added_lines_per_file",
+      "max_added_lines_total"] - ($p.limits | keys) | length == 0) and
+    ($p.limits | all(.[]; type == "number" and . > 0)) and
+    ($p.operations.add == "allowed") and ($p.operations.modify == "allowed") and
+    ($p.operations.delete == "denied-by-default") and
+    ($p.operations.rename == "denied") and ($p.operations.copy == "denied") and
+    ($p.file_modes.mode_change_denied == true) and
+    ($p.file_modes.new_file_allowed == ["100644"]) and
+    (($p.file_modes.existing_file_allowed | index("120000")) == null) and
+    (($p.file_modes.existing_file_allowed | index("160000")) == null) and
+    ($p.patch_file.must_be_regular_file == true) and
+    ($p.patch_file.must_not_be_symlink == true) and
+    ($p.workdir.must_be_git_worktree == true) and
+    ($p.workdir.must_not_be_symlink == true) and
+    ($p.paths.allowed_pattern | type == "string" and length > 0) and
+    ($p.paths.denied_patterns | type == "array" and length > 0 and
+      all(.[]; ((.id // "") | type == "string" and length > 0) and
+               ((.pattern // "") | type == "string" and length > 0) and
+               ((.reason // "") | type == "string" and length > 0))) and
+    (($p.paths.denied_patterns | map(.id)) as $ids | ($ids | length) == ($ids | unique | length)) and
+    (["git-control","git-metadata","dotenv","private-key","certificate",
+      "credential-file","provider-auth"] -
+     ($p.paths.denied_patterns | map(.id)) | length == 0) and
+    ($p.strip.candidates == [0, 1]) and
+    ($p.strip.require_single_applicable_level == true) and
+    (($p.git_apply.never_passed | index("--unsafe-paths")) != null) and
+    (($p.git_apply.never_passed | index("--index")) != null) and
+    (($p.git_apply.never_passed | index("--cached")) != null) and
+    ($p.receipt.never_contains | type == "array" and length > 0)
+  ' >/dev/null \
+    || die 65 "patch policy $file disagrees with the contract or has drifted open"
+
+  # Both sides of the requirement must be non-empty: a contract that declares a
+  # patch policy but has no lane in the governed class, or a governed lane with
+  # no declaration, is a boundary nobody is standing on.
+  jq -e '
+    .patch_policy.required_for_permission_class as $cls |
+    ([.families[].lanes[] | select(.permission_class == $cls)] | length) > 0 and
+    ([.families[].lanes[] | select(.permission_class == $cls) |
+      select(has("patch_policy") | not)] | length) == 0
+  ' "$CONTRACT" >/dev/null \
+    || die 65 "a lane in the governed permission class carries no patch-policy declaration"
 }
 
 # ---------------------------------------------------------------------------
@@ -479,7 +588,22 @@ validate_families() {
          else true end) and
         (if $l.tool_policy.mode == "allowlist"
          then ($l.tool_policy.allowed_tools | type) == "array"
-         else true end)))
+         else true end) and
+        # A lane whose product is patch text must name the versioned patch
+        # policy and the verifier that enforces it, and must name exactly the
+        # one the contract declares. Every other lane must name none: a
+        # reference on a lane that returns no patch would describe a boundary
+        # that does not exist. Blocked lanes are included on purpose — a stale
+        # declaration becomes operational the day the lane is promoted.
+        (if $l.permission_class == $root.patch_policy.required_for_permission_class
+         then $l.patch_policy ==
+                {policy_file: $root.patch_policy.policy_file,
+                 policy_version: $root.patch_policy.policy_version,
+                 verifier: $root.patch_policy.verifier,
+                 verification_required: $root.patch_policy.verification_required,
+                 applied_by: $root.patch_policy.applied_by}
+         else ($l | has("patch_policy")) == false
+         end)))
   )' "$CONTRACT" >/dev/null || die 65 "family or lane declarations are internally inconsistent"
 
   # Every dispatchable lane must be one a runner can actually be asked for, and
@@ -612,6 +736,7 @@ validate_executable() {
 check_all() {
   validate_structure
   validate_vocabularies
+  validate_patch_policy
   validate_envelopes
   validate_families
   validate_central
@@ -1001,6 +1126,8 @@ lane_rows() {
      transport:$f.value.transport,lane:.key,effort:.value.effort,
      status:.value.status,selection:.value.selection,dispatchable:.value.dispatchable,
      permission_class:.value.permission_class,worktree_access:.value.worktree_access,
+     patch_policy_version:(.value.patch_policy.policy_version // null),
+     patch_verifier:(.value.patch_policy.verifier // null),
      write_scope:.value.tool_policy.write_scope,
      allowed_tools:.value.tool_policy.allowed_tools,
      central_profile:.value.central_profile,evaluation_only:.value.evaluation_only}
@@ -1025,11 +1152,19 @@ case "$command" in
         --argjson classes "$(jq -c '.vocabularies.permission_classes | keys' "$CONTRACT")" \
         --argjson codes "$(jq -c '.exit_codes | keys | map(tonumber) | sort' "$CONTRACT")" \
         --argjson runners "$(jq -c '[.families[].runner] | sort' "$CONTRACT")" \
+        --arg patch_policy "$(patch_policy_file)" \
+        --arg patch_policy_version "$(jq -r '.patch_policy.policy_version' "$CONTRACT")" \
+        --arg patch_verifier "$(jq -r '.patch_policy.verifier' "$CONTRACT")" \
+        --argjson patch_lanes "$(jq '[.families[].lanes[] |
+          select(.permission_class == "text-patch")] | length' "$CONTRACT")" \
         '{valid:true,read_only:true,enforcement_authority:"provider-runner",
           grants_permissions:false,contract_file:$contract,contract_version:$version,
           schema_version:$schema,central_routing_gate:$gates,families:$families,
           runners:$runners,lane_declarations:$lanes,dispatchable_lanes:$dispatchable,
-          permission_classes:$classes,exit_codes:$codes}'
+          permission_classes:$classes,exit_codes:$codes,
+          patch_policy_file:$patch_policy,patch_policy_version:$patch_policy_version,
+          patch_verifier:$patch_verifier,text_patch_lanes:$patch_lanes,
+          patch_verification_required:true,patch_applied_by:"lead"}'
     else
       printf 'external executor contract %s valid: %s families, %s lane declarations (%s dispatchable)\n' \
         "$(jq -r '.contract_version' "$CONTRACT")" \
@@ -1037,6 +1172,10 @@ case "$command" in
         "$(jq '[.families[].lanes | length] | add' "$CONTRACT")" \
         "$(jq '[.families[].lanes[] | select(.dispatchable)] | length' "$CONTRACT")"
       printf 'permission classes: %s\n' "$(jq -r '.vocabularies.permission_classes | keys | join(", ")' "$CONTRACT")"
+      printf 'patch policy %s (%s) required by %s text-patch lane(s); %s verifies, the lead applies\n' \
+        "$(jq -r '.patch_policy.policy_version' "$CONTRACT")" "$(patch_policy_file)" \
+        "$(jq '[.families[].lanes[] | select(.permission_class == "text-patch")] | length' "$CONTRACT")" \
+        "$(jq -r '.patch_policy.verifier' "$CONTRACT")"
       printf 'the contract describes and validates; each runner enforces its own permissions\n'
     fi
     ;;

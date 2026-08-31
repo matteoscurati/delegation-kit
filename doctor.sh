@@ -465,6 +465,58 @@ else
   fi
 fi
 
+# ---- external patch policy and its read-only verifier ----
+# Static only: the installed policy is checked for shape and fail-closed
+# defaults and against the contract's text-patch declarations. No patch is
+# parsed, no worktree is touched, and no provider is contacted.
+hdr "External patch verifier"
+patch_policy_file="$DATA_HOME/config/external-patch-policy.json"
+if ! have jq; then
+  warn "jq not on PATH — the external patch policy cannot be validated"
+elif ! have delegation-patch-verify; then
+  warn "delegation-patch-verify not installed — text-patch lanes have no verifier; re-run ./install.sh"
+elif [ ! -r "$patch_policy_file" ]; then
+  bad "installed patch policy missing at $patch_policy_file — re-run ./install.sh"
+else
+  patch_policy_out="$(delegation-patch-verify policy --json 2>/dev/null || true)"
+  if [ -n "$patch_policy_out" ] && printf '%s' "$patch_policy_out" | jq -e '
+      .schema_version == 1 and
+      .verifier == "delegation-patch-verify" and
+      .applies_to_permission_class == "text-patch" and
+      .authority.applies_patch == false and
+      .authority.writes_worktree == false and
+      .authority.grants_permissions == false and
+      .authority.applied_by == "lead" and
+      .operations.delete == "denied-by-default" and
+      .operations.rename == "denied" and
+      .file_modes.mode_change_denied == true and
+      (.git_apply.never_passed | index("--unsafe-paths")) != null and
+      (.paths.denied_patterns | map(.id) | index("git-control")) != null
+    ' >/dev/null 2>&1; then
+    ok "external patch policy $(printf '%s' "$patch_policy_out" | jq -r '.policy_version') valid and fail-closed ($(printf '%s' "$patch_policy_out" | jq -r '.paths.denied_patterns | length') denied path classes)"
+    info "the verifier validates and describes a patch; it never applies one — the lead applies and tests"
+  else
+    bad "installed patch policy is missing, invalid, or has drifted open — re-run ./install.sh"
+  fi
+  # Phase 1 consistency: the contract's text-patch lanes must name exactly the
+  # installed policy version and this verifier. A mismatch means a lane claims a
+  # boundary the installed policy does not describe.
+  if [ -z "${contract_check:-}" ]; then
+    warn "the executor contract did not validate, so its text-patch lanes could not be cross-checked"
+  elif printf '%s' "$contract_check" | jq -e \
+      --arg v "$(printf '%s' "$patch_policy_out" | jq -r '.policy_version // ""')" '
+      .patch_policy_version == $v and
+      .patch_verifier == "delegation-patch-verify" and
+      .patch_verification_required == true and
+      .patch_applied_by == "lead" and
+      .text_patch_lanes > 0
+    ' >/dev/null 2>&1; then
+    ok "every text-patch lane declares patch policy $(printf '%s' "$contract_check" | jq -r '.patch_policy_version') and requires verification ($(printf '%s' "$contract_check" | jq -r '.text_patch_lanes') lanes)"
+  else
+    bad "the executor contract's text-patch lanes do not match the installed patch policy — re-run ./install.sh"
+  fi
+fi
+
 # ---- optional GLM-5.3-Flash external executor ----
 hdr "GLM-5.3-Flash optional executor"
 if ! have jq; then

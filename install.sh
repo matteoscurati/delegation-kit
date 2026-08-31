@@ -264,6 +264,18 @@ chmod 755 "$DATA_HOME/bin/delegation-executor-contract"
 ln -sfn "$DATA_HOME/bin/delegation-executor-contract" "$BIN_HOME/delegation-executor-contract"
 echo "Executor contract -> $BIN_HOME/delegation-executor-contract (contract: $DATA_HOME/config/external-executor-contract.json; describes only, runners still enforce)"
 
+# The read-only patch verifier for text-patch lanes, and the versioned policy it
+# enforces. Installed alongside the contract that requires it, because the
+# contract's text-patch declarations name this exact policy version. The
+# verifier validates and describes a patch; it never applies one — the lead
+# remains the only actor that applies and tests.
+cp "$KIT/bin/delegation-patch-verify" "$DATA_HOME/bin/delegation-patch-verify"
+cp "$KIT/config/external-patch-policy.json" \
+  "$DATA_HOME/config/external-patch-policy.json"
+chmod 755 "$DATA_HOME/bin/delegation-patch-verify"
+ln -sfn "$DATA_HOME/bin/delegation-patch-verify" "$BIN_HOME/delegation-patch-verify"
+echo "Patch verifier -> $BIN_HOME/delegation-patch-verify (policy: $DATA_HOME/config/external-patch-policy.json; validates only, the lead applies)"
+
 # A vendor auto-update replaces the ambient Grok CLI and prunes its own download
 # cache. Validate/retain the archive only after the current router, evidence,
 # central gate, and executable gate have all been installed atomically.

@@ -114,6 +114,31 @@ jq -e '.valid == true and .read_only == true and .grants_permissions == false an
        .permission_classes == ["read-only","text-patch","worktree-edit"] and
        .exit_codes == [64,69,70,75,78,130]' "$TMP/contract-check.json" >/dev/null \
   || fail 'the installed contract does not describe the expected families or classes'
+# The text-patch trust boundary must be installed as a whole: the verifier, the
+# versioned policy it enforces, and a contract whose text-patch lanes name that
+# exact version. Installing one without the others leaves a lane declaring a
+# boundary nothing on this machine can hold.
+[ -f "$DATA/config/external-patch-policy.json" ] && [ -x "$DATA/bin/delegation-patch-verify" ] \
+  || fail 'install did not include the external patch policy and its verifier'
+[ -L "$TMP/bin/delegation-patch-verify" ] \
+  || fail 'install did not link delegation-patch-verify onto the bin path'
+"$DATA/bin/delegation-patch-verify" policy --json >"$TMP/patch-policy.json" 2>"$TMP/patch-policy.err" \
+  || { sed 's/^/    /' "$TMP/patch-policy.err" >&2; fail 'the installed patch verifier could not read its policy'; }
+jq -e '.schema_version == 1 and .verifier == "delegation-patch-verify" and
+       .applies_to_permission_class == "text-patch" and
+       .authority.applies_patch == false and .authority.writes_worktree == false and
+       .authority.grants_permissions == false and .authority.applied_by == "lead" and
+       .operations.delete == "denied-by-default" and .operations.rename == "denied" and
+       .file_modes.mode_change_denied == true and
+       (.git_apply.never_passed | index("--unsafe-paths")) != null' \
+  "$TMP/patch-policy.json" >/dev/null \
+  || fail 'the installed patch policy is not the fail-closed policy this kit ships'
+jq -e --slurpfile policy "$TMP/patch-policy.json" '
+       .patch_verifier == "delegation-patch-verify" and
+       .patch_verification_required == true and .patch_applied_by == "lead" and
+       .text_patch_lanes == 4 and
+       .patch_policy_version == $policy[0].policy_version' "$TMP/contract-check.json" >/dev/null \
+  || fail 'the installed contract does not require the installed patch policy version'
 [ -f "$TMP/claude/skills/deepseek-executor/SKILL.md" ] && [ -f "$TMP/codex/skills/deepseek-executor/SKILL.md" ] \
   || fail 'install did not include the DeepSeek executor skill on both surfaces'
 [ -f "$TMP/claude/agents/opus-builder.md" ] \
@@ -215,6 +240,8 @@ ok
 # without touching the credentials/archives the uninstaller deliberately keeps.
 [ -f "$TMP/data2/config/external-executor-contract.json" ] \
   || fail 'the --claude-only install did not include the contract file'
+[ -f "$TMP/data2/config/external-patch-policy.json" ] \
+  || fail 'the --claude-only install did not include the patch policy'
 env CLAUDE_HOME="$TMP/claude2" CODEX_HOME="$TMP/codex2" \
     DELEGATION_BIN_HOME="$TMP/bin2" DELEGATION_DATA_HOME="$TMP/data2" \
     "$ROOT/uninstall.sh" </dev/null >"$TMP/uninstall2.log" 2>&1 \
@@ -223,6 +250,10 @@ env CLAUDE_HOME="$TMP/claude2" CODEX_HOME="$TMP/codex2" \
   || fail 'uninstall left the contract command on the bin path'
 [ ! -e "$TMP/data2/config/external-executor-contract.json" ] \
   || fail 'uninstall left the installed contract file behind'
+[ ! -e "$TMP/bin2/delegation-patch-verify" ] \
+  || fail 'uninstall left the patch verifier on the bin path'
+[ ! -e "$TMP/data2/config/external-patch-policy.json" ] \
+  || fail 'uninstall left the installed patch policy behind'
 [ ! -e "$TMP/bin2/delegation-route" ] \
   || fail 'uninstall left the router on the bin path'
 ok

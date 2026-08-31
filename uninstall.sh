@@ -46,7 +46,7 @@ echo "  - removed 5 current native + 5 ephemeral profiles and retired Terra scou
 strip_guarded "$CODEX_HOME/AGENTS.md"
 rm -f "$BIN_HOME/delegation-schema" "$BIN_HOME/delegation-glm" "$BIN_HOME/delegation-gemini" "$BIN_HOME/delegation-kimi" "$BIN_HOME/delegation-qwen" "$BIN_HOME/delegation-deepseek" "$BIN_HOME/delegation-grok" \
   "$BIN_HOME/delegation-evidence" "$BIN_HOME/delegation-epoch" "$BIN_HOME/delegation-route" \
-  "$BIN_HOME/delegation-executor-contract"
+  "$BIN_HOME/delegation-executor-contract" "$BIN_HOME/delegation-patch-verify"
 # Everything else under $DATA_HOME is a byte-for-byte copy of a repo file that
 # re-running install.sh restores; the keys and archived runtime binaries are the
 # unrecoverable things here. Back them up rather than destroy them, matching the
@@ -82,7 +82,7 @@ if [ -d "$DATA_HOME/kimi-rg" ]; then
   mv "$DATA_HOME/kimi-rg" "$kimi_rg_backup"
 fi
 rm -rf "$DATA_HOME"
-echo "  - removed schema compiler, optional GLM/Gemini/Kimi/Qwen/DeepSeek/Grok bridges, central routing gates, external-executor contract, evidence snapshot, and Epoch ZIP importer"
+echo "  - removed schema compiler, optional GLM/Gemini/Kimi/Qwen/DeepSeek/Grok bridges, central routing gates, external-executor contract, external patch policy and verifier, evidence snapshot, and Epoch ZIP importer"
 [ -z "$grok_cli_backup" ] \
   || echo "  - archived Grok Build CLI preserved at $grok_cli_backup — delete it yourself when done"
 [ -z "$kimi_rg_backup" ] \

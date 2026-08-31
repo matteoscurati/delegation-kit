@@ -81,10 +81,14 @@ CONTRACT_DATA="$TMP/contract-data"
 CONTRACT_BIN="$TMP/contract-bin"
 mkdir -p "$CONTRACT_DATA/bin" "$CONTRACT_DATA/config" "$CONTRACT_BIN"
 cp "$ROOT/bin/delegation-executor-contract" "$CONTRACT_DATA/bin/delegation-executor-contract"
+cp "$ROOT/bin/delegation-patch-verify" "$CONTRACT_DATA/bin/delegation-patch-verify"
 cp "$ROOT"/config/*.json "$CONTRACT_DATA/config/"
-chmod 755 "$CONTRACT_DATA/bin/delegation-executor-contract"
+chmod 755 "$CONTRACT_DATA/bin/delegation-executor-contract" \
+  "$CONTRACT_DATA/bin/delegation-patch-verify"
 ln -sfn "$CONTRACT_DATA/bin/delegation-executor-contract" \
   "$CONTRACT_BIN/delegation-executor-contract"
+ln -sfn "$CONTRACT_DATA/bin/delegation-patch-verify" \
+  "$CONTRACT_BIN/delegation-patch-verify"
 if env PATH="$CONTRACT_BIN:$TEST_TOOLS:$PATH" CLAUDE_HOME="$TMP/claude" \
     CODEX_HOME="$TMP/codex" DELEGATION_DATA_HOME="$CONTRACT_DATA" \
     "$ROOT/doctor.sh" >"$TMP/contract-doctor.log" 2>&1; then
@@ -101,6 +105,72 @@ grep -Fq 'each provider runner still enforces its own permissions' "$TMP/contrac
   printf 'doctor did not restate the runner-enforcement boundary\n' >&2
   exit 1
 }
+
+# The patch verifier is checked statically too: policy shape, fail-closed
+# defaults, and that every text-patch lane names this exact policy version.
+# Nothing here parses a patch or contacts a provider.
+grep -Fq '== External patch verifier ==' "$TMP/contract-doctor.log" || {
+  printf 'doctor did not report on the external patch verifier\n' >&2
+  exit 1
+}
+grep -Fq '[ OK ] external patch policy 1.0.0 valid and fail-closed' "$TMP/contract-doctor.log" || {
+  sed 's/^/    /' "$TMP/contract-doctor.log" >&2
+  printf 'doctor did not validate the installed patch policy\n' >&2
+  exit 1
+}
+grep -Fq 'it never applies one — the lead applies and tests' "$TMP/contract-doctor.log" || {
+  printf 'doctor did not restate that the verifier never applies a patch\n' >&2
+  exit 1
+}
+grep -Fq '[ OK ] every text-patch lane declares patch policy 1.0.0' "$TMP/contract-doctor.log" || {
+  sed 's/^/    /' "$TMP/contract-doctor.log" >&2
+  printf 'doctor did not cross-check the text-patch lanes against the installed policy\n' >&2
+  exit 1
+}
+
+# A patch policy that has drifted open is a FAIL, not a pass.
+jq '.operations.delete = "allowed"' "$ROOT/config/external-patch-policy.json" \
+  >"$CONTRACT_DATA/config/external-patch-policy.json"
+if env PATH="$CONTRACT_BIN:$TEST_TOOLS:$PATH" CLAUDE_HOME="$TMP/claude" \
+    CODEX_HOME="$TMP/codex" DELEGATION_DATA_HOME="$CONTRACT_DATA" \
+    "$ROOT/doctor.sh" >"$TMP/patch-drift.log" 2>&1; then
+  :
+else
+  :
+fi
+grep -Fq '[FAIL] installed patch policy is missing, invalid, or has drifted open' "$TMP/patch-drift.log" || {
+  sed 's/^/    /' "$TMP/patch-drift.log" >&2
+  printf 'doctor accepted a patch policy that allows deletions by default\n' >&2
+  exit 1
+}
+
+# A policy version no text-patch lane declares breaks the contract check, and
+# doctor must say the cross-check could not be made rather than report a pass.
+jq '.policy_version = "9.9.9"' "$ROOT/config/external-patch-policy.json" \
+  >"$CONTRACT_DATA/config/external-patch-policy.json"
+if env PATH="$CONTRACT_BIN:$TEST_TOOLS:$PATH" CLAUDE_HOME="$TMP/claude" \
+    CODEX_HOME="$TMP/codex" DELEGATION_DATA_HOME="$CONTRACT_DATA" \
+    "$ROOT/doctor.sh" >"$TMP/patch-version-drift.log" 2>&1; then
+  :
+else
+  :
+fi
+grep -Fq '[FAIL] external executor contract is missing, invalid' "$TMP/patch-version-drift.log" || {
+  sed 's/^/    /' "$TMP/patch-version-drift.log" >&2
+  printf 'doctor accepted a patch policy version no text-patch lane declares\n' >&2
+  exit 1
+}
+grep -Fq 'text-patch lanes could not be cross-checked' "$TMP/patch-version-drift.log" || {
+  sed 's/^/    /' "$TMP/patch-version-drift.log" >&2
+  printf 'doctor claimed a text-patch cross-check it could not make\n' >&2
+  exit 1
+}
+if grep -Fq '[ OK ] every text-patch lane declares patch policy' "$TMP/patch-version-drift.log"; then
+  printf 'doctor reported a text-patch lane pass while the contract was invalid\n' >&2
+  exit 1
+fi
+cp "$ROOT/config/external-patch-policy.json" \
+  "$CONTRACT_DATA/config/external-patch-policy.json"
 
 # A contract that disagrees with the installed gates is a FAIL, not a pass.
 jq '.families["grok-4.6"].lanes.builder.permission_class = "read-only"' \

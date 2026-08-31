@@ -480,6 +480,53 @@ delegation-executor-contract validate --envelope result \
   --file "$metrics" --family grok-4.6
 ```
 
+A `text-patch` lane returns a diff that somebody has to apply, so the trust
+boundary is not at dispatch — it is where a lead pastes a stranger's diff into
+their own repository. `delegation-patch-verify` stands there. It validates and
+describes a patch against the versioned
+[`config/external-patch-policy.json`](./config/external-patch-policy.json) and
+**never applies one**; the lead remains the only actor that applies and tests.
+
+```sh
+delegation-patch-verify check --patch "$patch" --workdir "$repo" --json
+git -C "$repo" apply -p"$(jq -r '.strip.chosen' receipt.json)" -- "$patch"  # the LEAD, not the verifier
+```
+
+The policy is fail-closed. It requires a regular, caller-owned, non-world-writable,
+bounded, NUL- and CR-free patch file and a real non-symlinked git worktree top
+level; accepts unified diff text only; refuses absolute, UNC, drive-letter,
+backslashed, `..`-traversing and out-of-charset paths, and `.git`, hook and CI
+directories, `.env*`, ssh material, keys, certificates, credential stores, and
+provider auth directories; refuses binary patches, symlink and submodule
+entries, new executable files and every mode change; bounds file count, path
+length, bytes, lines, hunks and per-file expansion; and refuses deletes by
+default and renames outright. Both the conventional `a/`/`b/` shape and the
+unprefixed shape `delegation-qwen` actually emits are supported, and the strip
+level is fixed by the **header shape** before `git apply` is consulted — `a/x`
+opposite `b/x` means `-p1`, no prefix means `-p0`, and a shape that says neither
+is refused rather than guessed at. The other candidate level is recorded and
+never chosen, so the `b/…` reading that every ordinary add also satisfies cannot
+redirect the change; for an unprefixed patch, which git's default `-p1` would
+silently land on a different file, a second applicable level is rejected as
+ambiguous. The one override, `--allow-delete`, is recorded in the receipt and
+relaxes nothing else.
+
+The command writes nothing and attests it: the patch file, the worktree state,
+the index, and the git control directory are digested before and after and
+compared, and a difference is exit 70 rather than an acceptance. `git apply
+--check` runs with no ambient git configuration, no hooks, and never with
+`--unsafe-paths`, `--index`, `--cached`, or `--3way`, and it is reached only
+after every path rule has already passed. The receipt carries paths, counts,
+rule names and digests — never a patch body, a hunk heading, or git's stderr.
+
+**Three authorities, never merged: the verifier enforces patch safety, the
+provider runner enforces transport, and the lead applies and tests.** Every
+`text-patch` lane declares the policy version and this verifier, and
+`delegation-executor-contract check` fails on a missing, stale, or mismatched
+declaration — including for the blocked Gemini lanes, because a declaration that
+is wrong while blocked becomes wrong and operational the day it is promoted. The
+reference grants nothing: no runner reads it, and the suite asserts that.
+
 The central decision file is [`config/routing-gates.json`](./config/routing-gates.json).
 It is the dispatch authority: GLM, Gemini, Kimi, Grok, Qwen, and DeepSeek validate it against their complete
 backend gates before every check/run, and refuse drift. Exact and contextual
@@ -527,6 +574,7 @@ Run the fail-closed regression suite after changing a gate:
 ```sh
 tests/routing-gates.sh
 tests/external-executor-contract.sh
+tests/external-patch-verify.sh
 tests/epoch-zip.sh
 tests/glm-runner-diagnostics.sh
 tests/gemini-runner-diagnostics.sh

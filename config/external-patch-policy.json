@@ -1,0 +1,263 @@
+{
+  "schema_version": 1,
+  "policy_version": "1.0.0",
+  "updated_at": "2026-08-29T00:00:00Z",
+  "verifier": "delegation-patch-verify",
+  "applies_to_permission_class": "text-patch",
+  "authority": {
+    "role": "validate-and-describe",
+    "enforcement_authority": "patch-verifier",
+    "applies_patch": false,
+    "writes_worktree": false,
+    "grants_permissions": false,
+    "applied_by": "lead",
+    "notes": [
+      "This policy is the trust boundary for a patch produced by a text-only external executor. The verifier validates and describes the patch; it never applies it, never writes into the worktree, the index, the git control directory, the patch file, or any global configuration.",
+      "The lead is the only actor that may apply a patch and run its tests. A receipt from this verifier says the patch is confined and applies cleanly at exactly one strip level — it says nothing about whether the change is correct.",
+      "Enforcement authority stays split three ways and is never merged: the verifier enforces patch safety, the provider runner enforces transport and permissions, and the lead applies and tests. Passing verification grants no permission and promotes no lane.",
+      "Every rule fails closed. A shape the policy does not recognise is rejected, never ignored, and a rejected patch is not thereby proved malicious — it is a patch the lead must read by hand."
+    ]
+  },
+  "patch_file": {
+    "must_be_regular_file": true,
+    "must_not_be_symlink": true,
+    "must_be_owned_by_caller": true,
+    "denied_mode_bits": "0022",
+    "text_only": true,
+    "forbid_nul_bytes": true,
+    "forbid_carriage_returns": true
+  },
+  "workdir": {
+    "must_be_directory": true,
+    "must_not_be_symlink": true,
+    "must_be_git_worktree": true,
+    "must_be_worktree_toplevel": true,
+    "git_control_must_not_be_symlink": true
+  },
+  "limits": {
+    "max_patch_bytes": 1048576,
+    "max_patch_lines": 20000,
+    "max_files": 50,
+    "max_path_bytes": 255,
+    "max_hunks_per_file": 200,
+    "max_hunks_total": 500,
+    "max_added_lines_per_file": 4000,
+    "max_added_lines_total": 20000
+  },
+  "operations": {
+    "add": "allowed",
+    "modify": "allowed",
+    "delete": "denied-by-default",
+    "rename": "denied",
+    "copy": "denied"
+  },
+  "allow_flags": {
+    "--allow-delete": "Permits `deleted file mode` entries. Every other rule still applies unchanged: path confinement, the denied-path list, the limits, the single-strip-level rule, and the git apply check. The flag is recorded in the receipt."
+  },
+  "file_modes": {
+    "new_file_allowed": [
+      "100644"
+    ],
+    "existing_file_allowed": [
+      "100644",
+      "100755"
+    ],
+    "denied": {
+      "100755": "a new file that arrives executable is a capability grant, not an edit",
+      "120000": "a symlink entry redirects a path outside the reviewed set",
+      "160000": "a gitlink entry adds a submodule and with it a second source of code"
+    },
+    "mode_change_denied": true,
+    "notes": [
+      "`old mode`/`new mode` pairs are rejected outright: a mode change is a permission change and belongs in front of the lead, not inside a bulk patch.",
+      "An existing file that is already `100755` may be edited — the patch grants nothing that the repository did not already carry — but a `new file mode 100755` is refused."
+    ]
+  },
+  "paths": {
+    "allowed_pattern": "^[A-Za-z0-9._][A-Za-z0-9._/+@,=~^-]*$",
+    "structural_rules": [
+      "empty_path",
+      "path_too_long",
+      "absolute_path",
+      "unc_path",
+      "drive_path",
+      "backslash_path",
+      "parent_traversal",
+      "dot_component",
+      "empty_component",
+      "path_charset"
+    ],
+    "denied_patterns": [
+      {
+        "id": "git-control",
+        "pattern": "(^|/)\\.git(/|$)",
+        "reason": "the git control directory rewrites history, hooks, and configuration"
+      },
+      {
+        "id": "git-metadata",
+        "pattern": "(^|/)\\.git(modules|attributes)$",
+        "reason": "gitattributes can bind a filter command and gitmodules adds a submodule"
+      },
+      {
+        "id": "git-hooks",
+        "pattern": "(^|/)(\\.git-hooks|\\.husky|githooks)(/|$)",
+        "reason": "a hook directory executes on ordinary git operations"
+      },
+      {
+        "id": "ci-config",
+        "pattern": "(^|/)(\\.github/workflows|\\.circleci|\\.gitlab-ci\\.yml|\\.pre-commit-config\\.yaml|azure-pipelines\\.yml)(/|$)",
+        "reason": "continuous-integration configuration runs code with repository credentials"
+      },
+      {
+        "id": "dotenv",
+        "pattern": "(^|/)\\.env($|\\.)",
+        "reason": "environment files carry secrets"
+      },
+      {
+        "id": "direnv",
+        "pattern": "(^|/)\\.envrc$",
+        "reason": "direnv evaluates this file when a shell enters the directory"
+      },
+      {
+        "id": "shell-startup",
+        "pattern": "(^|/)\\.(bashrc|bash_profile|bash_login|profile|zshrc|zshenv|zprofile|zlogin)$",
+        "reason": "a shell startup file executes on the next interactive shell"
+      },
+      {
+        "id": "ssh",
+        "pattern": "(^|/)\\.ssh(/|$)",
+        "reason": "ssh configuration and key material"
+      },
+      {
+        "id": "ssh-material",
+        "pattern": "(^|/)(id_rsa|id_dsa|id_ecdsa|id_ed25519|authorized_keys|known_hosts)(\\.pub)?$",
+        "reason": "ssh key or trust material"
+      },
+      {
+        "id": "private-key",
+        "pattern": "\\.(pem|key|p12|pfx|jks|keystore|kdbx|asc|gpg)$",
+        "reason": "private key, keystore, or encrypted secret store"
+      },
+      {
+        "id": "certificate",
+        "pattern": "\\.(crt|cer|der|csr)$",
+        "reason": "certificate material"
+      },
+      {
+        "id": "credential-file",
+        "pattern": "(^|/)(\\.netrc|netrc|\\.npmrc|\\.pypirc|\\.pgpass|\\.htpasswd|credentials|\\.git-credentials)$",
+        "reason": "a well-known credential store"
+      },
+      {
+        "id": "credential-name",
+        "pattern": "(^|/)[^/]*(credentials?|secrets?|api[_-]?key|access[_-]?token|refresh[_-]?token|private[_-]?key|passwd|password)[^/]*$",
+        "reason": "the file name itself claims to hold a credential"
+      },
+      {
+        "id": "cloud-config",
+        "pattern": "(^|/)\\.(aws|gcloud|azure|kube|docker)(/|$)",
+        "reason": "cloud or container credentials and contexts"
+      },
+      {
+        "id": "provider-auth",
+        "pattern": "(^|/)\\.(claude|codex|anthropic|openai|gemini|antigravity|qwen|deepseek|kimi|grok|zai|cursor|delegation)(/|$)",
+        "reason": "provider authentication or harness configuration for this kit's own executors"
+      }
+    ],
+    "notes": [
+      "The denied list is matched case-insensitively against the normalized path, because the filesystems this kit targets are case-insensitive and `.GIT` is `.git`.",
+      "The list is deliberately conservative and will refuse some innocent paths. A refusal is not an accusation: it means the verifier will not vouch for the patch and the lead must read it by hand.",
+      "Confinement is enforced twice — once here on the normalized path, and again by `git apply`, which is never given `--unsafe-paths`."
+    ]
+  },
+  "strip": {
+    "candidates": [
+      0,
+      1
+    ],
+    "fixed_by": "header-grammar",
+    "header_styles": {
+      "git-prefixed": 1,
+      "unprefixed": 0
+    },
+    "header_shapes": {
+      "git-prefixed": "every `---` side is `a/<rest>` or `/dev/null`, every `+++` side is `b/<rest>` or `/dev/null`, at least one side is a real path, and the two rests agree when both sides are real",
+      "unprefixed": "no real `---` or `+++` side begins with `a/` or `b/`"
+    },
+    "unrecognized_header_shape": "unpaired_path_prefixes",
+    "mixed_header_shapes": "mixed_path_prefixes",
+    "alternate_level": "recorded, never chosen",
+    "require_single_applicable_level": true,
+    "notes": [
+      "The strip level is a property of the patch text. It is fixed by the header shape before `git apply` is consulted, and never by whichever level happens to apply. Exactly two shapes are recognised — `a/<rest>` opposite `b/<rest>` means 1, no `a/` or `b/` on either side means 0 — and `/dev/null` is the missing side of an add or a delete and belongs to both.",
+      "Any other shape is refused, not guessed at. `a/x` opposite `a/x`, one side prefixed and the other bare, `b/` where `a/` belongs, or remainders that disagree do not say which component is a prefix and which is a directory: no level is established, `git apply` is never run, and the patch is rejected as `unpaired_path_prefixes`. A patch that mixes the two recognised shapes across its files is rejected as `mixed_path_prefixes`.",
+      "`require_single_applicable_level` means the patch is read at exactly one level: the one its headers fix. `git apply --check` is asked whether the patch applies there, and that answer alone decides the verdict. The other candidate is probed only to describe it in the receipt as `strip.alternate_applies`, and it is never selected — `strip.alternate_chosen` is false on every receipt this verifier prints.",
+      "For a git-prefixed patch the other candidate is `-p0`, which is not a second reading: it is the patch with its prefix left on, naming `a/…` and `b/…` paths the receipt does not list. Every ordinary add applies that way, because `b/src/x` does not exist and `--check` will create it. That reading is recorded and refused rather than counted as an alternative, so it cannot redirect the change under an extra component.",
+      "For an unprefixed patch the other candidate is `-p1`, which drops a real leading component and lands on a different existing file — and `-p1` is git's own default, so a lead can reach it by habit. A patch that also applies at `-p1` therefore has a second reading that is reachable by accident, and it is rejected as `ambiguous_strip_level`.",
+      "The unprefixed shape exists because the Qwen chat-completions lane emits `--- <path>` on both sides unless the brief demands otherwise. Recording the level in the receipt is what lets the lead apply it with the right `-p`."
+    ]
+  },
+  "git_apply": {
+    "command": "git apply --check",
+    "options": [
+      "--check",
+      "--whitespace=nowarn",
+      "-p<strip>"
+    ],
+    "never_passed": [
+      "--unsafe-paths",
+      "--index",
+      "--cached",
+      "--3way",
+      "--directory",
+      "--reject"
+    ],
+    "environment": [
+      "GIT_CONFIG_NOSYSTEM=1",
+      "GIT_CONFIG_GLOBAL=/dev/null",
+      "GIT_CONFIG_SYSTEM=/dev/null",
+      "GIT_ATTR_NOSYSTEM=1",
+      "GIT_TERMINAL_PROMPT=0",
+      "GIT_OPTIONAL_LOCKS=0",
+      "HOME and XDG_CONFIG_HOME redirected to an empty private directory",
+      "GIT_DIR, GIT_WORK_TREE, GIT_INDEX_FILE and the object-directory variables unset"
+    ],
+    "notes": [
+      "`--check` writes nothing. It is run only after every structural and path rule has already passed, so a denied path is never handed to git at all.",
+      "git's own stderr is captured and discarded: it quotes patch context on failure and the receipt must never carry patch content."
+    ]
+  },
+  "attestation": {
+    "before_and_after": [
+      "patch_sha256",
+      "worktree_state_sha256",
+      "index_sha256",
+      "git_control_sha256"
+    ],
+    "notes": [
+      "The four digests are taken before and after the run and compared. A difference is a failure of this command, reported as exit 70, not a property of the patch.",
+      "`worktree_state_sha256` covers `status --porcelain -uall`, the unstaged diff and the staged diff, so a content change in an already-dirty file is visible. `git_control_sha256` covers HEAD, the repository config, packed refs, the ref listing, and the index digest."
+    ]
+  },
+  "receipt": {
+    "never_contains": [
+      "patch body",
+      "hunk content",
+      "hunk section headings",
+      "git apply stderr",
+      "file contents",
+      "credentials"
+    ],
+    "notes": [
+      "Only paths, counts, operation names, rule identifiers, and digests are reported. A path that fails the character-set rule is not echoed at all — the receipt records the rule, not the bytes."
+    ]
+  },
+  "exit_codes": {
+    "0": "accepted: the patch is confined and applies cleanly at exactly one strip level",
+    "64": "invalid caller input",
+    "65": "the patch is rejected by this policy",
+    "66": "the patch file or worktree is missing or unreadable",
+    "69": "a required dependency is unavailable",
+    "70": "the read-only attestation failed: state changed during the run"
+  }
+}

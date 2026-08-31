@@ -857,6 +857,135 @@ cp config/gemini-3.7-flash-routing.json "$TMP/gates/gemini-3.7-flash-routing.jso
 expect_success env DELEGATION_EXECUTOR_GATE_DIR="$TMP/gates" "$CMD" check
 
 # ---------------------------------------------------------------------------
+# The text-patch trust boundary. A lane whose product is patch text must name
+# the versioned patch policy and the verifier that enforces it; no other lane
+# may name one; and the policy on disk must agree and must still be fail-closed.
+# The blocked Gemini text-patch lanes are held to this too — a declaration that
+# is wrong while blocked becomes wrong and operational the day it is promoted.
+# ---------------------------------------------------------------------------
+POLICY="config/external-patch-policy.json"
+[ -x bin/delegation-patch-verify ] \
+  || fail 'the contract names a verifier this repo does not ship as an executable'
+jq -e --slurpfile policy "$POLICY" '
+  (.patch_policy.policy_file == "external-patch-policy.json") and
+  (.patch_policy.verifier == "delegation-patch-verify") and
+  (.patch_policy.required_for_permission_class == "text-patch") and
+  (.patch_policy.verification_required == true) and
+  (.patch_policy.applied_by == "lead") and
+  (.patch_policy.enforcement_authority == "patch-verifier") and
+  (.patch_policy.grants_permissions == false) and
+  (.patch_policy.policy_version == $policy[0].policy_version) and
+  ([.families[].lanes[] | select(.permission_class == "text-patch")] | length == 4) and
+  ([.families[].lanes[] | select(.permission_class == "text-patch") | .patch_policy]
+    | unique | length == 1) and
+  ([.families[].lanes[] | select(.permission_class != "text-patch")
+    | select(has("patch_policy"))] | length == 0)
+' "$CONTRACT" >/dev/null \
+  || fail 'the text-patch lanes do not all carry exactly one versioned patch-policy reference'
+pass=$((pass + 1))
+
+# The four governed lanes are the ones documented: Qwen and DeepSeek builder,
+# plus the two blocked Gemini lanes.
+jq -e '[.families | to_entries[] as $f | $f.value.lanes | to_entries[] |
+  select(.value.permission_class == "text-patch") | "\($f.key).\(.key)"] | sort ==
+  ["deepseek-v4-pro.builder","gemini-3.7-flash.builder",
+   "gemini-3.7-flash.frontend-builder","qwen3.8-max.builder"]' "$CONTRACT" >/dev/null \
+  || fail 'the governed text-patch lane set moved'
+jq -e '[.families["gemini-3.7-flash"].lanes[] |
+  select(.permission_class == "text-patch") | select(.dispatchable)] | length == 0' \
+  "$CONTRACT" >/dev/null \
+  || fail 'a blocked Gemini text-patch lane became dispatchable'
+pass=$((pass + 1))
+
+"$CMD" check --json >"$TMP/patch-check.json"
+jq -e --slurpfile policy "$POLICY" '
+  .patch_verifier == "delegation-patch-verify" and
+  .patch_verification_required == true and .patch_applied_by == "lead" and
+  .text_patch_lanes == 4 and
+  .patch_policy_version == $policy[0].policy_version' "$TMP/patch-check.json" >/dev/null \
+  || fail 'check --json did not report the patch-policy requirement'
+"$CMD" table --json >"$TMP/patch-table.json"
+jq -e 'length == 35 and
+  ([.[] | select(.permission_class == "text-patch") |
+    select(.patch_policy_version == null or .patch_verifier == null)] | length == 0) and
+  ([.[] | select(.permission_class != "text-patch") |
+    select(.patch_policy_version != null)] | length == 0)' "$TMP/patch-table.json" >/dev/null \
+  || fail 'the declaration table lost the patch-policy column'
+pass=$((pass + 1))
+
+# Every way of getting the declaration wrong fails closed.
+jq 'del(.patch_policy)' "$CONTRACT" >"$TMP/no-patch-policy.json"
+expect_failure 65 with_contract "$TMP/no-patch-policy.json" check
+jq '.families["qwen3.8-max"].lanes.builder |= del(.patch_policy)' "$CONTRACT" \
+  >"$TMP/lane-no-policy.json"
+expect_failure 65 with_contract "$TMP/lane-no-policy.json" check
+jq '.families["deepseek-v4-pro"].lanes.builder.patch_policy.policy_version = "0.9.0"' \
+  "$CONTRACT" >"$TMP/lane-stale-policy.json"
+expect_failure 65 with_contract "$TMP/lane-stale-policy.json" check
+jq '.families["gemini-3.7-flash"].lanes.builder |= del(.patch_policy)' "$CONTRACT" \
+  >"$TMP/blocked-lane-no-policy.json"
+expect_failure 65 with_contract "$TMP/blocked-lane-no-policy.json" check
+jq '.families["gemini-3.7-flash"].lanes["frontend-builder"].patch_policy.verifier = "delegation-qwen"' \
+  "$CONTRACT" >"$TMP/blocked-lane-wrong-verifier.json"
+expect_failure 65 with_contract "$TMP/blocked-lane-wrong-verifier.json" check
+jq '.families["glm-5.3-flash"].lanes.scout.patch_policy =
+      .families["qwen3.8-max"].lanes.builder.patch_policy' "$CONTRACT" \
+  >"$TMP/readonly-lane-policy.json"
+expect_failure 65 with_contract "$TMP/readonly-lane-policy.json" check
+jq '.families["qwen3.8-max"].lanes.builder.patch_policy.verification_required = false' \
+  "$CONTRACT" >"$TMP/verification-optional.json"
+expect_failure 65 with_contract "$TMP/verification-optional.json" check
+jq '.patch_policy.applied_by = "runner" |
+    .families |= with_entries(.value.lanes |= with_entries(
+      if .value.permission_class == "text-patch"
+      then .value.patch_policy.applied_by = "runner" else . end))' "$CONTRACT" \
+  >"$TMP/applied-by-runner.json"
+expect_failure 65 with_contract "$TMP/applied-by-runner.json" check
+jq '.patch_policy.required_for_permission_class = "read-only"' "$CONTRACT" \
+  >"$TMP/wrong-governed-class.json"
+expect_failure 65 with_contract "$TMP/wrong-governed-class.json" check
+jq '.patch_policy.grants_permissions = true' "$CONTRACT" >"$TMP/policy-grants.json"
+expect_failure 65 with_contract "$TMP/policy-grants.json" check
+
+# A policy file that is missing, unreadable, or has drifted open fails too.
+mkdir -p "$TMP/policy"
+cp "$POLICY" "$TMP/policy/external-patch-policy.json"
+expect_success env DELEGATION_EXTERNAL_PATCH_POLICY_FILE="$TMP/policy/external-patch-policy.json" "$CMD" check
+expect_failure 66 env DELEGATION_EXTERNAL_PATCH_POLICY_FILE="$TMP/policy/absent.json" "$CMD" check
+policy_fails() { # $1=label, $2=jq mutation of the policy
+  local out="$TMP/policy/drift-$1.json"
+  jq "$2" "$POLICY" >"$out"
+  expect_failure 65 env DELEGATION_EXTERNAL_PATCH_POLICY_FILE="$out" "$CMD" check
+}
+policy_fails version '.policy_version = "0.9.0"'
+policy_fails verifier '.verifier = "delegation-qwen"'
+policy_fails class '.applies_to_permission_class = "read-only"'
+policy_fails applies '.authority.applies_patch = true'
+policy_fails writes '.authority.writes_worktree = true'
+policy_fails grants '.authority.grants_permissions = true'
+policy_fails applied_by '.authority.applied_by = "runner"'
+policy_fails delete '.operations.delete = "allowed"'
+policy_fails rename '.operations.rename = "allowed"'
+policy_fails copy '.operations.copy = "denied-by-default"'
+policy_fails mode_change '.file_modes.mode_change_denied = false'
+policy_fails new_exec '.file_modes.new_file_allowed += ["100755"]'
+policy_fails symlink_mode '.file_modes.existing_file_allowed += ["120000"]'
+policy_fails gitlink_mode '.file_modes.existing_file_allowed += ["160000"]'
+policy_fails unsafe_paths '.git_apply.never_passed -= ["--unsafe-paths"]'
+policy_fails index_flag '.git_apply.never_passed -= ["--index"]'
+policy_fails git_control '.paths.denied_patterns |= map(select(.id != "git-control"))'
+policy_fails dotenv '.paths.denied_patterns |= map(select(.id != "dotenv"))'
+policy_fails provider_auth '.paths.denied_patterns |= map(select(.id != "provider-auth"))'
+policy_fails strip_levels '.strip.candidates = [0,1,2]'
+policy_fails strip_single '.strip.require_single_applicable_level = false'
+policy_fails limit_zero '.limits.max_files = 0'
+policy_fails limit_missing 'del(.limits.max_path_bytes)'
+policy_fails symlink_patch '.patch_file.must_not_be_symlink = false'
+policy_fails workdir_symlink '.workdir.must_not_be_symlink = false'
+policy_fails duplicate_id '.paths.denied_patterns += [.paths.denied_patterns[0]]'
+pass=$((pass + 1))
+
+# ---------------------------------------------------------------------------
 # No routing decision and no runner behaviour moves with this contract.
 # ---------------------------------------------------------------------------
 expect_success bin/delegation-route check --json

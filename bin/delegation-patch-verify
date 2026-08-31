@@ -1,0 +1,935 @@
+#!/usr/bin/env bash
+# Validate and describe one patch produced by a text-only external executor.
+#
+# `text-patch` lanes (Qwen3.8-Max, DeepSeek V4 Pro today) have no filesystem and
+# no tools: their product is diff text that somebody has to apply. This command
+# closes that trust boundary from the reading side. It parses the patch, holds it
+# against config/external-patch-policy.json, fixes the strip level from the
+# header grammar rather than from whatever happens to apply, asks
+# `git apply --check` whether the patch applies at that one level, and prints a
+# sanitized receipt.
+#
+# It NEVER applies the patch. It writes nothing into the worktree, the index, the
+# git control directory, the patch file, or any global configuration, and it
+# attests that by digesting all four before and after the run.
+#
+# Authority stays split and is never merged:
+#   * this verifier enforces patch safety,
+#   * the provider runner enforces transport and permissions,
+#   * the lead is the only actor that applies a patch and runs its tests.
+# A receipt says the patch is confined and applies. It says nothing about whether
+# the change is correct.
+#
+# Exit codes (this verifier's own — distinct from the 64/69/70/75/78/130 dispatch
+# vocabulary the provider runners use):
+#   0  accepted
+#   64 invalid command-line input
+#   65 the patch is rejected by policy
+#   66 the patch file or worktree is missing or unreadable
+#   69 a required dependency is unavailable
+#   70 the read-only attestation failed: state changed during the run
+set -euo pipefail
+
+SOURCE="${BASH_SOURCE[0]}"
+while [ -L "$SOURCE" ]; do
+  SOURCE_DIR="$(cd "$(dirname "$SOURCE")" && pwd)"
+  SOURCE="$(readlink "$SOURCE")"
+  [[ "$SOURCE" = /* ]] || SOURCE="$SOURCE_DIR/$SOURCE"
+done
+ROOT="$(cd "$(dirname "$SOURCE")/.." && pwd)"
+POLICY="${DELEGATION_EXTERNAL_PATCH_POLICY_FILE:-$ROOT/config/external-patch-policy.json}"
+
+usage() {
+  cat <<'EOF'
+usage: delegation-patch-verify <command> [options]
+
+  check --patch <file> --workdir <git-worktree> [--allow-delete] [--json]
+        Validate one external-executor patch against the patch policy and print
+        a sanitized receipt: schema and policy version, patch digest and byte
+        count, normalized paths, file count, the header shape and the strip
+        level it fixes, operation types, every policy decision, and the
+        `git apply --check` result. The patch is never applied and nothing is
+        written.
+
+  policy [--json]
+        Print the patch policy this command enforces.
+
+Options:
+  --allow-delete   permit `deleted file mode` entries. Deletions are refused by
+                   default; the flag is recorded in the receipt and every other
+                   rule — path confinement included — still applies.
+  --json           emit the receipt as JSON instead of text.
+
+Exit codes: 0 accepted, 64 invalid input, 65 patch rejected by policy,
+66 unreadable file or unusable worktree, 69 missing dependency, 70 the
+read-only attestation failed.
+
+The verifier enforces patch safety. The provider runner enforces transport.
+The lead is the only actor that applies a patch and runs its tests. Nothing
+here grants a permission or promotes a lane.
+EOF
+}
+
+die() { local code="$1"; shift; printf 'delegation-patch-verify: %s\n' "$*" >&2; exit "$code"; }
+
+command -v jq >/dev/null 2>&1 || die 69 "jq is required"
+command -v git >/dev/null 2>&1 || die 69 "git is required"
+command -v awk >/dev/null 2>&1 || die 69 "awk is required"
+[ -r "$POLICY" ] || die 66 "cannot read $POLICY"
+jq -e . "$POLICY" >/dev/null 2>&1 || die 65 "invalid patch policy JSON: $POLICY"
+
+GNU_STAT=0
+if stat --version >/dev/null 2>&1; then GNU_STAT=1; fi
+
+file_mode_octal() {
+  if [ "$GNU_STAT" = 1 ]; then stat -c '%a' "$1"; else stat -f '%Lp' "$1"; fi
+}
+file_owner_uid() {
+  if [ "$GNU_STAT" = 1 ]; then stat -c '%u' "$1"; else stat -f '%u' "$1"; fi
+}
+file_size_bytes() {
+  if [ "$GNU_STAT" = 1 ]; then stat -c '%s' "$1"; else stat -f '%z' "$1"; fi
+}
+
+SHA_CMD=""
+if command -v shasum >/dev/null 2>&1; then SHA_CMD=shasum
+elif command -v sha256sum >/dev/null 2>&1; then SHA_CMD=sha256sum
+else die 69 "shasum or sha256sum is required"; fi
+
+sha256_of() {
+  if [ "$SHA_CMD" = shasum ]; then shasum -a 256 "$1" | awk '{print $1}'
+  else sha256sum "$1" | awk '{print $1}'; fi
+}
+
+# ---------------------------------------------------------------------------
+# The unified-diff grammar, as a fail-closed parser.
+#
+# Everything outside a hunk must be a line shape this parser recognises; an
+# unrecognised line is `unexpected_line`, never something skipped. Paths are
+# screened for representability here and only representable paths are ever
+# printed, so no byte of a hostile path reaches the receipt or a later command.
+# Hunk bodies are counted, never captured: no context, added, or removed line
+# and no `@@` section heading leaves this parser.
+# ---------------------------------------------------------------------------
+parser_program() {
+  cat <<'AWK'
+function emit(code) { if (code in seen) return; seen[code] = 1; print "VIOL " code }
+
+# A path is representable when it can be carried through the rest of this
+# command without quoting: no control character, no whitespace, no quote, and a
+# length this parser will not echo past. Anything else is rejected WITHOUT being
+# echoed, so a hostile path never reaches the receipt. Everything that is
+# representable but still unacceptable — absolute, traversing, backslashed,
+# over the policy length, outside the charset — is classified against the policy
+# afterwards, by rule, on the normalized path.
+function rawok(p) {
+  if (p == "") return 0
+  if (p ~ /[[:cntrl:]]/) return 0
+  if (p ~ /[[:space:]]/) return 0
+  if (index(p, "\"") > 0) return 0
+  if (length(p) > maxraw) return 0
+  return 1
+}
+
+function allowed_mode(m, list,   n, i, parts) {
+  n = split(list, parts, ",")
+  for (i = 1; i <= n; i++) if (parts[i] == m) return 1
+  return 0
+}
+
+function classify_mode(m, list, ctx) {
+  if (allowed_mode(m, list)) return
+  if (m == "120000") emit("symlink_mode")
+  else if (m == "160000") emit("submodule")
+  else if (m == "100755" && ctx == "new") emit("executable_new_file")
+  else emit("denied_file_mode")
+}
+
+# Strip an optional tab-separated timestamp from a --- / +++ header.
+function hdrpath(s,   t) {
+  t = index(s, "\t")
+  if (t > 0) s = substr(s, 1, t - 1)
+  return s
+}
+
+function flush(   op) {
+  if (!have) return
+  if (in_hunk) emit("truncated_hunk")
+  # A file whose path could not be represented is dropped rather than described:
+  # the violation is already recorded, and the receipt must not carry the bytes.
+  if (f_bad) { have = 0; return }
+  if (f_old == "" || f_new == "") { emit("missing_file_headers"); have = 0; return }
+  op = f_op
+  if (op != "rename" && op != "copy") {
+    if (f_old == "/dev/null" && f_new == "/dev/null") op = "invalid"
+    else if (f_old == "/dev/null") op = "add"
+    else if (f_new == "/dev/null") op = "delete"
+    else op = "modify"
+  }
+  if (op == "invalid") { emit("missing_file_headers"); have = 0; return }
+  if (f_hunks == 0 && op != "rename" && op != "copy") emit("no_hunks")
+  printf "FILE %s %s %s %d %d %d\n", op, f_old, f_new, f_added, f_removed, f_hunks
+  have = 0
+}
+
+function start(   ) {
+  flush()
+  have = 1; f_old = ""; f_new = ""; f_op = ""; f_bad = 0
+  f_added = 0; f_removed = 0; f_hunks = 0
+  in_hunk = 0; old_rem = 0; new_rem = 0
+}
+
+BEGIN { have = 0; in_hunk = 0; lines = 0; f_bad = 0 }
+
+{
+  lines++
+
+  if (in_hunk) {
+    c = substr($0, 1, 1)
+    if ($0 == "" || c == " ") { old_rem--; new_rem-- }
+    else if (c == "+") { f_added++; new_rem-- }
+    else if (c == "-") { f_removed++; old_rem-- }
+    else if (c == "\\") { next }
+    else { emit("malformed_hunk_line"); in_hunk = 0; next }
+    if (old_rem < 0 || new_rem < 0) { emit("hunk_line_count_overrun"); in_hunk = 0; next }
+    if (old_rem == 0 && new_rem == 0) in_hunk = 0
+    next
+  }
+
+  if ($0 == "") next
+  if (substr($0, 1, 1) == "\\") next
+
+  if (substr($0, 1, 11) == "diff --git ") {
+    start()
+    if (NF != 4) emit("malformed_diff_header")
+    else if (!rawok($3) || !rawok($4)) emit("path_not_representable")
+    next
+  }
+
+  if (substr($0, 1, 6) == "index ") {
+    if ($0 ~ /^index [0-9a-fA-F][0-9a-fA-F]*\.\.[0-9a-fA-F][0-9a-fA-F]*$/) next
+    if ($0 ~ /^index [0-9a-fA-F][0-9a-fA-F]*\.\.[0-9a-fA-F][0-9a-fA-F]* [0-7][0-7][0-7][0-7][0-7][0-7]$/) {
+      classify_mode($3, existing_modes, "existing"); next
+    }
+    emit("malformed_index_header"); next
+  }
+
+  if ($0 ~ /^new file mode [0-7][0-7][0-7][0-7][0-7][0-7]$/) {
+    if (!have) start()
+    f_op = "add"; classify_mode($4, new_modes, "new"); next
+  }
+  if ($0 ~ /^deleted file mode [0-7][0-7][0-7][0-7][0-7][0-7]$/) {
+    if (!have) start()
+    f_op = "delete"; classify_mode($4, existing_modes, "existing"); next
+  }
+  if ($0 ~ /^old mode /) { emit("mode_change"); next }
+  if ($0 ~ /^new mode /) { emit("mode_change"); next }
+
+  if ($0 ~ /^similarity index /) next
+  if ($0 ~ /^dissimilarity index /) next
+  if (substr($0, 1, 12) == "rename from ") { if (!have) start(); f_op = "rename"; emit("rename_not_permitted"); next }
+  if (substr($0, 1, 10) == "rename to ")  { if (!have) start(); f_op = "rename"; next }
+  if (substr($0, 1, 10) == "copy from ")  { if (!have) start(); f_op = "copy"; emit("copy_not_permitted"); next }
+  if (substr($0, 1, 8)  == "copy to ")    { if (!have) start(); f_op = "copy"; next }
+
+  if ($0 == "GIT binary patch" || substr($0, 1, 13) == "Binary files ") { emit("binary_patch"); next }
+
+  if (substr($0, 1, 4) == "--- ") {
+    if (!have || f_old != "" || f_bad || f_hunks > 0) start()
+    p = hdrpath(substr($0, 5))
+    if (!rawok(p)) { emit("path_not_representable"); f_bad = 1; next }
+    f_old = p; next
+  }
+  if (substr($0, 1, 4) == "+++ ") {
+    if (!have) { emit("header_without_source"); next }
+    p = hdrpath(substr($0, 5))
+    if (!rawok(p)) { emit("path_not_representable"); f_bad = 1; next }
+    f_new = p; next
+  }
+
+  # A hunk whose file headers were unrepresentable is still counted through, so
+  # its body is consumed as hunk content rather than misreported line by line as
+  # unexpected input. The file itself is dropped at flush.
+  if (substr($0, 1, 3) == "@@ ") {
+    if (!have || (!f_bad && (f_old == "" || f_new == ""))) {
+      emit("hunk_without_file_headers"); next
+    }
+    if ($0 !~ /^@@ -[0-9][0-9]*(,[0-9][0-9]*)? [+][0-9][0-9]*(,[0-9][0-9]*)? @@/) {
+      emit("malformed_hunk_header"); next
+    }
+    o = substr($2, 2); n = substr($3, 2)
+    if (index(o, ",") > 0) { split(o, oa, ","); old_rem = oa[2] + 0 } else old_rem = 1
+    if (index(n, ",") > 0) { split(n, na, ","); new_rem = na[2] + 0 } else new_rem = 1
+    f_hunks++
+    in_hunk = (old_rem > 0 || new_rem > 0)
+    next
+  }
+
+  emit("unexpected_line")
+}
+
+END { flush(); print "LINES " lines }
+AWK
+}
+
+# ---------------------------------------------------------------------------
+# Receipt assembly. Only paths, counts, operation names, rule identifiers, and
+# digests are ever emitted; no patch line and no git stderr reaches stdout.
+# ---------------------------------------------------------------------------
+VIOLATIONS=""
+DECISIONS=""
+TMPD=""
+record() { printf '%s\t%s\n' "$1" "${2:-}" >>"$VIOLATIONS"; }
+decide() { printf '%s\t%s\n' "$1" "$2" >>"$DECISIONS"; }
+
+check_cmd() {
+  local patch="" workdir="" as_json=0 allow_delete=0
+  while [ "$#" -gt 0 ]; do
+    case "$1" in
+      --patch) patch="${2:-}"; shift 2 ;;
+      --workdir) workdir="${2:-}"; shift 2 ;;
+      --allow-delete) allow_delete=1; shift ;;
+      --json) as_json=1; shift ;;
+      *) die 64 "unknown check argument: $1" ;;
+    esac
+  done
+  [ -n "$patch" ] || die 64 "--patch is required"
+  [ -n "$workdir" ] || die 64 "--workdir is required"
+
+  TMPD="$(mktemp -d "${TMPDIR:-/tmp}/delegation-patch-verify.XXXXXX")"
+  trap 'rm -rf -- "$TMPD"' EXIT
+  VIOLATIONS="$TMPD/violations"; : >"$VIOLATIONS"
+  DECISIONS="$TMPD/decisions"; : >"$DECISIONS"
+  SAFE_HOME="$TMPD/empty-home"
+  mkdir -p "$SAFE_HOME/.config"
+
+  # --- patch file: a regular, private, caller-owned, bounded, text file ------
+  [ -e "$patch" ] || die 66 "cannot read patch file: $patch"
+  local patch_abs
+  patch_abs="$(cd "$(dirname "$patch")" && pwd -P)/$(basename "$patch")"
+
+  if [ -L "$patch" ]; then
+    record patch_is_symlink; decide patch_file_not_a_symlink fail
+  elif [ ! -f "$patch" ]; then
+    record patch_not_a_regular_file; decide patch_file_regular fail
+  elif [ ! -r "$patch" ]; then
+    die 66 "cannot read patch file: $patch"
+  else
+    decide patch_file_regular pass
+    decide patch_file_not_a_symlink pass
+  fi
+
+  local patch_bytes=0 patch_sha_before="" patch_readable=0
+  if [ -f "$patch" ] && [ ! -L "$patch" ] && [ -r "$patch" ]; then
+    patch_readable=1
+    patch_bytes="$(file_size_bytes "$patch")"
+    patch_sha_before="$(sha256_of "$patch")"
+
+    local mode uid max_bytes
+    mode="$(file_mode_octal "$patch")"
+    uid="$(file_owner_uid "$patch")"
+    if [ "$(( 8#$mode & 8#22 ))" -ne 0 ]; then
+      record patch_file_group_or_world_writable; decide patch_file_private fail
+    else
+      decide patch_file_private pass
+    fi
+    if [ "$uid" != "$(id -u)" ]; then
+      record patch_file_not_owned_by_caller; decide patch_file_owned_by_caller fail
+    else
+      decide patch_file_owned_by_caller pass
+    fi
+
+    max_bytes="$(jq -r '.limits.max_patch_bytes' "$POLICY")"
+    if [ "$patch_bytes" -eq 0 ]; then
+      record patch_file_empty; decide patch_file_bounded fail
+    elif [ "$patch_bytes" -gt "$max_bytes" ]; then
+      record patch_too_large "$patch_bytes>$max_bytes"; decide patch_file_bounded fail
+    else
+      decide patch_file_bounded pass
+    fi
+
+    if LC_ALL=C tr -d '\000' <"$patch" | cmp -s - "$patch"; then
+      decide patch_file_text_only pass
+    else
+      record patch_contains_nul_bytes; decide patch_file_text_only fail
+    fi
+    if LC_ALL=C tr -d '\015' <"$patch" | cmp -s - "$patch"; then
+      decide patch_file_no_carriage_returns pass
+    else
+      record patch_contains_carriage_returns; decide patch_file_no_carriage_returns fail
+    fi
+  fi
+
+  # --- workdir: a real, non-aliased git worktree top level ------------------
+  [ -e "$workdir" ] || die 66 "cannot read workdir: $workdir"
+  local workdir_abs="" git_dir_kind="none" workdir_usable=0
+  if [ -L "$workdir" ]; then
+    record workdir_is_symlink; decide workdir_not_a_symlink fail
+  elif [ ! -d "$workdir" ]; then
+    record workdir_not_a_directory; decide workdir_is_a_directory fail
+  else
+    decide workdir_not_a_symlink pass
+    decide workdir_is_a_directory pass
+    workdir_abs="$(cd "$workdir" && pwd -P)"
+    if [ -L "$workdir_abs/.git" ]; then
+      record git_control_is_a_symlink; decide git_control_not_a_symlink fail
+    elif [ -d "$workdir_abs/.git" ]; then
+      git_dir_kind="directory"; decide git_control_not_a_symlink pass; workdir_usable=1
+    elif [ -f "$workdir_abs/.git" ]; then
+      git_dir_kind="file"; decide git_control_not_a_symlink pass; workdir_usable=1
+    else
+      record workdir_has_no_git_control; decide workdir_is_a_git_worktree fail
+    fi
+  fi
+
+  WORKDIR="$workdir_abs"
+  local toplevel=""
+  if [ "$workdir_usable" = 1 ]; then
+    if toplevel="$(git_ro rev-parse --show-toplevel 2>/dev/null)" && [ -n "$toplevel" ]; then
+      toplevel="$(cd "$toplevel" && pwd -P)"
+      if [ "$toplevel" = "$workdir_abs" ]; then
+        decide workdir_is_a_git_worktree pass
+        decide workdir_is_the_worktree_toplevel pass
+      else
+        record workdir_is_not_the_worktree_toplevel
+        decide workdir_is_the_worktree_toplevel fail
+        workdir_usable=0
+      fi
+    else
+      record workdir_is_not_a_git_worktree; decide workdir_is_a_git_worktree fail
+      workdir_usable=0
+    fi
+  fi
+
+  # --- before-state attestation --------------------------------------------
+  local index_sha_before="" worktree_sha_before="" control_sha_before=""
+  if [ "$workdir_usable" = 1 ]; then
+    worktree_state_file "$TMPD/wt.before"; worktree_sha_before="$(sha256_of "$TMPD/wt.before")"
+    control_state_file "$TMPD/ctl.before"; control_sha_before="$(sha256_of "$TMPD/ctl.before")"
+    index_sha_before="$(index_digest)"
+  fi
+
+  # Stop before parsing if the inputs themselves are already refused: a patch
+  # that is not a bounded, private, text regular file is not something to read.
+  if [ -s "$VIOLATIONS" ] || [ "$patch_readable" != 1 ] || [ "$workdir_usable" != 1 ]; then
+    finish "$as_json" "$allow_delete" "$patch_abs" "$patch_sha_before" "$patch_bytes" \
+      "$workdir_abs" "$git_dir_kind" 0 "null" "null" "not-run" \
+      "$worktree_sha_before" "$control_sha_before" "$index_sha_before" \
+      none null null
+  fi
+
+  # --- parse ----------------------------------------------------------------
+  local max_path_bytes new_modes existing_modes
+  max_path_bytes="$(jq -r '.limits.max_path_bytes' "$POLICY")"
+  new_modes="$(jq -r '.file_modes.new_file_allowed | join(",")' "$POLICY")"
+  existing_modes="$(jq -r '.file_modes.existing_file_allowed | join(",")' "$POLICY")"
+  parser_program >"$TMPD/parse.awk"
+  awk -v "maxraw=$(( max_path_bytes + 64 ))" -v "new_modes=$new_modes" \
+      -v "existing_modes=$existing_modes" -f "$TMPD/parse.awk" "$patch_abs" >"$TMPD/parsed"
+
+  while IFS= read -r code; do record "$code"; done < <(awk '/^VIOL /{print $2}' "$TMPD/parsed")
+  awk '/^FILE /{print}' "$TMPD/parsed" >"$TMPD/files.raw" || true
+
+  local patch_lines
+  patch_lines="$(awk '/^LINES /{print $2}' "$TMPD/parsed")"
+  local max_lines; max_lines="$(jq -r '.limits.max_patch_lines' "$POLICY")"
+  if [ "${patch_lines:-0}" -gt "$max_lines" ]; then
+    record patch_too_many_lines "$patch_lines>$max_lines"; decide patch_line_count_bounded fail
+  else
+    decide patch_line_count_bounded pass
+  fi
+
+  local file_count; file_count="$(wc -l <"$TMPD/files.raw" | tr -d ' ')"
+  local max_files; max_files="$(jq -r '.limits.max_files' "$POLICY")"
+  if [ "$file_count" -eq 0 ]; then
+    record no_files_in_patch; decide patch_declares_at_least_one_file fail
+  else
+    decide patch_declares_at_least_one_file pass
+  fi
+  if [ "$file_count" -gt "$max_files" ]; then
+    record too_many_files "$file_count>$max_files"; decide file_count_bounded fail
+  else
+    decide file_count_bounded pass
+  fi
+
+  # --- required strip level, fixed by the header grammar --------------------
+  # The strip level is a property of the patch text, so it is settled here,
+  # before git is consulted and before anything is normalized. Exactly two
+  # header shapes are recognised and each fixes one level; every other shape
+  # leaves it unsaid, and an unsaid level is refused rather than guessed at.
+  local ab_files=0 plain_files=0 odd_files=0 tag op old new added removed hunks side
+  while read -r tag op old new added removed hunks; do
+    [ "$tag" = FILE ] || continue
+    if header_shape_ab "$old" "$new"; then ab_files=$((ab_files + 1))
+    elif header_shape_plain "$old" "$new"; then plain_files=$((plain_files + 1))
+    else odd_files=$((odd_files + 1)); fi
+  done <"$TMPD/files.raw"
+
+  local required_strip=-1 header_style=none
+  if [ "$file_count" -eq 0 ]; then
+    :
+  elif [ "$odd_files" -gt 0 ]; then
+    record unpaired_path_prefixes; decide header_prefix_style_is_uniform fail
+  elif [ "$ab_files" -gt 0 ] && [ "$plain_files" -gt 0 ]; then
+    record mixed_path_prefixes; decide header_prefix_style_is_uniform fail
+  elif [ "$ab_files" -gt 0 ]; then
+    required_strip=1; header_style=git-prefixed
+    decide header_prefix_style_is_uniform pass
+  else
+    required_strip=0; header_style=unprefixed
+    decide header_prefix_style_is_uniform pass
+  fi
+
+  # --- normalize, then apply the path policy at the required strip level ----
+  : >"$TMPD/files.norm"
+  : >"$TMPD/normpaths"
+  if [ "$required_strip" -ge 0 ]; then
+    while read -r tag op old new added removed hunks; do
+      [ "$tag" = FILE ] || continue
+      local np="" underflow=0 norm
+      for side in "$old" "$new"; do
+        [ "$side" != /dev/null ] || continue
+        if norm="$(strip_components "$side" "$required_strip")"; then
+          [ -n "$np" ] || np="$norm"
+          [ "$np" = "$norm" ] || record path_pair_mismatch "$np"
+        else
+          underflow=1
+        fi
+      done
+      if [ "$underflow" = 1 ] || [ -z "$np" ]; then
+        record strip_level_underflow
+        continue
+      fi
+      printf '%s\t%s\t%s\t%s\t%s\n' "$np" "$op" "$added" "$removed" "$hunks" >>"$TMPD/files.norm"
+      printf '%s\n' "$np" >>"$TMPD/normpaths"
+    done <"$TMPD/files.raw"
+  fi
+
+  if [ "$(sort "$TMPD/normpaths" | uniq -d | wc -l | tr -d ' ')" -gt 0 ]; then
+    record duplicate_path; decide each_path_appears_once fail
+  else
+    decide each_path_appears_once pass
+  fi
+
+  local path_findings
+  path_findings="$(jq -r --rawfile paths "$TMPD/normpaths" '
+    . as $pol |
+    ($pol.limits.max_path_bytes) as $maxlen |
+    ($paths | split("\n") | map(select(length > 0))) as $ps |
+    [ $ps[] as $p |
+      ( (if ($p | length) == 0 then "empty_path" else empty end),
+        (if ($p | length) > $maxlen then "path_too_long" else empty end),
+        (if ($p | test("^/")) then "absolute_path" else empty end),
+        (if ($p | test("^//")) then "unc_path" else empty end),
+        (if ($p | test("^[A-Za-z]:")) then "drive_path" else empty end),
+        (if ($p | test("\\\\")) then "backslash_path" else empty end),
+        (if ($p | split("/") | any(. == "..")) then "parent_traversal" else empty end),
+        (if ($p | split("/") | any(. == ".")) then "dot_component" else empty end),
+        (if ($p | split("/") | any(. == "")) then "empty_component" else empty end),
+        (if ($p | test($pol.paths.allowed_pattern) | not) then "path_charset" else empty end),
+        ($pol.paths.denied_patterns[] | . as $d |
+          select(($p | ascii_downcase) | test($d.pattern)) | "denied_path:" + $d.id)
+      ) | . + "\t" + $p
+    ] | unique | .[]' "$POLICY")"
+  if [ -n "$path_findings" ]; then
+    printf '%s\n' "$path_findings" >>"$VIOLATIONS"
+    decide every_path_confined fail
+  else
+    decide every_path_confined pass
+  fi
+
+  # --- operation policy and per-file limits ---------------------------------
+  local delete_rule; delete_rule="$(jq -r '.operations.delete' "$POLICY")"
+  local max_hunks_file max_hunks_total max_added_file max_added_total
+  max_hunks_file="$(jq -r '.limits.max_hunks_per_file' "$POLICY")"
+  max_hunks_total="$(jq -r '.limits.max_hunks_total' "$POLICY")"
+  max_added_file="$(jq -r '.limits.max_added_lines_per_file' "$POLICY")"
+  max_added_total="$(jq -r '.limits.max_added_lines_total' "$POLICY")"
+
+  # The line counts have to agree with the operation the headers declare: an add
+  # takes nothing away and a delete puts nothing back. A file that disagrees is
+  # describing itself as something it is not, and the receipt's counts would be
+  # reporting an operation the hunks contradict.
+  local total_added=0 total_hunks=0 npath nop nadded nremoved nhunks
+  while IFS=$'\t' read -r npath nop nadded nremoved nhunks; do
+    [ -n "$npath" ] || continue
+    case "$nop" in
+      add)
+        [ "$nremoved" -eq 0 ] || record removed_lines_in_new_file "$npath"
+        ;;
+      modify) ;;
+      delete)
+        [ "$nadded" -eq 0 ] || record added_lines_in_deleted_file "$npath"
+        if [ "$allow_delete" = 1 ] && [ "$delete_rule" = "denied-by-default" ]; then :
+        else record delete_not_permitted "$npath"; fi
+        ;;
+      rename|copy) record "${nop}_not_permitted" "$npath" ;;
+      *) record unknown_operation "$npath" ;;
+    esac
+    [ "$nadded" -le "$max_added_file" ] || record file_expansion_exceeded "$npath"
+    [ "$nhunks" -le "$max_hunks_file" ] || record too_many_hunks_in_file "$npath"
+    total_added=$((total_added + nadded))
+    total_hunks=$((total_hunks + nhunks))
+  done <"$TMPD/files.norm"
+
+  [ "$total_added" -le "$max_added_total" ] || record total_expansion_exceeded "$total_added>$max_added_total"
+  [ "$total_hunks" -le "$max_hunks_total" ] || record too_many_hunks "$total_hunks>$max_hunks_total"
+  if grep -q '^delete_not_permitted	' "$VIOLATIONS"; then
+    decide deletions_permitted fail
+  elif [ "$allow_delete" = 1 ]; then
+    decide deletions_permitted "allowed-by-flag"
+  else
+    decide deletions_permitted pass
+  fi
+  if [ "$total_added" -le "$max_added_total" ] && [ "$total_hunks" -le "$max_hunks_total" ]; then
+    decide expansion_bounded pass
+  else
+    decide expansion_bounded fail
+  fi
+
+  # --- git apply --check, at the one level the headers fix ------------------
+  # The level was settled by the header grammar above; git is asked whether the
+  # patch applies there, and that answer decides the verdict. The other
+  # candidate is probed as well, but only to describe it, and it is read against
+  # the header shape instead of being allowed to compete:
+  #
+  #   git-prefixed, -p1 required: -p0 is not a second reading of the patch, it
+  #     is the patch with its prefix left on. It names `a/…` and `b/…` paths
+  #     that the receipt does not list and the path policy never vetted, and
+  #     every ordinary add applies that way — `b/src/x` does not exist, so
+  #     `--check` will happily create it. It is recorded and refused, never
+  #     chosen, so it cannot redirect the change under an extra component.
+  #
+  #   unprefixed, -p0 required: -p1 drops a real leading component and lands on
+  #     a different existing file — and -p1 is git's default, so a lead can
+  #     reach it by habit. A patch that also applies there has a genuine second
+  #     reading and is rejected as ambiguous.
+  #
+  # Only reached when every structural and path rule already passed, so a denied
+  # path is never handed to git. `--check` writes nothing; git's stderr is
+  # captured and discarded because it quotes patch context on failure.
+  local chosen_strip="null" apply_result="not-run"
+  local alternate_strip="null" alternate_applies="null"
+  if [ ! -s "$VIOLATIONS" ]; then
+    local alternate=$((1 - required_strip)) required_ok=0 alternate_ok=0
+    if git_ro apply --check --whitespace=nowarn "-p$required_strip" "$patch_abs" \
+        >/dev/null 2>"$TMPD/apply.required.err"; then required_ok=1; fi
+    if git_ro apply --check --whitespace=nowarn "-p$alternate" "$patch_abs" \
+        >/dev/null 2>"$TMPD/apply.alternate.err"; then alternate_ok=1; fi
+    alternate_strip="$alternate"
+    if [ "$alternate_ok" = 1 ]; then alternate_applies=true; else alternate_applies=false; fi
+
+    if [ "$required_ok" != 1 ]; then
+      apply_result="not-applicable"
+      record patch_does_not_apply "p$required_strip"
+      decide git_apply_check fail
+      decide alternate_strip_level_cannot_redirect "not-run"
+    elif [ "$alternate_ok" != 1 ]; then
+      chosen_strip="$required_strip"; apply_result="clean"
+      decide git_apply_check pass
+      decide alternate_strip_level_cannot_redirect pass
+    elif [ "$header_style" = git-prefixed ]; then
+      chosen_strip="$required_strip"; apply_result="clean"
+      decide git_apply_check pass
+      decide alternate_strip_level_cannot_redirect prefix-only
+    else
+      apply_result="ambiguous"
+      record ambiguous_strip_level "required=p$required_strip alternate=p$alternate"
+      decide git_apply_check fail
+      decide alternate_strip_level_cannot_redirect fail
+    fi
+  else
+    decide git_apply_check "not-run"
+  fi
+
+  finish "$as_json" "$allow_delete" "$patch_abs" "$patch_sha_before" "$patch_bytes" \
+    "$workdir_abs" "$git_dir_kind" "$file_count" "$required_strip" "$chosen_strip" \
+    "$apply_result" "$worktree_sha_before" "$control_sha_before" "$index_sha_before" \
+    "$header_style" "$alternate_strip" "$alternate_applies"
+}
+
+# The two `---`/`+++` header shapes this verifier recognises, as predicates on
+# one file's raw header paths. `/dev/null` is the missing side of an add or a
+# delete and belongs to either shape.
+#
+# git-prefixed: `a/<rest>` opposite `b/<rest>`, the two rests equal. This is what
+# `git diff` emits, and it says plainly that the leading component is a prefix
+# rather than a directory, so the level is 1.
+header_shape_ab() {
+  local old="$1" new="$2"
+  case "$old" in /dev/null|a/?*) ;; *) return 1 ;; esac
+  case "$new" in /dev/null|b/?*) ;; *) return 1 ;; esac
+  [ "$old" != /dev/null ] || [ "$new" != /dev/null ] || return 1
+  [ "$old" = /dev/null ] || [ "$new" = /dev/null ] || [ "${old#a/}" = "${new#b/}" ]
+}
+
+# unprefixed: no real side begins with `a/` or `b/`, so no component is a prefix
+# and nothing is stripped. This is what `git diff --no-prefix` and, left to
+# itself, the Qwen chat-completions lane emit, so the level is 0.
+#
+# `a/x` opposite `a/x` is neither shape: `a` may be the prefix or a real
+# directory and the patch does not say which. No level is established.
+header_shape_plain() {
+  local side
+  for side in "$@"; do
+    [ "$side" != /dev/null ] || continue
+    case "$side" in a/*|b/*) return 1 ;; esac
+  done
+  return 0
+}
+
+# Strip $2 leading path components from $1. Fails when the path has fewer.
+strip_components() {
+  local p="$1" n="$2" i
+  for (( i = 0; i < n; i++ )); do
+    case "$p" in
+      */*) p="${p#*/}" ;;
+      *) return 1 ;;
+    esac
+  done
+  [ -n "$p" ] || return 1
+  printf '%s' "$p"
+}
+
+# Every git call this command makes: read-only, no hooks, no ambient config, no
+# inherited git environment, and no optional lock.
+git_ro() {
+  env -u GIT_DIR -u GIT_WORK_TREE -u GIT_INDEX_FILE -u GIT_OBJECT_DIRECTORY \
+      -u GIT_ALTERNATE_OBJECT_DIRECTORIES -u GIT_COMMON_DIR -u GIT_CEILING_DIRECTORIES \
+      -u GIT_NAMESPACE \
+      GIT_CONFIG_NOSYSTEM=1 GIT_CONFIG_GLOBAL=/dev/null GIT_CONFIG_SYSTEM=/dev/null \
+      GIT_ATTR_NOSYSTEM=1 GIT_TERMINAL_PROMPT=0 GIT_OPTIONAL_LOCKS=0 \
+      HOME="$SAFE_HOME" XDG_CONFIG_HOME="$SAFE_HOME/.config" \
+      git --no-optional-locks -C "$WORKDIR" -c core.hooksPath=/dev/null "$@"
+}
+
+worktree_state_file() {
+  {
+    git_ro status --porcelain=v1 --untracked-files=all 2>/dev/null || true
+    printf '\036'
+    git_ro diff --no-ext-diff --no-color 2>/dev/null || true
+    printf '\036'
+    git_ro diff --no-ext-diff --no-color --cached 2>/dev/null || true
+  } >"$1" 2>/dev/null || true
+}
+
+index_digest() {
+  local gd
+  gd="$(git_ro rev-parse --absolute-git-dir 2>/dev/null || true)"
+  if [ -n "$gd" ] && [ -r "$gd/index" ]; then sha256_of "$gd/index"; else printf 'absent'; fi
+}
+
+control_state_file() {
+  local gd
+  gd="$(git_ro rev-parse --absolute-git-dir 2>/dev/null || true)"
+  {
+    printf 'gitdir=%s\n' "$gd"
+    if [ -n "$gd" ] && [ -r "$gd/HEAD" ]; then cat "$gd/HEAD"; fi
+    printf '\036'
+    if [ -n "$gd" ] && [ -r "$gd/config" ]; then cat "$gd/config"; fi
+    printf '\036'
+    if [ -n "$gd" ] && [ -r "$gd/packed-refs" ]; then cat "$gd/packed-refs"; fi
+    printf '\036'
+    git_ro show-ref 2>/dev/null || true
+    printf '\036'
+    index_digest
+    printf '\n'
+  } >"$1" 2>/dev/null || true
+}
+
+# ---------------------------------------------------------------------------
+# Re-attest, assemble the receipt, print it, and exit. A state change here is a
+# failure of this command rather than a property of the patch, so it is reported
+# as 70 and never as an acceptance.
+# ---------------------------------------------------------------------------
+finish() {
+  local as_json="$1" allow_delete="$2" patch_abs="$3" patch_sha="$4" patch_bytes="$5"
+  local workdir_abs="$6" git_dir_kind="$7" file_count="$8" required_strip="$9"
+  local chosen_strip="${10}" apply_result="${11}"
+  local wt_before="${12}" ctl_before="${13}" idx_before="${14}"
+  local header_style="${15}" alternate_strip="${16}" alternate_applies="${17}"
+
+  local patch_sha_after="" wt_after="" ctl_after="" idx_after="" unchanged=true
+  if [ -f "$patch_abs" ] && [ ! -L "$patch_abs" ] && [ -r "$patch_abs" ]; then
+    patch_sha_after="$(sha256_of "$patch_abs")"
+  fi
+  if [ -n "$wt_before" ]; then
+    worktree_state_file "$TMPD/wt.after"; wt_after="$(sha256_of "$TMPD/wt.after")"
+    control_state_file "$TMPD/ctl.after"; ctl_after="$(sha256_of "$TMPD/ctl.after")"
+    idx_after="$(index_digest)"
+  fi
+  [ "$patch_sha" = "$patch_sha_after" ] || unchanged=false
+  [ "$wt_before" = "$wt_after" ] || unchanged=false
+  [ "$ctl_before" = "$ctl_after" ] || unchanged=false
+  [ "$idx_before" = "$idx_after" ] || unchanged=false
+
+  local violations decisions files verdict rc
+  violations="$(jq -R -s -c 'split("\n") | map(select(length > 0)) | map(split("\t")) |
+    map({rule: .[0], detail: (if (.[1] // "") == "" then null else .[1] end)}) | unique' "$VIOLATIONS")"
+  decisions="$(jq -R -s -c 'split("\n") | map(select(length > 0)) | map(split("\t")) |
+    map({rule: .[0], result: .[1]})' "$DECISIONS")"
+  if [ -s "$TMPD/files.norm" ]; then
+    files="$(jq -R -s -c 'split("\n") | map(select(length > 0)) | map(split("\t")) |
+      map({path: .[0], operation: .[1], added_lines: (.[2] | tonumber),
+           removed_lines: (.[3] | tonumber), hunks: (.[4] | tonumber)})' "$TMPD/files.norm")"
+  else
+    files='[]'
+  fi
+
+  if [ "$(printf '%s' "$violations" | jq 'length')" -eq 0 ] && [ "$apply_result" = clean ]; then
+    verdict=accepted; rc=0
+  else
+    verdict=rejected; rc=65
+  fi
+  if [ "$unchanged" != true ]; then verdict=attestation-failed; rc=70; fi
+
+  local required_json="$required_strip" allow_delete_json=false attest_line
+  [ "$required_strip" != "-1" ] || required_json=null
+  [ "$allow_delete" != 1 ] || allow_delete_json=true
+  if [ "$unchanged" = true ]; then
+    attest_line='worktree, index, git control, and patch file unchanged'
+  else
+    attest_line='FAILED — state changed during the run'
+  fi
+
+  local receipt
+  receipt="$(jq -n \
+    --argjson policy_schema "$(jq '.schema_version' "$POLICY")" \
+    --arg policy_version "$(jq -r '.policy_version' "$POLICY")" \
+    --arg policy_file "$POLICY" \
+    --arg policy_sha "$(sha256_of "$POLICY")" \
+    --arg verdict "$verdict" \
+    --arg patch_path "$patch_abs" --arg patch_sha "$patch_sha" \
+    --argjson patch_bytes "${patch_bytes:-0}" \
+    --arg workdir "$workdir_abs" --arg git_dir_kind "$git_dir_kind" \
+    --argjson file_count "$file_count" \
+    --argjson required_strip "$required_json" \
+    --argjson chosen_strip "$chosen_strip" \
+    --arg header_style "$header_style" \
+    --argjson alternate_strip "$alternate_strip" \
+    --argjson alternate_applies "$alternate_applies" \
+    --arg apply_result "$apply_result" \
+    --argjson allow_delete "$allow_delete_json" \
+    --argjson files "$files" --argjson violations "$violations" --argjson decisions "$decisions" \
+    --arg patch_sha_after "$patch_sha_after" \
+    --arg wt_before "$wt_before" --arg wt_after "$wt_after" \
+    --arg ctl_before "$ctl_before" --arg ctl_after "$ctl_after" \
+    --arg idx_before "$idx_before" --arg idx_after "$idx_after" \
+    --argjson unchanged "$unchanged" \
+    '{schema_version: 1,
+      tool: "delegation-patch-verify",
+      policy_schema_version: $policy_schema,
+      policy_version: $policy_version,
+      policy_file: $policy_file,
+      policy_sha256: $policy_sha,
+      verdict: $verdict,
+      read_only: true,
+      applies_patch: false,
+      applied_by: "lead",
+      enforcement_authority: "patch-verifier",
+      grants_permissions: false,
+      patch: {path: $patch_path,
+              sha256: (if $patch_sha == "" then null else $patch_sha end),
+              bytes: $patch_bytes},
+      workdir: {path: (if $workdir == "" then null else $workdir end),
+                git_control: $git_dir_kind},
+      file_count: $file_count,
+      files: $files,
+      operations: ($files | map(.operation) | unique),
+      strip: {required: $required_strip,
+              chosen: $chosen_strip,
+              fixed_by: "header-grammar",
+              header_style: (if $header_style == "none" then null else $header_style end),
+              alternate: $alternate_strip,
+              alternate_applies: $alternate_applies,
+              alternate_chosen: false},
+      allow_flags: {"allow_delete": $allow_delete},
+      policy_decisions: $decisions,
+      git_apply_check: {ran: ($apply_result != "not-run"),
+                        strip: $chosen_strip,
+                        result: $apply_result},
+      attestation: {unchanged: $unchanged,
+                    patch_sha256_before: (if $patch_sha == "" then null else $patch_sha end),
+                    patch_sha256_after: (if $patch_sha_after == "" then null else $patch_sha_after end),
+                    worktree_state_sha256_before: (if $wt_before == "" then null else $wt_before end),
+                    worktree_state_sha256_after: (if $wt_after == "" then null else $wt_after end),
+                    index_sha256_before: (if $idx_before == "" then null else $idx_before end),
+                    index_sha256_after: (if $idx_after == "" then null else $idx_after end),
+                    git_control_sha256_before: (if $ctl_before == "" then null else $ctl_before end),
+                    git_control_sha256_after: (if $ctl_after == "" then null else $ctl_after end)},
+      violations: $violations}')"
+
+  if [ "$as_json" = 1 ]; then
+    printf '%s\n' "$receipt"
+  else
+    printf 'verdict: %s (patch policy %s)\n' "$verdict" "$(jq -r '.policy_version' "$POLICY")"
+    printf 'patch: %s\n' "$patch_abs"
+    printf '  sha256 %s, %s bytes, %s file(s)\n' "${patch_sha:-unknown}" "$patch_bytes" "$file_count"
+    printf 'workdir: %s\n' "${workdir_abs:-unknown}"
+    if [ "$chosen_strip" != null ]; then
+      printf 'strip level: -p%s (git apply --check: %s)\n' "$chosen_strip" "$apply_result"
+    elif [ "$required_json" != null ]; then
+      printf 'strip level: -p%s required (git apply --check: %s)\n' \
+        "$required_strip" "$apply_result"
+    else
+      printf 'strip level: not established (git apply --check: %s)\n' "$apply_result"
+    fi
+    if [ "$header_style" != none ]; then
+      printf '  fixed by the %s header shape' "$header_style"
+      if [ "$alternate_applies" = true ] && [ "$header_style" = git-prefixed ]; then
+        printf '; -p%s also applies but would keep the a/ or b/ component, and is never chosen' \
+          "$alternate_strip"
+      elif [ "$alternate_applies" = true ]; then
+        printf '; -p%s also applies and names different files, so the patch is ambiguous' \
+          "$alternate_strip"
+      fi
+      printf '\n'
+    fi
+    printf '%s' "$receipt" | jq -r '.files[] |
+      "  \(.operation)\t\(.path)\t+\(.added_lines)/-\(.removed_lines) in \(.hunks) hunk(s)"'
+    printf 'read-only attestation: %s\n' "$attest_line"
+    if [ "$verdict" = accepted ]; then
+      printf 'the verifier does not apply this patch; the lead applies it with -p%s and runs the tests\n' \
+        "$chosen_strip"
+    else
+      printf 'violations:\n'
+      printf '%s' "$receipt" | jq -r '.violations[] |
+        "  \(.rule)\(if .detail then " (" + .detail + ")" else "" end)"'
+    fi
+  fi
+  exit "$rc"
+}
+
+policy_cmd() {
+  local as_json=0
+  while [ "$#" -gt 0 ]; do
+    case "$1" in
+      --json) as_json=1; shift ;;
+      *) die 64 "unknown policy argument: $1" ;;
+    esac
+  done
+  if [ "$as_json" = 1 ]; then
+    jq '.' "$POLICY"
+  else
+    printf 'patch policy %s (schema %s) at %s\n' \
+      "$(jq -r '.policy_version' "$POLICY")" "$(jq -r '.schema_version' "$POLICY")" "$POLICY"
+    printf 'applies to permission class: %s; verifier: %s; applied by: %s\n' \
+      "$(jq -r '.applies_to_permission_class' "$POLICY")" \
+      "$(jq -r '.verifier' "$POLICY")" "$(jq -r '.authority.applied_by' "$POLICY")"
+    printf 'limits:\n'
+    jq -r '.limits | to_entries[] | "  \(.key) = \(.value)"' "$POLICY"
+    printf 'operations:\n'
+    jq -r '.operations | to_entries[] | "  \(.key) = \(.value)"' "$POLICY"
+    printf 'denied path classes:\n'
+    jq -r '.paths.denied_patterns[] | "  \(.id)\t\(.reason)"' "$POLICY"
+    printf 'the verifier enforces patch safety; the runner enforces transport; the lead applies\n'
+  fi
+}
+
+command="${1:-}"
+case "$command" in
+  check) shift; check_cmd "$@" ;;
+  policy) shift; policy_cmd "$@" ;;
+  -h|--help|"") usage ;;
+  *) die 64 "unknown command: $command" ;;
+esac
