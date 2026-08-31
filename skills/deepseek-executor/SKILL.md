@@ -1,9 +1,17 @@
 ---
 name: deepseek-executor
-description: Dispatch the explicitly promoted DeepSeek V4 Pro builder lane through the official API at max effort. Never bypass its gate or silently change model, effort, backend, or lane.
+description: Use only when the current user explicitly selects the DeepSeek text-patch builder or asks to inspect DeepSeek choices. Never dispatch DeepSeek automatically.
 ---
 
 # DeepSeek V4 Pro executor
+
+## User direction is required
+
+This skill grants no standing permission to call another model. The current user
+must select the exact lane/profile, or explicitly authorize the lead to choose
+from `delegation-route resolve` choices. Authorization is per dispatch and does
+not silently carry to retries, reviewers, advisors, or additional workers.
+
 
 Use this skill only after an explicit decision to select the provisional
 `builder` lane. The runner is pinned to `deepseek-v4-pro` through the official

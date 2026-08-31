@@ -1,12 +1,17 @@
 ---
 name: gemini-executor
-description: >-
-  Inspect or evaluate the staged Gemini 3.7 Flash route through the installed
-  Antigravity CLI. Never bypass its gate or silently change model,
-  effort, backend, or permissions.
+description: Use only when the current user explicitly selects or asks to inspect the staged Gemini lane. Never dispatch Gemini automatically.
 ---
 
 # Gemini 3.7 Flash executor
+
+## User direction is required
+
+This skill grants no standing permission to call another model. The current user
+must select the exact lane/profile, or explicitly authorize the lead to choose
+from `delegation-route resolve` choices. Authorization is per dispatch and does
+not silently carry to retries, reviewers, advisors, or additional workers.
+
 
 Gemini 3.7 Flash is a staged external executor reached through the installed
 `agy` CLI and its user-managed Google OAuth session. Before dispatch, run

@@ -33,3 +33,9 @@ The lead records agreement, unresolved disagreement, accepted risks, required
 checks, rollback conditions, and a final decision. A model may draft the
 synthesis, but it may not erase an unresolved objection. No automatic dispatch,
 merge, deploy, or ship decision is permitted.
+
+## User direction is required
+
+This reference grants no standing permission to call another model. Every
+dispatch it describes must be part of the user-approved finite plan, and
+authorization does not silently carry to retries, reviewers, or advisors.

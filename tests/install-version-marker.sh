@@ -152,6 +152,16 @@ grep -Fq 'No standing permission to delegate' "$TMP/codex/AGENTS.md" \
   || fail 'Codex resident policy is not the user-direction guard'
 ! grep -Fq 'mandatory consult' "$ROOT/claude/CLAUDE.delegation.md" \
   || fail 'Claude resident policy still mandates automatic agent calls'
+
+# Every executor/routing skill must be explicitly user-triggered, and the
+# orchestrate skill must no longer hide mandatory agent calls behind prose.
+for skill in model-routing orchestrate glm-executor gemini-executor kimi-executor \
+             grok-executor qwen-executor deepseek-executor; do
+  grep -Fq 'User direction is required' "$ROOT/skills/$skill/SKILL.md" \
+    || fail "$skill does not require user direction"
+done
+! grep -Fq 'mandatory consult' "$ROOT/skills/orchestrate/SKILL.md" \
+  || fail 'orchestrate still mandates hidden agent calls'
 ok
 [ -f "$TMP/claude/agents/opus-builder.md" ] \
   && grep -Fxq 'model: claude-opus-5' "$TMP/claude/agents/opus-builder.md" \
