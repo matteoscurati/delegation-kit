@@ -148,6 +148,14 @@ Selection is user-directed: the shared vocabulary holds only `explicit-only`
 being able to prove user intent or grant permission — the native host policy and
 each runner remain responsible for their own enforcement.
 
+The lead's discovery flow never dispatches:
+
+```sh
+delegation-route lane builder --json
+delegation-route resolve --lane builder --json
+delegation-route resolve --lane builder --selected-profile grok-build --json
+```
+
 The four `text-patch` lanes — Qwen and DeepSeek `builder`, plus the two blocked
 Gemini lanes — each declare the versioned patch policy that
 [`delegation-patch-verify`](#the-patch-verifier-for-text-patch-lanes) enforces.
