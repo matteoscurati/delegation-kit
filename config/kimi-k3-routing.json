@@ -13,35 +13,35 @@
   "lanes": {
     "clerk": {
       "default_effort": "max", "preferred_backends": ["native"],
-      "backends": {"native": {"qualified": false, "status": "provisional", "selection": "explicit-only", "effort": "max", "legacy_local_result": {"run_id": "2026-07-16-kimi-k3", "outcome": "passed-valid-subset", "task_count": null, "repeats": null, "confidence": "low", "wall_clock_ms_per_task": 37728.25, "limitations": "Provider quota truncated the run; valid-subset size is not recorded."}}}
+      "backends": {"native": {"qualified": false, "status": "provisional", "selection": "explicit-only", "effort": "max", "runtime_controls": {"sandbox": "macos-sandbox-exec", "isolated_home": true, "permission_mode": "auto", "worktree_edits": false, "worktree_access": "read", "write_scope": "none", "terminal": "denied", "network": "denied", "mcp": "denied", "plugins": "denied", "subagents": "denied", "tools": ["Read", "Glob", "Grep", "TodoList"]}, "legacy_local_result": {"run_id": "2026-07-16-kimi-k3", "outcome": "passed-valid-subset", "task_count": null, "repeats": null, "confidence": "low", "wall_clock_ms_per_task": 37728.25, "limitations": "Provider quota truncated the run; valid-subset size is not recorded."}}}
     },
     "scout": {
       "default_effort": "max", "preferred_backends": ["native"],
-      "backends": {"native": {"qualified": false, "status": "provisional", "selection": "explicit-only", "effort": "max", "legacy_local_result": {"run_id": "2026-07-16-kimi-k3", "outcome": "passed-valid-subset", "task_count": null, "repeats": null, "confidence": "low", "wall_clock_ms_per_task": 43604.25, "limitations": "Provider quota truncated the run; valid-subset size is not recorded."}}}
+      "backends": {"native": {"qualified": false, "status": "provisional", "selection": "explicit-only", "effort": "max", "runtime_controls": {"sandbox": "macos-sandbox-exec", "isolated_home": true, "permission_mode": "auto", "worktree_edits": false, "worktree_access": "read", "write_scope": "none", "terminal": "denied", "network": "denied", "mcp": "denied", "plugins": "denied", "subagents": "denied", "tools": ["Read", "Glob", "Grep", "TodoList"]}, "legacy_local_result": {"run_id": "2026-07-16-kimi-k3", "outcome": "passed-valid-subset", "task_count": null, "repeats": null, "confidence": "low", "wall_clock_ms_per_task": 43604.25, "limitations": "Provider quota truncated the run; valid-subset size is not recorded."}}}
     },
     "builder": {
       "default_effort": "max", "preferred_backends": ["native"],
-      "backends": {"native": {"qualified": false, "status": "provisional", "selection": "preferred-explicit", "effort": "max", "legacy_local_result": {"run_id": "2026-07-16-kimi-k3", "outcome": "passed-valid-subset", "task_count": null, "repeats": null, "confidence": "low", "wall_clock_ms_per_task": 76543.125, "limitations": "Provider quota truncated the run; valid-subset size is not recorded."}}}
+      "backends": {"native": {"qualified": false, "status": "provisional", "selection": "preferred-explicit", "effort": "max", "runtime_controls": {"sandbox": "macos-sandbox-exec", "isolated_home": true, "permission_mode": "auto", "worktree_edits": true, "worktree_access": "read-write", "write_scope": "workdir", "terminal": "denied", "network": "denied", "mcp": "denied", "plugins": "denied", "subagents": "denied", "tools": ["Read", "Glob", "Grep", "TodoList", "Write", "Edit"]}, "legacy_local_result": {"run_id": "2026-07-16-kimi-k3", "outcome": "passed-valid-subset", "task_count": null, "repeats": null, "confidence": "low", "wall_clock_ms_per_task": 76543.125, "limitations": "Provider quota truncated the run; valid-subset size is not recorded."}}}
     },
     "frontend-builder": {
       "default_effort": "max", "preferred_backends": ["native"],
-      "backends": {"native": {"qualified": false, "status": "provisional", "selection": "preferred-explicit", "effort": "max", "legacy_local_result": null, "qualification_basis": "Contextual WebDev evidence supports a frontend-only challenger; no frontend-specific local pack exists."}}
+      "backends": {"native": {"qualified": false, "status": "provisional", "selection": "preferred-explicit", "effort": "max", "runtime_controls": {"sandbox": "macos-sandbox-exec", "isolated_home": true, "permission_mode": "auto", "worktree_edits": true, "worktree_access": "read-write", "write_scope": "workdir", "terminal": "denied", "network": "denied", "mcp": "denied", "plugins": "denied", "subagents": "denied", "tools": ["Read", "Glob", "Grep", "TodoList", "Write", "Edit", "ReadMediaFile"]}, "legacy_local_result": null, "qualification_basis": "Contextual WebDev evidence supports a frontend-only challenger; no frontend-specific local pack exists."}}
     },
     "reviewer": {
       "default_effort": "max", "preferred_backends": ["native"],
-      "backends": {"native": {"qualified": false, "status": "disabled", "selection": "blocked", "effort": "max", "legacy_local_result": null}}
+      "backends": {"native": {"qualified": false, "status": "disabled", "selection": "blocked", "effort": "max", "runtime_controls": {"sandbox": "macos-sandbox-exec", "isolated_home": true, "permission_mode": null, "worktree_edits": false, "worktree_access": "none", "write_scope": "none", "terminal": "denied", "network": "denied", "mcp": "denied", "plugins": "denied", "subagents": "denied", "tools": []}, "legacy_local_result": null}}
     },
     "judgement": {
       "default_effort": "max", "preferred_backends": ["native"],
-      "backends": {"native": {"qualified": false, "status": "disabled", "selection": "blocked", "effort": "max", "legacy_local_result": null}}
+      "backends": {"native": {"qualified": false, "status": "disabled", "selection": "blocked", "effort": "max", "runtime_controls": {"sandbox": "macos-sandbox-exec", "isolated_home": true, "permission_mode": null, "worktree_edits": false, "worktree_access": "none", "write_scope": "none", "terminal": "denied", "network": "denied", "mcp": "denied", "plugins": "denied", "subagents": "denied", "tools": []}, "legacy_local_result": null}}
     },
     "policy-annotation": {
       "default_effort": "max", "preferred_backends": ["native"],
-      "backends": {"native": {"qualified": false, "status": "candidate", "selection": "blocked", "effort": "max", "evaluation_manifest_sha256": ["1ad132e3396b8b0f951c121af661e998c27c836e2d43a49c2a8c5f02b39d59c0", "49970b7eed76090c9fc34e921fd86788829f7f44c3a26b7937b56addeb1ac77e"], "legacy_local_result": null}}
+      "backends": {"native": {"qualified": false, "status": "candidate", "selection": "blocked", "effort": "max", "evaluation_manifest_sha256": ["1ad132e3396b8b0f951c121af661e998c27c836e2d43a49c2a8c5f02b39d59c0", "49970b7eed76090c9fc34e921fd86788829f7f44c3a26b7937b56addeb1ac77e"], "runtime_controls": {"sandbox": "macos-sandbox-exec", "isolated_home": true, "permission_mode": "auto", "worktree_edits": false, "worktree_access": "none", "write_scope": "none", "terminal": "denied", "network": "denied", "mcp": "denied", "plugins": "denied", "subagents": "denied", "tools": []}, "legacy_local_result": null}}
     },
     "senior": {
       "default_effort": "max", "preferred_backends": ["native"],
-      "backends": {"native": {"qualified": false, "status": "candidate", "selection": "blocked", "effort": "max", "legacy_local_result": {"run_id": "2026-07-16-kimi-k3", "outcome": "passed-valid-subset", "task_count": null, "repeats": null, "confidence": "low", "wall_clock_ms_per_task": 90922.333333, "limitations": "Provider quota truncated the run; no robust senior-lane sample is recorded."}, "qualification_basis": "Public steerability evidence is insufficient for promotion under the new lane-specific gate."}}
+      "backends": {"native": {"qualified": false, "status": "candidate", "selection": "blocked", "effort": "max", "runtime_controls": {"sandbox": "macos-sandbox-exec", "isolated_home": true, "permission_mode": null, "worktree_edits": false, "worktree_access": "none", "write_scope": "none", "terminal": "denied", "network": "denied", "mcp": "denied", "plugins": "denied", "subagents": "denied", "tools": []}, "legacy_local_result": {"run_id": "2026-07-16-kimi-k3", "outcome": "passed-valid-subset", "task_count": null, "repeats": null, "confidence": "low", "wall_clock_ms_per_task": 90922.333333, "limitations": "Provider quota truncated the run; no robust senior-lane sample is recorded."}, "qualification_basis": "Public steerability evidence is insufficient for promotion under the new lane-specific gate."}}
     }
   }
 }

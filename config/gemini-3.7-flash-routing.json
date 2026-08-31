@@ -21,6 +21,20 @@
           "selection": "blocked",
           "effort": "medium",
           "runtime_model": "gemini-3.7-flash-medium",
+          "runtime_controls": {
+            "sandbox": "agy-sandbox",
+            "isolated_home": true,
+            "permission_mode": "plan",
+            "worktree_edits": false,
+            "worktree_access": "none",
+            "write_scope": "none",
+            "terminal": "denied",
+            "network": "denied",
+            "mcp": "denied",
+            "plugins": "denied",
+            "subagents": "denied",
+            "tools": []
+          },
           "local_evaluation": null
         }
       }
@@ -34,6 +48,20 @@
           "selection": "blocked",
           "effort": "high",
           "runtime_model": "gemini-3.7-flash-high",
+          "runtime_controls": {
+            "sandbox": "agy-sandbox",
+            "isolated_home": true,
+            "permission_mode": "plan",
+            "worktree_edits": false,
+            "worktree_access": "none",
+            "write_scope": "none",
+            "terminal": "denied",
+            "network": "denied",
+            "mcp": "denied",
+            "plugins": "denied",
+            "subagents": "denied",
+            "tools": []
+          },
           "local_evaluation": null
         }
       }
@@ -47,6 +75,20 @@
           "selection": "blocked",
           "effort": "high",
           "runtime_model": "gemini-3.7-flash-high",
+          "runtime_controls": {
+            "sandbox": "agy-sandbox",
+            "isolated_home": true,
+            "permission_mode": "plan",
+            "worktree_edits": false,
+            "worktree_access": "none",
+            "write_scope": "none",
+            "terminal": "denied",
+            "network": "denied",
+            "mcp": "denied",
+            "plugins": "denied",
+            "subagents": "denied",
+            "tools": []
+          },
           "local_evaluation": null
         }
       }
@@ -60,6 +102,20 @@
           "selection": "blocked",
           "effort": "high",
           "runtime_model": "gemini-3.7-flash-high",
+          "runtime_controls": {
+            "sandbox": "agy-sandbox",
+            "isolated_home": true,
+            "permission_mode": "plan",
+            "worktree_edits": false,
+            "worktree_access": "none",
+            "write_scope": "none",
+            "terminal": "denied",
+            "network": "denied",
+            "mcp": "denied",
+            "plugins": "denied",
+            "subagents": "denied",
+            "tools": []
+          },
           "local_evaluation": null
         }
       }
@@ -73,6 +129,20 @@
           "selection": "blocked",
           "effort": "high",
           "runtime_model": "gemini-3.7-flash-high",
+          "runtime_controls": {
+            "sandbox": "agy-sandbox",
+            "isolated_home": true,
+            "permission_mode": "plan",
+            "worktree_edits": false,
+            "worktree_access": "none",
+            "write_scope": "none",
+            "terminal": "denied",
+            "network": "denied",
+            "mcp": "denied",
+            "plugins": "denied",
+            "subagents": "denied",
+            "tools": []
+          },
           "local_evaluation": null
         }
       }

@@ -1,0 +1,1229 @@
+#!/usr/bin/env bash
+# Inspect and validate delegation-kit's common external-executor contract.
+#
+# The contract is a shared vocabulary: permission classes, identity kinds,
+# usage accounting, envelope field names, and dispatch exit-code semantics that
+# every external executor family already follows. This command DESCRIBES and
+# VALIDATES it. It never dispatches a model, never edits a gate, and grants no
+# permission: each provider runner remains the sole enforcement authority for
+# its own sandbox, tools, credentials, and refusals.
+#
+# Exit codes (this inspector's own — distinct from the 64/69/70/75/78/130
+# dispatch vocabulary the contract describes):
+#   0  ok
+#   64 invalid command-line input
+#   65 contract or envelope validation failure
+#   66 a required file is missing or unreadable
+#   69 a required dependency is unavailable
+set -euo pipefail
+
+SOURCE="${BASH_SOURCE[0]}"
+while [ -L "$SOURCE" ]; do
+  SOURCE_DIR="$(cd "$(dirname "$SOURCE")" && pwd)"
+  SOURCE="$(readlink "$SOURCE")"
+  [[ "$SOURCE" = /* ]] || SOURCE="$SOURCE_DIR/$SOURCE"
+done
+ROOT="$(cd "$(dirname "$SOURCE")/.." && pwd)"
+CONTRACT="${DELEGATION_EXECUTOR_CONTRACT_FILE:-$ROOT/config/external-executor-contract.json}"
+GATES="${DELEGATION_ROUTING_GATES_FILE:-$ROOT/config/routing-gates.json}"
+GATE_DIR="${DELEGATION_EXECUTOR_GATE_DIR:-$ROOT/config}"
+PATCH_POLICY="${DELEGATION_EXTERNAL_PATCH_POLICY_FILE:-}"
+
+usage() {
+  cat <<'EOF'
+usage: delegation-executor-contract <command> [--json]
+
+  check                     validate the contract and cross-check it against
+                            config/routing-gates.json and every executable gate
+  families                  list the declared external executor families
+  family NAME               show one family and all its lane declarations
+  classes                   show the three permission classes
+  exit-codes                show the common dispatch exit-code vocabulary
+  table                     print the family/lane declaration table
+  validate --envelope <status|result|diagnostic> --file <path> [--family NAME]
+                            check one runner artifact against the common
+                            envelope: field names, declared types, closed
+                            vocabularies, nonnegative accounting, timestamp
+                            ordering, and the credential/raw-content filter.
+                            --family adds that family's identity and usage
+                            invariants
+
+Exit codes: 64 invalid input, 65 validation failure, 66 unreadable file,
+69 missing dependency. These are the inspector's own codes; the 64/69/70/75/78/130
+vocabulary it describes belongs to the provider runners.
+
+`check` also cross-checks every text-patch lane against the versioned patch
+policy in config/external-patch-policy.json, which `delegation-patch-verify`
+enforces. That reference declares a requirement, never a permission.
+
+The contract describes and validates. It never dispatches, never edits a gate,
+and never grants a permission: each runner enforces its own. Provider extension
+fields are accepted; credential and raw-content field names are not.
+EOF
+}
+
+die() { local code="$1"; shift; printf 'delegation-executor-contract: %s\n' "$*" >&2; exit "$code"; }
+command -v jq >/dev/null 2>&1 || die 69 "jq is required"
+[ -r "$CONTRACT" ] || die 66 "cannot read $CONTRACT"
+[ -r "$GATES" ] || die 66 "cannot read $GATES"
+
+jq -e . "$CONTRACT" >/dev/null 2>&1 || die 65 "invalid contract JSON"
+jq -e . "$GATES" >/dev/null 2>&1 || die 65 "invalid central routing gate JSON"
+
+# ---------------------------------------------------------------------------
+# 1. Contract structure. The contract is normative over itself, so an unknown
+#    key anywhere inside it fails closed rather than being ignored. Every
+#    normative map is closed by key, including usage_accounting.participant_fields
+#    and each lane's tool_policy.
+#
+#    `extensions_permitted` is pinned to true because provider extension fields
+#    are accepted: `extension_policy` narrows that to a name/shape filter rather
+#    than a blanket promise, and the filter itself is enforced in validate_file.
+# ---------------------------------------------------------------------------
+validate_structure() {
+  jq -e '
+    def only($allowed): (keys - $allowed) | length == 0;
+    def nonempty_string: type == "string" and length > 0;
+    def string_array: type == "array" and all(.[]; nonempty_string) and (length == (unique | length));
+
+    (. | only(["schema_version","contract_version","updated_at","central_routing_gate",
+               "authority","vocabularies","exit_codes","envelopes","usage_accounting",
+               "extension_policy","patch_policy","executable_gate_controls",
+               "families","known_divergences"])) and
+    (.schema_version == 1) and
+    (.contract_version | test("^[0-9]+\\.[0-9]+\\.[0-9]+$")) and
+    (.updated_at | test("^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$")) and
+    (.central_routing_gate | nonempty_string) and
+
+    (.authority | only(["role","enforcement_authority","grants_permissions",
+                        "creates_dispatch_layer","changes_routing_decisions","notes"])) and
+    (.authority.role == "describe-and-validate") and
+    (.authority.enforcement_authority == "provider-runner") and
+    (.authority.grants_permissions == false) and
+    (.authority.creates_dispatch_layer == false) and
+    (.authority.changes_routing_decisions == false) and
+    (.authority.notes | type == "array" and length > 0 and all(.[]; nonempty_string)) and
+
+    (.vocabularies | only(["permission_classes","worktree_access_values","write_scope_values",
+                           "tool_policy_modes","transport_kinds","capability_values",
+                           "phase_values","usage_source_values",
+                           "effective_content_identity_values","identity_kinds",
+                           "usage_participation_values","qualification_status_values",
+                           "selection_values","lane_values"])) and
+    (.vocabularies.permission_classes | type == "object" and
+      all(.[]; only(["worktree_writes","returns_patch","summary"]) and
+               (.worktree_writes | type == "boolean") and
+               (.returns_patch | type == "boolean") and
+               (.summary | nonempty_string))) and
+    (.vocabularies.worktree_access_values | string_array) and
+    (.vocabularies.write_scope_values | string_array) and
+    (.vocabularies.tool_policy_modes | string_array) and
+    (.vocabularies.transport_kinds | string_array) and
+    (.vocabularies.phase_values | string_array) and
+    (.vocabularies.usage_source_values | string_array) and
+    (.vocabularies.lane_values | string_array) and
+    (.vocabularies.qualification_status_values | string_array) and
+    (.vocabularies.selection_values | string_array) and
+    (.vocabularies.capability_values | type == "object" and all(.[]; nonempty_string)) and
+    (.vocabularies.effective_content_identity_values |
+      type == "object" and all(.[]; nonempty_string)) and
+    (.vocabularies.identity_kinds |
+      only(["requested","observed","effective_content","usage_participant"]) and
+      all(.[]; nonempty_string)) and
+    (.vocabularies.usage_participation_values |
+      only(["first-party-model-usage","model-usage-participants",
+            "provider-usage-totals","none"]) and
+      all(.[]; nonempty_string)) and
+
+    (.exit_codes | type == "object" and
+      all(.[]; only(["name","universal","retryable","meaning"]) and
+               (.name | test("^[a-z][a-z0-9_]*$")) and
+               (.universal | type == "boolean") and
+               (.retryable | type == "boolean") and
+               (.meaning | nonempty_string))) and
+    (.exit_codes | keys | all(test("^[0-9]+$"))) and
+
+    (.envelopes | type == "object" and (. | only(["status","result","diagnostic"]))) and
+    (.envelopes | all(.[];
+      ((keys - ["produced_by","extensions_permitted","required","common_optional",
+                "field_types","closed_value_fields","nonnegative_fields",
+                "ordered_epoch_pair","token_counter_field","token_counter_value_type",
+                "reason_pattern","lane_status_fields","none_backend_value","secrecy"]) | length == 0) and
+      (.produced_by | nonempty_string) and
+      (.extensions_permitted == true) and
+      (.required | string_array) and (.required | length > 0) and
+      (.common_optional | string_array) and
+      (.field_types | type == "object" and all(.[]; nonempty_string)) and
+      (((.closed_value_fields // []) | string_array)) and
+      ((.nonnegative_fields | type == "array") and (.nonnegative_fields | all(.[]; nonempty_string))) and
+      (((.ordered_epoch_pair // ["a","b"]) | string_array) and
+       ((.ordered_epoch_pair // ["a","b"]) | length) == 2) and
+      ((.token_counter_field // "x") | nonempty_string) and
+      ((.token_counter_value_type // "number") | nonempty_string) and
+      ((has("token_counter_value_type") | not) or has("token_counter_field")) and
+      ((.reason_pattern // "^x$") | nonempty_string) and
+      ((.lane_status_fields // {}) | type == "object" and all(.[]; string_array)))) and
+    (.envelopes.status.lane_status_fields | type == "object" and length > 0) and
+    (.envelopes.result |
+      has("ordered_epoch_pair") and has("token_counter_field") and
+      has("token_counter_value_type")) and
+    (.envelopes.diagnostic | has("reason_pattern") and has("secrecy")) and
+
+    (.usage_accounting | only(["participant_fields","required_participant_fields",
+                               "nonnegative_participant_fields","rules"])) and
+    (.usage_accounting.participant_fields | type == "object" and length > 0 and all(.[]; nonempty_string)) and
+    (.usage_accounting.required_participant_fields | string_array) and
+    (.usage_accounting.nonnegative_participant_fields | string_array) and
+    (((.usage_accounting.required_participant_fields +
+       .usage_accounting.nonnegative_participant_fields) -
+      (.usage_accounting.participant_fields | keys)) | length == 0) and
+    (.usage_accounting.rules | type == "array" and length > 0 and all(.[]; nonempty_string)) and
+
+    (.extension_policy | only(["provider_extensions_permitted","recursive","applies_to",
+                               "rejected_key_names","rejected_key_substrings",
+                               "rejected_value_patterns","notes"])) and
+    (.extension_policy.provider_extensions_permitted == true) and
+    (.extension_policy.recursive == true) and
+    (.extension_policy.applies_to | nonempty_string) and
+    (.extension_policy.rejected_key_names | string_array) and
+    (.extension_policy.rejected_key_names | length > 0) and
+    (.extension_policy.rejected_key_substrings | string_array) and
+    (.extension_policy.rejected_value_patterns | string_array) and
+    (.extension_policy.notes | type == "array" and length > 0 and all(.[]; nonempty_string)) and
+
+    # The patch-policy reference is a requirement, not a grant. Every field is
+    # mandatory and pinned: a reference that could say "verification optional"
+    # or "applied by the runner" would describe a different trust boundary.
+    (.patch_policy | only(["policy_file","policy_version","verifier",
+                           "required_for_permission_class","verification_required",
+                           "applied_by","enforcement_authority","grants_permissions","notes"])) and
+    (.patch_policy.policy_file | test("^[A-Za-z0-9._-]+\\.json$")) and
+    (.patch_policy.policy_version | test("^[0-9]+\\.[0-9]+\\.[0-9]+$")) and
+    (.patch_policy.verifier | test("^delegation-[a-z0-9-]+$")) and
+    (.patch_policy.required_for_permission_class | nonempty_string) and
+    (.patch_policy.verification_required == true) and
+    (.patch_policy.applied_by == "lead") and
+    (.patch_policy.enforcement_authority == "patch-verifier") and
+    (.patch_policy.grants_permissions == false) and
+    (.patch_policy.notes | type == "array" and length > 0 and all(.[]; nonempty_string)) and
+
+    (.executable_gate_controls | only(["location","required_fields","cross_checked_against",
+                                       "descriptive_fields","isolation_cross_checked_against",
+                                       "notes"])) and
+    (.executable_gate_controls.location | nonempty_string) and
+    (.executable_gate_controls.required_fields | string_array) and
+    (.executable_gate_controls.required_fields | length > 0) and
+    (.executable_gate_controls.descriptive_fields | string_array) and
+    (.executable_gate_controls.cross_checked_against |
+      type == "object" and all(.[]; nonempty_string)) and
+    # The isolation fields are descriptive by location but compared exactly, so
+    # they must be declared descriptive and must never shadow a required control.
+    (.executable_gate_controls.isolation_cross_checked_against |
+      type == "object" and length > 0 and all(.[]; nonempty_string)) and
+    (((.executable_gate_controls.isolation_cross_checked_against | keys) -
+      (.executable_gate_controls.descriptive_fields)) | length == 0) and
+    (((.executable_gate_controls.isolation_cross_checked_against | keys) -
+      (.executable_gate_controls.required_fields) | length) ==
+     (.executable_gate_controls.isolation_cross_checked_against | keys | length)) and
+    ((.executable_gate_controls.cross_checked_against | keys | sort) ==
+     (.executable_gate_controls.required_fields | sort)) and
+    (((.executable_gate_controls.required_fields) -
+      (.executable_gate_controls.descriptive_fields) |
+      length) == (.executable_gate_controls.required_fields | length)) and
+    (.executable_gate_controls.notes | type == "array" and length > 0 and all(.[]; nonempty_string)) and
+
+    (.families | type == "object" and length > 0) and
+    (.families | all(.[];
+      only(["provider_family","model","runner","harness","backend","transport",
+            "executable_gate","efforts","runtime_isolation","identity",
+            "exit_codes_emitted","envelope_fields","lanes"]) and
+      (.provider_family | nonempty_string) and (.model | nonempty_string) and
+      (.runner | test("^delegation-[a-z0-9-]+$")) and
+      (.harness | nonempty_string) and (.backend | nonempty_string) and
+      (.transport | nonempty_string) and
+      (.executable_gate | test("^[A-Za-z0-9._-]+\\.json$")) and
+      (.efforts | string_array) and (.efforts | length > 0) and
+      (.runtime_isolation | only(["isolated_home","isolated_config_dir","sandbox"])) and
+      (.runtime_isolation.isolated_home | type == "boolean" or . == null) and
+      (.runtime_isolation.isolated_config_dir | type == "boolean" or . == null) and
+      (.runtime_isolation.sandbox | nonempty_string or . == null) and
+      (.identity | only(["requested_model","runtime_model","observed_identity_sources",
+                         "identity_attested_field","usage_participation",
+                         "effective_content_identity","usage_participant_model",
+                         "usage_participant_provider","usage_participant_canonical_model"])) and
+      (.identity.requested_model | nonempty_string) and
+      (.identity.runtime_model | nonempty_string or . == null) and
+      (.identity.observed_identity_sources | string_array) and
+      (.identity.observed_identity_sources | length > 0) and
+      (.identity.identity_attested_field | nonempty_string or . == null) and
+      (.identity.usage_participant_model | nonempty_string or . == null) and
+      (.identity.usage_participant_provider | nonempty_string or . == null) and
+      (.identity.usage_participant_canonical_model | type == "boolean") and
+      (.exit_codes_emitted | type == "array" and length > 0 and
+        all(.[]; type == "number") and (length == (unique | length))) and
+      (.envelope_fields | only(["status","result","diagnostic"])) and
+      (.envelope_fields | all(.[]; string_array)) and
+      (.lanes | type == "object" and length > 0) and
+      (.lanes | all(.[];
+        only(["central_profile","effort","status","selection","dispatchable",
+              "requires_explicit_decision","requires_allow_provisional","evaluation_only",
+              "permission_class","worktree_access","patch_policy","tool_policy"]) and
+        ((.patch_policy // {}) |
+          only(["policy_file","policy_version","verifier","verification_required","applied_by"])) and
+        (.central_profile | nonempty_string) and (.effort | nonempty_string) and
+        (.status | nonempty_string) and (.selection | nonempty_string) and
+        (.dispatchable | type == "boolean") and
+        (.requires_explicit_decision | type == "boolean") and
+        (.requires_allow_provisional | type == "boolean") and
+        (.evaluation_only | type == "boolean") and
+        (.permission_class | nonempty_string) and (.worktree_access | nonempty_string) and
+        # Every security-relevant control is mandatory and closed. A null or an
+        # absent capability is a validation failure, never a skipped check.
+        ((.tool_policy | keys | sort) ==
+          ["allowed_tools","mcp","mode","network","permission_mode",
+           "plugins","subagents","terminal","write_scope"]) and
+        (.tool_policy.mode | nonempty_string) and
+        (.tool_policy.permission_mode | nonempty_string or . == null) and
+        (.tool_policy.allowed_tools | (type == "array" and all(.[]; nonempty_string)) or . == null) and
+        (.tool_policy.write_scope | nonempty_string) and
+        (.tool_policy.terminal | nonempty_string) and
+        (.tool_policy.network | nonempty_string) and
+        (.tool_policy.subagents | nonempty_string) and
+        (.tool_policy.plugins | nonempty_string) and
+        (.tool_policy.mcp | nonempty_string))))) and
+
+    (.known_divergences | type == "array" and
+      all(.[]; only(["family","envelope","detail"]) and
+               (.family | nonempty_string) and (.envelope | nonempty_string) and
+               (.detail | nonempty_string)))
+  ' "$CONTRACT" >/dev/null || die 65 "contract structure or unknown key check failed"
+}
+
+# ---------------------------------------------------------------------------
+# 2. Closed vocabularies. Exactly three permission classes, pairwise distinct;
+#    exactly the six documented dispatch exit codes.
+# ---------------------------------------------------------------------------
+validate_vocabularies() {
+  jq -e '
+    (.vocabularies.permission_classes | keys) == ["read-only","text-patch","worktree-edit"]
+  ' "$CONTRACT" >/dev/null \
+    || die 65 "permission classes must be exactly read-only, text-patch, worktree-edit"
+  jq -e '
+    [.vocabularies.permission_classes[] | {w:.worktree_writes,p:.returns_patch}] as $shapes |
+    ($shapes | length) == ($shapes | unique | length)
+  ' "$CONTRACT" >/dev/null \
+    || die 65 "permission classes are not mutually exclusive: two classes share a capability shape"
+  jq -e '
+    (.vocabularies.permission_classes["read-only"] |
+      .worktree_writes == false and .returns_patch == false) and
+    (.vocabularies.permission_classes["text-patch"] |
+      .worktree_writes == false and .returns_patch == true) and
+    (.vocabularies.permission_classes["worktree-edit"] |
+      .worktree_writes == true and .returns_patch == false)
+  ' "$CONTRACT" >/dev/null || die 65 "a permission class does not carry its documented capabilities"
+  jq -e '(.exit_codes | keys | map(tonumber) | sort) == [64,69,70,75,78,130]' "$CONTRACT" >/dev/null \
+    || die 65 "exit codes must be exactly 64, 69, 70, 75, 78, 130"
+  jq -e '
+    (.exit_codes | to_entries | map(select(.value.universal) | .key | tonumber) | sort) == [64,69,70,75,78] and
+    .exit_codes["130"].universal == false and .exit_codes["75"].retryable == true
+  ' "$CONTRACT" >/dev/null || die 65 "exit-code universality or retry semantics are wrong"
+  jq -e '
+    (.vocabularies.qualification_status_values | sort) ==
+      (["candidate","disabled","manual-qualified","provisional","qualified"]) and
+    (.vocabularies.selection_values | sort) ==
+      (["blocked","default","explicit-only","fallback","preferred-explicit"])
+  ' "$CONTRACT" >/dev/null \
+    || die 65 "status/selection vocabularies do not match the documented enums"
+  # The capability vocabulary is closed at the two claims this command can make
+  # good on. `permission-mode-gated` is a narrowed claim, not a denial, so a
+  # third value would promise an enforcement check that does not exist.
+  jq -e '
+    (.vocabularies.capability_values | keys) == ["denied","permission-mode-gated"] and
+    (.vocabularies.effective_content_identity_values | keys | sort) ==
+      ["must-equal-requested","not-reported"] and
+    (.vocabularies.usage_source_values | sort) == ["model_usage","provider_aggregate"] and
+    (.vocabularies.phase_values | length) > 0 and
+    (.vocabularies.phase_values | all(test("^[a-z][a-z0-9-]*$")))
+  ' "$CONTRACT" >/dev/null \
+    || die 65 "capability, identity, usage-source, or phase vocabularies are not the documented closed sets"
+  # The participant field map is normative over every artifact, so it is pinned
+  # here too: widening it in the contract alone must not widen what an artifact
+  # may carry inside a usage participant.
+  jq -e '
+    (.usage_accounting.participant_fields | keys | sort) ==
+      ["cache_read_tokens","cache_write_tokens","canonical_model","cost_usd",
+       "input_tokens","model","model_calls","output_tokens","provider","reasoning_tokens"] and
+    (.usage_accounting.required_participant_fields == ["model"])
+  ' "$CONTRACT" >/dev/null \
+    || die 65 "usage_accounting.participant_fields is not the documented closed map"
+  jq -e -n --slurpfile contract "$CONTRACT" --slurpfile gates "$GATES" '
+    ($contract[0].vocabularies.qualification_status_values | sort) == ($gates[0].status_values | sort) and
+    ($contract[0].vocabularies.selection_values | sort) == ($gates[0].selection_values | sort)
+  ' >/dev/null || die 65 "status/selection vocabularies disagree with the central routing gate"
+  # The class the patch policy governs must be a real class, and it must be the
+  # one whose product is a patch. Pointing the requirement at a class that
+  # returns no patch would leave the lanes that do return one unguarded.
+  jq -e '
+    . as $root | $root.patch_policy.required_for_permission_class as $cls |
+    ($root.vocabularies.permission_classes | has($cls)) and
+    ($root.vocabularies.permission_classes[$cls].returns_patch == true) and
+    ([$root.vocabularies.permission_classes | to_entries[] |
+       select(.value.returns_patch) | .key] == [$cls])
+  ' "$CONTRACT" >/dev/null \
+    || die 65 "the patch policy does not govern exactly the permission class whose product is a patch"
+}
+
+# ---------------------------------------------------------------------------
+# 2b. The versioned patch policy the text-patch lanes point at. The contract
+#     declares a requirement; config/external-patch-policy.json is the policy
+#     delegation-patch-verify enforces, and the two must agree exactly. A
+#     policy that has drifted open — deletes allowed, mode changes permitted,
+#     `--unsafe-paths` no longer refused — fails here rather than being
+#     discovered after a patch has already been applied.
+# ---------------------------------------------------------------------------
+patch_policy_file() {
+  if [ -n "$PATCH_POLICY" ]; then printf '%s' "$PATCH_POLICY"
+  else printf '%s/%s' "$GATE_DIR" "$(jq -r '.patch_policy.policy_file' "$CONTRACT")"; fi
+}
+
+validate_patch_policy() {
+  local file
+  file="$(patch_policy_file)"
+  [ -r "$file" ] || die 66 "cannot read patch policy $file"
+  jq -e . "$file" >/dev/null 2>&1 || die 65 "invalid patch policy JSON: $file"
+  jq -e -n --slurpfile contract "$CONTRACT" --slurpfile policy "$file" '
+    $contract[0].patch_policy as $c | $policy[0] as $p |
+    ($p.schema_version == 1) and
+    ($p.policy_version == $c.policy_version) and
+    ($p.verifier == $c.verifier) and
+    ($p.applies_to_permission_class == $c.required_for_permission_class) and
+    ($p.authority.role == "validate-and-describe") and
+    ($p.authority.enforcement_authority == $c.enforcement_authority) and
+    ($p.authority.applied_by == $c.applied_by) and
+    ($p.authority.applies_patch == false) and
+    ($p.authority.writes_worktree == false) and
+    ($p.authority.grants_permissions == false) and
+    (["max_patch_bytes","max_patch_lines","max_files","max_path_bytes",
+      "max_hunks_per_file","max_hunks_total","max_added_lines_per_file",
+      "max_added_lines_total"] - ($p.limits | keys) | length == 0) and
+    ($p.limits | all(.[]; type == "number" and . > 0)) and
+    ($p.operations.add == "allowed") and ($p.operations.modify == "allowed") and
+    ($p.operations.delete == "denied-by-default") and
+    ($p.operations.rename == "denied") and ($p.operations.copy == "denied") and
+    ($p.file_modes.mode_change_denied == true) and
+    ($p.file_modes.new_file_allowed == ["100644"]) and
+    (($p.file_modes.existing_file_allowed | index("120000")) == null) and
+    (($p.file_modes.existing_file_allowed | index("160000")) == null) and
+    ($p.patch_file.must_be_regular_file == true) and
+    ($p.patch_file.must_not_be_symlink == true) and
+    ($p.workdir.must_be_git_worktree == true) and
+    ($p.workdir.must_not_be_symlink == true) and
+    ($p.paths.allowed_pattern | type == "string" and length > 0) and
+    ($p.paths.denied_patterns | type == "array" and length > 0 and
+      all(.[]; ((.id // "") | type == "string" and length > 0) and
+               ((.pattern // "") | type == "string" and length > 0) and
+               ((.reason // "") | type == "string" and length > 0))) and
+    (($p.paths.denied_patterns | map(.id)) as $ids | ($ids | length) == ($ids | unique | length)) and
+    (["git-control","git-metadata","dotenv","private-key","certificate",
+      "credential-file","provider-auth"] -
+     ($p.paths.denied_patterns | map(.id)) | length == 0) and
+    ($p.strip.candidates == [0, 1]) and
+    ($p.strip.require_single_applicable_level == true) and
+    (($p.git_apply.never_passed | index("--unsafe-paths")) != null) and
+    (($p.git_apply.never_passed | index("--index")) != null) and
+    (($p.git_apply.never_passed | index("--cached")) != null) and
+    ($p.receipt.never_contains | type == "array" and length > 0)
+  ' >/dev/null \
+    || die 65 "patch policy $file disagrees with the contract or has drifted open"
+
+  # Both sides of the requirement must be non-empty: a contract that declares a
+  # patch policy but has no lane in the governed class, or a governed lane with
+  # no declaration, is a boundary nobody is standing on.
+  jq -e '
+    .patch_policy.required_for_permission_class as $cls |
+    ([.families[].lanes[] | select(.permission_class == $cls)] | length) > 0 and
+    ([.families[].lanes[] | select(.permission_class == $cls) |
+      select(has("patch_policy") | not)] | length) == 0
+  ' "$CONTRACT" >/dev/null \
+    || die 65 "a lane in the governed permission class carries no patch-policy declaration"
+}
+
+# ---------------------------------------------------------------------------
+# 3. Envelope self-consistency: no field is both required and optional, every
+#    named field has a declared type, and closed vocabularies resolve.
+# ---------------------------------------------------------------------------
+validate_envelopes() {
+  jq -e '
+    . as $root |
+    ["string","integer","number","boolean","array","object",
+     "string|null","integer|null","number|null","boolean|null","array|null","object|null"] as $types |
+    # Participant types and the token-counter value type are enforced on real
+    # artifacts, so an undeclarable type string would silently fail every
+    # artifact instead of being caught here.
+    (.usage_accounting.participant_fields |
+      all(.[]; . as $t | $types | index($t) != null)) and
+    (.envelopes | all(.[];
+      ((.token_counter_value_type // "number") | . as $t | $types | index($t) != null))) and
+    (.envelopes | all(.[];
+      ((.required + .common_optional) | length) == ((.required + .common_optional) | unique | length) and
+      (((.required + .common_optional) - (.field_types | keys)) | length == 0) and
+      (((.field_types | keys) - (.required + .common_optional)) | length == 0) and
+      ((.closed_value_fields // []) - .required - .common_optional | length == 0) and
+      all((.closed_value_fields // [])[];
+        ($root.vocabularies[. + "_values"] | type) == "array") and
+      ((.nonnegative_fields - .required - .common_optional) | length == 0) and
+      (((.ordered_epoch_pair // []) - .required - .common_optional) | length == 0) and
+      (((.ordered_epoch_pair // []) - .nonnegative_fields) | length == 0) and
+      (.token_counter_field as $tk |
+       if $tk == null then true
+       else ((.required + .common_optional) | index($tk)) != null end) and
+      (((.lane_status_fields // {} | keys) - .required - .common_optional) | length == 0) and
+      all((.lane_status_fields // {})[][];
+        . as $status | ($root.vocabularies.qualification_status_values | index($status)) != null) and
+      all(.field_types[]; . as $t | $types | index($t) != null)))
+  ' "$CONTRACT" >/dev/null || die 65 "envelope field declarations are inconsistent"
+}
+
+# ---------------------------------------------------------------------------
+# 4. Family and lane self-consistency, including the permission-class rules.
+# ---------------------------------------------------------------------------
+validate_families() {
+  jq -e '
+    . as $root |
+    ($root.vocabularies.permission_classes | keys) as $classes |
+    ($root.exit_codes | to_entries | map(select(.value.universal) | .key | tonumber)) as $universal |
+    ($root.exit_codes | keys | map(tonumber)) as $all_codes |
+    .families | to_entries | all(.[];
+      .key as $fam | .value as $f | .value |
+      (.efforts | length) == (.efforts | unique | length) and
+      ((.exit_codes_emitted - $all_codes) | length == 0) and
+      (($universal - .exit_codes_emitted) | length == 0) and
+      (.transport | . as $t | $root.vocabularies.transport_kinds | index($t) != null) and
+      (.identity.requested_model == $f.model) and
+      (.identity.usage_participation | . as $u |
+        $root.vocabularies.usage_participation_values | has($u)) and
+      (.identity.effective_content_identity | . as $e |
+        $root.vocabularies.effective_content_identity_values | has($e)) and
+      # The declared usage-participation grade fixes the participant shape, so a
+      # family cannot claim first-party accounting while declaring no participant
+      # identity, or claim `none` while declaring one.
+      (if .identity.usage_participation == "first-party-model-usage"
+       then .identity.usage_participant_model != null and
+            .identity.usage_participant_provider != null and
+            .identity.usage_participant_canonical_model == true
+       elif .identity.usage_participation == "model-usage-participants"
+       then .identity.usage_participant_model != null and
+            .identity.usage_participant_provider == null and
+            .identity.usage_participant_canonical_model == false
+       else .identity.usage_participant_model == null and
+            .identity.usage_participant_provider == null and
+            .identity.usage_participant_canonical_model == false
+       end) and
+      # A declared identity claim must be a field the family actually emits.
+      (if .identity.effective_content_identity == "must-equal-requested"
+       then (.envelope_fields.result | index("effective_content_model")) != null
+       else (.envelope_fields.result | index("effective_content_model")) == null
+       end) and
+      (.identity.identity_attested_field as $attested |
+       if $attested != null
+       then (.envelope_fields.result | index($attested)) != null
+       else true end) and
+      (if .identity.usage_participant_model != null
+       then (.envelope_fields.result | index("usage_participants")) != null and
+            (.envelope_fields.result | index("target_usage_participant_present")) != null
+       else true end) and
+      # A family that measures no usage must say so out loud rather than let its
+      # zero counters be mistaken for measured cost.
+      (if .identity.usage_participation == "none"
+       then any($root.known_divergences[];
+              .family == $fam and .envelope == "result")
+       else true end) and
+      (.envelope_fields | to_entries | all(
+        .key as $kind | .value as $fields |
+        (($fields - ($root.envelopes[$kind].required + $root.envelopes[$kind].common_optional)) | length == 0) and
+        ((($root.envelopes[$kind].required) - $fields) | length == 0))) and
+      (.lanes | to_entries | all(
+        .key as $lane | .value as $l |
+        ($root.vocabularies.lane_values | index($lane) != null) and
+        ($f.efforts | index($l.effort) != null) and
+        ($classes | index($l.permission_class) != null) and
+        ($root.vocabularies.worktree_access_values | index($l.worktree_access) != null) and
+        ($root.vocabularies.write_scope_values | index($l.tool_policy.write_scope) != null) and
+        ($root.vocabularies.tool_policy_modes | index($l.tool_policy.mode) != null) and
+        ($root.vocabularies.qualification_status_values | index($l.status) != null) and
+        ($root.vocabularies.selection_values | index($l.selection) != null) and
+        ($l.dispatchable ==
+          (($l.selection != "blocked") and
+           ($l.status == "qualified" or $l.status == "provisional" or $l.status == "manual-qualified"))) and
+        ($l.requires_allow_provisional == ($l.dispatchable and $l.status == "provisional")) and
+        ($l.requires_explicit_decision ==
+          ($l.dispatchable and
+           ($l.selection == "explicit-only" or $l.selection == "preferred-explicit"))) and
+        ($l.evaluation_only | if . then $l.dispatchable == false else true end) and
+        (if $l.permission_class == "worktree-edit"
+         then $l.worktree_access == "read-write" and $l.tool_policy.write_scope == "workdir"
+         else $l.worktree_access != "read-write" and $l.tool_policy.write_scope == "none"
+         end) and
+        (if $l.tool_policy.mode == "prompt-only"
+         then $l.worktree_access == "none" and ($l.tool_policy.allowed_tools | length) == 0
+         else true end) and
+        # Every capability resolves inside the closed capability vocabulary.
+        all($l.tool_policy | .terminal, .network, .mcp, .plugins, .subagents;
+          . as $cap | $root.vocabularies.capability_values | has($cap)) and
+        # A prompt-only transport hands the model no tool at all, so nothing it
+        # declares may be merely permission-gated.
+        (if $l.tool_policy.mode == "prompt-only"
+         then all($l.tool_policy | .terminal, .network, .mcp, .plugins, .subagents;
+                . == "denied")
+         else true end) and
+        # `permission-mode-gated` is only meaningful when a mode is actually
+        # pinned, and only a permission-mode lane may decline a tool allowlist.
+        (if any($l.tool_policy | .terminal, .network, .mcp, .plugins, .subagents;
+                . == "permission-mode-gated")
+         then $l.tool_policy.permission_mode != null
+         else true end) and
+        (if $l.tool_policy.allowed_tools == null
+         then $l.tool_policy.mode == "permission-mode" and
+              $l.tool_policy.permission_mode != null
+         else true end) and
+        (if $l.tool_policy.mode == "allowlist"
+         then ($l.tool_policy.allowed_tools | type) == "array"
+         else true end) and
+        # A lane whose product is patch text must name the versioned patch
+        # policy and the verifier that enforces it, and must name exactly the
+        # one the contract declares. Every other lane must name none: a
+        # reference on a lane that returns no patch would describe a boundary
+        # that does not exist. Blocked lanes are included on purpose — a stale
+        # declaration becomes operational the day the lane is promoted.
+        (if $l.permission_class == $root.patch_policy.required_for_permission_class
+         then $l.patch_policy ==
+                {policy_file: $root.patch_policy.policy_file,
+                 policy_version: $root.patch_policy.policy_version,
+                 verifier: $root.patch_policy.verifier,
+                 verification_required: $root.patch_policy.verification_required,
+                 applied_by: $root.patch_policy.applied_by}
+         else ($l | has("patch_policy")) == false
+         end)))
+  )' "$CONTRACT" >/dev/null || die 65 "family or lane declarations are internally inconsistent"
+
+  # Every dispatchable lane must be one a runner can actually be asked for, and
+  # a blocked judgement/reviewer/policy lane must stay non-dispatchable.
+  jq -e '
+    [.families[] | .lanes | to_entries[] |
+      select(.value.dispatchable) | .key as $lane |
+      select(["judgement","reviewer","policy-annotation"] | index($lane) != null)] | length == 0
+  ' "$CONTRACT" >/dev/null \
+    || die 65 "a judgement, reviewer, or policy-annotation lane is declared dispatchable"
+
+  jq -e '
+    . as $root |
+    all(.known_divergences[];
+      .family as $fam | .envelope as $kind |
+      ($root.families | has($fam)) and ($root.envelopes | has($kind)))
+  ' "$CONTRACT" >/dev/null || die 65 "a known divergence names an unknown family or envelope"
+}
+
+# ---------------------------------------------------------------------------
+# 5. Cross-check against the central routing gate, in both directions.
+# ---------------------------------------------------------------------------
+validate_central() {
+  jq -e -n --slurpfile contract "$CONTRACT" --slurpfile gates "$GATES" '
+    $contract[0] as $c | $gates[0] as $g |
+    # every contract lane resolves to the same central decision
+    all($c.families | to_entries[];
+      .value as $f |
+      all($f.lanes | to_entries[];
+        .key as $lane | .value as $l |
+        ($g.profiles[$l.central_profile] // null) as $p |
+        $p != null and
+        $p.model == $f.model and
+        $p.harness == $f.harness and
+        $p.effort == $l.effort and
+        (($p.lanes[$lane] // null) as $row |
+          $row != null and $row.status == $l.status and $row.selection == $l.selection)))
+  ' >/dev/null || die 65 "a contract lane disagrees with config/routing-gates.json"
+
+  local uncovered
+  uncovered="$(jq -c -n --slurpfile contract "$CONTRACT" --slurpfile gates "$GATES" '
+    $contract[0] as $c | $gates[0] as $g |
+    [$c.families[] | {model:.model, harness:.harness}] as $external |
+    [$c.families | to_entries[] as $f | $f.value.lanes | to_entries[] |
+      {profile:.value.central_profile, lane:.key}] as $declared |
+    [$g.profiles | to_entries[] |
+      select(.value as $p | any($external[]; .model == $p.model and .harness == $p.harness)) as $p |
+      $p.value.lanes | keys[] | {profile:$p.key, lane:.}] as $central |
+    ($central - $declared)')"
+  [ "$uncovered" = "[]" ] \
+    || die 65 "external central routing rows without a contract declaration: $uncovered"
+}
+
+# ---------------------------------------------------------------------------
+# 6. Cross-check against each family's executable gate. Runtime controls are
+#    mandatory and compared exactly: a gate row without a runtime_controls
+#    object, missing one of the ten security-relevant fields, or carrying a
+#    field the contract does not know, fails. The previous "check them when
+#    present" form let a permission drift pass by simply omitting the field.
+#
+#    The isolation fields are descriptive rather than required, so a row may
+#    omit them and claim nothing. What it may not do is claim an isolation the
+#    family does not declare, and a family may not declare one that no row of
+#    its own gate states. That is the honest limit: silence is not a claim, but
+#    an overstated claim never passes.
+# ---------------------------------------------------------------------------
+validate_executable() {
+  local family gate detail
+  while IFS= read -r family; do
+    gate="$GATE_DIR/$(jq -r --arg f "$family" '.families[$f].executable_gate' "$CONTRACT")"
+    [ -r "$gate" ] || die 66 "cannot read executable gate $gate for family $family"
+    jq -e . "$gate" >/dev/null 2>&1 || die 65 "invalid executable gate JSON: $gate"
+    detail="$(jq -c -n --slurpfile contract "$CONTRACT" --slurpfile bridge "$gate" --arg f "$family" '
+      $contract[0] as $root | $root.families[$f] as $c | $bridge[0] as $b |
+      $c.backend as $backend |
+      $root.executable_gate_controls.required_fields as $required |
+      ($required + $root.executable_gate_controls.descriptive_fields) as $known |
+      [ (if $b.model == $c.model then empty else "model" end),
+        (if ($b.lanes | keys | sort) == ($c.lanes | keys | sort) then empty else "lane-set" end),
+        # A family that declares an isolation property must have it stated by at
+        # least one row of its own gate: an unevidenced isolation claim is a
+        # claim about the runner that nothing in the gate backs.
+        ($root.executable_gate_controls.isolation_cross_checked_against | keys[] |
+          . as $k |
+          select(($c.runtime_isolation | has($k)) and ($c.runtime_isolation[$k] != null)) |
+          select([$c.lanes | keys[] | . as $lane |
+                  (($b.lanes[$lane].backends[$backend].runtime_controls // {}) | has($k))] |
+                 any | not) |
+          "isolation-claim-unevidenced:\($k)"),
+        ($c.lanes | to_entries[] |
+          .key as $lane | .value as $l |
+          (($b.lanes[$lane].backends[$backend]) // null) as $row |
+          if $row == null then "\($lane):missing-row"
+          elif $row.status != $l.status then "\($lane):status"
+          elif $row.selection != $l.selection then "\($lane):selection"
+          elif (($row.effort // $b.lanes[$lane].default_effort) != $l.effort) then "\($lane):effort"
+          elif (($row.runtime_controls | type) != "object") then "\($lane):missing-runtime-controls"
+          elif (($required - ($row.runtime_controls | keys)) | length) != 0
+            then "\($lane):missing-controls:\(($required - ($row.runtime_controls | keys)) | join(","))"
+          elif ((($row.runtime_controls | keys) - $known) | length) != 0
+            then "\($lane):unknown-controls:\((($row.runtime_controls | keys) - $known) | join(","))"
+          else
+            ($row.runtime_controls as $rc |
+             [ # Isolation metadata is descriptive, but an overstated isolation
+               # claim reads as a security property. A row that states one is
+               # compared exactly against the family declaration, so a gate can
+               # never claim an isolation the family does not declare.
+               ($root.executable_gate_controls.isolation_cross_checked_against | keys[] |
+                 . as $k | select($rc | has($k)) |
+                 select($rc[$k] !=
+                        (if ($c.runtime_isolation | has($k)) then $c.runtime_isolation[$k] else null end)) |
+                 $k),
+               (if $rc.permission_mode == $l.tool_policy.permission_mode then empty else "permission_mode" end),
+               (if $rc.worktree_edits == ($l.tool_policy.write_scope == "workdir") then empty else "worktree_edits" end),
+               (if $rc.worktree_access == $l.worktree_access then empty else "worktree_access" end),
+               (if $rc.write_scope == $l.tool_policy.write_scope then empty else "write_scope" end),
+               (if $rc.terminal == $l.tool_policy.terminal then empty else "terminal" end),
+               (if $rc.network == $l.tool_policy.network then empty else "network" end),
+               (if $rc.mcp == $l.tool_policy.mcp then empty else "mcp" end),
+               (if $rc.plugins == $l.tool_policy.plugins then empty else "plugins" end),
+               (if $rc.subagents == $l.tool_policy.subagents then empty else "subagents" end),
+               (if $rc.tools == $l.tool_policy.allowed_tools then empty else "tools" end)] |
+             if length == 0 then empty else "\($lane):\(join(","))" end)
+          end)]')"
+    [ "$detail" = "[]" ] \
+      || die 65 "family $family disagrees with its executable gate $gate on: $detail"
+  done < <(jq -r '.families | keys[]' "$CONTRACT")
+}
+
+check_all() {
+  validate_structure
+  validate_vocabularies
+  validate_patch_policy
+  validate_envelopes
+  validate_families
+  validate_central
+  validate_executable
+}
+
+# ---------------------------------------------------------------------------
+# Extension policy. Provider extension fields stay supported, but a credential
+# or raw-content key name — at any depth, in a declared field or an extension —
+# is rejected, as is a string value shaped like a bearer token or private key.
+#
+# This is a name/shape filter, not a secrecy proof: it cannot see a credential
+# hidden under an innocuous key. Offending values are never echoed; only the
+# offending key name, or a fixed marker, is reported.
+# ---------------------------------------------------------------------------
+validate_extensions() {
+  local file="$1" envelope="$2" offenders
+  offenders="$(jq -c -n --slurpfile contract "$CONTRACT" --slurpfile doc "$file" '
+    $contract[0].extension_policy as $p |
+    ([ $doc[0] | paths | .[] | select(type == "string") ] | unique) as $keys |
+    (([ $keys[] | . as $k | ($k | ascii_downcase) as $lk |
+        select((($p.rejected_key_names | index($lk)) != null) or
+               any($p.rejected_key_substrings[]; . as $s | $lk | contains($s))) | $k ]) +
+     ([ $doc[0] | .. | select(type == "string") | . as $v |
+        select(any($p.rejected_value_patterns[]; . as $re | $v | test($re))) |
+        "<credential-shaped value>" ])) | unique')"
+  [ "$offenders" = "[]" ] \
+    || die 65 "$envelope artifact carries sensitive or raw-content field(s): $offenders"
+}
+
+# ---------------------------------------------------------------------------
+# Artifact semantics. Field names and types are not enough: an artifact can be
+# well-formed and still lie about who ran, who was billed, and what it cost.
+# These are the family-aware invariants — identity consistency, participant
+# shape and real target participation, nonnegative accounting, timestamp
+# ordering, backend/effort/lane agreement, and stable diagnostic semantics.
+# ---------------------------------------------------------------------------
+validate_semantics() {
+  local envelope="$1" file="$2" family="$3" problems
+  problems="$(jq -c -n --slurpfile contract "$CONTRACT" --slurpfile doc "$file" \
+    --arg e "$envelope" --arg f "$family" '
+    $contract[0] as $c | $doc[0] as $d | $c.envelopes[$e] as $env |
+    (if $f == "" then null else $c.families[$f] end) as $fam |
+    def numeric($k): ($d | has($k)) and (($d[$k] | type) == "number");
+    def matches($t):
+      . as $v |
+      any(($t | split("|"))[];
+        . as $one |
+        ($one == "string" and ($v | type) == "string") or
+        ($one == "boolean" and ($v | type) == "boolean") or
+        ($one == "object" and ($v | type) == "object") or
+        ($one == "array" and ($v | type) == "array") or
+        ($one == "number" and ($v | type) == "number") or
+        ($one == "integer" and ($v | type) == "number" and ($v | floor) == $v) or
+        ($one == "null" and $v == null));
+    [
+      ($env.nonnegative_fields[] | . as $k |
+        select(numeric($k) and $d[$k] < 0) | "negative:\($k)"),
+
+      (if ($env | has("ordered_epoch_pair")) then
+         ($env.ordered_epoch_pair[0]) as $s | ($env.ordered_epoch_pair[1]) as $t |
+         (if numeric($s) and numeric($t) and $d[$t] < $d[$s]
+          then "timestamps_out_of_order" else empty end)
+       else empty end),
+
+      (if numeric("duration_seconds") and numeric("started_at_epoch") and
+          numeric("finished_at_epoch") and
+          ($d.duration_seconds > ($d.finished_at_epoch - $d.started_at_epoch + 1))
+       then "duration_exceeds_elapsed_window" else empty end),
+
+      # Every counter the token object carries must be of the declared counter
+      # type and nonnegative. A counter reported as a string is not a zero and
+      # is not ignorable: it is an artifact that cannot substantiate its usage.
+      (if ($env | has("token_counter_field")) then
+         ($env.token_counter_field) as $tk |
+         ($env.token_counter_value_type // "number") as $tvt |
+         (if ($d | has($tk)) and (($d[$tk] | type) == "object")
+          then ($d[$tk] | to_entries[] |
+                if ((.value | matches($tvt)) | not)
+                then "token_counter_is_not_a_\($tvt):\(.key)"
+                elif ((.value | type) == "number") and (.value < 0)
+                then "negative_token_counter:\(.key)"
+                else empty end)
+          else empty end)
+       else empty end),
+
+      (if ($env | has("reason_pattern")) and ($d | has("reason")) and
+          (($d.reason | type) == "string")
+       then (if ($d.reason | test($env.reason_pattern)) then empty
+             else "reason_is_not_a_stable_slug" end)
+       else empty end),
+
+      (if numeric("cli_exit_code")
+       then (if ($d.cli_exit_code >= 0 and $d.cli_exit_code <= 255 and
+                 ($d.cli_exit_code | floor) == $d.cli_exit_code)
+             then empty else "cli_exit_code_out_of_range" end)
+       else empty end),
+
+      # Participant objects are a closed shape: named, known keys, each present
+      # field of its declared type — including the nullable ones — and every
+      # counter a nonnegative number. A wrongly typed counter is a failure, not
+      # a value silently read as zero.
+      (if ($d | has("usage_participants")) and (($d.usage_participants | type) == "array")
+       then ($d.usage_participants[] | . as $p |
+             if ($p | type) != "object" then "participant_is_not_an_object"
+             elif (($c.usage_accounting.required_participant_fields - ($p | keys)) | length) != 0
+               then "participant_missing_required_field"
+             elif ((($p | keys) - ($c.usage_accounting.participant_fields | keys)) | length) != 0
+               then "participant_carries_an_undeclared_field"
+             else
+               (($c.usage_accounting.participant_fields | to_entries[] |
+                  .key as $k | .value as $t |
+                  select($p | has($k)) |
+                  select((($p[$k]) | matches($t)) | not) |
+                  "participant_field_is_not_a_\($t):\($k)"),
+                (if (($p.model | type) == "string") and (($p.model | length) > 0)
+                 then empty else "participant_model_is_not_a_name" end),
+                ($c.usage_accounting.nonnegative_participant_fields[] | . as $k |
+                  select($p | has($k)) |
+                  select((($p[$k] | type) != "number") or ($p[$k] < 0)) |
+                  "participant_counter_is_not_nonnegative:\($k)"))
+             end)
+       else empty end),
+
+      (if ($d | has("usage_source"))
+       then ((($d.usage_participants // []) | length) > 0) as $has_participants |
+            (if ($d.usage_source == "model_usage") == $has_participants then empty
+             else "usage_source_contradicts_the_participant_list" end)
+       else empty end),
+
+      (if $fam == null then empty else (
+        (if ($d | has("requested_model")) and ($d.requested_model != $fam.model)
+         then "requested_model" else empty end),
+
+        (if ($d | has("runtime_model")) then
+           ($fam.identity.runtime_model // "") as $rt |
+           (if $rt == "" then "runtime_model_is_not_declared_by_this_family"
+            elif ($rt | test("<")) then
+              (($rt | split("<")[0]) as $prefix |
+               if ($d | has("effort")) and (($d.effort | type) == "string")
+               then (if $d.runtime_model == ($prefix + $d.effort) then empty
+                     else "runtime_model" end)
+               else (if ($d.runtime_model | startswith($prefix)) then empty
+                     else "runtime_model" end) end)
+            elif $d.runtime_model == $rt then empty
+            else "runtime_model" end)
+         else empty end),
+
+        (if $fam.identity.effective_content_identity == "not-reported"
+         then (if (($d.effective_content_model // null) != null)
+               then "effective_content_model_is_not_reportable_by_this_family" else empty end)
+         else (if (($d.effective_content_model // null) != null) and
+                  ($d.effective_content_model != $fam.model)
+               then "effective_content_model" else empty end)
+         end),
+
+        # A billing identity that differs from the content identity may never be
+        # reported as the model that produced the content.
+        (if ($fam.identity.usage_participant_model != null) and
+            ($fam.identity.usage_participant_model != $fam.model) and
+            (($d.effective_content_model // null) == $fam.identity.usage_participant_model)
+         then "usage_identity_reported_as_content_identity" else empty end),
+
+        # Claimed target participation must be backed by a real participant.
+        (if ($d | has("target_usage_participant_present"))
+         then (any(($d.usage_participants // [])[];
+                   (type == "object") and
+                   ($fam.identity.usage_participant_model != null) and
+                   (.model == $fam.identity.usage_participant_model))) as $really |
+              (if $d.target_usage_participant_present == $really then empty
+               else "target_usage_participant_present" end)
+         else empty end),
+
+        (if $fam.identity.usage_participant_canonical_model and
+            ($d.target_usage_participant_present == true)
+         then (if any(($d.usage_participants // [])[];
+                      (type == "object") and
+                      (.model == $fam.identity.usage_participant_model) and
+                      (.canonical_model == $fam.identity.usage_participant_model) and
+                      (.provider == $fam.identity.usage_participant_provider))
+               then empty else "usage_participant_canonical_identity" end)
+         else empty end),
+
+        # A family that measures no usage cannot report participants or counters.
+        (if $fam.identity.usage_participation == "none"
+         then ((if (($d.usage_participants // []) | length) > 0
+                then "usage_participants_from_a_family_that_reports_no_usage" else empty end),
+               (if (($d.tokens | type) == "object") and
+                   any($d.tokens | to_entries[]; (.value | type) == "number" and .value > 0)
+                then "nonzero_tokens_from_a_family_that_reports_no_usage" else empty end),
+               (if numeric("provider_cost_usd") and ($d.provider_cost_usd > 0)
+                then "nonzero_cost_from_a_family_that_reports_no_usage" else empty end))
+         else empty end),
+
+        (if $d.usage_reported == false
+         then ((if (($d.usage_participants // []) | length) > 0
+                then "usage_participants_with_usage_reported_false" else empty end),
+               (if (($d.tokens | type) == "object") and
+                   any($d.tokens | to_entries[]; (.value | type) == "number" and .value > 0)
+                then "nonzero_tokens_with_usage_reported_false" else empty end))
+         else empty end),
+
+        # An identity attestation cannot be asserted without its own evidence.
+        (if ($fam.identity.identity_attested_field != null) and
+            ($d[$fam.identity.identity_attested_field] == true)
+         then ((if ($fam.identity.effective_content_identity == "must-equal-requested") and
+                   (($d.effective_content_model // null) != $fam.model)
+                then "identity_attested_without_an_effective_content_model" else empty end),
+               (if $fam.identity.usage_participant_canonical_model and
+                   ($d.target_usage_participant_present != true)
+                then "identity_attested_without_usage_participation" else empty end))
+         else empty end),
+
+        (if $e == "status"
+         then ((if (($d.backends | type) == "object") and
+                   ((($d.backends | keys) - [$fam.backend]) | length) != 0
+                then "backends" else empty end),
+               (if ($d | has("selected_backend")) and
+                   ($d.selected_backend != $c.envelopes.status.none_backend_value) and
+                   (($d.backends | type) == "object") and
+                   (($d.backends | keys | index($d.selected_backend)) == null)
+                then "selected_backend_is_not_one_of_the_reported_backends" else empty end),
+               # A lane list is an inventory, not a sample: a status envelope that
+               # reports a lane list must report exactly the lanes the contract
+               # puts in that state for this family. Listing a lane it may not
+               # promote fails, and so does quietly dropping one. A runner that
+               # emits no such field at all is not required to start.
+               ($c.envelopes.status.lane_status_fields | to_entries[] |
+                 .key as $field | .value as $allowed |
+                 (if ($d | has($field)) and (($d[$field] | type) == "array")
+                  then (($d[$field][] | . as $lane |
+                         if (($fam.lanes[$lane] // null) == null) or
+                            (($allowed | index($fam.lanes[$lane].status)) == null)
+                         then "\($field):\($lane)" else empty end),
+                        ([$fam.lanes | to_entries[] |
+                           select(.value.status as $st | ($allowed | index($st)) != null) |
+                           .key] | sort) as $expected |
+                        (if ($d[$field] | sort) == $expected then empty
+                         else "\($field)_does_not_match_the_declared_lane_inventory" end))
+                  else empty end)),
+               ((($d.qualified_lanes // []) + ($d.provisional_lanes // []) +
+                 ($d.candidate_lanes // [])) as $all |
+                 if ($all | length) == ($all | unique | length) then empty
+                 else "lane_status_lists_overlap" end))
+         else empty end)
+      ) end)
+    ] | unique')"
+  [ "$problems" = "[]" ] \
+    || die 65 "$envelope artifact is internally inconsistent or misreports identity/accounting: $problems"
+}
+
+# ---------------------------------------------------------------------------
+# Envelope file validation. Only field names, declared types, closed
+# vocabularies, and the numeric/identity invariants above are inspected. No
+# free-text value is read back or printed.
+# ---------------------------------------------------------------------------
+validate_file() {
+  local envelope="" file="" family="" as_json=0
+  while [ "$#" -gt 0 ]; do
+    case "$1" in
+      --envelope) envelope="${2:-}"; shift 2 ;;
+      --file) file="${2:-}"; shift 2 ;;
+      --family) family="${2:-}"; shift 2 ;;
+      --json) as_json=1; shift ;;
+      *) die 64 "unknown validate argument: $1" ;;
+    esac
+  done
+  [ -n "$envelope" ] || die 64 "--envelope is required"
+  [ -n "$file" ] || die 64 "--file is required"
+  jq -e --arg e "$envelope" '.envelopes | has($e)' "$CONTRACT" >/dev/null \
+    || die 64 "unknown envelope: $envelope"
+  [ -f "$file" ] && [ -r "$file" ] || die 66 "cannot read $file"
+  jq -e 'type == "object"' "$file" >/dev/null 2>&1 || die 65 "$envelope artifact is not a JSON object"
+  if [ -n "$family" ]; then
+    jq -e --arg f "$family" '.families | has($f)' "$CONTRACT" >/dev/null \
+      || die 64 "unknown family: $family"
+  fi
+
+  local missing
+  missing="$(jq -c -n --slurpfile contract "$CONTRACT" --slurpfile doc "$file" \
+    --arg e "$envelope" --arg f "$family" '
+    $contract[0] as $c | $doc[0] as $d |
+    ($c.envelopes[$e].required +
+     (if $f == "" then [] else ($c.families[$f].envelope_fields[$e] // []) end) | unique) as $required |
+    [$required[] | . as $k | select(($d | has($k)) | not)]')"
+  [ "$missing" = "[]" ] || die 65 "$envelope artifact is missing required field(s): $missing"
+
+  local bad_types
+  bad_types="$(jq -c -n --slurpfile contract "$CONTRACT" --slurpfile doc "$file" --arg e "$envelope" '
+    def matches($t):
+      . as $v |
+      ($t | split("|")) as $allowed |
+      any($allowed[];
+        . as $one |
+        ($one == "string" and ($v | type) == "string") or
+        ($one == "boolean" and ($v | type) == "boolean") or
+        ($one == "object" and ($v | type) == "object") or
+        ($one == "array" and ($v | type) == "array") or
+        ($one == "number" and ($v | type) == "number") or
+        ($one == "integer" and ($v | type) == "number" and ($v | floor) == $v) or
+        ($one == "null" and $v == null));
+    $contract[0].envelopes[$e] as $env | $doc[0] as $d |
+    [$env.field_types | to_entries[] | .key as $k | .value as $t |
+      select($d | has($k)) |
+      select(($d[$k] | matches($t)) | not) | $k]')"
+  [ "$bad_types" = "[]" ] || die 65 "$envelope artifact has wrongly typed field(s): $bad_types"
+
+  # Closed vocabularies fail closed on an unknown value. Only these declared
+  # vocabulary fields are ever read back or printed; no other value is touched.
+  local field value allowed
+  while IFS= read -r field; do
+    [ -n "$field" ] || continue
+    jq -e --arg k "$field" 'has($k)' "$file" >/dev/null 2>&1 || continue
+    value="$(jq -r --arg k "$field" '.[$k]' "$file")"
+    allowed="$(jq -r --arg k "$field" '.vocabularies[$k + "_values"] | join(", ")' "$CONTRACT")"
+    jq -e --arg k "$field" --arg v "$value" '.vocabularies[$k + "_values"] | index($v) != null' \
+      "$CONTRACT" >/dev/null \
+      || die 65 "$envelope artifact field '$field' is '$value'; allowed: $allowed"
+  done < <(jq -r --arg e "$envelope" '(.envelopes[$e].closed_value_fields // [])[]' "$CONTRACT")
+
+  if [ -n "$family" ]; then
+    local identity
+    identity="$(jq -c -n --slurpfile contract "$CONTRACT" --slurpfile doc "$file" \
+      --arg e "$envelope" --arg f "$family" '
+      $contract[0] as $c | $c.families[$f] as $fam | $doc[0] as $d |
+      ($fam.identity.runtime_model // "") as $runtime |
+      (if ($runtime | test("<")) then ($runtime | split("<")[0]) else null end) as $prefix |
+      [ (if ($d | has("model")) then
+           (if ($d.model == $fam.model) or ($runtime != "" and $d.model == $runtime) or
+               ($prefix != null and ($d.model | startswith($prefix)))
+            then empty else "model" end)
+         else empty end),
+        (if ($d | has("backend")) then
+           (if ($e == "status") then empty
+            elif $d.backend == $fam.backend then empty else "backend" end)
+         else empty end),
+        (if ($d | has("effort")) then
+           (if ($fam.efforts | index($d.effort)) != null then empty else "effort" end)
+         else empty end),
+        (if ($d | has("lane")) then
+           (if ($fam.lanes | has($d.lane)) then empty else "lane" end)
+         else empty end),
+        (if ($e == "status" and ($d | has("selected_backend"))) then
+           (if ($d.selected_backend == ($c.envelopes.status.none_backend_value // "none")) or
+               ($d.selected_backend == $fam.backend)
+            then empty else "selected_backend" end)
+         else empty end),
+        (if ($e == "status" and ($d | has("efforts"))) then
+           (if (($d.efforts - $fam.efforts) | length) == 0 then empty else "efforts" end)
+         else empty end)
+      ]')"
+    [ "$identity" = "[]" ] || die 65 "$envelope artifact contradicts family $family on: $identity"
+  fi
+
+  validate_extensions "$file" "$envelope"
+  validate_semantics "$envelope" "$file" "$family"
+
+  local extensions
+  extensions="$(jq -c -n --slurpfile contract "$CONTRACT" --slurpfile doc "$file" --arg e "$envelope" '
+    $contract[0].envelopes[$e] as $env |
+    (($doc[0] | keys) - $env.required - $env.common_optional)')"
+
+  if [ "$as_json" = 1 ]; then
+    jq -n --arg envelope "$envelope" --arg file "$file" --arg family "$family" \
+      --argjson extensions "$extensions" \
+      --argjson required "$(jq --arg e "$envelope" '.envelopes[$e].required | length' "$CONTRACT")" \
+      '{valid:true,envelope:$envelope,file:$file,
+        family:(if $family == "" then null else $family end),
+        required_fields:$required,extension_fields:$extensions,
+        extensions_permitted:true,read_only:true}'
+  elif [ -n "$family" ]; then
+    printf '%s artifact valid against the common contract (family %s)\n' "$envelope" "$family"
+    printf '  provider extension fields: %s\n' \
+      "$(printf '%s' "$extensions" | jq -r 'if length == 0 then "none" else join(", ") end')"
+  else
+    printf '%s artifact valid against the common contract\n' "$envelope"
+    printf '  provider extension fields: %s\n' \
+      "$(printf '%s' "$extensions" | jq -r 'if length == 0 then "none" else join(", ") end')"
+  fi
+}
+
+lane_rows() {
+  jq -c '
+    .families | to_entries[] as $f | $f.value.lanes | to_entries[] |
+    {family:$f.key,provider_family:$f.value.provider_family,runner:$f.value.runner,
+     model:$f.value.model,harness:$f.value.harness,backend:$f.value.backend,
+     transport:$f.value.transport,lane:.key,effort:.value.effort,
+     status:.value.status,selection:.value.selection,dispatchable:.value.dispatchable,
+     permission_class:.value.permission_class,worktree_access:.value.worktree_access,
+     patch_policy_version:(.value.patch_policy.policy_version // null),
+     patch_verifier:(.value.patch_policy.verifier // null),
+     write_scope:.value.tool_policy.write_scope,
+     allowed_tools:.value.tool_policy.allowed_tools,
+     central_profile:.value.central_profile,evaluation_only:.value.evaluation_only}
+  ' "$CONTRACT"
+}
+
+as_json=0
+for arg in "$@"; do [ "$arg" != --json ] || as_json=1; done
+command="${1:-}"
+
+case "$command" in
+  validate) shift; check_all; validate_file "$@" ;;
+  check)
+    check_all
+    if [ "$as_json" = 1 ]; then
+      jq -n --arg contract "$CONTRACT" --arg gates "$GATES" \
+        --arg version "$(jq -r '.contract_version' "$CONTRACT")" \
+        --argjson schema "$(jq '.schema_version' "$CONTRACT")" \
+        --argjson families "$(jq '.families | length' "$CONTRACT")" \
+        --argjson lanes "$(jq '[.families[].lanes | length] | add' "$CONTRACT")" \
+        --argjson dispatchable "$(jq '[.families[].lanes[] | select(.dispatchable)] | length' "$CONTRACT")" \
+        --argjson classes "$(jq -c '.vocabularies.permission_classes | keys' "$CONTRACT")" \
+        --argjson codes "$(jq -c '.exit_codes | keys | map(tonumber) | sort' "$CONTRACT")" \
+        --argjson runners "$(jq -c '[.families[].runner] | sort' "$CONTRACT")" \
+        --arg patch_policy "$(patch_policy_file)" \
+        --arg patch_policy_version "$(jq -r '.patch_policy.policy_version' "$CONTRACT")" \
+        --arg patch_verifier "$(jq -r '.patch_policy.verifier' "$CONTRACT")" \
+        --argjson patch_lanes "$(jq '[.families[].lanes[] |
+          select(.permission_class == "text-patch")] | length' "$CONTRACT")" \
+        '{valid:true,read_only:true,enforcement_authority:"provider-runner",
+          grants_permissions:false,contract_file:$contract,contract_version:$version,
+          schema_version:$schema,central_routing_gate:$gates,families:$families,
+          runners:$runners,lane_declarations:$lanes,dispatchable_lanes:$dispatchable,
+          permission_classes:$classes,exit_codes:$codes,
+          patch_policy_file:$patch_policy,patch_policy_version:$patch_policy_version,
+          patch_verifier:$patch_verifier,text_patch_lanes:$patch_lanes,
+          patch_verification_required:true,patch_applied_by:"lead"}'
+    else
+      printf 'external executor contract %s valid: %s families, %s lane declarations (%s dispatchable)\n' \
+        "$(jq -r '.contract_version' "$CONTRACT")" \
+        "$(jq '.families | length' "$CONTRACT")" \
+        "$(jq '[.families[].lanes | length] | add' "$CONTRACT")" \
+        "$(jq '[.families[].lanes[] | select(.dispatchable)] | length' "$CONTRACT")"
+      printf 'permission classes: %s\n' "$(jq -r '.vocabularies.permission_classes | keys | join(", ")' "$CONTRACT")"
+      printf 'patch policy %s (%s) required by %s text-patch lane(s); %s verifies, the lead applies\n' \
+        "$(jq -r '.patch_policy.policy_version' "$CONTRACT")" "$(patch_policy_file)" \
+        "$(jq '[.families[].lanes[] | select(.permission_class == "text-patch")] | length' "$CONTRACT")" \
+        "$(jq -r '.patch_policy.verifier' "$CONTRACT")"
+      printf 'the contract describes and validates; each runner enforces its own permissions\n'
+    fi
+    ;;
+  families)
+    check_all
+    if [ "$as_json" = 1 ]; then
+      jq '[.families | to_entries[] | {family:.key,provider_family:.value.provider_family,
+        runner:.value.runner,model:.value.model,harness:.value.harness,
+        backend:.value.backend,transport:.value.transport,efforts:.value.efforts,
+        executable_gate:.value.executable_gate,lanes:(.value.lanes | keys)}]' "$CONTRACT"
+    else
+      jq -r '.families | to_entries[] |
+        "\(.key)\t\(.value.runner)\t\(.value.harness)\t\(.value.efforts | join("/"))\t\(.value.lanes | keys | join(","))"' \
+        "$CONTRACT"
+    fi
+    ;;
+  family)
+    family="${2:-}"; [ -n "$family" ] || die 64 "family name is required"
+    jq -e --arg f "$family" '.families | has($f)' "$CONTRACT" >/dev/null || die 64 "unknown family: $family"
+    check_all
+    jq --arg f "$family" '.families[$f] + {family:$f}' "$CONTRACT"
+    ;;
+  classes)
+    check_all
+    if [ "$as_json" = 1 ]; then jq '.vocabularies.permission_classes' "$CONTRACT"
+    else jq -r '.vocabularies.permission_classes | to_entries[] |
+      "\(.key)\tworktree_writes=\(.value.worktree_writes)\treturns_patch=\(.value.returns_patch)\t\(.value.summary)"' \
+      "$CONTRACT"; fi
+    ;;
+  exit-codes)
+    check_all
+    if [ "$as_json" = 1 ]; then jq '.exit_codes' "$CONTRACT"
+    else jq -r '.exit_codes | to_entries[] |
+      "\(.key)\t\(.value.name)\tuniversal=\(.value.universal)\tretryable=\(.value.retryable)\t\(.value.meaning)"' \
+      "$CONTRACT"; fi
+    ;;
+  table)
+    check_all
+    if [ "$as_json" = 1 ]; then
+      lane_rows | jq -s '.'
+    else
+      printf '| Family | Runner | Lane | Exact variant | Permission class | Worktree | Status | Selection | Dispatchable |\n'
+      printf '|---|---|---|---|---|---|---|---|---|\n'
+      lane_rows | jq -rs '.[] |
+        "| \(.family) | `\(.runner)` | \(.lane) | \(.model) / \(.harness) / `\(.effort)` | \(.permission_class) | \(.worktree_access) | \(.status) | \(.selection) | \(if .dispatchable then "yes" else "no" end) |"'
+      printf '\nEach runner enforces its own permissions; this table only describes them.\n'
+    fi
+    ;;
+  -h|--help|"") usage ;;
+  *) die 64 "unknown command: $command" ;;
+esac

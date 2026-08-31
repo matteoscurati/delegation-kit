@@ -23,8 +23,15 @@
           "runtime_model": "deepseek-v4-pro",
           "runtime_controls": {
             "transport": "chat-completions",
+            "permission_mode": null,
             "worktree_edits": false,
-            "terminal": false,
+            "worktree_access": "none",
+            "write_scope": "none",
+            "terminal": "denied",
+            "network": "denied",
+            "mcp": "denied",
+            "plugins": "denied",
+            "subagents": "denied",
             "tools": []
           },
           "local_evaluation": {
@@ -38,11 +45,11 @@
         }
       }
     },
-    "clerk": {"default_effort": "max", "backends": {"deepseek-api": {"qualified": false, "status": "candidate", "selection": "blocked", "effort": "max"}}},
-    "scout": {"default_effort": "max", "backends": {"deepseek-api": {"qualified": false, "status": "candidate", "selection": "blocked", "effort": "max"}}},
-    "reviewer": {"default_effort": "max", "backends": {"deepseek-api": {"qualified": false, "status": "candidate", "selection": "blocked", "effort": "max"}}},
-    "senior": {"default_effort": "max", "backends": {"deepseek-api": {"qualified": false, "status": "candidate", "selection": "blocked", "effort": "max"}}},
-    "judgement": {"default_effort": "max", "backends": {"deepseek-api": {"qualified": false, "status": "disabled", "selection": "blocked", "effort": "max"}}},
-    "policy-annotation": {"default_effort": "max", "backends": {"deepseek-api": {"qualified": false, "status": "candidate", "selection": "blocked", "effort": "max", "evaluation_manifest_sha256": []}}}
+    "clerk": {"default_effort": "max", "backends": {"deepseek-api": {"qualified": false, "status": "candidate", "selection": "blocked", "effort": "max", "runtime_controls": {"transport": "chat-completions", "permission_mode": null, "worktree_edits": false, "worktree_access": "none", "write_scope": "none", "terminal": "denied", "network": "denied", "mcp": "denied", "plugins": "denied", "subagents": "denied", "tools": []}}}},
+    "scout": {"default_effort": "max", "backends": {"deepseek-api": {"qualified": false, "status": "candidate", "selection": "blocked", "effort": "max", "runtime_controls": {"transport": "chat-completions", "permission_mode": null, "worktree_edits": false, "worktree_access": "none", "write_scope": "none", "terminal": "denied", "network": "denied", "mcp": "denied", "plugins": "denied", "subagents": "denied", "tools": []}}}},
+    "reviewer": {"default_effort": "max", "backends": {"deepseek-api": {"qualified": false, "status": "candidate", "selection": "blocked", "effort": "max", "runtime_controls": {"transport": "chat-completions", "permission_mode": null, "worktree_edits": false, "worktree_access": "none", "write_scope": "none", "terminal": "denied", "network": "denied", "mcp": "denied", "plugins": "denied", "subagents": "denied", "tools": []}}}},
+    "senior": {"default_effort": "max", "backends": {"deepseek-api": {"qualified": false, "status": "candidate", "selection": "blocked", "effort": "max", "runtime_controls": {"transport": "chat-completions", "permission_mode": null, "worktree_edits": false, "worktree_access": "none", "write_scope": "none", "terminal": "denied", "network": "denied", "mcp": "denied", "plugins": "denied", "subagents": "denied", "tools": []}}}},
+    "judgement": {"default_effort": "max", "backends": {"deepseek-api": {"qualified": false, "status": "disabled", "selection": "blocked", "effort": "max", "runtime_controls": {"transport": "chat-completions", "permission_mode": null, "worktree_edits": false, "worktree_access": "none", "write_scope": "none", "terminal": "denied", "network": "denied", "mcp": "denied", "plugins": "denied", "subagents": "denied", "tools": []}}}},
+    "policy-annotation": {"default_effort": "max", "backends": {"deepseek-api": {"qualified": false, "status": "candidate", "selection": "blocked", "effort": "max", "evaluation_manifest_sha256": [], "runtime_controls": {"transport": "chat-completions", "permission_mode": null, "worktree_edits": false, "worktree_access": "none", "write_scope": "none", "terminal": "denied", "network": "denied", "mcp": "denied", "plugins": "denied", "subagents": "denied", "tools": []}}}}
   }
 }

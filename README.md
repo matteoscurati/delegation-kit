@@ -153,8 +153,9 @@ provisional/explicit-only behind `--allow-provisional`. See
 The universal installer also adds `delegation-schema`, `delegation-glm`,
 `delegation-gemini`, `delegation-kimi`, `delegation-deepseek`,
 `delegation-grok`, `delegation-qwen`,
-`delegation-evidence`, the ZIP-only `delegation-epoch` importer, and the read-only
-central router `delegation-route` under
+`delegation-evidence`, the ZIP-only `delegation-epoch` importer, the read-only
+central router `delegation-route`, and the read-only
+`delegation-executor-contract` validator under
 `~/.local/bin`, with versioned gates under `~/.local/share/delegation-kit/`.
 GLM-5.3-Flash/max is the sole GLM route. The exact v4 pack passed 9/9 no-retry
 attempts at score 1.0: all 204 assistant events were attributed to Flash, every
@@ -417,6 +418,115 @@ output path. It never persists the ZIP, extracts a corpus into the checkout, or
 edits `config/model-evidence.json` or a routing gate. The Airtable/`epochai`
 client is intentionally out of scope.
 
+The six external executor families share one **common contract**:
+[`config/external-executor-contract.json`](./config/external-executor-contract.json),
+validated by `delegation-executor-contract` and documented in
+[`docs/external-executors.md`](./docs/external-executors.md). It fixes one
+vocabulary for permission classes, requested/observed/effective identity, usage
+participation, envelope field names, and the 64/69/70/75/78/130 dispatch exit
+codes — so drift between six runners becomes detectable instead of invisible.
+
+There are exactly three permission classes, mutually exclusive and exhaustive:
+`read-only`, `text-patch` (no filesystem access; the lane returns a patch the
+lead applies and verifies), and `worktree-edit` (scoped writes inside the
+delegated worktree). Every lane also states its permission mode, tool allowlist,
+worktree access and write scope, and whether terminal, network, MCP, plugins,
+and subagents are `denied` or `permission-mode-gated`. Those five capability
+fields are mandatory and never `null`; `permission_mode` and the tool allowlist
+may be null only where the runner genuinely pins no mode or passes no allowlist,
+and `permission-mode-gated` is a narrowed claim about the pinned mode rather
+than a denial. `check` compares all ten controls against the family's executable
+gate exactly, and fails if a gate row omits the block, omits a field, or carries
+one the contract does not declare, so a permission drift cannot pass by simply
+leaving something unstated.
+
+Runtime isolation is stated precisely rather than generously. `isolated_home`
+means the runner pins a private `HOME` for an ordinary dispatch; the narrower
+`isolated_config_dir` means only the harness's configuration directory is
+redirected per run. An ordinary `delegation-glm` dispatch redirects
+`CLAUDE_CONFIG_DIR` and leaves `HOME` as the caller's — only its evaluation path
+pins a temporary `HOME` — so GLM declares `isolated_home: false` and
+`isolated_config_dir: true`, and `check` compares those claims against the gate.
+
+`validate` checks a runner's own status, result, or diagnostic artifact against
+the common envelope, and with `--family` against that family's identity and
+usage-accounting contract: requested/runtime/effective model consistency,
+participant shape, real target participation (the billing identity is kept
+separate from the content identity), nonnegative tokens and cost, ordered
+timestamps, and stable diagnostic phase/reason semantics. Types are enforced on
+every field an artifact actually carries, including each participant field and
+each token counter, so `input_tokens: "ten"` or `cost_usd: "free"` fails instead
+of being read as zero; and a reported lane list must be exactly the lanes the
+contract puts in that state for the family.
+
+**The contract describes and validates; each provider runner remains the sole
+enforcement authority.** It adds no permission, no route, and no universal
+dispatch layer — no runner reads it, and the regression suite asserts that.
+Provider-specific attestations stay provider-specific: Kimi's search-runtime
+digests, Grok's sandbox and OAuth state, and GLM's identity accounting are
+reported as extension fields and pass, so nothing here can weaken a runner's own
+checks. What extensions may not carry is a credential or raw provider content:
+key names such as `api_key`, `authorization`, `token`, `credential`, `secret`,
+`prompt`, or a raw request/response body are rejected recursively, as are
+bearer-token- and private-key-shaped values. That is a name and shape filter, not
+a secrecy proof — it cannot see a credential hidden under an innocuous key name.
+A lane's `status`/`selection` mirror the gates; promoting one is still an
+explicit owner decision made there.
+
+```sh
+delegation-executor-contract check --json
+delegation-executor-contract table
+delegation-executor-contract validate --envelope result \
+  --file "$metrics" --family grok-4.6
+```
+
+A `text-patch` lane returns a diff that somebody has to apply, so the trust
+boundary is not at dispatch — it is where a lead pastes a stranger's diff into
+their own repository. `delegation-patch-verify` stands there. It validates and
+describes a patch against the versioned
+[`config/external-patch-policy.json`](./config/external-patch-policy.json) and
+**never applies one**; the lead remains the only actor that applies and tests.
+
+```sh
+delegation-patch-verify check --patch "$patch" --workdir "$repo" --json
+git -C "$repo" apply -p"$(jq -r '.strip.chosen' receipt.json)" -- "$patch"  # the LEAD, not the verifier
+```
+
+The policy is fail-closed. It requires a regular, caller-owned, non-world-writable,
+bounded, NUL- and CR-free patch file and a real non-symlinked git worktree top
+level; accepts unified diff text only; refuses absolute, UNC, drive-letter,
+backslashed, `..`-traversing and out-of-charset paths, and `.git`, hook and CI
+directories, `.env*`, ssh material, keys, certificates, credential stores, and
+provider auth directories; refuses binary patches, symlink and submodule
+entries, new executable files and every mode change; bounds file count, path
+length, bytes, lines, hunks and per-file expansion; and refuses deletes by
+default and renames outright. Both the conventional `a/`/`b/` shape and the
+unprefixed shape `delegation-qwen` actually emits are supported, and the strip
+level is fixed by the **header shape** before `git apply` is consulted — `a/x`
+opposite `b/x` means `-p1`, no prefix means `-p0`, and a shape that says neither
+is refused rather than guessed at. The other candidate level is recorded and
+never chosen, so the `b/…` reading that every ordinary add also satisfies cannot
+redirect the change; for an unprefixed patch, which git's default `-p1` would
+silently land on a different file, a second applicable level is rejected as
+ambiguous. The one override, `--allow-delete`, is recorded in the receipt and
+relaxes nothing else.
+
+The command writes nothing and attests it: the patch file, the worktree state,
+the index, and the git control directory are digested before and after and
+compared, and a difference is exit 70 rather than an acceptance. `git apply
+--check` runs with no ambient git configuration, no hooks, and never with
+`--unsafe-paths`, `--index`, `--cached`, or `--3way`, and it is reached only
+after every path rule has already passed. The receipt carries paths, counts,
+rule names and digests — never a patch body, a hunk heading, or git's stderr.
+
+**Three authorities, never merged: the verifier enforces patch safety, the
+provider runner enforces transport, and the lead applies and tests.** Every
+`text-patch` lane declares the policy version and this verifier, and
+`delegation-executor-contract check` fails on a missing, stale, or mismatched
+declaration — including for the blocked Gemini lanes, because a declaration that
+is wrong while blocked becomes wrong and operational the day it is promoted. The
+reference grants nothing: no runner reads it, and the suite asserts that.
+
 The central decision file is [`config/routing-gates.json`](./config/routing-gates.json).
 It is the dispatch authority: GLM, Gemini, Kimi, Grok, Qwen, and DeepSeek validate it against their complete
 backend gates before every check/run, and refuse drift. Exact and contextual
@@ -463,6 +573,8 @@ Run the fail-closed regression suite after changing a gate:
 
 ```sh
 tests/routing-gates.sh
+tests/external-executor-contract.sh
+tests/external-patch-verify.sh
 tests/epoch-zip.sh
 tests/glm-runner-diagnostics.sh
 tests/gemini-runner-diagnostics.sh

@@ -20,6 +20,20 @@
           "selection": "explicit-only",
           "effort": "max",
           "cost_per_task_usd": 0.004978,
+          "runtime_controls": {
+            "isolated_home": false,
+            "isolated_config_dir": true,
+            "permission_mode": "plan",
+            "worktree_edits": false,
+            "worktree_access": "read",
+            "write_scope": "none",
+            "terminal": "permission-mode-gated",
+            "network": "permission-mode-gated",
+            "mcp": "denied",
+            "plugins": "denied",
+            "subagents": "permission-mode-gated",
+            "tools": null
+          },
           "local_result": {"run_id": "2026-08-29-glm-5.3-flash-max-qualification-v4", "outcome": "passed", "task_count": 6, "repeats": 3, "valid_repeats": 3, "strict_identity_valid_repeats": 3, "mean_score": 1.0, "mean_latency_seconds": 28.67, "confidence": "bounded-repeated"}
         }
       }
@@ -33,6 +47,20 @@
           "selection": "explicit-only",
           "effort": "max",
           "cost_per_task_usd": 0.018398,
+          "runtime_controls": {
+            "isolated_home": false,
+            "isolated_config_dir": true,
+            "permission_mode": "plan",
+            "worktree_edits": false,
+            "worktree_access": "read",
+            "write_scope": "none",
+            "terminal": "permission-mode-gated",
+            "network": "permission-mode-gated",
+            "mcp": "denied",
+            "plugins": "denied",
+            "subagents": "permission-mode-gated",
+            "tools": null
+          },
           "local_result": {"run_id": "2026-08-29-glm-5.3-flash-max-qualification-v4", "outcome": "passed", "task_count": 7, "repeats": 3, "valid_repeats": 3, "strict_identity_valid_repeats": 3, "mean_score": 1.0, "mean_latency_seconds": 166.0, "confidence": "bounded-repeated"}
         }
       }
@@ -46,6 +74,20 @@
           "selection": "explicit-only",
           "effort": "max",
           "cost_per_task_usd": 0.012774,
+          "runtime_controls": {
+            "isolated_home": false,
+            "isolated_config_dir": true,
+            "permission_mode": "acceptEdits",
+            "worktree_edits": true,
+            "worktree_access": "read-write",
+            "write_scope": "workdir",
+            "terminal": "permission-mode-gated",
+            "network": "permission-mode-gated",
+            "mcp": "denied",
+            "plugins": "denied",
+            "subagents": "permission-mode-gated",
+            "tools": null
+          },
           "local_result": {"run_id": "2026-08-29-glm-5.3-flash-max-qualification-v4", "outcome": "passed", "task_count": 6, "repeats": 3, "valid_repeats": 3, "strict_identity_valid_repeats": 3, "mean_score": 1.0, "all_checker_runs_pass": true, "mean_latency_seconds": 70.67, "confidence": "bounded-repeated"}
         }
       }
@@ -58,7 +100,21 @@
           "status": "disabled",
           "selection": "blocked",
           "effort": "max",
-          "cost_per_task_usd": null
+          "cost_per_task_usd": null,
+          "runtime_controls": {
+            "isolated_home": false,
+            "isolated_config_dir": true,
+            "permission_mode": "plan",
+            "worktree_edits": false,
+            "worktree_access": "none",
+            "write_scope": "none",
+            "terminal": "permission-mode-gated",
+            "network": "permission-mode-gated",
+            "mcp": "denied",
+            "plugins": "denied",
+            "subagents": "permission-mode-gated",
+            "tools": null
+          }
         }
       }
     },
@@ -71,6 +127,20 @@
           "selection": "blocked",
           "effort": "max",
           "evaluation_manifest_sha256": [],
+          "runtime_controls": {
+            "isolated_home": false,
+            "isolated_config_dir": true,
+            "permission_mode": "plan",
+            "worktree_edits": false,
+            "worktree_access": "read",
+            "write_scope": "none",
+            "terminal": "permission-mode-gated",
+            "network": "permission-mode-gated",
+            "mcp": "denied",
+            "plugins": "denied",
+            "subagents": "permission-mode-gated",
+            "tools": null
+          },
           "qualification_basis": "Evaluation-only candidate. Coding-lane qualification cannot promote or operationalize policy annotation."
         }
       }
