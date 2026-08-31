@@ -1,223 +1,35 @@
-# Usage-aware collaboration (installed by delegation-kit)
+# User-directed delegation guard (installed by delegation-kit)
 
-> **Adapt to your setup.** The profile names below (`luna-clerk` /
-> `terra-builder` / `terra-reviewer` / `sol-reviewer` / `sol-judge`) and their models are the author's reference
-> mapping — swap them for your own tiers (see `ADAPTING.md`). The *structure* is
-> the transferable part.
+## No standing permission to delegate
 
-- Default to solving simple, well-scoped work directly. Do not create subagents for a routine single-file change.
-- The lead owns requirements, decisions, integration, verification, and the final response.
-- For genuinely separable work, use at most two direct workers by default. Give each a bounded task, explicit file ownership, and a concise return format. Never allow recursive delegation.
-- Use `luna-clerk` only for very small deterministic inventory, extraction, transformation, and test-log summaries; it never implements. Use the Claude `sonnet-scout`/`sonnet-reviewer` profiles only for very small read-only work. Opus and Terra are high-level builders and reviewers at `max`: editing uses `opus-builder`/`terra-builder`, while review uses separate read-only `opus-reviewer`/`terra-reviewer` profiles. Keep `sol-reviewer` as an advanced read-only reviewer and `sol-judge` for explicit technical judgement.
-- When the native subagent tool cannot select a model, use the matching ephemeral CLI profile. `sol-judge` is read-only and explicit-only; it never edits, delegates, merges, or deploys.
-- Avoid double fan-out: in Ultra mode, let Ultra orchestrate and do not add a second manual delegation layer. Ultra is exceptional, not the default.
-- Every delegated result requires review by a sufficiently capable available model from a different family. Resolve review with `delegation-route resolve --lane <routine-review|material-review|security> --producer-profile <profile>`; never use an entry under `excluded_same_family`. If no eligible reviewer is available, stop. Escalate small-lane work that needs edits to an Opus/Terra builder and do not repeatedly retry an unsuitable worker.
-- Workers should return distilled evidence, changed paths, checks run, and unresolved risks—not raw logs or broad essays.
+DelegationKit exposes optional Claude and Codex lanes and profiles, but their
+presence grants no standing permission to delegate. Do not call Agent,
+Workflow, `codex exec`, `claude -p`, or any `delegation-* run` command unless
+the current user request explicitly asks for delegation.
 
-## Optional evaluated GLM executor
+A user may name the exact profile/lane and task, or explicitly authorize the
+lead to choose from the available lane choices. Task complexity, an installed
+skill, route ordering, a previous authorization, a failed attempt, or a desire
+for extra review is not authorization.
 
-GLM-5.3-Flash is available only through the installed `glm-executor` skill and the
-isolated Claude→Z.AI backend, keyed by `ZAI_API_KEY` or the 600-mode key the
-installer stored. The exact tuple is `glm-5.3-flash/max`: clerk and scout are
-qualified explicit-only; builder is provisional explicit-only and requires an
-explicit decision plus `--allow-provisional`. V4 passed 9/9 no-retry attempts
-with all 204 assistant events attributed to Flash and sole canonical first-party
-Flash `modelUsage`; earlier v1-v3 runs remain terminal. Reviewer is disabled and
-policy annotation remains blocked. Never silently substitute or bypass the gate.
+Authorization is per dispatch. It does not carry to retries, fallback, review,
+judgement, additional workers, or a later user message unless the user named
+that finite set of calls in the current request. If another agent call is
+needed, stop and ask.
 
-## Optional Gemini 3.7 Flash executor
-
-Gemini 3.7 Flash is staged only through `gemini-executor` and
-`delegation-gemini`, using the authenticated Antigravity CLI (`agy`). No lane is
-operational yet: scout at `medium` and builder/frontend-builder at `high` are
-blocked candidates; reviewer and judgement are disabled. The current local
-session cannot attest exact model inventory or OAuth, and the old Gemini 3.6
-smoke does not transfer. A visible model name or launch benchmark is not
-qualification. Never
-silently change the exact model, effort, backend, or lane. The bridge is
-prompt-only: include all needed file excerpts in the brief, and never enable
-`--dangerously-skip-permissions` or assume headless tools can read the repo.
-The runner starts `agy` with an empty temporary workspace and home, carries
-across only macOS Keychain access for OAuth, and explicitly denies every tool
-namespace.
-
-## Optional provisional DeepSeek V4 Pro builder
-
-DeepSeek V4 Pro is available only through `deepseek-executor` and
-`delegation-deepseek`, pinned to the official OpenAI-compatible API at effort
-`max`. Only `builder` is provisional and explicit-only; require an explicit
-decision and `--allow-provisional`. The lane is text-only: embed all relevant
-file excerpts, ask for a patch, then have the lead apply and verify it. One live
-exact-tuple patch smoke proved provider identity and effort acceptance, not
-builder qualification. Clerk, scout, reviewer, senior, and policy annotation
-remain blocked candidates; judgement is disabled. Never copy another tool's
-key silently or substitute another model, effort, backend, or lane.
-
-## Evidence-backed qualification
-
-Use `delegation-evidence lane <lane>` to inspect the dated external snapshot.
-Evidence is lane-specific and advisory: DeepSWE/Terminal-Bench support builder,
-WebDev supports only frontend-builder, and reviewer requires review precision and
-recall. The command cannot mutate a routing gate. Runtime/auth and a small local
-scope/permission smoke remain mandatory for the exact production variant.
-Use `delegation-route resolve --lane <lane>` for the central operational decision.
-For a review lane, always add `--producer-profile <profile>` (or the explicitly
-attested `--producer-family <family>`); omission fails closed.
-Before spawning a native profile, require it to appear in the appropriate
-default/fallback/explicit group. Invoking an explicit-only native profile is the
-manual selection event; blocked profiles must not be spawned. External runners
-enforce the same central graph in code before every check or dispatch.
-
-## Judgement
-
-Fable `max` and `sol-judge` (Sol `max`) are manually qualified, explicit-only
-judges. Fable covers architecture, trade-offs, and synthesis; Sol covers technical
-feasibility, repository fit, failure modes, and verifiability. For an explicitly
-approved `super-judgement`, they reason independently before cross-reviewing each
-other; the lead keeps final authority. Never trigger the pair automatically.
-
-## Optional gated Kimi model
-
-Kimi K3 is provisionally usable for `clerk`, `scout`, `builder`, and `frontend-builder`
-through the installed `kimi-executor` skill, using the native Kimi Code CLI at
-effort `max`, only with `--allow-provisional`. CLI compatibility is determined
-by capabilities, not by an exact version; the observed version is provenance
-only. Every lane uses an isolated minimal config, allowlisted environment,
-an ephemeral `--agent-file`, and a macOS sandbox. The read-only agent exposes
-only Read/Glob/Grep/TodoList; builders add scoped editing tools. Grep executes a
-digest-pinned `rg` copied into a sandbox-unwritable exec directory, while Bash,
-Web, MCP, skills, subagents,
-Plan, and every other executable remain blocked. Builders are confined to their
-canonical worktree. Compatibility requires `--agent-file`, `stream-json`, a
-valid isolated configuration, K3, and effective `max`; the CLI version is
-provenance only. The installer never runs `kimi update`.
-Senior is blocked; reviewer and judgement remain disabled.
-`policy-annotation` is candidate/blocked only for a manifest-bound evaluation
-at the exact Kimi K3/max tuple; it never adds an operational route or qualifies
-broad judgement. Installed
-runtimes and visible model names are not qualification. If the exact gate is
-absent, keep the incumbent profile; never silently substitute another model,
-effort, or lane. Dispatches serialize by default; parallel Kimi workers each
-need the explicit `--oauth shared` flag. Treat exit 69 as
-runtime/login/entitlement/quota unavailable,
-75 as overload/5xx/timeout/OAuth conflict (including a busy or superseded
-shared OAuth session), 70 as sandbox/output/unclassified
-failure, 78 as an unauthorized lane, and 130 as caller cancellation.
-
-## Optional provisional Qwen3.8-Max builder
-
-Qwen3.8-Max is installed only through `qwen-executor` and `delegation-qwen`,
-pinned to `qwen3.8-max` on the Qwen Cloud Token Plan OpenAI-compatible backend
-at `xhigh`. Only `builder` is promoted, as provisional and explicit-only:
-require an explicit routing decision and `--allow-provisional`. That promotion
-is an owner decision, not measured capability — no DeepSWE or Terminal-Bench v2
-row exists for this model, so both builder required metrics are unmet.
-
-The lane is text-only: the chat-completions transport has no tools, no terminal,
-and cannot edit a worktree, so it returns a patch the lead applies and verifies.
-It is also prompt-only — embed the relevant file excerpts in the brief, because
-paths alone reach nothing. Prefer an editing builder (Grok Build, Kimi Code) when
-the task genuinely needs autonomous edits.
-
-Subscription access, a valid key, or a smoke test is not qualification. Every
-other lane stays blocked until exact local evaluation promotes both routing
-gates, and a refused builder never justifies substituting a neighbouring lane.
-Never use `--evaluation` for ordinary work; it cannot be combined with
-`--allow-provisional`. The only evaluation-capable lane is manifest-bound
-`policy-annotation` at the exact Qwen/xhigh tuple; it cannot promote or mutate a
-gate or qualify broad judgement, and its previous manifest is void after the
-rename from `qwen3.8-max-preview`.
-
-## Optional Grok 4.6 builder
-
-Grok 4.6 is provisionally usable for `builder` and `frontend-builder` only
-through the installed `grok-executor` skill and `delegation-grok`, using Grok
-Build CLI at effort `high`. Require an explicit decision and
-`--allow-provisional`. The runner capability-probes the CLI, pins model and
-effort, extracts only `.text`, uses an ephemeral HOME without memory, subagents, web,
-plugins, MCP, compatibility imports, or updates, and requires the custom
-`delegation-kit` sandbox to attest enforcement. Permission mode is `dontAsk`,
-with only file edits explicitly allowed; terminal execution is not exposed and
-the lead runs verification. Runs have 40-turn and 15-minute limits. Any CLI
-version is accepted when those capabilities pass; the observed version is
-provenance only. An optional digest-checked private archive preserves the
-selected bytes independently of PATH; use `delegation-grok pin --force` for
-deliberate replacement. No other Grok lane is enabled, and failure never
-triggers a silent substitution.
-OAuth dispatches serialize by default and persist refreshes atomically. Parallel
-Grok workers must each pass `--oauth shared`; they share one runner-owned
-generation and coordinate refresh through the vendor auth lock, while external
-`grok login` supersedes the generation. Evaluations are always serialized.
-`policy-annotation` at `high` is the sole evaluation-only exception: it is
-candidate/blocked, manifest-bound, removes editing tools, requires the
-read-only sandbox, and creates no operational route.
-
-## Reaching Claude from Codex (cross-provider bridge)
-
-The lanes above route among OpenAI models. Reach across to Claude only within
-the same role boundaries:
-
-- **Builder work** — Opus 5 at `max`, with bounded file ownership and acceptance
-  checks.
-- **Cross-family review** — the separate read-only `opus-reviewer` profile at
-  `max`, but only for output produced outside the Anthropic family.
-- **Very small non-builder work** — Sonnet at low/medium for read-only scouting,
-  extraction, or a tiny routine review. Sonnet never edits.
-
-**How — headless Claude Code CLI** (verified flags). Always name **both** the model
-family/tier (`--model`) **and** the reasoning effort (`--effort`) — don't inherit
-defaults blindly:
+Read-only discovery is allowed without dispatch:
 
 ```sh
-# very small read-only scout/review (no edits):
-claude -p "<self-contained prompt>" --model sonnet --effort low --permission-mode plan
-
-# bounded builder work:
-claude -p "<self-contained prompt>" --model claude-opus-5 --effort max --permission-mode acceptEdits
-
-# cross-family read-only review after resolving producer identity:
-claude -p "<self-contained prompt>" --agent opus-reviewer --model claude-opus-5 --effort max --permission-mode plan
-
-# give the builder its role, or request structured output:
-claude -p "<prompt>" --model claude-opus-5 --effort max --permission-mode acceptEdits \
-  --append-system-prompt "You are a bounded builder. Edit only assigned files and report checks."
-# ...or define a named agent inline: --agents '<json>'
-# ...or machine-readable: --output-format stream-json
+delegation-route lane <lane> --json
+delegation-route resolve --lane <lane> [--producer-profile <profile>] --json
 ```
 
-- **Model + effort:** `--model claude-opus-5|sonnet|<full-id>` picks the family/tier;
-  `--effort low|medium|high|xhigh|max` sets the depth (available levels depend on
-  the model). Pin Opus builder and reviewer profiles to `max`; use Sonnet only
-  for very small non-builder work. Never let an Anthropic model review another
-  Anthropic model's output.
-- **Context (it starts fresh):** the Claude process does **not** see this Codex
-  session. It *does* share the filesystem — run it from the repo root so it reads
-  the same working tree (it auto-loads that repo's `CLAUDE.md`); widen its view
-  with `--add-dir <path>`; reference files **by path** instead of pasting them.
-  There is **no Codex→Claude history handoff** (the `codex@openai-codex` plugin is
-  Claude→Codex only), so put everything else the task needs into the prompt.
-- **Preflight auth and structured output semantically:** run the provider-free
-  `claude auth status` before a paid dispatch. On macOS, if a sanitized
-  environment relies on Keychain credentials, retain `USER`; an allowlist that
-  drops it can look logged out even when the interactive CLI works. Before
-  passing `--json-schema`, run `delegation-schema compile --provider claude
-  --schema <normative.json>` and pass that derived JSON. `claude --help` proves
-  only that a flag exists, not that auth or the actual schema will work.
-- **Harden each dispatch:** a prompt carries quotes, backticks, and newlines — write
-  it to a temp file and pass `"$(cat "$f")"`, never splice it raw into the command
-  (shell injection, arg-mangling). A run that exits non-zero *or* returns empty
-  failed — retry or escalate, don't accept a blank as a pass (`set -o pipefail`,
-  check `$?`). For parallel calls give each its own output file and read them in
-  dispatch order. The shared tree is context you want — run from the repo root, don't
-  scrub it away.
-- **Discipline:** don't claim the bridge is cheaper unless the target Claude model
-  actually fits the task. Treat its output as **unverified until checked**, same as
-  any delegation.
-- **Identity and usage are separate evidence:** record the requested model, any
-  explicitly surfaced effective content model, and every entry under
-  `modelUsage` separately. The keys of `modelUsage` are observed billing/usage
-  participants, not proof that each model authored the answer; safety fallback
-  and internal classifiers may add models. Sum tokens and cost across all
-  entries. If the provider does not distinguish the content model from internal
-  models, exact model identity is unavailable; a strict identity evaluation is
-  `VOID`, even if the prose answer looks valid.
+Present `.choices` to the user. After the user selects a profile, validate it
+with `--selected-profile <profile>`; this validation never dispatches and grants
+nothing. A delegated result still requires eligible cross-family review before
+shipping, but that reviewer call must also be user-authorized. If it is not,
+pause and ask rather than spawning it automatically.
+
+The lead owns integration, verification, and the final response. Never silently
+substitute a profile, widen a lane, merge, deploy, or claim that provider output
+is verified.

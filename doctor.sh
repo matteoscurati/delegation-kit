@@ -272,10 +272,15 @@ if [ -f "$CLAUDE_HOME/skills/grok-executor/SKILL.md" ]; then
 elif found_path "$CLAUDE_HOME/plugins" '*grok-executor/SKILL.md'; then
   ok "provisional Grok builder skill installed (via plugin cache; universal install still required for runner)"
 else warn "Grok builder skill missing — re-run ./install.sh"; fi
-# always-loaded policy (the plugin path does NOT install this — install.sh does)
-if [ -f "$CLAUDE_HOME/CLAUDE.md" ] && grep -qF "$BEGIN" "$CLAUDE_HOME/CLAUDE.md"; then
-  ok "delegation policy registered in CLAUDE.md (@import present)"
-else bad "CLAUDE.md has NO delegation-kit block -> Claude->Codex policy is NOT loaded. Run ./install.sh"; fi
+# always-loaded user-direction guard (the plugin path does NOT install this —
+# install.sh does). Presence alone is not enough: the installed block must be
+# this guard, not an older orchestration policy.
+if [ -f "$CLAUDE_HOME/CLAUDE.md" ] && grep -qF "$BEGIN" "$CLAUDE_HOME/CLAUDE.md" \
+    && [ -f "$KIT/claude/CLAUDE.delegation.md" ] \
+    && grep -qF "No standing permission to delegate" "$KIT/claude/CLAUDE.delegation.md" \
+    && grep -qF "Authorization is per dispatch" "$KIT/claude/CLAUDE.delegation.md"; then
+  ok "user-directed delegation guard registered in CLAUDE.md"
+else bad "CLAUDE.md has no delegation-kit user-direction guard -> automatic dispatch policy may still be loaded. Run ./install.sh"; fi
 
 # ---- Codex side install ----
 hdr "Codex install ($CODEX_HOME)"
@@ -336,9 +341,13 @@ if [ -f "$CODEX_HOME/agents/sol-judge.toml" ] \
 else
   bad "sol-judge missing, stale, or not max/read-only — re-run ./install.sh"
 fi
-if [ -f "$CODEX_HOME/AGENTS.md" ] && grep -qF "$BEGIN" "$CODEX_HOME/AGENTS.md"; then
-  ok "collaboration policy registered in AGENTS.md"
-else bad "AGENTS.md has NO delegation-kit block -> Codex->Claude policy is NOT loaded. Run ./install.sh"; fi
+# The registered block must be the current user-direction guard: an older
+# orchestration policy left in AGENTS.md is exactly what this check refuses.
+if [ -f "$CODEX_HOME/AGENTS.md" ] && grep -qF "$BEGIN" "$CODEX_HOME/AGENTS.md" \
+    && grep -qF "No standing permission to delegate" "$CODEX_HOME/AGENTS.md" \
+    && grep -qF "Authorization is per dispatch" "$CODEX_HOME/AGENTS.md"; then
+  ok "user-directed delegation guard registered in AGENTS.md"
+else bad "AGENTS.md has no delegation-kit user-direction guard -> automatic dispatch policy may still be loaded. Run ./install.sh"; fi
 if [ -f "$CODEX_HOME/skills/glm-executor/SKILL.md" ]; then
   ok "optional GLM executor skill installed for Codex"
 else warn "optional GLM executor skill missing for Codex"; fi
