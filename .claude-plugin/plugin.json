@@ -1,9 +1,24 @@
 {
   "name": "delegation-kit",
   "version": "0.19.0",
-  "description": "Teach Claude Code how and when to delegate coding work across lanes — small support, max-effort Opus/Terra build and review, mandatory cross-family verification, and explicit judgement — with guarded bridges and deterministic Claude/Codex schema transport.",
-  "author": { "name": "Matteo Scurati", "url": "https://github.com/matteoscurati" },
+  "description": "Teach Claude Code how and when to delegate coding work across user-directed lanes — small support, max-effort Opus/Terra build and review, mandatory cross-family verification, and explicit judgement. Delegation happens only when the user names the profile or explicitly delegates the choice for the current request; nothing dispatches automatically.",
+  "author": {
+    "name": "Matteo Scurati",
+    "url": "https://github.com/matteoscurati"
+  },
   "homepage": "https://github.com/matteoscurati/delegation-kit",
   "license": "MIT",
-  "keywords": ["delegation", "subagents", "model-routing", "orchestration", "codex", "glm", "gemini", "kimi", "grok", "qwen", "deepseek"]
+  "keywords": [
+    "delegation",
+    "subagents",
+    "model-routing",
+    "orchestration",
+    "codex",
+    "glm",
+    "gemini",
+    "kimi",
+    "grok",
+    "qwen",
+    "deepseek"
+  ]
 }

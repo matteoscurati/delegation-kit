@@ -14,8 +14,10 @@ scope, permissions, output contracts, or the pinned effort.
 
 Operational decisions live in `config/routing-gates.json`. Inspect them with
 `delegation-route`; `status` records confidence and `selection` records whether a
-profile is default, fallback, explicit-only, or blocked. Judgement is manual-only,
-and the Fable+Sol super-judgement pair never dispatches automatically.
+profile is `explicit-only` (user-selectable) or `blocked`. Judgement is
+manual-only, and the Fable+Sol super-judgement pair never dispatches
+automatically. Under the top-level `activation_policy`, every dispatch is
+user-directed and per-request; there are no default or fallback routes.
 The central file is authoritative: all external runners validate the complete
 decision graph and read their dispatch status from it before checking runtime or
 authentication. Their backend-specific JSON files retain transport and legacy

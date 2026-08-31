@@ -201,7 +201,20 @@ automatically, and never merges or deploys.
 
 ## How to apply
 
-- **Sonnet and Luna are very-small non-builder lanes.** Use them only for tightly
+Delegation is user-directed and per dispatch. The flow is always:
+
+1. List what is selectable: `delegation-route resolve --lane <lane> --json`
+   (review lanes add `--producer-profile <profile>`). Present `.choices`.
+2. The user names the profile, or authorizes the lead to choose from the
+   displayed choices. Task complexity, an installed skill, evidence ranking, or
+   a previous authorization is not a selection.
+3. Validate: `delegation-route resolve --lane <lane> --selected-profile <profile>`
+   (this validates only — it never dispatches and grants nothing).
+4. Dispatch only what the user named, with any `--allow-provisional` decision
+   the user made. Retries, additional workers, reviewers, and judgement calls
+   each need their own authorization unless the user named that finite set.
+
+- **Sonnet and Luna are very-small non-builder lanes.** Select them only for tightly
   bounded clerk, scout, or routine-review work. They do not implement changes.
 - **Opus and Terra build and review at `max`.** Editing uses `terra-builder` or
   `opus-builder`; review uses the separate read-only `terra-reviewer` or
@@ -212,10 +225,10 @@ automatically, and never merges or deploys.
   `delegation-route resolve --lane <routine-review|material-review|security>
   --producer-profile <profile>`. The command fails without producer identity and
   reports same-family profiles under `excluded_same_family`.
-- **Sol remains an advanced default only when cross-family.** `sol-reviewer/high`
-  is excluded for Terra, Luna, Sol, or any other OpenAI-family producer. Opus is
-  excluded for Anthropic-family output. If every returned reviewer is
-  unavailable, stop rather than weakening the family boundary.
+- **Sol is an advanced reviewer choice only when cross-family.** `sol-reviewer/high`
+   is excluded for Terra, Luna, Sol, or any other OpenAI-family producer. Opus is
+   excluded for Anthropic-family output. If every returned reviewer is
+   unavailable, stop rather than weakening the family boundary.
 - **These role boundaries are limits.** A failed Sonnet/Luna task escalates to
   the appropriate builder or reviewer; it never turns the small lane into a
   builder. Judge every output independently of price.
@@ -284,7 +297,8 @@ implementation.
    relevant. This smoke does not re-score general model quality.
 5. **Record the owner decision in the versioned gate.** External evidence never
    mutates a decision. `status` records evidence confidence; `selection` records
-   whether a profile is default, fallback, explicit-only, or blocked.
+   whether a profile is `explicit-only` (user-selectable) or `blocked` — the
+   user-directed activation policy has no default or fallback routes.
 6. **Refresh or disable.** A stale evidence snapshot (currently >45 days) blocks
    new qualification decisions until its live sources are checked again.
 
@@ -304,7 +318,8 @@ toolchain fixes are therefore not routable to GLM builder; the lead closes them
 `frontend-builder`; senior is a blocked candidate, while reviewer and judgement
 remain disabled. Other provisional bridge runs require `--allow-provisional`.
 Grok 4.6 is provisional for `builder` and `frontend-builder` through Grok Build
-CLI at `high`; both lanes are `preferred-explicit`. The runner capability-probes the CLI and optionally archives
+CLI at `high`; both lanes are `explicit-only` and require an explicit user
+decision plus `--allow-provisional`. The runner capability-probes the CLI and optionally archives
 the selected bytes privately with a digest, so a vendor update cannot silently
 replace them. CLI version is provenance only. No Grok reviewer, senior, or
 judgement lane exists.
