@@ -141,6 +141,28 @@ jq -e --slurpfile policy "$TMP/patch-policy.json" '
   || fail 'the installed contract does not require the installed patch policy version'
 [ -f "$TMP/claude/skills/deepseek-executor/SKILL.md" ] && [ -f "$TMP/codex/skills/deepseek-executor/SKILL.md" ] \
   || fail 'install did not include the DeepSeek executor skill on both surfaces'
+
+# The resident files must be the user-direction guard, not an orchestration
+# policy that dispatches agents on its own authority.
+grep -Fq "@$ROOT/claude/CLAUDE.delegation.md" "$TMP/claude/CLAUDE.md" \
+  || fail 'Claude install did not register the user-direction guard'
+grep -Fq 'No standing permission to delegate' "$ROOT/claude/CLAUDE.delegation.md" \
+  || fail 'Claude resident policy is not the user-direction guard'
+grep -Fq 'No standing permission to delegate' "$TMP/codex/AGENTS.md" \
+  || fail 'Codex resident policy is not the user-direction guard'
+! grep -Fq 'mandatory consult' "$ROOT/claude/CLAUDE.delegation.md" \
+  || fail 'Claude resident policy still mandates automatic agent calls'
+
+# Every executor/routing skill must be explicitly user-triggered, and the
+# orchestrate skill must no longer hide mandatory agent calls behind prose.
+for skill in model-routing orchestrate glm-executor gemini-executor kimi-executor \
+             grok-executor qwen-executor deepseek-executor; do
+  grep -Fq 'User direction is required' "$ROOT/skills/$skill/SKILL.md" \
+    || fail "$skill does not require user direction"
+done
+! grep -Fq 'mandatory consult' "$ROOT/skills/orchestrate/SKILL.md" \
+  || fail 'orchestrate still mandates hidden agent calls'
+ok
 [ -f "$TMP/claude/agents/opus-builder.md" ] \
   && grep -Fxq 'model: claude-opus-5' "$TMP/claude/agents/opus-builder.md" \
   && grep -Fxq 'effort: max' "$TMP/claude/agents/opus-builder.md" \

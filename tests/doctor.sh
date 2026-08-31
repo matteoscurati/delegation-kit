@@ -56,6 +56,21 @@ grep -Eq '^== Summary: [0-9]+ OK, [0-9]+ WARN, [0-9]+ FAIL ==$' "$TMP/doctor.log
 PLUGIN_ROOT="$TMP/plugin/delegation-kit"
 mkdir -p "$PLUGIN_ROOT/agents" "$TMP/claude/plugins"
 cp "$ROOT"/agents/*.md "$PLUGIN_ROOT/agents/"
+# Register the user-direction guard in both homes so doctor can verify it:
+# the fixture mirrors a real universal install, where install.sh writes the
+# guarded block into CLAUDE.md/AGENTS.md before doctor runs.
+BEGIN_MARK='<!-- >>> delegation-kit >>> -->'
+END_MARK='<!-- <<< delegation-kit <<< -->'
+{
+  printf '%s\n' "$BEGIN_MARK"
+  cat "$ROOT/claude/CLAUDE.delegation.md"
+  printf '%s\n' "$END_MARK"
+} >"$TMP/claude/CLAUDE.md"
+{
+  printf '%s\n' "$BEGIN_MARK"
+  cat "$ROOT/codex/AGENTS.md"
+  printf '%s\n' "$END_MARK"
+} >"$TMP/codex/AGENTS.md"
 cat >"$TMP/claude/plugins/installed_plugins.json" <<EOF
 {"plugins":{"delegation-kit@test":[{"installPath":"$PLUGIN_ROOT"}]}}
 EOF
@@ -72,6 +87,16 @@ grep -Fq '[ OK ] fable-judge pinned to fable/max and read-only judgement' "$TMP/
 grep -Fq '[ OK ] sonnet-reviewer pinned to sonnet/medium, tool-read-only, and cross-family only' "$TMP/plugin-doctor.log"
 grep -Fq '== External executor contract ==' "$TMP/plugin-doctor.log" || {
   printf 'doctor did not report on the external executor contract\n' >&2
+  exit 1
+}
+# The resident files must be checked as the user-direction guard, not merely as
+# a registered policy block.
+grep -Fq '[ OK ] user-directed delegation guard registered in CLAUDE.md' "$TMP/plugin-doctor.log" || {
+  printf 'doctor did not verify the Claude user-direction guard\n' >&2
+  exit 1
+}
+grep -Fq '[ OK ] user-directed delegation guard registered in AGENTS.md' "$TMP/plugin-doctor.log" || {
+  printf 'doctor did not verify the Codex user-direction guard\n' >&2
   exit 1
 }
 

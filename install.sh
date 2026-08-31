@@ -297,8 +297,10 @@ if [ "$do_claude" = 1 ]; then
   rm -f "$CLAUDE_HOME/agents/sonnet-builder.md"
   cp "$KIT"/agents/*.md "$CLAUDE_HOME/agents/"
   echo "  + 6 subagent profiles -> $CLAUDE_HOME/agents/"
-  # register the always-loaded policy first — it is the linchpin, so a missing optional
-  # skill source below cannot abort install (set -e) before the bridge is wired
+  # register the user-direction guard first — it is the linchpin, so a missing
+  # optional skill source below cannot abort install (set -e) before the bridge
+  # is wired. append_guarded replaces any older guarded block (including a
+  # previous orchestration policy) during the upgrade.
   append_guarded "$CLAUDE_HOME/CLAUDE.md" "@$KIT/claude/CLAUDE.delegation.md"
   cp -R "$KIT/skills/model-routing" "$CLAUDE_HOME/skills/"
   cp "$KIT/model-routing.md" "$CLAUDE_HOME/skills/model-routing/"   # co-locate the evidence-backed policy so the skill's pointer resolves

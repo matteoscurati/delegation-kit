@@ -35,8 +35,9 @@ Five places — keep them in sync:
    - `codex/agents/<name>.toml`: `model = "..."`, `model_reasoning_effort = "..."`
    - `codex/profiles/<name>.config.toml`: same `model` + `model_reasoning_effort`
 3. **The central gate** — `config/routing-gates.json`: update exact profile,
-   status, selection, evidence references, fallback, `model_families`, the
-   cross-family `review_policy`, and any compound lane.
+   status, explicit-only selection, evidence references, `model_families`, the
+   cross-family `review_policy`, the `activation_policy`, and any compound
+   lane. Selections are only `explicit-only` or `blocked`; keep it that way.
 4. **The prose** — `claude/CLAUDE.delegation.md`, `codex/AGENTS.md`,
    `model-routing.md`: update the reference mapping and lane-evidence notes.
 5. **Executable bridges and sync surfaces** — for an external model, keep its
@@ -46,7 +47,10 @@ Five places — keep them in sync:
    example: only `builder` and `frontend-builder`, Grok Build CLI, effort `high`.
 
 Then re-run `./install.sh`; it refreshes copied files and replaces the guarded
-policy blocks while retaining backups. Uninstalling first is unnecessary.
+user-direction blocks while retaining backups. Uninstalling first is
+unnecessary. Customized installations must preserve the user-direction guard:
+selections stay `explicit-only`/`blocked` and nothing may dispatch without the
+user naming the call for the current request.
 
 ## Refreshing evidence and qualifying lanes
 

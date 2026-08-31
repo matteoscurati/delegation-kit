@@ -142,6 +142,12 @@ policy-annotation lane is non-dispatchable. Blocked and candidate lanes are
 declared so the contract stays complete, and the validator refuses a contract in
 which any of them becomes dispatchable.
 
+Selection is user-directed: the shared vocabulary holds only `explicit-only`
+(user-selectable) and `blocked`, every dispatchable lane carries
+`requires_explicit_decision: true`, and the contract records that fact without
+being able to prove user intent or grant permission — the native host policy and
+each runner remain responsible for their own enforcement.
+
 The four `text-patch` lanes — Qwen and DeepSeek `builder`, plus the two blocked
 Gemini lanes — each declare the versioned patch policy that
 [`delegation-patch-verify`](#the-patch-verifier-for-text-patch-lanes) enforces.

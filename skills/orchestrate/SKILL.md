@@ -1,17 +1,17 @@
 ---
 name: orchestrate
-description: >-
-  Run a task too big for one pass as a lead-executor-advisor loop — plan, fan the
-  work out across cheap parallel workers, verify each result against its own
-  criteria, and have the expensive model judge the plan up front and the ship at
-  the end. Use when the user says "too big for one pass", "fan this out",
-  "orchestrate across a model team", "run the advisor-worker loop", or asks to
-  parallelize research/generation across many subtasks. NOT for single-file edits,
-  work one pass handles, or when you are already inside a Workflow/ultra run (that
-  is the orchestrator already — no double fan-out).
+description: Use only when the current user explicitly requests multi-agent orchestration. Propose a finite dispatch plan and do not add retries, reviewers, or advisor calls beyond the user-authorized set.
 ---
 
 # Orchestrate: run the lead-executor-advisor loop
+
+## User direction is required
+
+This skill grants no standing permission to call another model. The current user
+must select the exact lane/profile, or explicitly authorize the lead to choose
+from `delegation-route resolve` choices. Authorization is per dispatch and does
+not silently carry to retries, reviewers, advisors, or additional workers.
+
 
 You are the **Lead** of your model team. You own the hot path: frame, plan,
 delegate, verify, synthesize. You never do executor-level grunt work yourself, and
@@ -103,34 +103,41 @@ background subshells:
 2. **Plan.** Decompose into self-contained subtasks with inputs (in-tree by path,
    everything else inline), acceptance criteria, and wave assignments that maximize
    parallelism.
-3. **Plan review — mandatory consult #1 (Judgement).** Send the plan using
+3. **Plan review — user-authorized consult (Judgement).** Unless the user named
+   the judgement consult in the current request, ask before sending the plan using
    `references/advisor-consult.md`. Revise; state what you changed and what you
    rejected. This is the cheapest place to catch a wrong decomposition.
-4. **Delegate.** Dispatch each wave via `references/worker-brief.md`. **No double
+4. **Authorize the dispatch plan.** Show the finite list `profile/lane → task`
+   and obtain the user's confirmation unless the user already named that
+   complete set. "Orchestrate this" authorizes proposing the plan, not an
+   unbounded number of calls; dispatch begins only after the finite plan is
+   approved, and a failed call returns to the user rather than auto-retrying.
+   Then dispatch each approved wave via `references/worker-brief.md`. **No double
    fan-out** — if you were invoked from inside a Workflow/ultra run, you are already
    the orchestrator; run the loop inline, don't nest another delegation layer.
 5. **Verify and cross-review.** Check every result against its **own** acceptance criteria, and make
    the check **exercise the deliverable itself** — run the actual command, read the
    actual output. Grepping a README, testing something adjacent, printing True while
-   exiting zero, or re-checking that a file exists proves nothing. Then resolve a
-   review lane with the producer profile. Tiny work uses `routine-review`,
-   implementation uses `material-review`, and security-sensitive work uses
-   `security`. Dispatch only a returned, available reviewer from another family;
-   self-check and lead verification do not replace this review. Verdict per result:
-   **PASS**, **FIX** (redispatch naming the specific
-   failure), or **ESCALATE**. Never silently accept a partial pass; never hand-patch
-   a substantive failure — redispatch.
+   exiting zero, or re-checking that a file exists proves nothing. A delegated
+   result still needs eligible cross-family review — resolve with the producer
+   profile (`routine-review`, `material-review`, or `security` by content) — but
+   that reviewer call is a dispatch too: pause and ask when the user did not
+   authorize it. Verdict per result:
+   **PASS**, **FIX** (ask the user before redispatching), or **ESCALATE**. Never silently accept a partial pass; never hand-patch
+   a substantive failure.
 6. **Synthesize.** When all subtasks pass, assemble the deliverable. Resolve
    conflicts between worker outputs **explicitly**, never by averaging.
-7. **Ship / taste pass — mandatory consult #2.** Send the draft for the final
+7. **Ship / taste pass — user-authorized consult.** Unless already authorized,
+   ask before sending the draft for the final
    judgement: **Judgement** for synthesis and go/no-go; an eligible cross-family
    reviewer for material technical/security review; the lead owns user-facing taste. Apply or explicitly
    rebut each note.
 
-## Commitment boundaries — when a touch past the mandatory two is justified
+## Commitment boundaries — when to come back for another consult
 
-The judgement lane is two-touch by default (it is metered — real money per call).
-Only a crossed boundary buys a third+ consult, and spending it is **never silent**
+The judgement lane is a metered, user-authorized call. Extra consults need a
+crossed commitment boundary **and** the user's go-ahead, and asking is
+**never silent** (log it on the status board):
 (log it on the status board):
 
 - two worker results contradict each other beyond the provided brief;
@@ -140,11 +147,9 @@ Only a crossed boundary buys a third+ consult, and spending it is **never silent
 
 ## Budget, status board, degraded mode
 
-- **Budget** — set at the frame step, sized to the plan. A reasonable shape: ~2× the
-  subtask count in executor dispatches (retries and bridge redispatches count), plus
-  the 2 mandatory consults and any boundary consults. The cap isn't the point;
-  spending past it is never silent — stop and report, or tell the user what more
-  would cost and let them decide.
+- **Budget** — the user-approved finite dispatch list is the budget. Nothing
+  beyond it (retries, extra reviewers, boundary consults) runs without going
+  back to the user; when you need more, say what and why, and let them decide.
 - **Status board** — print one line per subtask after each loop step: state
   (PENDING / DISPATCHED / PASS / FIX / ESCALATED), lane/path, retries. e.g.
   `W2: FIX → PASS | opus-builder→codex:terra-builder | 1 retry`.

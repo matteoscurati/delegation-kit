@@ -1,9 +1,17 @@
 ---
 name: qwen-executor
-description: Dispatch the explicitly promoted Qwen3.8-Max builder lane through the isolated Token Plan runner, or inspect the still-blocked lanes. Never bypass its gate or silently change model, effort, or lane.
+description: Use only when the current user explicitly selects the Qwen text-patch builder or asks to inspect Qwen choices. Never dispatch Qwen automatically.
 ---
 
 # Qwen3.8-Max executor
+
+## User direction is required
+
+This skill grants no standing permission to call another model. The current user
+must select the exact lane/profile, or explicitly authorize the lead to choose
+from `delegation-route resolve` choices. Authorization is per dispatch and does
+not silently carry to retries, reviewers, advisors, or additional workers.
+
 
 Pinned to `qwen3.8-max` through the Qwen Cloud Token Plan OpenAI-compatible
 endpoint at `xhigh`. There is no provider, model, or effort fallback.

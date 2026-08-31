@@ -1,9 +1,17 @@
 ---
 name: model-routing
-description: How and when to delegate coding work across models — pick a small non-builder lane, a max-effort Opus/Terra builder, a cross-family reviewer, or explicit judgement, and know when a manual gate is required. Use when deciding whether to spawn a subagent, which model/effort to hand a task, how to route a code review, or when to escalate. Also covers reaching Codex from Claude.
+description: Use only when the current user explicitly asks to delegate, list delegation lanes, validate a chosen profile, or authorize the lead to choose a profile. Never activate from task complexity alone.
 ---
 
 # Model-routing: which model does which job
+
+## User direction is required
+
+This skill grants no standing permission to call another model. The current user
+must select the exact lane/profile, or explicitly authorize the lead to choose
+from `delegation-route resolve` choices. Authorization is per dispatch and does
+not silently carry to retries, reviewers, advisors, or additional workers.
+
 
 You are orchestrating coding work across several models. Route by the exact role
 boundary first, then by evidence and cost. The dated evidence snapshot

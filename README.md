@@ -527,20 +527,48 @@ declaration — including for the blocked Gemini lanes, because a declaration th
 is wrong while blocked becomes wrong and operational the day it is promoted. The
 reference grants nothing: no runner reads it, and the suite asserts that.
 
-The central decision file is [`config/routing-gates.json`](./config/routing-gates.json).
+DelegationKit makes optional lanes available; it never chooses to dispatch on
+its own. The central decision file is [`config/routing-gates.json`](./config/routing-gates.json).
 It is the dispatch authority: GLM, Gemini, Kimi, Grok, Qwen, and DeepSeek validate it against their complete
 backend gates before every check/run, and refuse drift. Exact and contextual
 benchmark references are stored separately, and the generated table exposes
 local sample size/confidence instead of treating legacy scores as comparable.
-Review resolution is producer-aware and fail-closed:
+Every operational selection is `explicit-only` — there are no default or
+fallback routes, and the top-level `activation_policy` records that each
+dispatch must be selected or explicitly delegated by the user for the current
+request. Review resolution is producer-aware and fail-closed:
 `delegation-route resolve --lane material-review --producer-profile <profile>`
-removes every reviewer from the producer's model family. Sol/high is the
-provisional default when it remains cross-family; Opus/Terra max are read-only
-fallback reviewers, and runtime availability must be verified before dispatch.
-No exact review precision/recall row exists, so these routes remain provisional.
-Fable `max` and Sol `max` are explicit, manually qualified judgement profiles.
-`super-judgement` pairs them as independent judges followed by cross-review; the
-lead retains final authority and no dispatch, merge, or deploy is automatic.
+removes every reviewer from the producer's model family and returns the
+remaining choices. Sol/high, Opus/max, and Terra/max are all read-only reviewer
+choices — none is chosen for you — and runtime availability must be verified
+before dispatch. No exact review precision/recall row exists, so these routes
+remain provisional. Fable `max` and Sol `max` are explicit, manually qualified
+judgement profiles. `super-judgement` pairs them as independent judges followed
+by cross-review; the lead retains final authority and no dispatch, merge, or
+deploy is automatic.
+
+The manual flow, end to end:
+
+```sh
+delegation-route lane builder --json
+delegation-route resolve --lane builder --json
+delegation-route resolve --lane builder --selected-profile terra-builder --json
+# Only after the user chooses it:
+codex exec --ephemeral -p terra-builder "<bounded user-authorized task>" </dev/null
+```
+
+Prompt patterns that authorize a dispatch:
+
+- `Use terra-builder for <task>.` — names the exact profile.
+- `Delegate <task> to a builder; show me the available profiles before dispatch.` —
+  authorizes listing, then a user choice.
+- `You may choose one builder from the displayed choices for <task>.` —
+  authorizes the lead's selection from `.choices` for this dispatch.
+
+Retries and cross-family reviewers are dispatches too: each needs its own
+authorization unless the original request named that finite set. `./doctor.sh`
+verifies the guard is registered on both hosts; `./install.sh` is what installs
+it (a plugin-only install does not register the resident guard).
 
 ## Install
 
@@ -550,7 +578,7 @@ git clone https://github.com/matteoscurati/delegation-kit
 cd delegation-kit
 ./install.sh            # or --claude-only / --codex-only
 ```
-Idempotent, refreshes its guarded policy blocks, backs up before editing, and
+Idempotent, refreshes the guarded user-direction blocks, backs up before editing, and
 prints the Codex config snippet (it never auto-edits `config.toml`). Keep the
 cross-provider bridge available when using a single-host install: `--claude-only`
 or `--codex-only` can leave no installed cross-family reviewer for work produced
@@ -560,8 +588,8 @@ at it, so `git pull` updates the policy live. Remove with `./uninstall.sh`.
 
 Then verify the bridge and evidence snapshot are actually **wired** (not just
 written) with `./doctor.sh` —
-it checks both CLIs, auth, the installed profiles *and* the always-loaded policy
-blocks, and the Codex sandbox/network posture. `./doctor.sh --ping` also does a
+it checks both CLIs, auth, the installed profiles *and* the always-loaded
+user-direction guard blocks, and the Codex sandbox/network posture. `./doctor.sh --ping` also does a
 live round-trip in both directions; `--ping-glm`, `--ping-kimi`, and
 `--ping-grok` separately exercise their gated runtimes. The failure it catches
 is silent: profiles present but a policy block missing means the bridge never
@@ -593,12 +621,17 @@ This installs the 6 agents plus the `model-routing`, `orchestrate`, and guarded
 `glm-executor`, `gemini-executor`, `kimi-executor`, provisional `grok-executor`,
 and provisional `qwen-executor` skills. It does not install any external model
 runner/gate, register the
-`CLAUDE.md` policy prose, or install the Codex side — run `./install.sh` for those.
+`CLAUDE.md` user-direction guard, or install the Codex side — run `./install.sh`
+for those.
 
 ## How it works
 
+- **Every dispatch is user-directed.** Delegation happens when the user names
+  the profile or explicitly delegates the choice for the current request; the
+  kit never selects a route on its own.
 - **Lead** owns the work and enters the **judgement** model only in short bursts
-  (a plan up front, a verdict at the end) — thinking, not typing.
+  (a plan up front, a verdict at the end) — thinking, not typing — and only
+  when the user authorized that call.
 - **Small non-builder lanes** use Sonnet or Luna only for tightly bounded clerk,
   scout, and routine-review work.
 - **Builder** uses Opus 5 or GPT-5.6 Terra, both pinned to `max`.

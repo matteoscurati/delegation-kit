@@ -1,17 +1,22 @@
 {
   "$schema": "https://anthropic.com/claude-code/marketplace.schema.json",
   "name": "delegation-kit",
-  "owner": { "name": "Matteo Scurati", "url": "https://github.com/matteoscurati" },
+  "owner": {
+    "name": "Matteo Scurati",
+    "url": "https://github.com/matteoscurati"
+  },
   "metadata": {
-    "description": "Cross-tool delegation kit with model-routing profiles, guarded external-model bridges, and deterministic Claude/Codex schema transport.",
+    "description": "Cross-tool delegation kit with model-routing profiles, guarded external-model bridges, deterministic Claude/Codex schema transport, and user-directed activation: every dispatch is chosen or explicitly delegated by the user.",
     "version": "0.19.0"
   },
   "plugins": [
     {
       "name": "delegation-kit",
-      "description": "Model-routing profiles, orchestration, guarded external-model executor skills, and deterministic Claude/Codex schema transport.",
+      "description": "User-directed model-routing profiles, orchestration, guarded external-model executor skills, and deterministic Claude/Codex schema transport.",
       "version": "0.19.0",
-      "author": { "name": "Matteo Scurati" },
+      "author": {
+        "name": "Matteo Scurati"
+      },
       "homepage": "https://github.com/matteoscurati/delegation-kit",
       "license": "MIT",
       "source": "./"

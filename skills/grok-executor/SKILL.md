@@ -1,12 +1,17 @@
 ---
 name: grok-executor
-description: >-
-  Dispatch the explicitly promoted Grok 4.6 builder or frontend-builder lane
-  through the installed Grok Build CLI. Never bypass its gate or silently
-  change model, effort, backend, permissions, or lane.
+description: Use only when the current user explicitly selects a Grok lane or authorizes the lead to choose it from displayed choices. Never dispatch Grok automatically.
 ---
 
 # Grok 4.6 builder executor
+
+## User direction is required
+
+This skill grants no standing permission to call another model. The current user
+must select the exact lane/profile, or explicitly authorize the lead to choose
+from `delegation-route resolve` choices. Authorization is per dispatch and does
+not silently carry to retries, reviewers, advisors, or additional workers.
+
 
 Grok 4.6 is provisionally available for `builder` and `frontend-builder` through
 the native Grok Build CLI at reasoning effort `high`.

@@ -50,3 +50,9 @@ conditional pass?
 **Handling the response.** Apply or **explicitly rebut** every note — rebuttals go
 in the final report. Never silently drop an advisor note. And never let the advisor
 type: it critiques, the executor (or the lead) makes the edit.
+
+## User direction is required
+
+This reference grants no standing permission to call another model. Every
+dispatch it describes must be part of the user-approved finite plan, and
+authorization does not silently carry to retries, reviewers, or advisors.

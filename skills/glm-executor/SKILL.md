@@ -1,11 +1,17 @@
 ---
 name: glm-executor
-description: >-
-  Dispatch a gate-approved GLM-5.3-Flash lane through delegation-glm. Qualified
-  lanes remain explicit-only; builder requires an explicit provisional decision.
+description: Use only when the current user explicitly selects a GLM lane or asks to inspect GLM choices. Never dispatch GLM as an automatic fallback.
 ---
 
 # GLM-5.3-Flash executor bridge
+
+## User direction is required
+
+This skill grants no standing permission to call another model. The current user
+must select the exact lane/profile, or explicitly authorize the lead to choose
+from `delegation-route resolve` choices. Authorization is per dispatch and does
+not silently carry to retries, reviewers, advisors, or additional workers.
+
 
 GLM-5.3-Flash is an optional external executor, not a native Claude or Codex
 model. Before dispatch, run `delegation-glm check --json`. The gate is pinned

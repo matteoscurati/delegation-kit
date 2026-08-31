@@ -1,11 +1,17 @@
 ---
 name: kimi-executor
-description: >-
-  Dispatch a provisional Kimi K3 lane through delegation-kimi after an explicit
-  decision. Never use it before the evaluation gate or as a silent fallback.
+description: Use only when the current user explicitly selects a Kimi lane or authorizes the lead to choose it from displayed choices. Never dispatch Kimi as an automatic fallback.
 ---
 
 # Kimi K3 executor bridge
+
+## User direction is required
+
+This skill grants no standing permission to call another model. The current user
+must select the exact lane/profile, or explicitly authorize the lead to choose
+from `delegation-route resolve` choices. Authorization is per dispatch and does
+not silently carry to retries, reviewers, advisors, or additional workers.
+
 
 Kimi K3 is an optional external executor available through native Kimi Code
 (`kimi-code/k3`, effort `max`).

@@ -191,6 +191,22 @@ jq -e '
 ' "$CONTRACT" >/dev/null || fail 'lane dispatchability or blocked-lane discipline is wrong'
 pass=$((pass + 1))
 
+# User-directed activation: the contract vocabulary is explicit-only/blocked,
+# every dispatchable lane requires an explicit decision, and nothing grants
+# permission on its own.
+jq -e '
+  .vocabularies.selection_values == ["explicit-only", "blocked"] and
+  all(.families[].lanes[];
+    (.selection == "explicit-only" or .selection == "blocked") and
+    (.requires_explicit_decision == .dispatchable))
+' "$CONTRACT" >/dev/null || fail 'the contract permits an implicit external lane selection'
+pass=$((pass + 1))
+
+jq '.families["grok-4.6"].lanes.builder.selection = "default"' \
+  "$CONTRACT" >"$TMP/bad-implicit-selection.json"
+expect_failure 65 env DELEGATION_EXECUTOR_CONTRACT_FILE="$TMP/bad-implicit-selection.json" \
+  "$CMD" check --json
+
 # ---------------------------------------------------------------------------
 # Read-only inspection subcommands.
 # ---------------------------------------------------------------------------
@@ -778,8 +794,10 @@ expect_failure 66 env DELEGATION_EXECUTOR_CONTRACT_FILE="$TMP/absent-contract.js
 # ---------------------------------------------------------------------------
 # Negative: disagreement with the central gate and with an executable gate.
 # ---------------------------------------------------------------------------
-jq '.profiles["grok-build"].lanes.builder.selection = "explicit-only"' config/routing-gates.json \
-  >"$TMP/central-drift.json"
+# The gate already declares grok builder explicit-only, so drift now comes from
+# flipping a different declared row to a selection the contract does not allow.
+jq '.profiles["glm53-flash-max-builder"].lanes.builder.selection = "default"' \
+  config/routing-gates.json >"$TMP/central-drift.json"
 expect_failure 65 env DELEGATION_ROUTING_GATES_FILE="$TMP/central-drift.json" "$CMD" check
 jq '.profiles["kimi-k3"].effort = "high"' config/routing-gates.json >"$TMP/central-effort-drift.json"
 expect_failure 65 env DELEGATION_ROUTING_GATES_FILE="$TMP/central-effort-drift.json" "$CMD" check

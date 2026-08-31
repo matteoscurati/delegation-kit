@@ -32,8 +32,11 @@ usage: delegation-route <check|lane NAME|profile NAME|resolve --lane NAME|table>
   check             validate gates, enums, references, and compound lanes
   lane NAME         list every profile configured for a lane
   profile NAME      show one exact profile and all its lane decisions
-  resolve --lane N  return the allowed routing decision; never dispatches
-                    review lanes require --producer-profile NAME or
+  resolve --lane N [--selected-profile NAME]
+                    list the user-selectable profiles for a lane, or validate
+                    one exact user-selected profile; never dispatches and
+                    never grants permission. review lanes additionally
+                    require --producer-profile NAME or
                     --producer-family FAMILY and exclude that whole family
   table             print the internal routing table (Markdown, or JSON)
 EOF
@@ -52,9 +55,8 @@ validate() {
       .status as $status | .selection as $selection |
       ($status == "disabled" and $selection == "blocked") or
       ($status == "candidate" and $selection == "blocked") or
-      ($status == "provisional" and (["default","fallback","preferred-explicit","explicit-only"] | index($selection))) or
-      ($status == "qualified" and (["default","fallback","preferred-explicit","explicit-only"] | index($selection))) or
-      ($status == "manual-qualified" and $selection == "explicit-only");
+      (($status == "provisional" or $status == "qualified" or $status == "manual-qualified")
+       and $selection == "explicit-only");
     def evidence_by_id: ($evidence[0].evidence | map({key:.id,value:.}) | from_entries);
     def evidence_lane($lane):
       if $lane == "material-review" or $lane == "routine-review" or $lane == "security" then "reviewer"
@@ -86,10 +88,13 @@ validate() {
     ([.compound_lanes[] | .status] | all(. as $v | $statuses | index($v) != null)) and
     ([.compound_lanes[] | .selection] | all(. as $v | $selections | index($v) != null)) and
     ([.profiles[].lanes[], .compound_lanes[]] | all(legal_pair)) and
-    ([.profiles[].lanes[] | select((.fallback // null) != null) | .fallback] - $profiles | length == 0) and
-    ([.profiles | to_entries[] | .value.lanes | to_entries[] as $lane |
-      select(($root.review_policy.review_lanes | index($lane.key)) != null) |
-      select(($lane.value.fallback // null) != null)] | length == 0) and
+    ([.profiles[].lanes[] | select((.fallback // null) != null)] | length == 0) and
+    (.activation_policy.mode == "user-directed" and
+     .activation_policy.scope == "per-dispatch" and
+     .activation_policy.assistant_may_list_choices == true and
+     .activation_policy.automatic_dispatch == false and
+     .activation_policy.authorization_carries_to_retries == false and
+     .activation_policy.authorization_carries_to_review == false) and
     ([.profiles | to_entries[] as $p | $p.value.lanes[] |
       select((.exact_evidence_ids | type) != "array" or (.context_evidence_ids | type) != "array")] | length == 0) and
     ([.profiles | to_entries[] as $p | $p.value.lanes[] as $lane |
@@ -126,8 +131,6 @@ validate() {
       (.trigger | type == "string" and length > 0) and
       .exact_variant_guaranteed == false and
       (.source_evidence_id | type == "string" and length > 0)] | all) and
-    ([.profiles | to_entries[] as $p | $p.value.lanes | to_entries[] |
-      select(.value.selection == "default") | .key] | group_by(.) | all(length <= 1)) and
     ([.compound_lanes[] | .members[] as $member |
       select(.status != "manual-qualified" or .selection != "explicit-only" or
              .automatic_dispatch != false or .automatic_merge != false or
@@ -241,7 +244,7 @@ profile_rows() {
      exact_evidence_ids:(.value.exact_evidence_ids // []),context_evidence_ids:(.value.context_evidence_ids // []),
      local_evaluation:(.value.local_evaluation // null),
      provider_fallback:(.value.provider_fallback // null),
-     fallback:(.value.fallback // null),evidence_gap:(.value.evidence_gap // null)}
+     evidence_gap:(.value.evidence_gap // null)}
   ' "$GATES"
 }
 
@@ -278,12 +281,13 @@ case "$command" in
     jq --arg profile "$profile" '.profiles[$profile] + {profile:$profile}' "$GATES"
     ;;
   resolve)
-    shift; lane=""; producer_profile=""; producer_family=""
+    shift; lane=""; producer_profile=""; producer_family=""; selected_profile=""
     while [ "$#" -gt 0 ]; do
       case "$1" in
         --lane) lane="${2:-}"; shift 2 ;;
         --producer-profile) producer_profile="${2:-}"; shift 2 ;;
         --producer-family) producer_family="${2:-}"; shift 2 ;;
+        --selected-profile) selected_profile="${2:-}"; shift 2 ;;
         --json) shift ;;
         *) die 64 "unknown resolve argument: $1" ;;
       esac
@@ -294,9 +298,13 @@ case "$command" in
     fi
     if jq -e --arg lane "$lane" '.compound_lanes[$lane] != null' "$GATES" >/dev/null; then
       [ -z "$producer_profile$producer_family" ] || die 64 "producer identity applies only to review lanes"
+      [ -z "$selected_profile" ] || die 64 "--selected-profile does not apply to compound lanes"
       status="$(jq -r --arg lane "$lane" '.compound_lanes[$lane].status' "$GATES")"
       [ "$status" = manual-qualified ] || die 78 "compound lane '$lane' has non-dispatchable status '$status'"
-      jq --arg lane "$lane" '.compound_lanes[$lane] + {lane:$lane,requires_explicit_choice:true}' "$GATES"
+      jq -n --arg lane "$lane" --argjson activation_policy "$(jq '.activation_policy' "$GATES")" \
+        '.compound_lanes[$lane] + {lane:$lane,requires_explicit_choice:true,
+         requires_user_direction:true,automatic_dispatch:false,
+         selection_validated:false,selected:null,activation_policy:$activation_policy}' "$GATES"
     else
       rows="$(profile_rows | jq -sc --arg lane "$lane" '[.[] | select(.lane == $lane)]')"
       [ "$rows" != "[]" ] || die 64 "unknown lane: $lane"
@@ -311,26 +319,42 @@ case "$command" in
           jq -e --arg family "$producer_family" '.model_families | any(.[]; . == $family)' "$GATES" >/dev/null \
             || die 64 "unknown producer family: $producer_family"
         fi
-        eligible_count="$(jq -n --arg family "$producer_family" --argjson rows "$rows" \
-          '[$rows[] | select(.family != $family) | select(.selection != "blocked" and .status != "candidate" and .status != "disabled")] | length')"
-        [ "$eligible_count" -gt 0 ] || die 78 "no eligible cross-family reviewer for '$lane' and producer family '$producer_family'"
       elif [ -n "$producer_profile$producer_family" ]; then
         die 64 "producer identity applies only to review lanes"
       fi
-      jq -n --arg lane "$lane" --arg producer_profile "$producer_profile" \
-        --arg producer_family "$producer_family" --argjson review_lane "$review_lane" --argjson rows "$rows" '
+      selected_row="$(jq -n --arg selected_profile "$selected_profile" \
+        --argjson review_lane "$review_lane" --arg producer_family "$producer_family" \
+        --argjson rows "$rows" '
         (if $review_lane then [$rows[] | select(.family != $producer_family)] else $rows end) as $eligible |
+        [$eligible[] |
+          select(.selection == "explicit-only") |
+          select(.status == "qualified" or .status == "provisional" or .status == "manual-qualified")] as $choices |
+        (if $selected_profile == "" then "NO_SELECTION"
+         else ([$choices[] | select(.profile == $selected_profile)] | first // "NOT_SELECTABLE") end)' )"
+      [ "$selected_row" != '"NOT_SELECTABLE"' ] \
+        || die 78 "profile '$selected_profile' is not selectable for lane '$lane'"
+      jq -n --arg lane "$lane" --arg producer_profile "$producer_profile" \
+        --arg producer_family "$producer_family" --arg selected_profile "$selected_profile" \
+        --argjson review_lane "$review_lane" --argjson rows "$rows" \
+        --argjson selected_row "$selected_row" \
+        --argjson activation_policy "$(jq '.activation_policy' "$GATES")" '
+        (if $review_lane then [$rows[] | select(.family != $producer_family)] else $rows end) as $eligible |
+        [$eligible[] |
+          select(.selection == "explicit-only") |
+          select(.status == "qualified" or .status == "provisional" or .status == "manual-qualified")] as $choices |
         {lane:$lane,
-         defaults:[$eligible[] | select(.selection == "default" and (.status == "qualified" or .status == "provisional"))],
-         fallbacks:[$eligible[] | select(.selection == "fallback" and (.status == "qualified" or .status == "provisional"))],
-         explicit:([$eligible[] | select((.status == "qualified" or .status == "provisional" or .status == "manual-qualified"))] |
-                   [.[] | select(.selection == "preferred-explicit")] + [.[] | select(.selection == "explicit-only")]),
-         blocked:[$eligible[] | select(.selection == "blocked" or .status == "candidate" or .status == "disabled")],
+         choices:$choices,
+         selected:(if $selected_profile == "" then null else $selected_row end),
+         selection_validated:($selected_profile != ""),
+         blocked:[$eligible[] |
+           select(.selection == "blocked" or .status == "candidate" or .status == "disabled")],
          excluded_same_family:(if $review_lane then [$rows[] | select(.family == $producer_family)] else [] end),
          review_policy:(if $review_lane then
            {require_cross_family:true,producer_profile:(if $producer_profile == "" then null else $producer_profile end),
             producer_family:$producer_family,availability_must_be_verified:true}
            else null end),
+         activation_policy:$activation_policy,
+         requires_user_direction:true,
          automatic_dispatch:false}'
     fi
     ;;

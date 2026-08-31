@@ -14,26 +14,39 @@
   ],
   "qualification_basis": "Owner replacement decision on 2026-08-12 after current independent builder and frontend benchmarks. Use remains provisional and explicit because no public row matches the exact Grok Build CLI/high production tuple. CLI compatibility is determined from required flags, authenticated grok-4.6 inventory, isolation inspection, structured output, and sandbox attestation; the observed CLI version is provenance only.",
   "runtime_cli_compatibility": "capability-probed",
-  "preferred_backends": ["grok-build"],
+  "preferred_backends": [
+    "grok-build"
+  ],
   "qualified_lanes": [],
-  "provisional_lanes": ["builder", "frontend-builder"],
+  "provisional_lanes": [
+    "builder",
+    "frontend-builder"
+  ],
   "lanes": {
     "builder": {
       "default_effort": "high",
-      "preferred_backends": ["grok-build"],
+      "preferred_backends": [
+        "grok-build"
+      ],
       "backends": {
         "grok-build": {
           "qualified": false,
           "status": "provisional",
-          "selection": "preferred-explicit",
+          "selection": "explicit-only",
           "effort": "high",
           "runtime_model": "grok-4.6",
           "runtime_controls": {
             "sandbox": "delegation-kit",
             "isolated_home": true,
             "runtime_home_isolated": true,
-            "oauth_modes": ["serialized", "shared"],
-            "grok_home_modes": ["isolated-copy", "shared-generation"],
+            "oauth_modes": [
+              "serialized",
+              "shared"
+            ],
+            "grok_home_modes": [
+              "isolated-copy",
+              "shared-generation"
+            ],
             "default_oauth_mode": "serialized",
             "permission_mode": "dontAsk",
             "max_turns": 40,
@@ -46,7 +59,13 @@
             "mcp": "denied",
             "plugins": "denied",
             "subagents": "denied",
-            "tools": ["grep", "read_file", "search_replace", "list_dir", "todo_write"]
+            "tools": [
+              "grep",
+              "read_file",
+              "search_replace",
+              "list_dir",
+              "todo_write"
+            ]
           },
           "local_evaluation": {
             "run_id": "2026-08-12-grok-4.6-build",
@@ -61,20 +80,28 @@
     },
     "frontend-builder": {
       "default_effort": "high",
-      "preferred_backends": ["grok-build"],
+      "preferred_backends": [
+        "grok-build"
+      ],
       "backends": {
         "grok-build": {
           "qualified": false,
           "status": "provisional",
-          "selection": "preferred-explicit",
+          "selection": "explicit-only",
           "effort": "high",
           "runtime_model": "grok-4.6",
           "runtime_controls": {
             "sandbox": "delegation-kit",
             "isolated_home": true,
             "runtime_home_isolated": true,
-            "oauth_modes": ["serialized", "shared"],
-            "grok_home_modes": ["isolated-copy", "shared-generation"],
+            "oauth_modes": [
+              "serialized",
+              "shared"
+            ],
+            "grok_home_modes": [
+              "isolated-copy",
+              "shared-generation"
+            ],
             "default_oauth_mode": "serialized",
             "permission_mode": "dontAsk",
             "max_turns": 40,
@@ -87,7 +114,13 @@
             "mcp": "denied",
             "plugins": "denied",
             "subagents": "denied",
-            "tools": ["grep", "read_file", "search_replace", "list_dir", "todo_write"]
+            "tools": [
+              "grep",
+              "read_file",
+              "search_replace",
+              "list_dir",
+              "todo_write"
+            ]
           },
           "local_evaluation": {
             "run_id": "2026-08-12-grok-4.6-build",
@@ -114,8 +147,12 @@
           "evaluation_manifest_sha256": [],
           "runtime_controls": {
             "sandbox": "delegation-kit-read-only",
-            "oauth_modes": ["serialized"],
-            "grok_home_modes": ["isolated-copy"],
+            "oauth_modes": [
+              "serialized"
+            ],
+            "grok_home_modes": [
+              "isolated-copy"
+            ],
             "default_oauth_mode": "serialized",
             "permission_mode": "dontAsk",
             "worktree_edits": false,
@@ -126,7 +163,11 @@
             "mcp": "denied",
             "plugins": "denied",
             "subagents": "denied",
-            "tools": ["grep", "read_file", "list_dir"]
+            "tools": [
+              "grep",
+              "read_file",
+              "list_dir"
+            ]
           },
           "legacy_local_result": null,
           "qualification_basis": "Evaluation-only policy annotation candidate. A manifest-bound run cannot promote or add an operational route."
