@@ -83,6 +83,10 @@ jobs:
         run: |
           bin/delegation-route check
           bin/delegation-evidence check
+      # The npm wrapper is Node code: its own tests run on the Linux runner,
+      # hermetically (local file:// clones, no network, no real homes).
+      - name: npm installer wrapper tests
+        run: node --test tests/npm-installer.test.mjs
       # Parallel on one runner: the suites are independent, and running them
       # concurrently cuts this step from ~116s to well under half without
       # allocating a second machine. run-tests.sh prints the full log of any

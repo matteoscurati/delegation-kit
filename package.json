@@ -1,0 +1,46 @@
+{
+  "name": "delegation-kit",
+  "version": "0.19.0",
+  "description": "User-directed model delegation for Claude Code and Codex — fail-closed governance, evidence-backed lanes, mandatory cross-family review. The kit never dispatches on its own; every delegation is named or explicitly authorized by you.",
+  "keywords": [
+    "claude-code",
+    "codex",
+    "ai-agents",
+    "delegation",
+    "multi-agent",
+    "model-routing",
+    "llm-orchestration",
+    "governance",
+    "subagents",
+    "developer-tools"
+  ],
+  "homepage": "https://github.com/matteoscurati/delegation-kit",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/matteoscurati/delegation-kit.git"
+  },
+  "bugs": {
+    "url": "https://github.com/matteoscurati/delegation-kit/issues"
+  },
+  "author": {
+    "name": "Matteo Scurati",
+    "url": "https://github.com/matteoscurati"
+  },
+  "license": "MIT",
+  "type": "module",
+  "bin": {
+    "delegation-kit": "./bin/npm-installer.mjs"
+  },
+  "files": [
+    "bin/npm-installer.mjs",
+    "README.md",
+    "LICENSE",
+    "CHANGELOG.md"
+  ],
+  "engines": {
+    "node": ">=18"
+  },
+  "scripts": {
+    "test": "node --test tests/npm-installer.test.mjs"
+  }
+}

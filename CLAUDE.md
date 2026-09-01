@@ -49,8 +49,10 @@ repository does not claim:
 | `CHANGELOG.md` | a new `## [X.Y.Z] — YYYY-MM-DD` section |
 
 Confirm with `grep -rn "<OLD VERSION>"` before committing that nothing stale
-remains. There is no `package.json`; this is not an npm package, so nothing
-publishes automatically.
+remains. The `package.json` at the repo root exists only for the `npx
+delegation-kit` installer wrapper: its `version` field is a sixth version
+surface that must match the manifest on every bump (the npm wrapper ships no
+code of its own — `npx` clones this repo and runs `./install.sh`).
 
 ### Semver for this repo
 
