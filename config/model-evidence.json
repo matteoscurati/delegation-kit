@@ -405,6 +405,15 @@
       "category": "first-party-release-evidence",
       "scope": "Official deepseek-v4-pro identity, OpenAI-compatible API, high/max effort support, one-million-token context, 384K maximum output, tool and JSON support, and first-party agent benchmark claims.",
       "limitations": "Provider-reported benchmark claims use different agent harnesses and do not attest delegation-deepseek. The local exact-tuple smoke is recorded separately in the routing gate and is not a held-out capability evaluation."
+    },
+    "anthropic-fable-5-1-2026-09-01": {
+      "name": "Anthropic: Introducing Claude Fable 5.1 and Claude Mythos 5.1 (2026-09-01)",
+      "url": "https://www.anthropic.com/claude-fable-and-mythos-5-1",
+      "methodology_url": "https://platform.claude.com/docs/en/about-claude/models/whats-new-opus-5",
+      "observed_at": "2026-07-25",
+      "data_date": "2026-09-01",
+      "scope": "First-party release evidence for model identity, availability, effort range, context and output limits, pricing, and qualitative improvements in code review and agentic work",
+      "limitations": "Launch claims and customer reports are contextual evidence, not an independent review precision/recall benchmark and not an exact Claude Code high evaluation"
     }
   },
   "lane_evidence": {
@@ -522,7 +531,7 @@
       "harness": "claude-code",
       "effort": "max",
       "date": "2026-09-01",
-      "source": "https://www.anthropic.com/claude-fable-and-mythos-5-1",
+      "source": "anthropic-fable-5-1-2026-09-01",
       "metrics": {
         "swe_atlas_qna_pct": 58.9,
         "deep_swe_pct": 71.0,
@@ -536,7 +545,7 @@
       "harness": "claude-code",
       "effort": "max",
       "date": "2026-09-01",
-      "source": "https://www.anthropic.com/claude-fable-and-mythos-5-1",
+      "source": "anthropic-fable-5-1-2026-09-01",
       "metrics": {
         "terminal_bench_4_pct": 55.8
       },
