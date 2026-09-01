@@ -16,7 +16,10 @@ set -euo pipefail
 
 SOURCE_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 TMP="$(mktemp -d "${TMPDIR:-/tmp}/delegation-${PROVIDER_SLUG}-test.XXXXXX")"
-trap 'rm -rf -- "$TMP"' EXIT
+# rm of the large .git copy can transiently fail on CI when background
+# system processes touch the tree mid-delete; the temp dir is under $TMPDIR
+# and OS-cleaned, so a failed sweep must not fail the suite.
+trap 'rm -rf -- "$TMP" 2>/dev/null || true' EXIT
 mkdir -p "$TMP/bin" "$TMP/work" "$TMP/results" "$TMP/runtime" "$TMP/debug"
 printf 'Respond with PONG.\n' >"$TMP/prompt"
 
