@@ -12,6 +12,9 @@ name: Publish npm
 on:
   push:
     tags: ['delegation-kit--v*']
+  # Manual re-runs publish whatever main's package.json says, so a publish
+  # can be retried after a workflow fix without moving the git tag.
+  workflow_dispatch:
 
 permissions:
   contents: read
