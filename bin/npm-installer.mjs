@@ -71,8 +71,8 @@ function parseArgs(argv) {
         options.uninstall = true;
         break;
       case "--skip-doctor":
+        // Wrapper-only flag: install.sh has no such argument.
         options.skipDoctor = true;
-        options.forward.push("--skip-doctor");
         break;
       case "--ref":
         options.ref = argv[i + 1];

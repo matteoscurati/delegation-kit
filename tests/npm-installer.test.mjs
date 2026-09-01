@@ -101,12 +101,13 @@ test("happy path: clones, verifies integrity, runs install then doctor", () => {
   }
 });
 
-test("--skip-doctor runs the installer only", () => {
+test("--skip-doctor runs the installer only and is not forwarded", () => {
   const repo = makeLocalRepo();
   try {
     const result = runInstaller(["--repo", repo, "--skip-doctor"]);
     assert.equal(result.status, 0, `stderr: ${result.stderr}`);
-    assert.match(result.stdout, /install ran with: --skip-doctor/);
+    // install.sh must not see the wrapper-only flag (it exits 2 on unknown args).
+    assert.doesNotMatch(result.stdout, /--skip-doctor/);
     assert.doesNotMatch(result.stdout, /doctor-ok/);
   } finally {
     rmSync(repo, { recursive: true, force: true });
