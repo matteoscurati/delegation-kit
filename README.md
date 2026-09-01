@@ -159,15 +159,16 @@ Blocked is blocked: no silent substitution, no runtime-availability shortcuts.
   `delegation-patch-verify` (confinement, strip-level certainty, read-only
   attestation). The lead, and only the lead, applies and tests.
 
-## Current release: 0.19.0
+## Current release: 0.20.0
 
-Version 0.19.0 replaces the previous GLM route with the exact
-`glm-5.3-flash` / `claude-zai` / `max` tuple after a manifest-bound v4 pack
-passed all nine no-retry attempts at score 1.0: every one of the 204 assistant
-events carried the Flash identity and all builder checkers passed. Clerk and
-scout are qualified explicit-only; builder remains provisional explicit-only.
-See [`CHANGELOG.md`](./CHANGELOG.md) for the full history, including the
-unreleased user-directed activation work.
+Version 0.20.0 makes delegation **user-directed**: every dispatch must be
+selected or explicitly authorized by you, enforced by the routing gates — the
+selection vocabulary is now closed at `explicit-only` / `blocked`, the router
+exposes `choices` and validates `--selected-profile`, and the resident
+policies on both hosts carry the no-standing-permission guard. It also adds
+`delegation-patch-verify`, the read-only trust boundary for text-patch lanes,
+and ships `npx delegation-kit` for one-command installs. See
+[`CHANGELOG.md`](./CHANGELOG.md) for details and full history.
 
 ## Documentation
 

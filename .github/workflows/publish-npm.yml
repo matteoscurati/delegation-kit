@@ -1,0 +1,62 @@
+name: Publish npm
+
+# Publishes the delegation-kit npm wrapper to the npm registry whenever a
+# release tag (delegation-kit--v*) is pushed. The published package is the
+# thin installer wrapper only: npx clones this repository at the tagged ref
+# and runs ./install.sh, so the npm artifact and the git release always
+# describe the same version by construction.
+#
+# Requires one repository secret: NPM_TOKEN (an npm automation token, so
+# publishes never need a human OTP).
+
+on:
+  push:
+    tags: ['delegation-kit--v*']
+
+permissions:
+  contents: read
+
+concurrency:
+  group: npm-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    name: publish to npm
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Guard — tag must match the manifest version
+        # Same rule the release gate enforces: a tag that does not name the
+        # checked-out version must never reach the registry.
+        run: |
+          TAG="${GITHUB_REF_NAME#delegation-kit--v}"
+          VERSION="$(jq -r '.version' package.json)"
+          if [ "$TAG" != "$VERSION" ]; then
+            echo "tag delegation-kit--v$TAG does not match package.json $VERSION"; exit 1
+          fi
+
+      - name: Guard — manifests and package.json agree
+        run: bash tests/version-consistency.sh --tag "${GITHUB_REF_NAME}"
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          registry-url: 'https://registry.npmjs.org'
+
+      - name: Wrapper tests
+        run: node --test tests/npm-installer.test.mjs
+
+      - name: Guard — registry version must not already exist
+        run: |
+          VERSION="$(jq -r '.version' package.json)"
+          if npm view "delegation-kit@$VERSION" version >/dev/null 2>&1; then
+            echo "delegation-kit@$VERSION is already published"; exit 1
+          fi
+
+      - name: Publish
+        run: npm publish
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
