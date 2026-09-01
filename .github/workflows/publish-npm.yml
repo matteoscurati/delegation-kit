@@ -39,7 +39,14 @@ jobs:
           fi
 
       - name: Guard — manifests and package.json agree
-        run: bash tests/version-consistency.sh --tag "${GITHUB_REF_NAME}"
+        # actions/checkout maps the commit SHA onto refs/tags/<name>, leaving
+        # a lightweight ref even when the pushed tag is annotated — fetch the
+        # real tag object before the annotation rule can be checked (same
+        # workaround as ci.yml).
+        run: |
+          git fetch --force --depth=1 origin \
+            "refs/tags/${GITHUB_REF_NAME}:refs/tags/${GITHUB_REF_NAME}"
+          bash tests/version-consistency.sh --tag "${GITHUB_REF_NAME}"
 
       - uses: actions/setup-node@v4
         with:
