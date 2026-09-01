@@ -32,9 +32,18 @@ function makeLocalRepo() {
     join(ROOT, "claude", "CLAUDE.delegation.md"),
     join(dir, "claude", "CLAUDE.delegation.md"),
   );
-  spawnSync("git", ["init", "-q"], { cwd: dir });
-  spawnSync("git", ["-C", dir, "add", "-A"]);
-  spawnSync("git", ["-C", dir, "commit", "-qm", "fixture"]);
+  const git = (...args) => {
+    // Inline identity: CI runners have no global git user, and a failed
+    // commit would leave an empty clone that fails the integrity check.
+    const r = spawnSync("git", ["-c", "user.email=test@example.invalid",
+                                "-c", "user.name=delegation-kit-tests",
+                                ...args], { cwd: dir, encoding: "utf8" });
+    if (r.status !== 0) throw new Error(`git ${args[0]} failed: ${r.stderr}`);
+    return r;
+  };
+  git("init", "-q");
+  git("add", "-A");
+  git("commit", "-qm", "fixture");
   return dir;
 }
 
