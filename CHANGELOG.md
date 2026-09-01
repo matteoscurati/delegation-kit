@@ -2,6 +2,14 @@
 
 All notable changes to delegation-kit are documented here.
 
+## [0.20.1] — 2026-09-01
+
+### Fixed
+
+- The npm wrapper consumed `--skip-doctor` but also forwarded it to
+  `install.sh`, which refuses unknown arguments and exited 2. The wrapper now
+  consumes the flag; the test asserts `install.sh` never sees it.
+
 ## [0.20.0] — 2026-09-01
 
 ### Added
