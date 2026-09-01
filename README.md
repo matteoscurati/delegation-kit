@@ -159,7 +159,7 @@ Blocked is blocked: no silent substitution, no runtime-availability shortcuts.
   `delegation-patch-verify` (confinement, strip-level certainty, read-only
   attestation). The lead, and only the lead, applies and tests.
 
-## Current release: 0.20.0
+## Current release: 0.20.1
 
 Version 0.20.0 makes delegation **user-directed**: every dispatch must be
 selected or explicitly authorized by you, enforced by the routing gates — the
@@ -169,6 +169,8 @@ policies on both hosts carry the no-standing-permission guard. It also adds
 `delegation-patch-verify`, the read-only trust boundary for text-patch lanes,
 and ships `npx delegation-kit` for one-command installs. See
 [`CHANGELOG.md`](./CHANGELOG.md) for details and full history.
+Version 0.20.1 fixes the npm wrapper's `--skip-doctor` flag, which was
+incorrectly forwarded to `install.sh` and rejected.
 
 ## Documentation
 
