@@ -2,6 +2,47 @@
 
 All notable changes to delegation-kit are documented here.
 
+## [Unreleased]
+
+### Added
+
+- **User-directed activation** (`activation_policy` in
+  `config/routing-gates.json`): every dispatch must be selected or explicitly
+  delegated by the user for the current request. The selection vocabulary is
+  now closed at `explicit-only` / `blocked`; `default`, `fallback`, and
+  `preferred-explicit` are removed and all lane-local `fallback` pointers are
+  gone. PR #56.
+- `delegation-route resolve --selected-profile <profile>` validates one exact
+  user-selected profile (exit 78 if it is not selectable for the lane) and the
+  resolve output now returns `choices` / `selected` / `selection_validated`
+  with `requires_user_direction: true`. PR #56.
+- `delegation-patch-verify` and `config/external-patch-policy.json`: a
+  read-only, fail-closed trust boundary for text-patch lane output — path
+  confinement, denied-path classes, capability and limit checks, strip level
+  fixed by header grammar, read-only attestation. PR #55.
+- The external-executor contract now covers the patch policy: every
+  `text-patch` lane declares the policy version and verifier, and `check`
+  fails on a missing, stale, or drifted declaration. PR #55.
+- npm distribution: `npx delegation-kit` runs the universal installer without
+  a manual clone (thin wrapper; installed artifacts are unchanged).
+
+### Changed
+
+- Resident policies replaced by a minimal user-direction guard on both hosts
+  (`claude/CLAUDE.delegation.md`, `codex/AGENTS.md`): no standing permission
+  to delegate, authorization is per dispatch and never carries to retries,
+  reviews, or additional workers. `install.sh` registers it; `doctor.sh`
+  verifies it on both hosts. PR #56.
+- All eight skills are explicitly user-triggered; `orchestrate` no longer
+  mandates hidden agent calls — the user-approved finite dispatch list is the
+  budget. PR #56.
+- The external-executor contract mirrors the closed vocabulary: every
+  dispatchable lane carries `requires_explicit_decision: true`. The contract
+  still describes and validates only; each runner remains the sole
+  enforcement authority. PR #56.
+- README restructured for clarity: why/quick-start/how-it-works flow, the
+  governance model in one place, and a command reference table.
+
 ## [0.19.0] — 2026-08-29
 
 ### Changed

@@ -44,6 +44,19 @@ same 'marketplace.json plugin entry version' "$VERSION" \
 same 'marketplace.json plugin count' 1 \
   "$(jq -r '.plugins | length' .claude-plugin/marketplace.json)"
 
+# The npm wrapper is a sixth surface: its package.json version must follow the
+# manifest so `npx delegation-kit` and the manifests always claim the same
+# release. The file is optional only while the npm package has never shipped;
+# once it exists, it is required to stay in lockstep.
+if [ -f package.json ]; then
+  same 'package.json version (npm wrapper)' "$VERSION" \
+    "$(jq -r '.version' package.json)"
+  same 'package.json bin entry' 'delegation-kit' \
+    "$(jq -r '.bin | keys[0]' package.json)"
+else
+  printf 'package.json absent — npm wrapper not shipped yet; skipping its version check\n' >&2
+fi
+
 readme="$(sed -n 's/^## Current release: \(.*\)$/\1/p' README.md | head -1)"
 same 'README "Current release" heading' "$VERSION" "$readme"
 
