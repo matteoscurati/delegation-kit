@@ -492,6 +492,7 @@ pass=$((pass + 1))
 bin/delegation-route resolve --lane judgement --json >"$TMP/judgement.json"
 jq -e '.requires_user_direction == true and
        ([.choices[].profile] | sort) == ["fable-judge","sol-judge"] and
+       (first(.choices[] | select(.profile == "fable-judge")).model == "claude-fable-5-1") and
        (first(.choices[] | select(.profile == "fable-judge")).effort == "max") and
        (first(.choices[] | select(.profile == "sol-judge")).effort == "max") and
        (first(.choices[] | select(.profile == "sol-judge")).context_evidence_ids | index("aa-codex-gpt-5.6-sol-max") != null) and
@@ -538,7 +539,7 @@ pass=$((pass + 1))
 # The generated table exposes exact and contextual evidence separately.
 bin/delegation-route table --json >"$TMP/table.json"
 jq -e '.profiles[] | select(.profile == "fable-judge" and .lane == "judgement") |
-       (.exact_evidence_ids | length) == 0 and (.context_evidence_ids | length) == 2' \
+       (.exact_evidence_ids | length) == 1 and (.context_evidence_ids | length) == 3' \
   "$TMP/table.json" >/dev/null
 jq -e '
   .review_policy.require_cross_family == true and

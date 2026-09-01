@@ -25,6 +25,7 @@
   },
   "model_families": {
     "claude-fable-5": "anthropic",
+    "claude-fable-5-1": "anthropic",
     "claude-opus-5": "anthropic",
     "claude-sonnet-5": "anthropic",
     "deepseek-v4-pro": "deepseek",
@@ -339,27 +340,30 @@
       }
     },
     "fable-judge": {
-      "model": "claude-fable-5",
+      "model": "claude-fable-5-1",
       "harness": "claude-code",
       "effort": "max",
       "lanes": {
         "judgement": {
           "status": "manual-qualified",
           "selection": "explicit-only",
-          "exact_evidence_ids": [],
+          "exact_evidence_ids": [
+            "aa-claude-fable-5-1-max"
+          ],
           "context_evidence_ids": [
+            "terminalbench4-claude-fable-5-1-max",
             "aa-claude-fable-5-max",
             "arena-agent-fable-5-high"
           ],
           "local_evaluation": {
-            "run_id": "2026-08-18-fable-max-runtime-probe",
+            "run_id": "2026-09-01-fable-5-1-max-runtime-probe",
             "task_count": 1,
             "repeats": 1,
             "confidence": "low",
-            "limitations": "Authenticated Claude Code returned exact PONG and surfaced canonicalModel claude-fable-5 at requested max; this proves runtime compatibility, not judgement quality."
+            "limitations": "Authenticated Claude Code returned exact PONG and surfaced model claude-fable-5-1 at requested max; this proves runtime compatibility, not judgement quality."
           },
           "evidence_gap": "No exact judgement benchmark; coding evidence is contextual only.",
-          "qualification_basis": "Owner decision: maximum-effort architecture, trade-offs, synthesis, and final verdict."
+          "qualification_basis": "Owner decision, 2026-09-01: the judgement lane migrates from Fable 5 to Fable 5.1 (claude-fable-5-1) at max for architecture, trade-offs, synthesis, and final verdict. Migration follows the 2026-09-01 launch; the exact AA row replaces the Fable 5 row, and Fable 5 evidence is retained as context. Judgement remains manual-qualified and explicit-only; this owner decision does not convert coding evidence into judgement qualification."
         }
       }
     },

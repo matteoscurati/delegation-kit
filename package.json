@@ -1,6 +1,6 @@
 {
   "name": "delegation-kit",
-  "version": "0.20.1",
+  "version": "0.21.0",
   "description": "User-directed model delegation for Claude Code and Codex — fail-closed governance, evidence-backed lanes, mandatory cross-family review. The kit never dispatches on its own; every delegation is named or explicitly authorized by you.",
   "keywords": [
     "claude-code",

@@ -2,6 +2,19 @@
 
 All notable changes to delegation-kit are documented here.
 
+## [0.21.0] — 2026-09-01
+
+### Changed
+
+- **Judgement lane migrates from Fable 5 to Fable 5.1** (`claude-fable-5-1`,
+  still at `max`, still manual-qualified explicit-only) on the owner decision
+  following Anthropic's 2026-09-01 launch. `fable-judge` and the central gate
+  bind to the exact `aa-claude-fable-5-1-max` row; Fable 5 evidence is retained
+  as context. Verified live: authenticated Claude Code returned exact PONG and
+  surfaced `claude-fable-5-1` at requested max. This owner decision does not
+  convert coding evidence into judgement qualification. Super-judgement
+  (Fable 5.1 + Sol) semantics are unchanged.
+
 ## [0.20.1] — 2026-09-01
 
 ### Fixed
