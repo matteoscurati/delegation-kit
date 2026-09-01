@@ -67,10 +67,18 @@ test("integrity check fails when the guard is missing", () => {
     const good = makeLocalRepo();
     const dest = join(repo, "checkout");
     rmSync(dest, { recursive: true, force: true });
-    spawnSync("git", ["clone", "-q", good, dest]);
+    const git = (cwd, ...args) => {
+      // CI runners have no global git identity; every mutation needs the
+      // inline author or the commit silently fails and the test lies.
+      const r = spawnSync("git", ["-c", "user.email=test@example.invalid",
+                                  "-c", "user.name=delegation-kit-tests",
+                                  ...args], { cwd, encoding: "utf8" });
+      if (r.status !== 0) throw new Error(`git ${args[0]} failed: ${r.stderr}`);
+    };
+    git(repo, "clone", "-q", good, "checkout");
     writeFileSync(join(dest, "claude", "CLAUDE.delegation.md"), "# no guard here\n");
-    spawnSync("git", ["-C", dest, "add", "-A"]);
-    spawnSync("git", ["-C", dest, "commit", "-qm", "strip guard"]);
+    git(dest, "add", "-A");
+    git(dest, "commit", "-qm", "strip guard");
 
     const result = runInstaller(["--repo", dest, "--skip-doctor"]);
     assert.notEqual(result.status, 0);
@@ -139,8 +147,14 @@ test("a failing install.sh propagates its exit code and skips doctor", () => {
   try {
     writeFileSync(join(repo, "install.sh"), "#!/usr/bin/env bash\nexit 3\n");
     spawnSync("chmod", ["+x", join(repo, "install.sh")]);
-    spawnSync("git", ["-C", repo, "add", "-A"]);
-    spawnSync("git", ["-C", repo, "commit", "-qm", "failing installer"]);
+    const git = (...args) => {
+      const r = spawnSync("git", ["-c", "user.email=test@example.invalid",
+                                  "-c", "user.name=delegation-kit-tests",
+                                  "-C", repo, ...args], { encoding: "utf8" });
+      if (r.status !== 0) throw new Error(`git ${args[0]} failed: ${r.stderr}`);
+    };
+    git("add", "-A");
+    git("commit", "-qm", "failing installer");
     const result = runInstaller(["--repo", repo, "--skip-doctor"]);
     assert.equal(result.status, 3);
     assert.match(result.stderr, /exited with 3/);
