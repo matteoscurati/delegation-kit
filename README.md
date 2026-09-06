@@ -159,7 +159,7 @@ Blocked is blocked: no silent substitution, no runtime-availability shortcuts.
   `delegation-patch-verify` (confinement, strip-level certainty, read-only
   attestation). The lead, and only the lead, applies and tests.
 
-## Current release: 0.21.0
+## Current release: 0.22.0
 
 Version 0.20.0 makes delegation **user-directed**: every dispatch must be
 selected or explicitly authorized by you, enforced by the routing gates — the
@@ -169,11 +169,10 @@ policies on both hosts carry the no-standing-permission guard. It also adds
 `delegation-patch-verify`, the read-only trust boundary for text-patch lanes,
 and ships `npx delegation-kit` for one-command installs. See
 [`CHANGELOG.md`](./CHANGELOG.md) for details and full history.
-Version 0.21.0 migrates the judgement lane to **Fable 5.1** (`claude-fable-5-1`
-at `max`) following Anthropic's 2026-09-01 launch — same manual-qualified
-explicit-only discipline, now bound to the new model's exact evidence row.
-Version 0.20.1 fixed the npm wrapper's `--skip-doctor` flag, which was
-incorrectly forwarded to `install.sh` and rejected.
+Version 0.22.0 migrates the Codex review/judgement lanes to **GPT-6 Astra**
+(`gpt-6-astra` at `high`) in a new `openai-gpt6` family, following OpenAI's
+2026-09-03 launch. Version 0.21.0 migrated the judgement lane to Fable 5.1;
+version 0.20.1 fixed the npm wrapper's `--skip-doctor` flag.
 
 ## Documentation
 

@@ -2,6 +2,22 @@
 
 All notable changes to delegation-kit are documented here.
 
+## [0.22.0] — 2026-09-06
+
+### Changed
+
+- **Codex review/judgement lanes migrate from Sol to GPT-6 Astra** (`gpt-6-astra`,
+  effort `high`) on the owner decision following OpenAI's 2026-09-03 launch.
+  New family `openai-gpt6` (distinct from gpt-5.6) keeps cross-family review
+  meaningful. `astra-reviewer` @ high covers material-review and security;
+  `astra-judge` @ high replaces `sol-judge` @ max. Super-judgement is now
+  Fable 5.1 + Astra. Verified live on Codex CLI 0.153.4.
+
+### Fixed
+
+- `.gitignore` now covers `config/qwen-token-plan.env` (the Qwen Token Plan
+  key file), which was previously unprotected.
+
 ## [0.21.0] — 2026-09-01
 
 ### Changed

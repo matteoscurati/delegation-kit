@@ -22,3 +22,4 @@ config/zai.env
 
 # Dipylon-specific evaluation packs are generated and owned outside this kit.
 evaluation/dipylon-ai-jury-*/
+config/qwen-token-plan.env
