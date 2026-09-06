@@ -7,13 +7,13 @@
   },
   "metadata": {
     "description": "Cross-tool delegation kit with model-routing profiles, guarded external-model bridges, deterministic Claude/Codex schema transport, and user-directed activation: every dispatch is chosen or explicitly delegated by the user.",
-    "version": "0.21.0"
+    "version": "0.22.0"
   },
   "plugins": [
     {
       "name": "delegation-kit",
       "description": "User-directed model-routing profiles, orchestration, guarded external-model executor skills, and deterministic Claude/Codex schema transport.",
-      "version": "0.21.0",
+      "version": "0.22.0",
       "author": {
         "name": "Matteo Scurati"
       },
