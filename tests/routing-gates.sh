@@ -180,11 +180,11 @@ expect_failure 64 bin/delegation-route resolve --lane security --json
 bin/delegation-route resolve --lane security --producer-profile terra-builder --json >"$TMP/security-routing.json"
 jq -e '
   .requires_user_direction == true and
-  ([.choices[].profile] | sort) == ["opus-reviewer"] and
-  .choices[0].provider_fallback.possible == true and
-  .choices[0].provider_fallback.target_model == "claude-opus-4.8" and
-  .choices[0].provider_fallback.exact_variant_guaranteed == false and
-  ([.excluded_same_family[].profile] | sort) == ["sol-reviewer","terra-reviewer"] and
+  ([.choices[].profile] | sort) == ["astra-reviewer","opus-reviewer"] and
+  (first(.choices[] | select(.profile == "opus-reviewer")).provider_fallback.possible == true) and
+  (first(.choices[] | select(.profile == "opus-reviewer")).provider_fallback.target_model == "claude-opus-4.8") and
+  (first(.choices[] | select(.profile == "opus-reviewer")).provider_fallback.exact_variant_guaranteed == false) and
+  ([.excluded_same_family[].profile] | sort) == ["terra-reviewer"] and
   .review_policy.producer_family == "openai" and
   .review_policy.require_cross_family == true
 ' "$TMP/security-routing.json" >/dev/null
@@ -193,9 +193,9 @@ pass=$((pass + 1))
 # No row-local fallback hints exist anywhere in the user-directed gates.
 bin/delegation-route resolve --lane routine-review --producer-profile terra-builder --json >"$TMP/routine-routing.json"
 jq -e '
-  ([.choices[].profile] | sort) == ["opus-reviewer","sonnet-reviewer"] and
+  ([.choices[].profile] | sort) == ["astra-reviewer","opus-reviewer","sonnet-reviewer"] and
   all(.choices[]; .fallback == null) and
-  ([.excluded_same_family[].profile] | sort) == ["sol-reviewer","terra-reviewer"]
+  ([.excluded_same_family[].profile] | sort) == ["terra-reviewer"]
 ' "$TMP/routine-routing.json" >/dev/null
 pass=$((pass + 1))
 
@@ -208,7 +208,7 @@ expect_failure 65 env DELEGATION_ROUTING_GATES_FILE="$TMP/bad-provider-fallback.
 
 # A review row that re-acquires a row-local fallback hint is refused: the
 # property itself is forbidden under user-directed activation.
-jq '.profiles["sonnet-reviewer"].lanes["routine-review"].fallback = "sol-reviewer"' \
+jq '.profiles["sonnet-reviewer"].lanes["routine-review"].fallback = "terra-reviewer"' \
   config/routing-gates.json >"$TMP/bad-review-fallback.json"
 expect_failure 65 env DELEGATION_ROUTING_GATES_FILE="$TMP/bad-review-fallback.json" \
   bin/delegation-route check --json
@@ -216,7 +216,7 @@ expect_failure 65 env DELEGATION_ROUTING_GATES_FILE="$TMP/bad-review-fallback.js
 # Opus/Anthropic output can be reviewed by Sol or Terra, never by Opus itself.
 bin/delegation-route resolve --lane material-review --producer-profile opus-builder --json >"$TMP/opus-produced-review.json"
 jq -e '
-  ([.choices[].profile] | sort) == ["sol-reviewer","terra-reviewer"] and
+  ([.choices[].profile] | sort) == ["astra-reviewer","terra-reviewer"] and
   ([.excluded_same_family[].profile] == ["opus-reviewer"]) and
   .review_policy.producer_family == "anthropic"
 ' "$TMP/opus-produced-review.json" >/dev/null
@@ -226,7 +226,7 @@ pass=$((pass + 1))
 # reviewer available as a choice, with no ranking attached.
 bin/delegation-route resolve --lane material-review --producer-profile kimi-k3 --json >"$TMP/kimi-produced-review.json"
 jq -e '
-  ([.choices[].profile] | sort) == ["opus-reviewer","sol-reviewer","terra-reviewer"] and
+  ([.choices[].profile] | sort) == ["astra-reviewer","opus-reviewer","terra-reviewer"] and
   (.excluded_same_family | length) == 0 and
   .review_policy.producer_family == "moonshot" and
   .review_policy.availability_must_be_verified == true
@@ -475,14 +475,14 @@ jq -e '
 pass=$((pass + 1))
 
 # For a non-OpenAI/non-Anthropic producer, all three advanced reviewers stay
-# selectable with no ranking, and Sol keeps its measured effort metadata.
+# selectable with no ranking, and Astra keeps its measured effort metadata.
 bin/delegation-route resolve --lane material-review --producer-family deepseek --json >"$TMP/material-review.json"
 jq -e '
   .requires_user_direction == true and
-  ([.choices[].profile] | sort) == ["opus-reviewer","sol-reviewer","terra-reviewer"] and
-  (first(.choices[] | select(.profile == "sol-reviewer")).model == "gpt-5.6-sol") and
-  (first(.choices[] | select(.profile == "sol-reviewer")).effort == "high") and
-  (first(.choices[] | select(.profile == "sol-reviewer")).status == "provisional") and
+  ([.choices[].profile] | sort) == ["astra-reviewer","opus-reviewer","terra-reviewer"] and
+  (first(.choices[] | select(.profile == "astra-reviewer")).model == "gpt-6-astra") and
+  (first(.choices[] | select(.profile == "astra-reviewer")).effort == "high") and
+  (first(.choices[] | select(.profile == "astra-reviewer")).status == "provisional") and
   (.review_policy.producer_family == "deepseek")
 ' "$TMP/material-review.json" >/dev/null
 pass=$((pass + 1))
@@ -491,32 +491,32 @@ pass=$((pass + 1))
 # disabled/candidate profiles never leak into the choice set.
 bin/delegation-route resolve --lane judgement --json >"$TMP/judgement.json"
 jq -e '.requires_user_direction == true and
-       ([.choices[].profile] | sort) == ["fable-judge","sol-judge"] and
+       ([.choices[].profile] | sort) == ["astra-judge","fable-judge"] and
        (first(.choices[] | select(.profile == "fable-judge")).model == "claude-fable-5-1") and
        (first(.choices[] | select(.profile == "fable-judge")).effort == "max") and
-       (first(.choices[] | select(.profile == "sol-judge")).effort == "max") and
-       (first(.choices[] | select(.profile == "sol-judge")).context_evidence_ids | index("aa-codex-gpt-5.6-sol-max") != null) and
+       (first(.choices[] | select(.profile == "astra-judge")).model == "gpt-6-astra") and
+       (first(.choices[] | select(.profile == "astra-judge")).effort == "high") and
        ([.blocked[].profile] | index("kimi-k3") != null) and
        ([.blocked[].profile] | index("qwen3.8-max") != null)' "$TMP/judgement.json" >/dev/null
-grep -Fxq 'model_reasoning_effort = "max"' codex/agents/sol-judge.toml
-grep -Fxq 'model_reasoning_effort = "max"' codex/profiles/sol-judge.config.toml
+grep -Fxq 'model_reasoning_effort = "high"' codex/agents/astra-judge.toml
+grep -Fxq 'model_reasoning_effort = "high"' codex/profiles/astra-judge.config.toml
 grep -Fxq 'effort: max' agents/fable-judge.md
 grep -Fxq 'tools: Read, Grep, Glob' agents/fable-judge.md
 grep -Fxq 'model: sonnet' agents/sonnet-reviewer.md
 grep -Fxq 'effort: medium' agents/sonnet-reviewer.md
 grep -Fxq 'tools: Read, Grep, Glob' agents/sonnet-reviewer.md
 grep -Fq 'outside the Anthropic' agents/sonnet-reviewer.md
-grep -Fxq 'model = "gpt-5.6-sol"' codex/agents/sol-reviewer.toml
-grep -Fxq 'model = "gpt-5.6-sol"' codex/profiles/sol-reviewer.config.toml
-grep -Fxq 'model_reasoning_effort = "high"' codex/agents/sol-reviewer.toml
-grep -Fxq 'model_reasoning_effort = "high"' codex/profiles/sol-reviewer.config.toml
-grep -Fxq 'sandbox_mode = "read-only"' codex/agents/sol-reviewer.toml
-grep -Fxq 'sandbox_mode = "read-only"' codex/profiles/sol-reviewer.config.toml
-grep -Fq 'outside the OpenAI model family' codex/agents/sol-reviewer.toml
-grep -Fxq 'model = "gpt-5.6-sol"' codex/agents/sol-judge.toml
-grep -Fxq 'model = "gpt-5.6-sol"' codex/profiles/sol-judge.config.toml
-grep -Fxq 'sandbox_mode = "read-only"' codex/agents/sol-judge.toml
-grep -Fxq 'sandbox_mode = "read-only"' codex/profiles/sol-judge.config.toml
+grep -Fxq 'model = "gpt-6-astra"' codex/agents/astra-reviewer.toml
+grep -Fxq 'model = "gpt-6-astra"' codex/profiles/astra-reviewer.config.toml
+grep -Fxq 'model_reasoning_effort = "high"' codex/agents/astra-reviewer.toml
+grep -Fxq 'model_reasoning_effort = "high"' codex/profiles/astra-reviewer.config.toml
+grep -Fxq 'sandbox_mode = "read-only"' codex/agents/astra-reviewer.toml
+grep -Fxq 'sandbox_mode = "read-only"' codex/profiles/astra-reviewer.config.toml
+grep -Fq 'outside the openai-gpt6 model family' codex/agents/astra-reviewer.toml
+grep -Fxq 'model = "gpt-6-astra"' codex/agents/astra-judge.toml
+grep -Fxq 'model = "gpt-6-astra"' codex/profiles/astra-judge.config.toml
+grep -Fxq 'sandbox_mode = "read-only"' codex/agents/astra-judge.toml
+grep -Fxq 'sandbox_mode = "read-only"' codex/profiles/astra-judge.config.toml
 pass=$((pass + 1))
 
 # Policy annotation is candidate/blocked only, including separate exact-variant
@@ -526,7 +526,7 @@ jq -e '
   (.choices | length) == 0 and
   ([.blocked[].profile] | sort) ==
     ["deepseek-v4-pro","fable-policy-annotator","glm53-flash-max-policy-annotation","grok-build","kimi-k3",
-     "opus-policy-annotator","qwen3.8-max","sol-max-policy-annotator"]
+     "opus-policy-annotator","qwen3.8-max"]
 ' "$TMP/policy-annotation.json" >/dev/null
 jq -e '
   .profiles["kimi-k3"].lanes.reviewer.status == "disabled" and

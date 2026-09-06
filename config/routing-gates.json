@@ -36,7 +36,8 @@
     "gpt-5.6-terra": "openai",
     "grok-4.6": "xai",
     "kimi-k3": "moonshot",
-    "qwen3.8-max": "alibaba"
+    "qwen3.8-max": "alibaba",
+    "gpt-6-astra": "openai-gpt6"
   },
   "review_policy": {
     "require_cross_family": true,
@@ -49,7 +50,7 @@
       "sonnet-reviewer",
       "opus-reviewer",
       "terra-reviewer",
-      "sol-reviewer"
+      "astra-reviewer"
     ],
     "availability_must_be_verified": true
   },
@@ -129,8 +130,8 @@
         }
       }
     },
-    "sol-reviewer": {
-      "model": "gpt-5.6-sol",
+    "astra-reviewer": {
+      "model": "gpt-6-astra",
       "harness": "codex",
       "effort": "high",
       "lanes": {
@@ -139,9 +140,10 @@
           "selection": "explicit-only",
           "exact_evidence_ids": [],
           "context_evidence_ids": [
-            "aa-codex-gpt-5.6-sol-high"
+            "openai-gpt-6-astra-high-swe",
+            "openai-gpt-6-astra-high-computer-use"
           ],
-          "qualification_basis": "Explicit owner routing decision, 2026-08-16. Codex material review defaults to the read-only sol-reviewer profile at high. Status remains provisional because no exact review precision/recall row exists. This decision does not apply to routine review, judgement, or super-judgement; sol-judge remains manual-qualified and explicit-only.",
+          "qualification_basis": "Owner decision, 2026-09-01: GPT-6 Astra @ high replaces Sol/high as the default material reviewer for work produced outside the openai-gpt6 family. Vendor SWE row is exact; no exact review precision/recall row exists, so status stays provisional.",
           "evidence_gap": "No exact review precision/recall row."
         },
         "security": {
@@ -149,56 +151,47 @@
           "selection": "explicit-only",
           "exact_evidence_ids": [],
           "context_evidence_ids": [
-            "aa-codex-gpt-5.6-sol-high"
+            "openai-gpt-6-astra-high-swe",
+            "openai-gpt-6-astra-high-computer-use"
           ],
-          "qualification_basis": "Owner routing decision, 2026-08-17. Sol/high is a read-only technical reviewer, but the cross-family rule excludes it whenever the producer is in the OpenAI family.",
-          "evidence_gap": "No exact security-review precision/recall row; the general coding row is contextual only."
+          "qualification_basis": "Owner decision, 2026-09-01: Astra @ high may review security-sensitive work only when the producer is outside the openai-gpt6 family. Astra is Preparedness-Critical for cyber; review is read-only and the owner decision explicitly scopes it to review, not to security operations.",
+          "evidence_gap": "No exact security-review precision/recall row; the coding row is contextual only."
         },
         "routine-review": {
           "status": "provisional",
           "selection": "explicit-only",
           "exact_evidence_ids": [],
           "context_evidence_ids": [
-            "aa-codex-gpt-5.6-sol-high"
+            "openai-gpt-6-astra-high-swe",
+            "openai-gpt-6-astra-high-computer-use"
           ],
-          "qualification_basis": "Owner routing decision, 2026-08-17. Sol/high is an advanced read-only fallback reviewer for work produced outside the OpenAI family.",
-          "evidence_gap": "No exact review precision/recall row; coding evidence is contextual only."
+          "qualification_basis": "Owner decision, 2026-09-01: Astra @ high is an advanced fallback reviewer; tiny routine review stays with sonnet-reviewer.",
+          "evidence_gap": "No exact review precision/recall row."
         }
       }
     },
-    "sol-judge": {
-      "model": "gpt-5.6-sol",
+    "astra-judge": {
+      "model": "gpt-6-astra",
       "harness": "codex",
-      "effort": "max",
+      "effort": "high",
       "lanes": {
         "judgement": {
           "status": "manual-qualified",
           "selection": "explicit-only",
           "exact_evidence_ids": [],
           "context_evidence_ids": [
-            "aa-codex-gpt-5.6-sol-max",
-            "aa-codex-gpt-5.6-sol-high",
-            "arena-agent-gpt-5.6-sol-xhigh"
+            "openai-gpt-6-astra-high-swe",
+            "openai-gpt-6-astra-high-computer-use"
           ],
-          "evidence_gap": "Judgement is manual-only; the available rows measure coding or use a different effort rather than judgement quality.",
-          "qualification_basis": "Explicit owner effort decision, 2026-08-18: Sol judgement runs at max for technical feasibility, repository fit, failure modes, and verifiability. This does not convert contextual coding evidence into judgement qualification."
-        }
-      }
-    },
-    "sol-max-policy-annotator": {
-      "model": "gpt-5.6-sol",
-      "harness": "codex",
-      "effort": "max",
-      "lanes": {
-        "policy-annotation": {
-          "status": "candidate",
-          "selection": "blocked",
-          "exact_evidence_ids": [],
-          "context_evidence_ids": [],
-          "evaluation_manifest_sha256": [
-            "a3eb98bf198f1dbdf741cb789179e5528274844e7edd2b86f826615d66fd5ef2"
-          ],
-          "evidence_gap": "No frozen local policy-annotation result exists for the max-effort Codex variant."
+          "local_evaluation": {
+            "run_id": "2026-09-01-astra-high-runtime-probe",
+            "task_count": 1,
+            "repeats": 1,
+            "confidence": "low",
+            "limitations": "Authenticated Codex CLI returned exact PONG and surfaced model gpt-6-astra at requested high; this proves runtime compatibility, not judgement quality."
+          },
+          "evidence_gap": "Judgement is manual-only; the available rows measure coding or computer use rather than judgement quality.",
+          "qualification_basis": "Owner decision, 2026-09-01: GPT-6 Astra @ high replaces Sol @ max as the technical-feasibility judge (repository fit, failure modes, verifiability). Remains manual-qualified explicit-only."
         }
       }
     },
@@ -893,7 +886,7 @@
       "selection": "explicit-only",
       "members": [
         "fable-judge",
-        "sol-judge"
+        "astra-judge"
       ],
       "protocol": "independent-then-cross-review",
       "final_authority": "lead",

@@ -225,7 +225,7 @@ Delegation is user-directed and per dispatch. The flow is always:
   `delegation-route resolve --lane <routine-review|material-review|security>
   --producer-profile <profile>`. The command fails without producer identity and
   reports same-family profiles under `excluded_same_family`.
-- **Sol is an advanced reviewer choice only when cross-family.** `sol-reviewer/high`
+- **Astra is an advanced reviewer choice only when cross-family.** `astra-reviewer/high` (GPT-6 Astra)
    is excluded for Terra, Luna, Sol, or any other OpenAI-family producer. Opus is
    excluded for Anthropic-family output. If every returned reviewer is
    unavailable, stop rather than weakening the family boundary.

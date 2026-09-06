@@ -17,7 +17,7 @@ lanes by content (see the routing policy):
   producer is outside the OpenAI family. User-facing taste remains with the lead.
 
 Reach either as a one-shot Agent/Workflow call with the model pinned
-(`fable-judge`, Codex `sol-judge`, or a resolved cross-family reviewer) and this prompt; force a
+(`fable-judge`, Codex `astra-judge`, or a resolved cross-family reviewer) and this prompt; force a
 structured return so nothing gets lost.
 
 For an explicitly approved `super-judgement`, do not use this single-consult

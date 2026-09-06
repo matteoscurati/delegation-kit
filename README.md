@@ -106,7 +106,7 @@ its own approval unless your request named that finite set.
 
 | piece | where | what |
 |---|---|---|
-| 5 native profiles | `agents/*.toml` | `luna-clerk` · `terra-builder` · `terra-reviewer` · `sol-reviewer` · `sol-judge` |
+| 5 native profiles | `agents/*.toml` | `luna-clerk` · `terra-builder` (`max`, editing) · `terra-reviewer` (`max`, read-only cross-family) · `astra-reviewer` (`high`, read-only cross-family) · `astra-judge` (`high`, explicit judgement) |
 | 5 ephemeral profiles | `*.config.toml` | for `codex exec --ephemeral -p <name>` |
 | user-direction guard | guarded block in `AGENTS.md` | same rule, Codex side |
 

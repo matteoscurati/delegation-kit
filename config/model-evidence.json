@@ -414,6 +414,13 @@
       "data_date": "2026-09-01",
       "scope": "First-party release evidence for model identity, availability, effort range, context and output limits, pricing, and qualitative improvements in code review and agentic work",
       "limitations": "Launch claims and customer reports are contextual evidence, not an independent review precision/recall benchmark and not an exact Claude Code high evaluation"
+    },
+    "openai-gpt-6-astra-2026-09-03": {
+      "name": "OpenAI: GPT-6 Astra launch (2026-09-03)",
+      "url": "https://developers.openai.com/api/docs/models/gpt-6-astra",
+      "publisher": "OpenAI",
+      "date": "2026-09-03",
+      "notes": "Vendor launch benchmarks for gpt-6-astra: SWE, computer use, ExploitGym. Vendor-published; never a promotion on its own."
     }
   },
   "lane_evidence": {
@@ -2799,6 +2806,30 @@
           "cost_per_task_usd": 4.7037
         }
       }
+    },
+    {
+      "id": "openai-gpt-6-astra-high-swe",
+      "model": "gpt-6-astra",
+      "harness": "codex",
+      "effort": "high",
+      "date": "2026-09-03",
+      "source": "openai-gpt-6-astra-2026-09-03",
+      "metrics": {
+        "swe_bench_pct": 76.3
+      },
+      "notes": "Vendor SWE-Bench Verified-class coding row for gpt-6-astra at high effort, from the launch benchmarks."
+    },
+    {
+      "id": "openai-gpt-6-astra-high-computer-use",
+      "model": "gpt-6-astra",
+      "harness": "codex",
+      "effort": "high",
+      "date": "2026-09-03",
+      "source": "openai-gpt-6-astra-2026-09-03",
+      "metrics": {
+        "osworld_v2_partial_pct": 80.1
+      },
+      "notes": "Vendor OSWorld 2.0 (partial) computer-use row for gpt-6-astra at high effort."
     },
     {
       "id": "epoch-deepswe-gpt-5-6-terra-mini-swe-agent-high",
