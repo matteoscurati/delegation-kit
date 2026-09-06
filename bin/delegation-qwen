@@ -4,6 +4,11 @@
 # requires --allow-provisional after an explicit routing decision. Every other
 # lane stays blocked until exact local evaluation promotes it in both the
 # central and executable gates.
+#
+# Model upgrade monitoring: `delegation-qwen check` reports whether the
+# Qwen3.8-Max-0902 snapshot (qwen3.8-max-0902) is available on this endpoint.
+# When it appears, the migration is a model-id re-pin in the routing gates
+# plus a fresh evidence row — see docs/external-executors.md.
 set -euo pipefail
 umask 077
 
@@ -19,6 +24,10 @@ CENTRAL_GATES="${DELEGATION_ROUTING_GATES_FILE:-$ROOT/config/routing-gates.json}
 ROUTER="$ROOT/bin/delegation-route"
 KEY_FILE="${DELEGATION_QWEN_KEY_FILE:-$ROOT/config/qwen-token-plan.env}"
 MODEL="qwen3.8-max"
+# Post-training refresh released 2026-09-02 on QwenCloud; not yet on this
+# Token Plan endpoint. check reports its availability so the re-pin is
+# deliberate when Alibaba propagates it.
+MODEL_NEXT="qwen3.8-max-0902"
 PROFILE="qwen3.8-max"
 BACKEND="token-plan-openai"
 API_URL="https://token-plan.ap-southeast-1.maas.aliyuncs.com/compatible-mode/v1/chat/completions"
@@ -229,19 +238,47 @@ write_diagnostic() {
   mv "$tmp" "$diagnostic"
 }
 
+# Whether the QwenCloud post-training refresh (qwen3.8-max-0902) is available
+# on this Token Plan endpoint. Read-only GET /models; never dispatches. The
+# result is informational: the re-pin is a routing-gate decision, not a
+# runtime side effect.
+models_endpoint_available() {
+  local key="$1" body
+  body="$(curl -sS --connect-timeout 10 --max-time 20 \
+    "${API_URL%/chat/completions}/models" \
+    -H "Authorization: Bearer $key" 2>/dev/null)" || return 1
+  printf '%s' "$body" | jq -e --arg id "$MODEL_NEXT" \
+    '.data | type == "array" and any(.[]; .id == $id)' >/dev/null 2>&1
+}
+
+next_snapshot_status() {
+  local key="${QWEN_TOKEN_PLAN_API_KEY:-}"
+  [ -n "$key" ] || { printf 'unknown'; return; }
+  if models_endpoint_available "$key"; then printf 'available'; else printf 'not-yet-available'; fi
+}
+
 print_check() {
   local as_json="${1:-0}" ready=false selected=none
   validate_gate_graph || die 78 "central and executable routing gates are missing, invalid, or inconsistent"
   runtime_status && ready=true || true
   [ "$ready" = true ] && selected="$BACKEND"
+  local next_snapshot; next_snapshot="$(next_snapshot_status)"
   if [ "$as_json" = 1 ]; then
     jq -n --arg model "$MODEL" --arg selected "$selected" --arg reason "$QWEN_REASON" \
+      --arg next_model "$MODEL_NEXT" --arg next_snapshot "$next_snapshot" \
       --argjson available "$ready" --argjson qualified "$(qualified_lanes)" \
       --argjson provisional "$(provisional_lanes)" --argjson candidate "$(candidate_lanes)" \
-      '{model:$model,efforts:["xhigh"],selected_backend:$selected,qualified_lanes:$qualified,provisional_lanes:$provisional,candidate_lanes:$candidate,backends:{"token-plan-openai":{available:$available,reason:$reason}}}'
+      '{model:$model,efforts:["xhigh"],selected_backend:$selected,qualified_lanes:$qualified,provisional_lanes:$provisional,candidate_lanes:$candidate,
+        next_snapshot:{model:$next_model,availability:$next_snapshot},
+        backends:{"token-plan-openai":{available:$available,reason:$reason}}}'
   else
     printf 'Qwen3.8-Max: selected=%s qualified=%s provisional=%s candidate=%s\n' "$selected" "$(qualified_lanes)" "$(provisional_lanes)" "$(candidate_lanes)"
     printf '  token-plan-openai: %s (%s; effort=xhigh)\n' "$ready" "$QWEN_REASON"
+    case "$next_snapshot" in
+      available)         printf '  next snapshot: %s AVAILABLE on this endpoint — re-pin is ready (see docs/external-executors.md)\n' "$MODEL_NEXT" ;;
+      not-yet-available) printf '  next snapshot: %s not yet on this endpoint\n' "$MODEL_NEXT" ;;
+      *)                 printf '  next snapshot: %s availability unknown (key not configured)\n' "$MODEL_NEXT" ;;
+    esac
   fi
 }
 
