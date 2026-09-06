@@ -316,30 +316,30 @@ if [ -f "$CODEX_HOME/agents/terra-reviewer.toml" ] \
 else
   bad "terra-reviewer missing, stale, or not cross-family/max/read-only — re-run ./install.sh"
 fi
-if [ -f "$CODEX_HOME/agents/sol-reviewer.toml" ] \
-    && [ -f "$CODEX_HOME/sol-reviewer.config.toml" ] \
-    && grep -Fxq 'model = "gpt-5.6-sol"' "$CODEX_HOME/agents/sol-reviewer.toml" \
-    && grep -Fxq 'model = "gpt-5.6-sol"' "$CODEX_HOME/sol-reviewer.config.toml" \
-    && grep -Fxq 'model_reasoning_effort = "high"' "$CODEX_HOME/agents/sol-reviewer.toml" \
-    && grep -Fxq 'model_reasoning_effort = "high"' "$CODEX_HOME/sol-reviewer.config.toml" \
-    && grep -Fxq 'sandbox_mode = "read-only"' "$CODEX_HOME/agents/sol-reviewer.toml" \
-    && grep -Fxq 'sandbox_mode = "read-only"' "$CODEX_HOME/sol-reviewer.config.toml" \
-    && grep -Fq 'outside the OpenAI model family' "$CODEX_HOME/agents/sol-reviewer.toml"; then
-  ok "sol-reviewer pinned to gpt-5.6-sol/high, read-only, and cross-family only"
+if [ -f "$CODEX_HOME/agents/astra-reviewer.toml" ] \
+    && [ -f "$CODEX_HOME/astra-reviewer.config.toml" ] \
+    && grep -Fxq 'model = "gpt-6-astra"' "$CODEX_HOME/agents/astra-reviewer.toml" \
+    && grep -Fxq 'model = "gpt-6-astra"' "$CODEX_HOME/astra-reviewer.config.toml" \
+    && grep -Fxq 'model_reasoning_effort = "high"' "$CODEX_HOME/agents/astra-reviewer.toml" \
+    && grep -Fxq 'model_reasoning_effort = "high"' "$CODEX_HOME/astra-reviewer.config.toml" \
+    && grep -Fxq 'sandbox_mode = "read-only"' "$CODEX_HOME/agents/astra-reviewer.toml" \
+    && grep -Fxq 'sandbox_mode = "read-only"' "$CODEX_HOME/astra-reviewer.config.toml" \
+    && grep -Fq 'outside the openai-gpt6 model family' "$CODEX_HOME/agents/astra-reviewer.toml"; then
+  ok "astra-reviewer pinned to gpt-6-astra/high, read-only, and cross-family only"
 else
-  bad "sol-reviewer missing, stale, or not cross-family/high/read-only — re-run ./install.sh"
+  bad "astra-reviewer missing, stale, or not cross-family/high/read-only — re-run ./install.sh"
 fi
-if [ -f "$CODEX_HOME/agents/sol-judge.toml" ] \
-    && [ -f "$CODEX_HOME/sol-judge.config.toml" ] \
-    && grep -Fxq 'model = "gpt-5.6-sol"' "$CODEX_HOME/agents/sol-judge.toml" \
-    && grep -Fxq 'model = "gpt-5.6-sol"' "$CODEX_HOME/sol-judge.config.toml" \
-    && grep -Fxq 'model_reasoning_effort = "max"' "$CODEX_HOME/agents/sol-judge.toml" \
-    && grep -Fxq 'model_reasoning_effort = "max"' "$CODEX_HOME/sol-judge.config.toml" \
-    && grep -Fxq 'sandbox_mode = "read-only"' "$CODEX_HOME/agents/sol-judge.toml" \
-    && grep -Fxq 'sandbox_mode = "read-only"' "$CODEX_HOME/sol-judge.config.toml"; then
-  ok "sol-judge pinned to gpt-5.6-sol/max and read-only"
+if [ -f "$CODEX_HOME/agents/astra-judge.toml" ] \
+    && [ -f "$CODEX_HOME/astra-judge.config.toml" ] \
+    && grep -Fxq 'model = "gpt-6-astra"' "$CODEX_HOME/agents/astra-judge.toml" \
+    && grep -Fxq 'model = "gpt-6-astra"' "$CODEX_HOME/astra-judge.config.toml" \
+    && grep -Fxq 'model_reasoning_effort = "high"' "$CODEX_HOME/agents/astra-judge.toml" \
+    && grep -Fxq 'model_reasoning_effort = "high"' "$CODEX_HOME/astra-judge.config.toml" \
+    && grep -Fxq 'sandbox_mode = "read-only"' "$CODEX_HOME/agents/astra-judge.toml" \
+    && grep -Fxq 'sandbox_mode = "read-only"' "$CODEX_HOME/astra-judge.config.toml"; then
+  ok "astra-judge pinned to gpt-6-astra/high and read-only"
 else
-  bad "sol-judge missing, stale, or not max/read-only — re-run ./install.sh"
+  bad "astra-judge missing, stale, or not high/read-only — re-run ./install.sh"
 fi
 # The registered block must be the current user-direction guard: an older
 # orchestration policy left in AGENTS.md is exactly what this check refuses.

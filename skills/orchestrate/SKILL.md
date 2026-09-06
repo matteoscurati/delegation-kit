@@ -39,7 +39,7 @@ cheapest that passes verification.
   availability before dispatch.
 - **Advisor**, split by content (this is the kit's improvement over a single
   advisor — route by the policy): **Judgement** (author: Fable via `fable-judge`
-  or Sol via `sol-judge`, two-touch) for plan
+ or Astra via `astra-judge`, two-touch) for plan
   critique and ship/synthesis. Material technical/security review goes to any
   eligible advanced read-only cross-family reviewer; user-facing taste stays with the lead. Consult
   format in `references/advisor-consult.md`.

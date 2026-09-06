@@ -7,7 +7,7 @@ documented complexity triggers. The lead remains the final authority.
 ## Phase 1 — independent verdicts
 
 Send the same evidence, constraints, and output contract to `fable-judge` and
-`sol-judge`. Neither sees the other's answer. Each returns:
+`astra-judge`. Neither sees the other's answer. Each returns:
 
 1. decision;
 2. evidence used;

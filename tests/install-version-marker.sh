@@ -197,23 +197,23 @@ ok
   && grep -Fxq 'sandbox_mode = "read-only"' "$TMP/codex/agents/terra-reviewer.toml" \
   && grep -Fxq 'sandbox_mode = "read-only"' "$TMP/codex/terra-reviewer.config.toml" \
   || fail 'install did not include the Terra max read-only reviewer profiles'
-[ -f "$TMP/codex/agents/sol-reviewer.toml" ] && [ -f "$TMP/codex/sol-reviewer.config.toml" ] \
-  && grep -Fxq 'model = "gpt-5.6-sol"' "$TMP/codex/agents/sol-reviewer.toml" \
-  && grep -Fxq 'model = "gpt-5.6-sol"' "$TMP/codex/sol-reviewer.config.toml" \
-  && grep -Fxq 'model_reasoning_effort = "high"' "$TMP/codex/agents/sol-reviewer.toml" \
-  && grep -Fxq 'model_reasoning_effort = "high"' "$TMP/codex/sol-reviewer.config.toml" \
-  && grep -Fxq 'sandbox_mode = "read-only"' "$TMP/codex/agents/sol-reviewer.toml" \
-  && grep -Fxq 'sandbox_mode = "read-only"' "$TMP/codex/sol-reviewer.config.toml" \
-  && grep -Fq 'outside the OpenAI model family' "$TMP/codex/agents/sol-reviewer.toml" \
-  || fail 'install did not include the Sol high read-only cross-family reviewer profiles'
-[ -f "$TMP/codex/agents/sol-judge.toml" ] && [ -f "$TMP/codex/sol-judge.config.toml" ] \
-  && grep -Fxq 'model = "gpt-5.6-sol"' "$TMP/codex/agents/sol-judge.toml" \
-  && grep -Fxq 'model = "gpt-5.6-sol"' "$TMP/codex/sol-judge.config.toml" \
-  && grep -Fxq 'model_reasoning_effort = "max"' "$TMP/codex/agents/sol-judge.toml" \
-  && grep -Fxq 'model_reasoning_effort = "max"' "$TMP/codex/sol-judge.config.toml" \
-  && grep -Fxq 'sandbox_mode = "read-only"' "$TMP/codex/agents/sol-judge.toml" \
-  && grep -Fxq 'sandbox_mode = "read-only"' "$TMP/codex/sol-judge.config.toml" \
-  || fail 'install did not include sol-judge at max'
+[ -f "$TMP/codex/agents/astra-reviewer.toml" ] && [ -f "$TMP/codex/astra-reviewer.config.toml" ] \
+  && grep -Fxq 'model = "gpt-6-astra"' "$TMP/codex/agents/astra-reviewer.toml" \
+  && grep -Fxq 'model = "gpt-6-astra"' "$TMP/codex/astra-reviewer.config.toml" \
+  && grep -Fxq 'model_reasoning_effort = "high"' "$TMP/codex/agents/astra-reviewer.toml" \
+  && grep -Fxq 'model_reasoning_effort = "high"' "$TMP/codex/astra-reviewer.config.toml" \
+  && grep -Fxq 'sandbox_mode = "read-only"' "$TMP/codex/agents/astra-reviewer.toml" \
+  && grep -Fxq 'sandbox_mode = "read-only"' "$TMP/codex/astra-reviewer.config.toml" \
+  && grep -Fq 'outside the openai-gpt6 model family' "$TMP/codex/agents/astra-reviewer.toml" \
+  || fail 'install did not include the Astra high read-only cross-family reviewer profiles'
+[ -f "$TMP/codex/agents/astra-judge.toml" ] && [ -f "$TMP/codex/astra-judge.config.toml" ] \
+  && grep -Fxq 'model = "gpt-6-astra"' "$TMP/codex/agents/astra-judge.toml" \
+  && grep -Fxq 'model = "gpt-6-astra"' "$TMP/codex/astra-judge.config.toml" \
+  && grep -Fxq 'model_reasoning_effort = "high"' "$TMP/codex/agents/astra-judge.toml" \
+  && grep -Fxq 'model_reasoning_effort = "high"' "$TMP/codex/astra-judge.config.toml" \
+  && grep -Fxq 'sandbox_mode = "read-only"' "$TMP/codex/agents/astra-judge.toml" \
+  && grep -Fxq 'sandbox_mode = "read-only"' "$TMP/codex/astra-judge.config.toml" \
+  || fail 'install did not include astra-judge at high'
 grep -q 'existing compatible Grok Build CLI archive retained' "$TMP/install.log" \
   || { sed 's/^/    /' "$TMP/install.log" >&2; fail 'upgrade falsely warned that the compatible Grok archive was unavailable'; }
 ok

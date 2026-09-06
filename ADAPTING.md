@@ -9,11 +9,11 @@ Here's what to change and how.
 | role | what it does | author's pick |
 |---|---|---|
 | **lead** | owns the work, integrates, verifies; enters judgement only in bursts | Opus 5 @ xhigh |
-| **judgement** | plan + final verdict/synthesis; explicit, manual gate | Fable 5.1 @ max or Sol @ max |
-| **super-judgement** | independent dual verdict + cross-review for exceptional decisions | Fable 5.1 @ max + Sol @ max |
+| **judgement** | plan + final verdict/synthesis; explicit, manual gate | Fable 5.1 @ max or Astra @ high |
+| **super-judgement** | independent dual verdict + cross-review for exceptional decisions | Fable 5.1 @ max + Astra @ high |
 | **small non-builder** | very small extraction, repo mapping, and routine review only | Sonnet 5 · GPT-5.6 Luna |
 | **builder** | bounded implementation through an editing profile | Opus 5 @ max · GPT-5.6 Terra @ max |
-| **reviewer** | read-only correctness/security review; must differ from producer family | Opus 5 @ max · GPT-5.6 Terra @ max · Sol @ high |
+| **reviewer** | read-only correctness/security review; must differ from producer family | Opus 5 @ max · GPT-5.6 Terra @ max · Astra @ high |
 
 Pick one model per role from *your* table. In the author's operational subagent
 mapping, Opus and Terra both build and review through separate permission

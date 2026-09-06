@@ -36,7 +36,7 @@ echo "  - removed 6 current subagent profiles, retired profile copies, and model
 strip_guarded "$CLAUDE_HOME/CLAUDE.md"
 
 echo "Codex -> $CODEX_HOME"
-for a in luna-clerk terra-scout terra-builder terra-reviewer sol-reviewer sol-judge; do
+for a in luna-clerk terra-scout terra-builder terra-reviewer sol-reviewer sol-judge astra-reviewer astra-judge; do
   rm -f "$CODEX_HOME/agents/$a.toml" "$CODEX_HOME/$a.config.toml"
 done
 rm -rf "$CODEX_HOME/skills/glm-executor" "$CODEX_HOME/skills/gemini-executor" \
