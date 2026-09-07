@@ -7,6 +7,9 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+# Keep the Grok runtime-socket probe off the real filesystem: a Docker Desktop
+# symlink on the developer machine must not change what install reports.
+export DELEGATION_GROK_RUNTIME_SOCKET_ENDPOINTS=""
 TMP="$(mktemp -d "${TMPDIR:-/tmp}/delegation-install-marker.XXXXXX")"
 trap 'rm -rf -- "$TMP"' EXIT
 

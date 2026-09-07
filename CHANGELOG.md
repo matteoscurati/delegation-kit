@@ -2,6 +2,30 @@
 
 All notable changes to delegation-kit are documented here.
 
+## [0.23.1] — 2026-09-07
+
+### Fixed
+
+- **`delegation-grok` reported "ready" on a machine where every dispatch
+  failed.** Grok Build 1.0.13 denies the container runtime sockets
+  (`/var/run/docker.sock`, podman, containerd, and the Docker Desktop paths
+  under `~/.docker`) in every sandbox profile and resolves each endpoint before
+  applying Seatbelt; when one is a symlink — Docker Desktop's optional default
+  socket link — a custom profile such as `delegation-kit` is refused outright
+  ("Refusing to start with its protections missing"), while the capability
+  probe and model inventory still succeed. `check` now probes those endpoints
+  after resolving the CLI and reports the lane unavailable with the offending
+  path and the remedy; `run` fails closed at exit 69 before dispatch; and a
+  refusal surfaced by the CLI itself is classified as
+  `sandbox_profile_refused` (exit 69) instead of a generic `dispatch_failed`.
+  `DELEGATION_GROK_RUNTIME_SOCKET_ENDPOINTS` overrides the endpoint list for
+  tests. Found by the first live Grok probe since 2026-08-27, on a machine
+  where the link had appeared on 2026-08-28.
+- `install.sh` said the compatible Grok Build CLI archive was *not* retained
+  whenever the runtime was unavailable, even though the archive was in place;
+  the message now depends only on the pinned archive, and runtime availability
+  is doctor's report.
+
 ## [0.23.0] — 2026-09-07
 
 ### Fixed

@@ -15,8 +15,7 @@ done
 ROOT="$(cd "$(dirname "$SOURCE")/.." && pwd)"
 # RUNNER_NAME and PROFILE are consumed by the sourced shared library.
 # shellcheck disable=SC2034
-RUNNER_NAME="delegation-grok"
-PROFILE="grok-build"
+RUNNER_NAME="delegation-grok" PROFILE="grok-build"
 # shellcheck source=bin/lib/delegation-runner-common.sh
 . "$ROOT/bin/lib/delegation-runner-common.sh"
 ROUTING_FILE="${DELEGATION_GROK_ROUTING_FILE:-$ROOT/config/grok-4.6-routing.json}"
@@ -676,6 +675,29 @@ validate_gate_graph() {
     "$ROUTER" check --json >/dev/null 2>&1
 }
 
+# Grok Build's sandbox denies these container runtime sockets in every profile,
+# built-in or custom, and resolves each endpoint before applying Seatbelt. Since
+# 1.0.13 a symlinked endpoint (Docker Desktop's optional /var/run/docker.sock
+# link is the common case) makes that resolution fail; a built-in profile then
+# continues without a sandbox, but a custom profile such as delegation-kit is
+# refused outright: "could not apply the 'delegation-kit' sandbox profile ...
+# Refusing to start with its protections missing." The kit never runs Grok
+# without its attested sandbox, so the lane is unavailable on such a machine.
+# The list mirrors the CLI's own deny table; tests override it.
+RUNTIME_SOCKET_ENDPOINTS="${DELEGATION_GROK_RUNTIME_SOCKET_ENDPOINTS-/var/run/docker.sock:/run/docker.sock:/run/podman/podman.sock:/var/run/podman/podman.sock:/run/containerd/containerd.sock:/var/run/containerd/containerd.sock:$HOME/.docker/run/docker.sock:$HOME/.docker/desktop/docker.sock}"
+symlinked_runtime_socket() {
+  local endpoint
+  local IFS=:
+  for endpoint in $RUNTIME_SOCKET_ENDPOINTS; do
+    [ -n "$endpoint" ] || continue
+    if [ -L "$endpoint" ]; then printf '%s' "$endpoint"; return 0; fi
+  done
+  return 1
+}
+sandbox_profile_refused() {
+  grep -Eqi 'sandbox could not be applied|could not apply the .* sandbox profile|runtime-socket deny resolution failed' "$1"
+}
+
 runtime_status() {
   local oauth_mode="${1:-serialized}"
   GROK_REASON=""
@@ -683,9 +705,14 @@ runtime_status() {
   timeout_bin >/dev/null || { GROK_REASON="timeout or gtimeout is required"; return 1; }
   [[ "$TIMEOUT_SECONDS" =~ ^[1-9][0-9]*$ ]] \
     || { GROK_REASON="DELEGATION_GROK_TIMEOUT_SECONDS must be a positive integer"; return 1; }
-  local models status_tmp lock_rc=0 sync_rc=0 seed_rc=0
+  local models status_tmp lock_rc=0 sync_rc=0 seed_rc=0 symlinked_socket
   status_tmp="$(mktemp -d "${TMPDIR:-/tmp}/delegation-grok-status.XXXXXX")"
   resolve_grok_bin "$status_tmp/probe" || { rm -rf -- "$status_tmp"; return 1; }
+  if symlinked_socket="$(symlinked_runtime_socket)"; then
+    rm -rf -- "$status_tmp"
+    GROK_REASON="Grok Build refuses the custom delegation-kit sandbox while runtime-socket deny endpoint $symlinked_socket is a symlink; point it at the real socket or remove the link (Docker Desktop: disable the default socket), then re-run check"
+    return 1
+  fi
   if [ "$oauth_mode" = shared ]; then
     seed_shared_oauth || seed_rc=$?
     if [ "$seed_rc" -ne 0 ]; then
@@ -1100,11 +1127,13 @@ run_command() {
     [ "$rc" -ne 124 ] && [ "$rc" -ne 137 ] || reason="timeout"
     auth_failure "$stderr_file" && reason="authentication_failed"
     temporary_failure "$stderr_file" && reason="temporarily_unavailable"
+    sandbox_profile_refused "$stderr_file" && reason="sandbox_profile_refused"
     preserve_debug "$debug_dir" "$response" "$stderr_file"
     write_diagnostic "$diagnostic" "$phase" "$reason" "$rc" "$started" \
       "$response" "$stderr_file" "$DEBUG_PATH"
     case "$reason" in
       authentication_failed) die 69 "Grok Build authentication failed; sanitized diagnostic: $diagnostic" ;;
+      sandbox_profile_refused) die 69 "Grok Build refused to apply the delegation-kit sandbox profile (a symlinked runtime-socket deny endpoint is the known cause; see check); sanitized diagnostic: $diagnostic" ;;
       temporarily_unavailable|timeout) die 75 "Grok Build $reason; sanitized diagnostic: $diagnostic" ;;
       *) die 70 "Grok Build dispatch failed (exit $rc); sanitized diagnostic: $diagnostic" ;;
     esac

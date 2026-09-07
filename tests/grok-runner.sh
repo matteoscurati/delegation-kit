@@ -119,6 +119,10 @@ prompt_text=""
 case "${GROK_FAKE_MODE:-success}" in
   auth) printf 'raw secret login required status 401\n' >&2; exit 1 ;;
   rate) printf 'raw secret rate limit status 429\n' >&2; exit 1 ;;
+  sandbox_refused)
+    printf 'warning: sandbox could not be applied: runtime-socket deny resolution failed: raw secret endpoint is a symlink\n' >&2
+    printf 'error: could not apply the %s sandbox profile; see the warning above for the cause. Refusing to start with its protections missing.\n' "'delegation-kit'" >&2
+    exit 1 ;;
   timeout) sleep 3; exit 0 ;;
 esac
 mkdir -p "$FAKE_GROK_HOME"
@@ -255,6 +259,10 @@ esac
 EOF
 chmod 755 "$TMP/bin-incompatible/grok"
 
+# The runtime-socket probe reads real filesystem endpoints; point it at a
+# fixture so a Docker Desktop symlink on the developer machine cannot leak in.
+export DELEGATION_GROK_RUNTIME_SOCKET_ENDPOINTS="$TMP/sockets/docker.sock:$TMP/sockets/podman.sock"
+mkdir -p "$TMP/sockets"
 run_grok() {
   DELEGATION_GROK_HOME="$TMP/grok-home" DELEGATION_DATA_HOME="$TMP/runtime" \
     DELEGATION_GROK_BIN_STORE="$TMP/store" \
@@ -950,6 +958,39 @@ for mode in sandbox_missing sandbox_unenforced max_turns cancelled unexpected_st
   jq -e '.reason | type == "string"' "$TMP/results/$mode.txt.error.json" >/dev/null \
     || fail "$mode did not write a sanitized diagnostic"
 done
+
+# A symlinked runtime-socket deny endpoint makes Grok Build refuse the custom
+# sandbox profile. check must report the lane unavailable with the endpoint
+# named, and run must fail closed before dispatch.
+ln -s "$TMP/sockets/real-docker.sock" "$TMP/sockets/docker.sock"
+run_grok check --json >"$TMP/check-symlinked-socket.json"
+jq -e --arg endpoint "$TMP/sockets/docker.sock" '
+  .selected_backend == "none" and .backends["grok-build"].available == false and
+  (.backends["grok-build"].reason | test("symlink")) and
+  (.backends["grok-build"].reason | contains($endpoint))
+' "$TMP/check-symlinked-socket.json" >/dev/null \
+  || fail "symlinked runtime socket was not reported by check"
+rc=0
+: >"$TMP/dispatch-symlink.log"
+GROK_FAKE_DISPATCH_LOG="$TMP/dispatch-symlink.log" run_grok run \
+  --lane builder --allow-provisional --prompt-file "$TMP/prompt.txt" \
+  --output "$TMP/results/symlinked-socket.txt" --workdir "$TMP/work" >/dev/null 2>&1 || rc=$?
+[ "$rc" = 69 ] || fail "symlinked runtime socket run returned $rc"
+[ ! -s "$TMP/dispatch-symlink.log" ] || fail "symlinked runtime socket run still dispatched"
+[ ! -e "$TMP/results/symlinked-socket.txt" ] || fail "symlinked runtime socket run published output"
+rm -f -- "$TMP/sockets/docker.sock"
+
+# If the CLI itself refuses the profile at dispatch, the diagnostic names the
+# cause instead of a generic dispatch failure, and the raw stderr stays private.
+rc=0
+GROK_FAKE_MODE=sandbox_refused run_grok run \
+  --lane builder --allow-provisional --prompt-file "$TMP/prompt.txt" \
+  --output "$TMP/results/sandbox-refused.txt" --workdir "$TMP/work" >/dev/null 2>&1 || rc=$?
+[ "$rc" = 69 ] || fail "sandbox profile refusal returned $rc"
+jq -e '.phase == "dispatch" and .reason == "sandbox_profile_refused"' \
+  "$TMP/results/sandbox-refused.txt.error.json" >/dev/null \
+  || fail "sandbox profile refusal was not classified"
+! grep -q 'raw secret' "$TMP/results/sandbox-refused.txt.error.json" || fail "raw sandbox stderr leaked"
 
 rc=0
 GROK_FAKE_MODE=auth run_grok run \

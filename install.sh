@@ -288,8 +288,9 @@ echo "Patch verifier -> $BIN_HOME/delegation-patch-verify (policy: $DATA_HOME/co
 if grok_pin_out="$(DELEGATION_DATA_HOME="$DATA_HOME" "$DATA_HOME/bin/delegation-grok" pin 2>&1)"; then
   printf '  + %s\n' "$(printf '%s\n' "$grok_pin_out" | head -1)"
 elif grok_check_out="$(DELEGATION_DATA_HOME="$DATA_HOME" "$DATA_HOME/bin/delegation-grok" check --json 2>/dev/null)" \
-    && printf '%s' "$grok_check_out" | jq -e \
-      '.runtime_cli_source == "pinned" and .backends["grok-build"].available == true' >/dev/null 2>&1; then
+    && printf '%s' "$grok_check_out" | jq -e '.runtime_cli_source == "pinned"' >/dev/null 2>&1; then
+  # The archive is retained whether or not the runtime is usable right now; a
+  # symlinked runtime socket or a logged-out CLI is reported by doctor, not here.
   echo "  + existing compatible Grok Build CLI archive retained"
 else
   echo "  ! compatible Grok Build CLI not archived — run 'delegation-grok pin --from <path>'"
