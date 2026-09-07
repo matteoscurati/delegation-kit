@@ -11,6 +11,11 @@ while [ -L "$SOURCE" ]; do
   [[ "$SOURCE" = /* ]] || SOURCE="$SOURCE_DIR/$SOURCE"
 done
 ROOT="$(cd "$(dirname "$SOURCE")/.." && pwd)"
+# RUNNER_NAME and PROFILE are consumed by the sourced shared library.
+# shellcheck disable=SC2034
+RUNNER_NAME="delegation-glm"
+# shellcheck source=bin/lib/delegation-runner-common.sh
+. "$ROOT/bin/lib/delegation-runner-common.sh"
 ROUTING_FILE="${DELEGATION_GLM_ROUTING_FILE:-$ROOT/config/glm-5.3-flash-max-routing.json}"
 CENTRAL_GATES="${DELEGATION_ROUTING_GATES_FILE:-$ROOT/config/routing-gates.json}"
 ROUTER="$ROOT/bin/delegation-route"
@@ -47,13 +52,6 @@ cleanup_run() {
   [ -z "$RUN_TMP" ] || rm -rf -- "$RUN_TMP"
 }
 
-normalized_destination() {
-  local path="$1" parent name
-  parent="$(cd "$(dirname "$path")" && pwd -P)" || return 1
-  name="$(basename "$path")"
-  printf '%s/%s' "$parent" "$name"
-}
-
 usage() {
   cat <<'EOF'
 Usage:
@@ -76,9 +74,6 @@ exact model/claude-zai/effort tuple selected by the executable gate and never
 changes a routing gate itself.
 EOF
 }
-
-die() { local code="$1"; shift; printf 'delegation-glm: %s\n' "$*" >&2; exit "$code"; }
-have() { command -v "$1" >/dev/null 2>&1; }
 
 load_gate_identity() {
   have jq || die 69 "jq is required"
@@ -109,12 +104,6 @@ resolve_claude_bin() {
   done
   [ -x "$candidate" ] || { CLAUDE_ZAI_REASON="resolved Claude Code binary is not executable"; return 1; }
   CLAUDE_BIN="$candidate"
-}
-
-sha256_file() {
-  if have shasum; then shasum -a 256 "$1" | awk '{print $1}'
-  elif have sha256sum; then sha256sum "$1" | awk '{print $1}'
-  else return 1; fi
 }
 
 normalized_mode() {
@@ -276,12 +265,6 @@ host_status() {
 # every branch it ran, and GNU's `-f` means --file-system, printing a block and
 # still failing. An undeterminable mode is not treated as a refusal — that would
 # brick the lane on a platform whose stat we cannot read.
-key_file_mode() {
-  local mode
-  if mode="$(stat -c '%a' "$KEY_FILE" 2>/dev/null)"; then printf '%s' "$mode"; return 0; fi
-  if mode="$(stat -f '%Lp' "$KEY_FILE" 2>/dev/null)"; then printf '%s' "$mode"; return 0; fi
-  printf ''
-}
 
 # An explicit ZAI_API_KEY in the environment always wins. Otherwise fall back to
 # the key install.sh stored. Parsed, never sourced: the file holds a credential,

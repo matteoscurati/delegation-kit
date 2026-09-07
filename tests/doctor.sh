@@ -83,7 +83,7 @@ else
 fi
 grep -Fq '[ OK ] opus-builder pinned to claude-opus-5/max' "$TMP/plugin-doctor.log"
 grep -Fq '[ OK ] opus-reviewer pinned to claude-opus-5/max and cross-family only' "$TMP/plugin-doctor.log"
-grep -Fq '[ OK ] fable-judge pinned to fable/max and read-only judgement' "$TMP/plugin-doctor.log"
+grep -Fq '[ OK ] fable-judge pinned to claude-fable-5-1/max and read-only judgement' "$TMP/plugin-doctor.log"
 grep -Fq '[ OK ] sonnet-reviewer pinned to sonnet/medium, tool-read-only, and cross-family only' "$TMP/plugin-doctor.log"
 grep -Fq '== External executor contract ==' "$TMP/plugin-doctor.log" || {
   printf 'doctor did not report on the external executor contract\n' >&2

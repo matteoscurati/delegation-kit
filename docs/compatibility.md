@@ -7,20 +7,22 @@ promote a provisional or candidate lane.
 
 ## Verified snapshot
 
-The 0.19.0 release-candidate gate was verified on **2026-08-29** on macOS
-26.5.1 with ambient Codex CLI `0.150.1` and ambient Claude Code `2.1.250`.
-The manifest-bound v4 pack deliberately retained its frozen native Claude Code
-`2.1.220` binary. The release candidate passed all 12 regression suites in 52
-seconds, including 59 central routing checks, plus
-ShellCheck, evidence validation, and the eight-check version gate. The exact
-GLM-5.3-Flash v4 pack passed 9/9 no-retry attempts at score 1.0: all 204
-assistant events were attributed to Flash, terminal usage named the sole
-canonical first-party Flash participant, and all builder checkers passed.
-Independent cross-family review returned `SHIP`. A clean release-candidate
-install matched source across the GLM runner, central/executable gates, and both
-installed executor skills. Static doctor reported `55 OK, 0 WARN, 0 FAIL`;
-`doctor.sh --ping --ping-glm` reported `58 OK, 0 WARN, 0 FAIL`, including a
-qualified GLM-5.3-Flash `PONG` and both bridge directions reachable. A fresh
+The 0.23.0 release-candidate gate was verified on **2026-09-07** on macOS
+26.5.1 with ambient Codex CLI `0.153.4` and ambient Claude Code `2.1.263`.
+The release candidate passed all 14 regression suites in 56 seconds, including
+66 central routing checks, 267 executor-contract checks, 113 patch-verifier
+checks, and 17 install-marker checks, plus ShellCheck at `-S warning` over 31
+tracked shell files (the two new `bin/lib/` libraries included), evidence
+validation, the eight Node tests of the npm wrapper, and the ten-check version
+gate. A reinstall from the candidate branch put the shared runner library in
+place and every installed runner answered `check` through its PATH symlink;
+the Qwen Token Plan runtime reported available once its key was stored by the
+installer. Static doctor reported `56 OK, 0 WARN, 0 FAIL`; `doctor.sh --ping`
+reported `58 OK, 0 WARN, 0 FAIL`, with the Claude→Codex round-trip returning
+`PONG` and the Claude endpoint accepting the configured model and effort. The
+GLM-5.3-Flash v4 pack was not re-run in this pass (no Z.AI key on the
+verifying machine); its 2026-08-29 result stands as the last exact-runner
+evidence for that lane, and this release changes no routing decision. A fresh
 reinstall from the merged/tagged commit remains required before the release is
 considered complete. Numeric vendor versions are provenance only
 wherever the runner uses capability probing.

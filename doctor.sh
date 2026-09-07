@@ -48,8 +48,7 @@ bad()  { printf '  [FAIL] %s\n' "$1"; fail=$((fail+1)); }
 info() { printf '  [ .. ] %s\n' "$1"; }
 hdr()  { printf '\n== %s ==\n' "$1"; }
 have() { command -v "$1" >/dev/null 2>&1; }
-# true if a file named $2 exists anywhere under dir $1 (capture avoids SIGPIPE/pipefail)
-found_name() { [ -d "$1" ] && [ -n "$(find "$1" -type f -name "$2" 2>/dev/null)" ]; }
+# true if a file matching path glob $2 exists under dir $1 (capture avoids SIGPIPE/pipefail)
 found_path() { [ -d "$1" ] && [ -n "$(find "$1" -path "$2" 2>/dev/null)" ]; }
 
 # portable timeout: GNU `timeout`, macOS Homebrew `gtimeout`, else run without one
@@ -207,10 +206,10 @@ else
 fi
 fable_profile="$(resolve_claude_agent fable-judge.md || true)"
 if [ -n "$fable_profile" ] \
-    && grep -Fxq 'model: fable' "$fable_profile" \
+    && grep -Fxq 'model: claude-fable-5-1' "$fable_profile" \
     && grep -Fxq 'effort: max' "$fable_profile" \
     && grep -Fxq 'tools: Read, Grep, Glob' "$fable_profile"; then
-  ok "fable-judge pinned to fable/max and read-only judgement"
+  ok "fable-judge pinned to claude-fable-5-1/max and read-only judgement"
 else
   bad "fable-judge missing or stale — re-run ./install.sh"
 fi
@@ -740,7 +739,7 @@ if [ -f "$cfg" ]; then
   # `features = { multi_agent = true }`; strip comments, then require an explicit = true
   ma=false; sed 's/#.*//' "$cfg" | grep -Eq 'multi_agent[[:space:]]*=[[:space:]]*true' && ma=true
   [ "$ma" = true ] && ok "multi_agent = true — native Codex delegation can fire" \
-    || warn "multi_agent is not true — Codex cannot spawn its native luna/terra/sol subagents (the cross-tool bridge still works). Merge codex/config.snippet.toml"
+    || warn "multi_agent is not true — Codex cannot spawn its native luna/terra/astra subagents (the cross-tool bridge still works). Merge codex/config.snippet.toml"
   # sandbox_mode is a root-level key: read only the region before the first [table] so a
   # [profiles.*] override isn't mistaken for the effective posture
   sbx="$(sed '/^[[:space:]]*\[/q' "$cfg" | grep -E '^[[:space:]]*sandbox_mode[[:space:]]*=' | head -1 | sed 's/#.*//; s/.*=[[:space:]]*//; s/"//g; s/[[:space:]]*$//')"

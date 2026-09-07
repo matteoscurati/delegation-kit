@@ -549,4 +549,12 @@ jq -e '
 ' "$TMP/table.json" >/dev/null
 pass=$((pass + 1))
 
+# The Markdown table renders provider_fallback in its Fallback column: the
+# opus-reviewer security row carries the only declared fallback.
+bin/delegation-route table >"$TMP/table.md"
+grep -F '`opus-reviewer` | anthropic' "$TMP/table.md" | grep -F '| security |' \
+  | grep -q 'claude-opus-4.8' \
+  || { printf 'table did not render the opus-reviewer security provider fallback\n' >&2; exit 1; }
+pass=$((pass + 1))
+
 printf 'routing gate tests: %s passed\n' "$pass"

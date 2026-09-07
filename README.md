@@ -11,7 +11,7 @@ named or explicitly authorized by you, per request — the assistant proposes,
 you decide.
 
 It ships as a **reference implementation**: the author's concrete models
-(`sonnet`/`opus`/`fable` on Claude; `luna`/`terra`/`sol` on Codex), six gated
+(`sonnet`/`opus`/`fable` on Claude; `luna`/`terra`/`astra` on Codex), six gated
 external executors (GLM · Kimi · Grok · Qwen · DeepSeek · Gemini), a dated
 evidence snapshot, and fail-closed routing gates. The *structure* is the
 transferable part — swap the models for your own tiers with
@@ -130,8 +130,8 @@ stored mode-600 and are never imported silently from another tool.
 |---|---|---|
 | **clerk / scout** | Sonnet, Luna, GLM-5.3-Flash | very small bounded extraction, repo mapping, read-only support |
 | **builder / frontend-builder** | Opus 5, GPT-5.6 Terra (both `max`); provisional: Kimi K3, Grok 4.6, Qwen, DeepSeek, GLM | bounded implementation; text-only lanes return a patch the lead applies |
-| **routine-review / material-review / security** | Opus, Terra, Sol, Sonnet (tiny work only) | mandatory cross-family review — never the producer's family |
-| **judgement / super-judgement** | Fable `max`, Sol `max` | manual-qualified, explicit-only, two-touch |
+| **routine-review / material-review / security** | Opus, Terra, Astra, Sonnet (tiny work only) | mandatory cross-family review — never the producer's family |
+| **judgement / super-judgement** | Fable `max`, Astra `high` | manual-qualified, explicit-only, two-touch |
 
 A lane becomes operational only through a versioned gate backed by exact
 benchmark evidence plus a local runtime/scope smoke. Provisional lanes also
@@ -159,20 +159,19 @@ Blocked is blocked: no silent substitution, no runtime-availability shortcuts.
   `delegation-patch-verify` (confinement, strip-level certainty, read-only
   attestation). The lead, and only the lead, applies and tests.
 
-## Current release: 0.22.0
+## Current release: 0.23.0
 
-Version 0.20.0 makes delegation **user-directed**: every dispatch must be
-selected or explicitly authorized by you, enforced by the routing gates — the
-selection vocabulary is now closed at `explicit-only` / `blocked`, the router
-exposes `choices` and validates `--selected-profile`, and the resident
-policies on both hosts carry the no-standing-permission guard. It also adds
-`delegation-patch-verify`, the read-only trust boundary for text-patch lanes,
-and ships `npx delegation-kit` for one-command installs. See
-[`CHANGELOG.md`](./CHANGELOG.md) for details and full history.
-Version 0.22.0 migrates the Codex review/judgement lanes to **GPT-6 Astra**
-(`gpt-6-astra` at `high`) in a new `openai-gpt6` family, following OpenAI's
-2026-09-03 launch. Version 0.21.0 migrated the judgement lane to Fable 5.1;
-version 0.20.1 fixed the npm wrapper's `--skip-doctor` flag.
+Version 0.23.0 is a consolidation release: the six external runners now share
+one sourced helper library under `bin/lib/`, DeepSeek and Qwen wrap a common
+chat-completions core, the router validates every executable gate through a
+single parameterised check, `delegation-route table` finally renders the
+declared provider fallback, `fable-judge` is pinned to the exact
+`claude-fable-5-1` id, and the docs are aligned with the 0.22.0 Astra
+migration. No routing decision changes. See
+[`CHANGELOG.md`](./CHANGELOG.md) for details and full history; recent history
+in one line each: 0.22.0 moved the Codex review/judgement lanes to GPT-6 Astra,
+0.21.0 moved judgement to Fable 5.1, 0.20.x made delegation user-directed and
+shipped `npx delegation-kit`.
 
 ## Documentation
 

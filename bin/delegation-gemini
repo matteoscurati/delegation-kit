@@ -9,6 +9,11 @@ while [ -L "$SOURCE" ]; do
   [[ "$SOURCE" = /* ]] || SOURCE="$SOURCE_DIR/$SOURCE"
 done
 ROOT="$(cd "$(dirname "$SOURCE")/.." && pwd)"
+# RUNNER_NAME and PROFILE are consumed by the sourced shared library.
+# shellcheck disable=SC2034
+RUNNER_NAME="delegation-gemini"
+# shellcheck source=bin/lib/delegation-runner-common.sh
+. "$ROOT/bin/lib/delegation-runner-common.sh"
 ROUTING_FILE="${DELEGATION_GEMINI_ROUTING_FILE:-$ROOT/config/gemini-3.7-flash-routing.json}"
 CENTRAL_GATES="${DELEGATION_ROUTING_GATES_FILE:-$ROOT/config/routing-gates.json}"
 ROUTER="$ROOT/bin/delegation-route"
@@ -17,8 +22,6 @@ USER_KEYCHAINS="${HOME:?HOME is required}/Library/Keychains"
 RUN_TMP="" RUN_OUTPUT_TMP="" RUN_METRICS_TMP=""
 
 cleanup_run() { [ -z "$RUN_OUTPUT_TMP" ] || rm -f -- "$RUN_OUTPUT_TMP"; [ -z "$RUN_METRICS_TMP" ] || rm -f -- "$RUN_METRICS_TMP"; [ -z "$RUN_TMP" ] || rm -rf -- "$RUN_TMP"; }
-die() { local code="$1"; shift; printf 'delegation-gemini: %s\n' "$*" >&2; exit "$code"; }
-have() { command -v "$1" >/dev/null 2>&1; }
 
 usage() {
   cat <<'EOF'
@@ -40,8 +43,6 @@ every file excerpt and fact needed by the model in --prompt-file. Filesystem,
 shell, network, MCP, and editing tools are not approved by this bridge.
 EOF
 }
-
-normalized_destination() { local parent name; parent="$(cd "$(dirname "$1")" && pwd -P)" || return 1; name="$(basename "$1")"; printf '%s/%s' "$parent" "$name"; }
 
 # agy chooses its credential store from the environment: when it sees the SSH
 # session markers it switches to a file-based token store and never consults the
