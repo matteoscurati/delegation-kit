@@ -101,6 +101,16 @@ env CLAUDE_HOME="$TMP/claude" CODEX_HOME="$TMP/codex" \
   || fail 'upgrade did not install the Gemini 3.7 gate'
 [ -f "$DATA/config/deepseek-v4-pro-routing.json" ] && [ -x "$DATA/bin/delegation-deepseek" ] \
   || fail 'install did not include the DeepSeek V4 Pro gate and runner'
+# The runners source the shared library from the installed tree, so it must be
+# present and an installed runner must run through its PATH symlink.
+[ -f "$DATA/bin/lib/delegation-runner-common.sh" ] && [ -f "$DATA/bin/lib/delegation-chat-completions.sh" ] \
+  || fail 'install did not include the shared runner library'
+[ ! -e "$TMP/bin/lib" ] || fail 'install linked the shared runner library onto the bin path'
+DELEGATION_ROUTING_GATES_FILE="$DATA/config/routing-gates.json" \
+  "$TMP/bin/delegation-deepseek" check --json >"$TMP/deepseek-check.json" 2>"$TMP/deepseek-check.err" \
+  || { sed 's/^/    /' "$TMP/deepseek-check.err" >&2; fail 'the installed DeepSeek runner could not source the shared library'; }
+jq -e '.model == "deepseek-v4-pro"' "$TMP/deepseek-check.json" >/dev/null \
+  || fail 'the installed DeepSeek runner reported the wrong model'
 # The common external-executor contract must be installed alongside the gates it
 # cross-checks, and the installed copy must validate against those copies.
 [ -f "$DATA/config/external-executor-contract.json" ] && [ -x "$DATA/bin/delegation-executor-contract" ] \
@@ -168,7 +178,7 @@ ok
   && grep -Fxq 'effort: max' "$TMP/claude/agents/opus-builder.md" \
   || fail 'install did not include opus-builder at max'
 [ -f "$TMP/claude/agents/fable-judge.md" ] \
-  && grep -Fxq 'model: fable' "$TMP/claude/agents/fable-judge.md" \
+  && grep -Fxq 'model: claude-fable-5-1' "$TMP/claude/agents/fable-judge.md" \
   && grep -Fxq 'effort: max' "$TMP/claude/agents/fable-judge.md" \
   && grep -Fxq 'tools: Read, Grep, Glob' "$TMP/claude/agents/fable-judge.md" \
   || fail 'install did not include fable-judge at max'

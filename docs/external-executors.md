@@ -513,6 +513,17 @@ Overrides, for tests and diagnostics only:
 
 ## Changing it
 
+The six runners share two sourced libraries under `bin/lib/`:
+`delegation-runner-common.sh` (error prefix, hashing, key-file mode, lane
+listing by status, OAuth lock wait) and `delegation-chat-completions.sh` (the
+whole text-only OpenAI-compatible core that `delegation-deepseek` and
+`delegation-qwen` wrap with provider hooks). A fix that belongs to every runner
+goes there once; a provider difference stays in the runner as a hook. The
+installer copies the libraries next to the runners; they are never on PATH.
+Each runner's evaluation `runner_sha256` still hashes the runner file alone —
+the libraries are bound through `runner_source_commit` and the clean-checkout
+refusal.
+
 A contract edit is a *description* change and must follow reality:
 
 1. Change the runner first, if runner behaviour is what moved. The contract never

@@ -41,7 +41,8 @@ Five places — keep them in sync:
 4. **The prose** — `claude/CLAUDE.delegation.md`, `codex/AGENTS.md`,
    `model-routing.md`: update the reference mapping and lane-evidence notes.
 5. **Executable bridges and sync surfaces** — for an external model, keep its
-   `bin/delegation-*`, `config/*-routing.json`, `skills/*-executor/SKILL.md`,
+   `bin/delegation-*` (which source the shared helpers in `bin/lib/`),
+   `config/*-routing.json`, `skills/*-executor/SKILL.md`,
    installer, uninstaller, doctor, routing-gate drift test, README, plugin
    manifests, and `skills/orchestrate/*` in step. Grok 4.6 is the current worked
    example: only `builder` and `frontend-builder`, Grok Build CLI, effort `high`.

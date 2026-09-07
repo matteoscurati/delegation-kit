@@ -45,7 +45,13 @@ append_guarded() { # $1=file  $2=content
 
 # Shared optional external-model bridges. Installing a command does not make its
 # model routable: the runtime check and versioned evaluation manifest must pass.
-mkdir -p "$BIN_HOME" "$DATA_HOME/bin" "$DATA_HOME/config"
+mkdir -p "$BIN_HOME" "$DATA_HOME/bin" "$DATA_HOME/bin/lib" "$DATA_HOME/config"
+# The runners resolve their own symlink back to $DATA_HOME/bin and source the
+# shared helpers from the sibling lib/ directory, so the library is installed
+# before any runner and is never linked onto PATH.
+cp "$KIT"/bin/lib/*.sh "$DATA_HOME/bin/lib/"
+chmod 644 "$DATA_HOME"/bin/lib/*.sh
+echo "Shared runner library -> $DATA_HOME/bin/lib (sourced by the external runners; not on PATH)"
 cp "$KIT/bin/delegation-schema" "$DATA_HOME/bin/delegation-schema"
 chmod 755 "$DATA_HOME/bin/delegation-schema"
 ln -sfn "$DATA_HOME/bin/delegation-schema" "$BIN_HOME/delegation-schema"

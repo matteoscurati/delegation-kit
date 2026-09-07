@@ -47,6 +47,43 @@ command -v jq >/dev/null 2>&1 || die 69 "jq is required"
 [ -r "$GATES" ] || die 66 "cannot read $GATES"
 [ -r "$EVIDENCE" ] || die 66 "cannot read $EVIDENCE"
 
+# Compare one provider's executable gate with the central gates: same lane
+# set, and per lane the same status, selection, effort, and evaluation
+# manifest allowlist; the gate's qualified/provisional summaries and its
+# per-backend `qualified` flags must agree with the statuses. Arguments:
+#   <gate-file> <model> <harness> <backend-key> <label> [--runtime-cli <profile>]
+# --runtime-cli additionally requires the named central profile's
+# runtime_cli_compatibility block to equal the gate's.
+check_executable_gate() {
+  local gate="$1" model="$2" harness="$3" backend="$4" label="$5" runtime_cli_profile=""
+  shift 5
+  while [ "$#" -gt 0 ]; do
+    case "$1" in
+      --runtime-cli) runtime_cli_profile="${2:-}"; shift 2 ;;
+      *) die 70 "check_executable_gate: unknown option $1" ;;
+    esac
+  done
+  jq -e -n --slurpfile central "$GATES" --slurpfile bridge "$gate" \
+    --arg model "$model" --arg harness "$harness" --arg backend "$backend" \
+    --arg runtime_cli_profile "$runtime_cli_profile" '
+    [$central[0].profiles | to_entries[] | select(.value.model == $model and .value.harness == $harness) as $p |
+     $p.value.lanes | to_entries[] |
+     {key:.key,value:{status:.value.status,selection:.value.selection,effort:$p.value.effort,
+                      evaluation_manifest_sha256:(.value.evaluation_manifest_sha256 // [])}}] | from_entries as $expected |
+    [$bridge[0].lanes | to_entries[] |
+     {key:.key,value:{status:.value.backends[$backend].status,selection:.value.backends[$backend].selection,
+                      effort:(.value.backends[$backend].effort // .value.default_effort),
+                      evaluation_manifest_sha256:(.value.backends[$backend].evaluation_manifest_sha256 // [])}}] | from_entries as $actual |
+    ($bridge[0].model == $model) and (($expected | keys) == ($actual | keys)) and
+    all($expected | keys[]; $expected[.] == $actual[.]) and
+    (($expected | to_entries | map(select(.value.status == "qualified") | .key) | sort) == (($bridge[0].qualified_lanes // []) | sort)) and
+    (($expected | to_entries | map(select(.value.status == "provisional") | .key) | sort) == (($bridge[0].provisional_lanes // []) | sort)) and
+    all($bridge[0].lanes[]; (.backends[$backend].qualified == (.backends[$backend].status == "qualified"))) and
+    ($runtime_cli_profile == "" or
+     $central[0].profiles[$runtime_cli_profile].runtime_cli_compatibility == $bridge[0].runtime_cli_compatibility)
+  ' >/dev/null || die 65 "central routing and $label executable gate disagree"
+}
+
 validate() {
   jq -e . "$GATES" >/dev/null || die 65 "invalid gate JSON"
   jq -e . "$EVIDENCE" >/dev/null || die 65 "invalid evidence JSON"
@@ -182,57 +219,11 @@ validate() {
         ((.backends["claude-zai"].effort // .default_effort) == "max"))
     ' >/dev/null || die 65 "central routing and GLM executable gate disagree: $glm_gate"
   done
-  jq -e -n --slurpfile central "$GATES" --slurpfile bridge "$KIMI_GATE" '
-    [$central[0].profiles | to_entries[] | select(.value.model == "kimi-k3" and .value.harness == "kimi-code-cli") as $p |
-     $p.value.lanes | to_entries[] | {key:.key,value:{status:.value.status,selection:.value.selection,effort:$p.value.effort,evaluation_manifest_sha256:(.value.evaluation_manifest_sha256 // [])}}] | from_entries as $expected |
-    [$bridge[0].lanes | to_entries[] | {key:.key,value:{status:.value.backends.native.status,selection:.value.backends.native.selection,effort:(.value.backends.native.effort // .value.default_effort),evaluation_manifest_sha256:(.value.backends.native.evaluation_manifest_sha256 // [])}}] | from_entries as $actual |
-    ($bridge[0].model == "kimi-k3") and (($expected | keys) == ($actual | keys)) and
-    all($expected | keys[]; $expected[.] == $actual[.]) and
-    (($expected | to_entries | map(select(.value.status == "qualified") | .key) | sort) == (($bridge[0].qualified_lanes // []) | sort)) and
-    (($expected | to_entries | map(select(.value.status == "provisional") | .key) | sort) == (($bridge[0].provisional_lanes // []) | sort)) and
-    all($bridge[0].lanes[]; (.backends.native.qualified == (.backends.native.status == "qualified")))
-  ' >/dev/null || die 65 "central routing and Kimi executable gate disagree"
-  jq -e -n --slurpfile central "$GATES" --slurpfile bridge "$QWEN_GATE" '
-    [$central[0].profiles | to_entries[] | select(.value.model == "qwen3.8-max" and .value.harness == "token-plan-openai") as $p |
-     $p.value.lanes | to_entries[] | {key:.key,value:{status:.value.status,selection:.value.selection,effort:$p.value.effort,evaluation_manifest_sha256:(.value.evaluation_manifest_sha256 // [])}}] | from_entries as $expected |
-    [$bridge[0].lanes | to_entries[] | {key:.key,value:{status:.value.backends["token-plan-openai"].status,selection:.value.backends["token-plan-openai"].selection,effort:(.value.backends["token-plan-openai"].effort // .value.default_effort),evaluation_manifest_sha256:(.value.backends["token-plan-openai"].evaluation_manifest_sha256 // [])}}] | from_entries as $actual |
-    ($bridge[0].model == "qwen3.8-max") and (($expected | keys) == ($actual | keys)) and
-    all($expected | keys[]; $expected[.] == $actual[.]) and
-    (($expected | to_entries | map(select(.value.status == "qualified") | .key) | sort) == (($bridge[0].qualified_lanes // []) | sort)) and
-    (($expected | to_entries | map(select(.value.status == "provisional") | .key) | sort) == (($bridge[0].provisional_lanes // []) | sort)) and
-    all($bridge[0].lanes[]; (.backends["token-plan-openai"].qualified == (.backends["token-plan-openai"].status == "qualified")))
-  ' >/dev/null || die 65 "central routing and Qwen executable gate disagree"
-  jq -e -n --slurpfile central "$GATES" --slurpfile bridge "$DEEPSEEK_GATE" '
-    [$central[0].profiles | to_entries[] | select(.value.model == "deepseek-v4-pro" and .value.harness == "deepseek-api") as $p |
-     $p.value.lanes | to_entries[] | {key:.key,value:{status:.value.status,selection:.value.selection,effort:$p.value.effort,evaluation_manifest_sha256:(.value.evaluation_manifest_sha256 // [])}}] | from_entries as $expected |
-    [$bridge[0].lanes | to_entries[] | {key:.key,value:{status:.value.backends["deepseek-api"].status,selection:.value.backends["deepseek-api"].selection,effort:(.value.backends["deepseek-api"].effort // .value.default_effort),evaluation_manifest_sha256:(.value.backends["deepseek-api"].evaluation_manifest_sha256 // [])}}] | from_entries as $actual |
-    ($bridge[0].model == "deepseek-v4-pro") and (($expected | keys) == ($actual | keys)) and
-    all($expected | keys[]; $expected[.] == $actual[.]) and
-    (($expected | to_entries | map(select(.value.status == "qualified") | .key) | sort) == (($bridge[0].qualified_lanes // []) | sort)) and
-    (($expected | to_entries | map(select(.value.status == "provisional") | .key) | sort) == (($bridge[0].provisional_lanes // []) | sort)) and
-    all($bridge[0].lanes[]; (.backends["deepseek-api"].qualified == (.backends["deepseek-api"].status == "qualified")))
-  ' >/dev/null || die 65 "central routing and DeepSeek executable gate disagree"
-  jq -e -n --slurpfile central "$GATES" --slurpfile bridge "$GEMINI_GATE" '
-    [$central[0].profiles | to_entries[] | select(.value.model == "gemini-3.7-flash" and .value.harness == "agy") as $p |
-     $p.value.lanes | to_entries[] | {key:.key,value:{status:.value.status,selection:.value.selection,effort:$p.value.effort}}] | from_entries as $expected |
-    [$bridge[0].lanes | to_entries[] | {key:.key,value:{status:.value.backends.agy.status,selection:.value.backends.agy.selection,effort:(.value.backends.agy.effort // .value.default_effort)}}] | from_entries as $actual |
-    ($bridge[0].model == "gemini-3.7-flash") and (($expected | keys) == ($actual | keys)) and
-    all($expected | keys[]; $expected[.] == $actual[.]) and
-    (($expected | to_entries | map(select(.value.status == "qualified") | .key) | sort) == (($bridge[0].qualified_lanes // []) | sort)) and
-    (($expected | to_entries | map(select(.value.status == "provisional") | .key) | sort) == (($bridge[0].provisional_lanes // []) | sort)) and
-    all($bridge[0].lanes[]; (.backends.agy.qualified == (.backends.agy.status == "qualified")))
-  ' >/dev/null || die 65 "central routing and Gemini executable gate disagree"
-  jq -e -n --slurpfile central "$GATES" --slurpfile bridge "$GROK_GATE" '
-    [$central[0].profiles | to_entries[] | select(.value.model == "grok-4.6" and .value.harness == "grok-build-cli") as $p |
-     $p.value.lanes | to_entries[] | {key:.key,value:{status:.value.status,selection:.value.selection,effort:$p.value.effort,evaluation_manifest_sha256:(.value.evaluation_manifest_sha256 // [])}}] | from_entries as $expected |
-    [$bridge[0].lanes | to_entries[] | {key:.key,value:{status:.value.backends["grok-build"].status,selection:.value.backends["grok-build"].selection,effort:(.value.backends["grok-build"].effort // .value.default_effort),evaluation_manifest_sha256:(.value.backends["grok-build"].evaluation_manifest_sha256 // [])}}] | from_entries as $actual |
-    ($bridge[0].model == "grok-4.6") and (($expected | keys) == ($actual | keys)) and
-    ($central[0].profiles["grok-build"].runtime_cli_compatibility == $bridge[0].runtime_cli_compatibility) and
-    all($expected | keys[]; $expected[.] == $actual[.]) and
-    (($expected | to_entries | map(select(.value.status == "qualified") | .key) | sort) == (($bridge[0].qualified_lanes // []) | sort)) and
-    (($expected | to_entries | map(select(.value.status == "provisional") | .key) | sort) == (($bridge[0].provisional_lanes // []) | sort)) and
-    all($bridge[0].lanes[]; (.backends["grok-build"].qualified == (.backends["grok-build"].status == "qualified")))
-  ' >/dev/null || die 65 "central routing and Grok executable gate disagree"
+  check_executable_gate "$KIMI_GATE" kimi-k3 kimi-code-cli native Kimi
+  check_executable_gate "$QWEN_GATE" qwen3.8-max token-plan-openai token-plan-openai Qwen
+  check_executable_gate "$DEEPSEEK_GATE" deepseek-v4-pro deepseek-api deepseek-api DeepSeek
+  check_executable_gate "$GEMINI_GATE" gemini-3.7-flash agy agy Gemini
+  check_executable_gate "$GROK_GATE" grok-4.6 grok-build-cli grok-build Grok --runtime-cli grok-build
 }
 
 profile_rows() {
@@ -281,7 +272,7 @@ case "$command" in
     jq --arg profile "$profile" '.profiles[$profile] + {profile:$profile}' "$GATES"
     ;;
   resolve)
-    shift; lane=""; producer_profile=""; producer_family=""; selected_profile=""
+    shift; lane=""; producer_profile=""; producer_family=""; selected_profile=""; eligible=""; choices=""
     while [ "$#" -gt 0 ]; do
       case "$1" in
         --lane) lane="${2:-}"; shift 2 ;;
@@ -322,26 +313,23 @@ case "$command" in
       elif [ -n "$producer_profile$producer_family" ]; then
         die 64 "producer identity applies only to review lanes"
       fi
-      selected_row="$(jq -n --arg selected_profile "$selected_profile" \
-        --argjson review_lane "$review_lane" --arg producer_family "$producer_family" \
-        --argjson rows "$rows" '
-        (if $review_lane then [$rows[] | select(.family != $producer_family)] else $rows end) as $eligible |
-        [$eligible[] |
-          select(.selection == "explicit-only") |
-          select(.status == "qualified" or .status == "provisional" or .status == "manual-qualified")] as $choices |
+      # Eligible rows exclude the producer's family on review lanes; choices are
+      # the eligible rows the user may select. Computed once, reused below.
+      eligible="$(jq -c --argjson review_lane "$review_lane" --arg producer_family "$producer_family" \
+        '(if $review_lane then [.[] | select(.family != $producer_family)] else . end)' <<<"$rows")"
+      choices="$(jq -c '[.[] | select(.selection == "explicit-only") |
+        select(.status == "qualified" or .status == "provisional" or .status == "manual-qualified")]' <<<"$eligible")"
+      selected_row="$(jq -c --arg selected_profile "$selected_profile" '
         (if $selected_profile == "" then "NO_SELECTION"
-         else ([$choices[] | select(.profile == $selected_profile)] | first // "NOT_SELECTABLE") end)' )"
+         else ([.[] | select(.profile == $selected_profile)] | first // "NOT_SELECTABLE") end)' <<<"$choices")"
       [ "$selected_row" != '"NOT_SELECTABLE"' ] \
         || die 78 "profile '$selected_profile' is not selectable for lane '$lane'"
       jq -n --arg lane "$lane" --arg producer_profile "$producer_profile" \
         --arg producer_family "$producer_family" --arg selected_profile "$selected_profile" \
         --argjson review_lane "$review_lane" --argjson rows "$rows" \
+        --argjson eligible "$eligible" --argjson choices "$choices" \
         --argjson selected_row "$selected_row" \
         --argjson activation_policy "$(jq '.activation_policy' "$GATES")" '
-        (if $review_lane then [$rows[] | select(.family != $producer_family)] else $rows end) as $eligible |
-        [$eligible[] |
-          select(.selection == "explicit-only") |
-          select(.status == "qualified" or .status == "provisional" or .status == "manual-qualified")] as $choices |
         {lane:$lane,
          choices:$choices,
          selected:(if $selected_profile == "" then null else $selected_row end),
@@ -369,7 +357,7 @@ case "$command" in
     else
       printf '| Profile | Family | Exact variant | Lane | Exact evidence | Context | Local n | Confidence | Status | Selection | Fallback | Gap |\n'
       printf '|---|---|---|---|---:|---:|---:|---|---|---|---|---|\n'
-      printf '%s\n' "$rows" | jq -r '.[] | "| `\(.profile)` | \(.family) | \(.model) / \(.harness) / `\(.effort)` | \(.lane) | \(.exact_evidence_ids | length) | \(.context_evidence_ids | length) | \(.local_evaluation.task_count // "—") | \(.local_evaluation.confidence // "—") | \(.status) | \(.selection) | \(.fallback // "—") | \(.evidence_gap // "—") |"'
+      printf '%s\n' "$rows" | jq -r '.[] | "| `\(.profile)` | \(.family) | \(.model) / \(.harness) / `\(.effort)` | \(.lane) | \(.exact_evidence_ids | length) | \(.context_evidence_ids | length) | \(.local_evaluation.task_count // "—") | \(.local_evaluation.confidence // "—") | \(.status) | \(.selection) | \(if .provider_fallback then "\(.provider_fallback.target_model) (\(.provider_fallback.trigger))" else "—" end) | \(.evidence_gap // "—") |"'
       printf '\nCross-family review required for: %s\n' "$(jq -r '.review_policy.review_lanes | join(", ")' "$GATES")"
       printf '\n| Compound lane | Members | Protocol | Status | Selection | Final authority |\n'
       printf '|---|---|---|---|---|---|\n'

@@ -12,6 +12,12 @@ while [ -L "$SOURCE" ]; do
   [[ "$SOURCE" = /* ]] || SOURCE="$SOURCE_DIR/$SOURCE"
 done
 ROOT="$(cd "$(dirname "$SOURCE")/.." && pwd)"
+# RUNNER_NAME and PROFILE are consumed by the sourced shared library.
+# shellcheck disable=SC2034
+RUNNER_NAME="delegation-kimi"
+PROFILE="kimi-k3"
+# shellcheck source=bin/lib/delegation-runner-common.sh
+. "$ROOT/bin/lib/delegation-runner-common.sh"
 ROUTING_FILE="${DELEGATION_KIMI_ROUTING_FILE:-$ROOT/config/kimi-k3-routing.json}"
 CENTRAL_GATES="${DELEGATION_ROUTING_GATES_FILE:-$ROOT/config/routing-gates.json}"
 ROUTER="$ROOT/bin/delegation-route"
@@ -92,9 +98,6 @@ session); 78 lane not qualified; 130 caller cancellation.
 EOF
 }
 
-die() { local code="$1"; shift; printf 'delegation-kimi: %s\n' "$*" >&2; exit "$code"; }
-have() { command -v "$1" >/dev/null 2>&1; }
-
 release_oauth_lock() {
   local owner_pid=""
   [ "$OAUTH_LOCK_HELD" -eq 1 ] || return 0
@@ -128,17 +131,6 @@ acquire_oauth_lock() {
 # Same return contract as acquire_oauth_lock, but a busy lock (rc 2) is retried
 # once a second until OAUTH_WAIT_SECONDS expires. A symlinked lock path (rc 1)
 # is never retried: that is tampering, not contention.
-acquire_oauth_lock_wait() {
-  local deadline rc
-  deadline="$(( $(date +%s) + OAUTH_WAIT_SECONDS ))"
-  while :; do
-    rc=0
-    acquire_oauth_lock || rc=$?
-    [ "$rc" -eq 2 ] || return "$rc"
-    [ "$(date +%s)" -lt "$deadline" ] || return 2
-    sleep 1
-  done
-}
 
 shared_oauth_root() { printf '%s/kimi-shared-oauth' "$DATA_HOME"; }
 
@@ -378,22 +370,6 @@ native_status() {
   return 0
 }
 
-qualified_lanes() {
-  if [ -f "$CENTRAL_GATES" ] && have jq; then
-    jq -c '[.profiles["kimi-k3"].lanes | to_entries[] | select(.value.status == "qualified") | .key] | sort' "$CENTRAL_GATES" 2>/dev/null || printf '[]'
-  else
-    printf '[]'
-  fi
-}
-
-provisional_lanes() {
-  if [ -f "$CENTRAL_GATES" ] && have jq; then
-    jq -c '[.profiles["kimi-k3"].lanes | to_entries[] | select(.value.status == "provisional") | .key] | sort' "$CENTRAL_GATES" 2>/dev/null || printf '[]'
-  else
-    printf '[]'
-  fi
-}
-
 gate_status() {
   local lane="$1" backend="$2"
   [ "$backend" = native ] || { printf 'disabled\n'; return; }
@@ -432,12 +408,6 @@ validate_gate_graph() {
   DELEGATION_ROUTING_GATES_FILE="$CENTRAL_GATES" \
     DELEGATION_KIMI_ROUTING_FILE="$ROUTING_FILE" \
     "$ROUTER" check --json >/dev/null 2>&1
-}
-
-sha256_file() {
-  if have shasum; then shasum -a 256 "$1" | awk '{print $1}';
-  elif have sha256sum; then sha256sum "$1" | awk '{print $1}';
-  else return 1; fi
 }
 
 pinned_rg_path() { printf '%s/current/rg' "$RG_STORE"; }

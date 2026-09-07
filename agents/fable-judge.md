@@ -1,7 +1,7 @@
 ---
 name: fable-judge
 description: Judgement lane — the most expensive model, for planning and final verdict/synthesis only. Fable 5.1 at max effort. Use in short bursts, two touches per feature max — a plan up front, or a verdict / cross-attempt synthesis / ship go-no-go at the end. Thinking, not typing — never a resident worker, never code-writing.
-model: fable
+model: claude-fable-5-1
 effort: max
 tools: Read, Grep, Glob
 ---

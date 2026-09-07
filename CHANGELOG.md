@@ -2,6 +2,44 @@
 
 All notable changes to delegation-kit are documented here.
 
+## [0.23.0] — 2026-09-07
+
+### Fixed
+
+- `delegation-route table` rendered its Fallback column from a field the rows
+  never carried (`fallback` instead of `provider_fallback`), so the declared
+  `opus-reviewer` security fallback to `claude-opus-4.8` never appeared. The
+  column now shows the target model and trigger; `tests/routing-gates.sh`
+  asserts it.
+- README and `doctor.sh` still named Sol as the Codex reviewer/judge after the
+  0.22.0 migration to GPT-6 Astra; both now say Astra.
+- `fable-judge` was pinned to the `fable` alias while the central gate binds
+  `claude-fable-5-1`; the agent, `doctor.sh`, and the suites now pin the exact
+  id, matching `opus-builder` and `opus-reviewer`.
+- Removed the unused `found_name` helper from `doctor.sh`; `.gitignore` now
+  covers `.hermes/` per-machine agent state.
+
+### Changed
+
+- **Shared runner library.** `bin/lib/delegation-runner-common.sh` holds the
+  helpers that were copied into every external runner (`die`, `have`,
+  `sha256_file`, `key_file_mode`, `normalized_destination`, lane listing by
+  status, `acquire_oauth_lock_wait`). All six runners source it after resolving
+  their install root; `install.sh` copies it to `$DATA_HOME/bin/lib` and never
+  links it onto PATH. `runner_sha256` still hashes the runner file alone — the
+  library is bound by `runner_source_commit` and the clean-checkout refusal.
+- **Shared chat-completions core.** `bin/lib/delegation-chat-completions.sh`
+  is the whole text-only OpenAI-compatible transport; `delegation-deepseek` and
+  `delegation-qwen` are now thin wrappers that set their identity and define
+  provider hooks (request body, key validation, usage accounting, the Qwen
+  next-snapshot probe). Both suites pass unchanged.
+- **Router.** The five near-identical jq blocks that compared the Kimi, Qwen,
+  DeepSeek, Gemini, and Grok executable gates against the central gates are
+  one `check_executable_gate` function; `resolve` computes the eligible rows
+  and choices once. JSON output is byte-identical to 0.22.0.
+- `docs/compatibility.md` verified snapshot refreshed on 2026-09-07 with the
+  numbers observed for this release.
+
 ## [0.22.0] — 2026-09-06
 
 ### Changed
