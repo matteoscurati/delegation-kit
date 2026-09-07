@@ -159,8 +159,13 @@ Blocked is blocked: no silent substitution, no runtime-availability shortcuts.
   `delegation-patch-verify` (confinement, strip-level certainty, read-only
   attestation). The lead, and only the lead, applies and tests.
 
-## Current release: 0.23.0
+## Current release: 0.23.1
 
+Version 0.23.1 makes `delegation-grok` fail closed, with the cause named, when
+Grok Build cannot apply the custom `delegation-kit` sandbox because a container
+runtime socket it denies (Docker Desktop's optional `/var/run/docker.sock`
+link) is a symlink; `check` and doctor report it instead of "ready", and a
+refusal at dispatch is classified rather than reported as a generic failure.
 Version 0.23.0 is a consolidation release: the six external runners now share
 one sourced helper library under `bin/lib/`, DeepSeek and Qwen wrap a common
 chat-completions core, the router validates every executable gate through a

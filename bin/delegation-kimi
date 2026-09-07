@@ -14,8 +14,7 @@ done
 ROOT="$(cd "$(dirname "$SOURCE")/.." && pwd)"
 # RUNNER_NAME and PROFILE are consumed by the sourced shared library.
 # shellcheck disable=SC2034
-RUNNER_NAME="delegation-kimi"
-PROFILE="kimi-k3"
+RUNNER_NAME="delegation-kimi" PROFILE="kimi-k3"
 # shellcheck source=bin/lib/delegation-runner-common.sh
 . "$ROOT/bin/lib/delegation-runner-common.sh"
 ROUTING_FILE="${DELEGATION_KIMI_ROUTING_FILE:-$ROOT/config/kimi-k3-routing.json}"

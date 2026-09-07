@@ -39,7 +39,10 @@ The runner capability-probes Grok Build CLI and pins `grok-4.6`, effort `high`,
 JSON output, 40 turns, and a 15-minute wall timeout. It uses an ephemeral HOME,
 disables memory, subagents, web tools, plugins, MCP, compatibility imports, and
 automatic updates, and requires the custom OS-enforced `delegation-kit` sandbox to attest
-successful enforcement before publishing output. Permission mode is `dontAsk`,
+successful enforcement before publishing output. Grok Build refuses that custom
+profile when a container runtime socket it denies (for example Docker
+Desktop's `/var/run/docker.sock` link) is a symlink; `delegation-grok check`
+then reports the lane unavailable with the path, and no dispatch happens. Permission mode is `dontAsk`,
 with only file edits explicitly allowed; the terminal tool is not exposed. The
 lead runs all tests and commands after inspecting the diff.
 
