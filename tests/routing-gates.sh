@@ -557,4 +557,18 @@ grep -F '`opus-reviewer` | anthropic' "$TMP/table.md" | grep -F '| security |' \
   || { printf 'table did not render the opus-reviewer security provider fallback\n' >&2; exit 1; }
 pass=$((pass + 1))
 
+# Resolving a compound lane returns its definition together with the
+# decision envelope: members, protocol, and activation, not only the flags.
+bin/delegation-route resolve --lane super-judgement --json >"$TMP/compound-resolve.json"
+jq -e '
+  .lane == "super-judgement" and .status == "manual-qualified" and
+  .members == ["fable-judge","astra-judge"] and
+  .protocol == "independent-then-cross-review" and
+  .final_authority == "lead" and (.activation | type == "string" and length > 0) and
+  .requires_user_direction == true and .automatic_dispatch == false and
+  .selection_validated == false and .selected == null
+' "$TMP/compound-resolve.json" >/dev/null \
+  || { printf 'compound lane resolve lost the lane definition\n' >&2; exit 1; }
+pass=$((pass + 1))
+
 printf 'routing gate tests: %s passed\n' "$pass"

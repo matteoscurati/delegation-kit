@@ -292,7 +292,9 @@ case "$command" in
       [ -z "$selected_profile" ] || die 64 "--selected-profile does not apply to compound lanes"
       status="$(jq -r --arg lane "$lane" '.compound_lanes[$lane].status' "$GATES")"
       [ "$status" = manual-qualified ] || die 78 "compound lane '$lane' has non-dispatchable status '$status'"
-      jq -n --arg lane "$lane" --argjson activation_policy "$(jq '.activation_policy' "$GATES")" \
+      # Read the gate file: `-n` here dropped the lane definition (members,
+      # protocol, activation) and returned only the decision envelope.
+      jq --arg lane "$lane" --argjson activation_policy "$(jq '.activation_policy' "$GATES")" \
         '.compound_lanes[$lane] + {lane:$lane,requires_explicit_choice:true,
          requires_user_direction:true,automatic_dispatch:false,
          selection_validated:false,selected:null,activation_policy:$activation_policy}' "$GATES"
