@@ -109,18 +109,21 @@ def read(path):
 
 
 def preset(strict=False, source=None):
-    old = read(source or ROOT / "config/routing-gates.json")
-    profiles = {}
-    for key, p in old["profiles"].items():
-        if source is None and p["harness"] == "agy":
-            continue
-        profiles[key] = {
-            "adapter": p["harness"],
-            "model": p["model"],
-            "family": old["model_families"].get(p["model"]),
-            "roles": list(p["lanes"]),
-            "parameters": {"effort": p["effort"]},
-        }
+    """The shipped preset (config/presets.json), or the profiles imported from a
+    legacy routing-gates.json snapshot when migrating a pre-0.24 install."""
+    if source is None:
+        profiles = read(ROOT / "config/presets.json")["profiles"]
+    else:
+        old = read(source)
+        profiles = {}
+        for key, p in old["profiles"].items():
+            profiles[key] = {
+                "adapter": p["harness"],
+                "model": p["model"],
+                "family": old.get("model_families", {}).get(p["model"]),
+                "roles": list(p["lanes"]),
+                "parameters": {"effort": p["effort"]},
+            }
     return {
         "schema_version": 1,
         "review_policy": "cross-family" if strict else "optional",
@@ -239,17 +242,6 @@ def load():
 def row(key, p, role, c):
     _, roles, _, caps = ADAPTERS[p["adapter"]]
     compatible = role in roles
-    evidence = {}
-    try:
-        old = read(ROOT / "config/routing-gates.json")["profiles"].get(key, {})
-        if (
-            old.get("model") == p["model"]
-            and old.get("harness") == p["adapter"]
-            and old.get("effort") == p.get("parameters", {}).get("effort")
-        ):
-            evidence = old.get("lanes", {}).get(role, {})
-    except (OSError, ValueError, KeyError):
-        pass
     return {
         "profile": key,
         "model": p["model"],
@@ -259,7 +251,6 @@ def row(key, p, role, c):
         "configuration_valid": True,
         "technical_compatibility": compatible,
         "capabilities": sorted(caps),
-        "evidence": evidence,
         "selection": "explicit-only" if compatible else "unsupported",
         "review_policy": c["review_policy"],
     }

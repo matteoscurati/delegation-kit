@@ -122,7 +122,7 @@ function integrityCheck(checkout) {
     "install.sh",
     "uninstall.sh",
     "doctor.sh",
-    "config/routing-gates.json",
+    "config/presets.json",
   ];
   for (const file of required) {
     try {

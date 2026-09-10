@@ -134,7 +134,7 @@ class ConfigTests(unittest.TestCase):
             ).stdout
         )
         self.assertTrue(route["selection_validated"])
-        self.assertEqual(route["selected"]["evidence"], {})
+        self.assertNotIn("evidence", route["selected"])
         self.assertFalse(route["authorization_granted"])
         self.assertEqual(Handler.requests, [])
         result = json.loads(self.run_profile().stdout)

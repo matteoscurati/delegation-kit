@@ -1,0 +1,274 @@
+{
+  "schema_version": 1,
+  "profiles": {
+    "luna-clerk": {
+      "adapter": "codex",
+      "model": "gpt-5.6-luna",
+      "family": "openai",
+      "roles": [
+        "clerk"
+      ],
+      "parameters": {
+        "effort": "max"
+      }
+    },
+    "terra-builder": {
+      "adapter": "codex",
+      "model": "gpt-5.6-terra",
+      "family": "openai",
+      "roles": [
+        "builder"
+      ],
+      "parameters": {
+        "effort": "max"
+      }
+    },
+    "terra-reviewer": {
+      "adapter": "codex",
+      "model": "gpt-5.6-terra",
+      "family": "openai",
+      "roles": [
+        "routine-review",
+        "material-review",
+        "security"
+      ],
+      "parameters": {
+        "effort": "max"
+      }
+    },
+    "astra-reviewer": {
+      "adapter": "codex",
+      "model": "gpt-6-astra",
+      "family": "openai-gpt6",
+      "roles": [
+        "material-review",
+        "security",
+        "routine-review"
+      ],
+      "parameters": {
+        "effort": "high"
+      }
+    },
+    "astra-judge": {
+      "adapter": "codex",
+      "model": "gpt-6-astra",
+      "family": "openai-gpt6",
+      "roles": [
+        "judgement"
+      ],
+      "parameters": {
+        "effort": "high"
+      }
+    },
+    "sonnet-clerk": {
+      "adapter": "claude-code",
+      "model": "claude-sonnet-5",
+      "family": "anthropic",
+      "roles": [
+        "clerk"
+      ],
+      "parameters": {
+        "effort": "low"
+      }
+    },
+    "sonnet-scout": {
+      "adapter": "claude-code",
+      "model": "claude-sonnet-5",
+      "family": "anthropic",
+      "roles": [
+        "scout"
+      ],
+      "parameters": {
+        "effort": "low"
+      }
+    },
+    "sonnet-reviewer": {
+      "adapter": "claude-code",
+      "model": "claude-sonnet-5",
+      "family": "anthropic",
+      "roles": [
+        "routine-review"
+      ],
+      "parameters": {
+        "effort": "medium"
+      }
+    },
+    "opus-builder": {
+      "adapter": "claude-code",
+      "model": "claude-opus-5",
+      "family": "anthropic",
+      "roles": [
+        "builder"
+      ],
+      "parameters": {
+        "effort": "max"
+      }
+    },
+    "opus-reviewer": {
+      "adapter": "claude-code",
+      "model": "claude-opus-5",
+      "family": "anthropic",
+      "roles": [
+        "routine-review",
+        "material-review",
+        "security"
+      ],
+      "parameters": {
+        "effort": "max"
+      }
+    },
+    "opus-policy-annotator": {
+      "adapter": "claude-code",
+      "model": "claude-opus-5",
+      "family": "anthropic",
+      "roles": [
+        "policy-annotation"
+      ],
+      "parameters": {
+        "effort": "xhigh"
+      }
+    },
+    "fable-judge": {
+      "adapter": "claude-code",
+      "model": "claude-fable-5-1",
+      "family": "anthropic",
+      "roles": [
+        "judgement"
+      ],
+      "parameters": {
+        "effort": "max"
+      }
+    },
+    "fable-policy-annotator": {
+      "adapter": "claude-code",
+      "model": "claude-fable-5",
+      "family": "anthropic",
+      "roles": [
+        "policy-annotation"
+      ],
+      "parameters": {
+        "effort": "xhigh"
+      }
+    },
+    "glm53-flash-max-clerk": {
+      "adapter": "claude-zai",
+      "model": "glm-5.3-flash",
+      "family": "zai",
+      "roles": [
+        "clerk"
+      ],
+      "parameters": {
+        "effort": "max"
+      }
+    },
+    "glm53-flash-max-scout": {
+      "adapter": "claude-zai",
+      "model": "glm-5.3-flash",
+      "family": "zai",
+      "roles": [
+        "scout"
+      ],
+      "parameters": {
+        "effort": "max"
+      }
+    },
+    "glm53-flash-max-builder": {
+      "adapter": "claude-zai",
+      "model": "glm-5.3-flash",
+      "family": "zai",
+      "roles": [
+        "builder"
+      ],
+      "parameters": {
+        "effort": "max"
+      }
+    },
+    "glm53-flash-max-reviewer": {
+      "adapter": "claude-zai",
+      "model": "glm-5.3-flash",
+      "family": "zai",
+      "roles": [
+        "reviewer"
+      ],
+      "parameters": {
+        "effort": "max"
+      }
+    },
+    "glm53-flash-max-policy-annotation": {
+      "adapter": "claude-zai",
+      "model": "glm-5.3-flash",
+      "family": "zai",
+      "roles": [
+        "policy-annotation"
+      ],
+      "parameters": {
+        "effort": "max"
+      }
+    },
+    "kimi-k3": {
+      "adapter": "kimi-code-cli",
+      "model": "kimi-k3",
+      "family": "moonshot",
+      "roles": [
+        "clerk",
+        "scout",
+        "builder",
+        "frontend-builder",
+        "senior",
+        "judgement",
+        "policy-annotation",
+        "reviewer"
+      ],
+      "parameters": {
+        "effort": "max"
+      }
+    },
+    "grok-build": {
+      "adapter": "grok-build-cli",
+      "model": "grok-4.6",
+      "family": "xai",
+      "roles": [
+        "builder",
+        "frontend-builder",
+        "policy-annotation"
+      ],
+      "parameters": {
+        "effort": "high"
+      }
+    },
+    "qwen3.8-max": {
+      "adapter": "token-plan-openai",
+      "model": "qwen3.8-max",
+      "family": "alibaba",
+      "roles": [
+        "builder",
+        "clerk",
+        "scout",
+        "reviewer",
+        "senior",
+        "judgement",
+        "policy-annotation"
+      ],
+      "parameters": {
+        "effort": "xhigh"
+      }
+    },
+    "deepseek-flash": {
+      "adapter": "deepseek-api",
+      "model": "deepseek-flash",
+      "family": "deepseek",
+      "roles": [
+        "builder",
+        "clerk",
+        "scout",
+        "reviewer",
+        "senior",
+        "judgement",
+        "policy-annotation"
+      ],
+      "parameters": {
+        "effort": "max"
+      }
+    }
+  }
+}
