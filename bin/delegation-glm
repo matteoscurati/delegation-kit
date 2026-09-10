@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-# Run a gate-selected GLM model as an external coding lane through an isolated Claude Code process
-# configured for the Z.AI API. Fails closed: no fallback to another model,
-# effort, or provider is ever allowed.
+# Run a GLM model as an external coding lane through an isolated Claude Code
+# process configured for the Z.AI API. Never substitutes a model, effort, or
+# provider: the requested model is the only one accepted in the event stream.
 set -euo pipefail
 
 SOURCE="${BASH_SOURCE[0]}"
@@ -11,39 +11,26 @@ while [ -L "$SOURCE" ]; do
   [[ "$SOURCE" = /* ]] || SOURCE="$SOURCE_DIR/$SOURCE"
 done
 ROOT="$(cd "$(dirname "$SOURCE")/.." && pwd)"
-# RUNNER_NAME and PROFILE are consumed by the sourced shared library.
+# RUNNER_NAME is consumed by the sourced shared library.
 # shellcheck disable=SC2034
 RUNNER_NAME="delegation-glm"
 # shellcheck source=bin/lib/delegation-runner-common.sh
 . "$ROOT/bin/lib/delegation-runner-common.sh"
-ROUTING_FILE="${DELEGATION_GLM_ROUTING_FILE:-$ROOT/config/glm-5.3-flash-max-routing.json}"
-CENTRAL_GATES="${DELEGATION_ROUTING_GATES_FILE:-$ROOT/config/routing-gates.json}"
-SCHEMA_COMPILER="$ROOT/bin/delegation-schema"
-# Derived from $ROOT exactly like ROUTING_FILE, so the key and the gate can never
-# disagree about where the install lives — a DELEGATION_DATA_HOME install used to
-# store the key where the runner never looked. This reads, never writes, so no key
-# is created inside a source checkout; running from one, point at the real key
-# with DELEGATION_GLM_KEY_FILE.
+# Derived from $ROOT so the key file lives where the install lives. This reads,
+# never writes; running from a source checkout, point at the real key with
+# DELEGATION_GLM_KEY_FILE.
 KEY_FILE="${DELEGATION_GLM_KEY_FILE:-$ROOT/config/zai.env}"
 CLAUDE_BIN_OVERRIDE="${DELEGATION_GLM_CLAUDE_BIN:-}"
 CAPABILITY_TIMEOUT_SECONDS="${DELEGATION_GLM_CAPABILITY_TIMEOUT_SECONDS:-10}"
-MODEL=""
-PROFILE_PREFIX=""
+MODEL="${DELEGATION_REQUESTED_MODEL:-glm-5.3-flash}"
+ADAPTER="claude-zai"
+# Roles this adapter implements and the only effort the Z.AI transport accepts.
+ROLES="clerk scout builder reviewer policy-annotation"
+EFFORTS='["max"]'
 CLAUDE_BIN=""
 RUN_TMP=""
 RUN_OUTPUT_TMP=""
 RUN_METRICS_TMP=""
-EVALUATION_MANIFEST_SHA256=""
-EVALUATION_PROMPT_SHA256=""
-EVALUATION_RUNNER_SOURCE_COMMIT=""
-EVALUATION_RUNNER_SHA256=""
-EVALUATION_WORKDIR_COMMIT=""
-EVALUATION_TASK_COUNT=0
-EVALUATION_TIMEOUT_SECONDS=""
-EVALUATION_MAX_OUTPUT_CHARS=""
-EVALUATION_MAX_COST_USD=""
-EVALUATION_OUTPUT_SCHEMA_JSON=""
-EVALUATION_GIT_DIR=""
 
 cleanup_run() {
   [ -z "$RUN_OUTPUT_TMP" ] || rm -f -- "$RUN_OUTPUT_TMP"
@@ -58,26 +45,20 @@ Usage:
   delegation-glm run --lane <clerk|scout|builder|reviewer|policy-annotation> \
     [--effort <auto|max>] [--backend <auto|claude-zai>] \
     --prompt-file <path> --output <path> --workdir <path> \
-    [--metrics <path>] [--max-cost-usd <amount>] [--debug-dir <path>] \
-    [--allow-provisional] [--evaluation --evaluation-manifest <path>]
+    [--metrics <path>] [--max-cost-usd <amount>] [--debug-dir <path>]
 
 Exit codes: 64 invalid input, 69 unavailable, 70 dispatch failure,
-75 temporary/rate-limit failure, 78 lane not qualified. A 75 with reason
-`rate_limited` is worth a backed-off retry; reason `quota_exhausted` is not
-until the epoch in the diagnostic's `next_flush_time` has passed.
+75 temporary/rate-limit failure, 78 unsupported role or effort for this
+adapter. A 75 with reason `rate_limited` is worth a backed-off retry; reason
+`quota_exhausted` is not until the epoch in the diagnostic's `next_flush_time`
+has passed.
 
 Failures write a sanitized diagnostic to <output>.error.json. --debug-dir
-additionally preserves the raw event stream and stderr in a private subdirectory.
-Lane-qualification evaluation accepts only a hash-allowlisted manifest for the
-exact model/claude-zai/effort tuple selected by the executable gate and never
-changes a routing gate itself.
+additionally preserves the raw event stream and stderr in a private
+subdirectory. Normally dispatched through `delegation-run --profile`, which
+supplies the requested model, effort, and aliases from the personal
+configuration.
 EOF
-}
-
-load_gate_identity() {
-  have jq || die 69 "jq is required"
-  MODEL="${DELEGATION_REQUESTED_MODEL:-glm-5.3-flash}"
-  PROFILE_PREFIX=glm53-flash-max
 }
 
 resolve_claude_bin() {
@@ -100,165 +81,12 @@ resolve_claude_bin() {
   CLAUDE_BIN="$candidate"
 }
 
-normalized_mode() {
-  local raw
-  if raw="$(stat -f '%Lp' "$1" 2>/dev/null)"; then :
-  elif raw="$(stat -c '%a' "$1" 2>/dev/null)"; then :
-  else return 1; fi
-  printf '%04o' "$((8#$raw & 07777))"
-}
-
-# Hash every tracked, untracked, and ignored path in a fixture worktree. Git's
-# binary diff is useful evidence for tracked changes, but it deliberately omits
-# untracked and ignored files. The NUL-delimited inventory makes those bytes
-# part of the canonical evaluation receipt without relying on path quoting.
-worktree_snapshot_sha256() {
-  local workdir="$1" inventory="$2" paths path digest target mode
-  paths="$inventory.paths"
-  {
-    git -C "$workdir" ls-files -z
-    git -C "$workdir" ls-files -z --others --exclude-standard
-    git -C "$workdir" ls-files -z --others --ignored --exclude-standard
-  } | LC_ALL=C sort -zu >"$paths" || return 1
-  : >"$inventory"
-  while IFS= read -r -d '' path; do
-    if [ -L "$workdir/$path" ]; then
-      target="$(readlink "$workdir/$path")" || return 1
-      mode="$(normalized_mode "$workdir/$path")" || return 1
-      printf 'symlink\0%s\0%s\0%s\0' "$path" "$mode" "$target" >>"$inventory"
-    elif [ -f "$workdir/$path" ]; then
-      digest="$(sha256_file "$workdir/$path")" || return 1
-      mode="$(normalized_mode "$workdir/$path")" || return 1
-      printf 'file\0%s\0%s\0%s\0' "$path" "$mode" "$digest" >>"$inventory"
-    elif [ -d "$workdir/$path" ]; then
-      mode="$(normalized_mode "$workdir/$path")" || return 1
-      printf 'directory\0%s\0%s\0\0' "$path" "$mode" >>"$inventory"
-    else
-      printf 'missing\0%s\0\0\0' "$path" >>"$inventory"
-    fi
-  done <"$paths"
-  rm -f -- "$paths"
-  sha256_file "$inventory"
-}
-
-directory_snapshot_sha256() {
-  local root="$1" inventory="$2" paths path digest target mode
-  paths="$inventory.paths"
-  (
-    cd "$root"
-    find . -mindepth 1 \( -type f -o -type l -o -type d \) -print0 | LC_ALL=C sort -zu
-  ) >"$paths" || return 1
-  : >"$inventory"
-  while IFS= read -r -d '' path; do
-    path="${path#./}"
-    if [ -L "$root/$path" ]; then
-      target="$(readlink "$root/$path")" || return 1
-      mode="$(normalized_mode "$root/$path")" || return 1
-      printf 'symlink\0%s\0%s\0%s\0' "$path" "$mode" "$target" >>"$inventory"
-    elif [ -f "$root/$path" ]; then
-      digest="$(sha256_file "$root/$path")" || return 1
-      mode="$(normalized_mode "$root/$path")" || return 1
-      printf 'file\0%s\0%s\0%s\0' "$path" "$mode" "$digest" >>"$inventory"
-    elif [ -d "$root/$path" ]; then
-      mode="$(normalized_mode "$root/$path")" || return 1
-      printf 'directory\0%s\0%s\0\0' "$path" "$mode" >>"$inventory"
-    fi
-  done <"$paths"
-  rm -f -- "$paths"
-  sha256_file "$inventory"
-}
-
-evaluation_manifest() {
-  local manifest="$1" prompt_file="$2" effort="$3" lane="$4" workdir="$5"
-  local manifest_hash prompt_hash source_head contract schema runner_hash manifest_schema
-  local expected_permission expected_workdir_mode workdir_head git_dir
-  [ -f "$manifest" ] && [ ! -L "$manifest" ] || die 78 "evaluation manifest is missing or symlinked"
-  manifest_hash="$(sha256_file "$manifest")" || die 69 "sha256 tool is required for evaluation"
-  prompt_hash="$(sha256_file "$prompt_file")" || die 69 "sha256 tool is required for evaluation"
-  source_head="$(git -C "$ROOT" rev-parse HEAD 2>/dev/null)" || die 78 "runner source checkout is unavailable"
-  workdir_head=""
-  contract="$(jq -r '.contract_path // empty' "$manifest" 2>/dev/null)"; schema="$(jq -r '.output_schema_path // empty' "$manifest" 2>/dev/null)"
-  case "$contract" in /*|*..*) die 78 "evaluation contract_path must be root-relative";; esac; case "$schema" in /*|*..*) die 78 "evaluation output_schema_path must be root-relative";; esac
-  contract="$ROOT/$contract"; schema="$ROOT/$schema"; runner_hash="$(sha256_file "$SOURCE")" || die 69 "sha256 tool is required for evaluation"
-  [ -n "$contract" ] && [ -n "$schema" ] || die 78 "evaluation manifest requires contract_path and output_schema_path"
-  [ -f "$contract" ] && [ ! -L "$contract" ] && [ -f "$schema" ] && [ ! -L "$schema" ] || die 78 "evaluation contract or schema is missing or symlinked"
-  git -C "$ROOT" diff --quiet && git -C "$ROOT" diff --cached --quiet && [ -z "$(git -C "$ROOT" ls-files --others --exclude-standard)" ] || die 78 "runner source checkout is dirty"
-  manifest_schema="$(jq -r '.schema // empty' "$manifest" 2>/dev/null)"
-  if [ "$manifest_schema" = delegation_policy_annotation_evaluation_v1 ]; then
-    [ "$lane" = policy-annotation ] || die 78 "policy-annotation manifest cannot evaluate another lane"
-    jq -e --arg prompt_sha256 "$prompt_hash" --arg contract_sha256 "$(sha256_file "$contract")" --arg schema_sha256 "$(sha256_file "$schema")" --arg runner_sha256 "$runner_hash" --arg effort "$effort" --arg model "$MODEL" --arg profile "$PROFILE_PREFIX-policy-annotation" '
-      (keys | sort) == ["backend","contract_path","contract_sha256","effort","lane","max_output_chars","model","output_schema_path","output_schema_sha256","profile","prompt_sha256","runner_sha256","runner_source_commit","schema","timeout_seconds"] and
-      .schema == "delegation_policy_annotation_evaluation_v1" and .profile == $profile and .lane == "policy-annotation" and .model == $model and .backend == "claude-zai" and .effort == $effort and .prompt_sha256 == $prompt_sha256 and .contract_sha256 == $contract_sha256 and .output_schema_sha256 == $schema_sha256 and
-      .runner_sha256 == $runner_sha256 and ([.prompt_sha256,.contract_sha256,.output_schema_sha256,.runner_sha256] | all(test("^[0-9a-f]{64}$"))) and (.runner_source_commit | test("^[0-9a-f]{40}$")) and
-      (.timeout_seconds | type == "number" and floor == . and . >= 1 and . <= 600) and (.max_output_chars | type == "number" and floor == . and . >= 1 and . <= 65536)
-    ' "$manifest" >/dev/null 2>&1 || die 78 "evaluation manifest is malformed or does not bind this exact run"
-    git -C "$ROOT" merge-base --is-ancestor "$(jq -r '.runner_source_commit' "$manifest")" "$source_head" || die 78 "evaluation manifest source commit is not an ancestor of this runner"
-    EVALUATION_MAX_COST_USD="2.00"
-    EVALUATION_TASK_COUNT=20
-  elif [ "$manifest_schema" = delegation_glm_lane_evaluation_v1 ]; then
-    case "$lane" in clerk|scout|builder) ;; *) die 78 "GLM lane evaluation supports clerk, scout, or builder only" ;; esac
-    workdir_head="$(git -C "$workdir" rev-parse HEAD 2>/dev/null)" || die 78 "evaluation workdir must be a git checkout"
-    git_dir="$(git -C "$workdir" rev-parse --absolute-git-dir 2>/dev/null)" \
-      || die 78 "evaluation workdir has no resolvable git directory"
-    git_dir="$(cd "$git_dir" && pwd -P)"
-    [ "$git_dir" = "$workdir/.git" ] \
-      || die 78 "evaluation workdir must use an in-tree .git directory"
-    git -C "$workdir" diff --quiet && git -C "$workdir" diff --cached --quiet &&
-      [ -z "$(git -C "$workdir" ls-files --others --exclude-standard)" ] &&
-      [ -z "$(git -C "$workdir" ls-files --others --ignored --exclude-standard)" ] \
-      || die 78 "evaluation workdir is dirty, including ignored paths"
-    expected_permission=plan; expected_workdir_mode=read-only
-    if [ "$lane" = builder ]; then expected_permission=acceptEdits; expected_workdir_mode=writable-fixture; fi
-    jq -e --arg prompt_sha256 "$prompt_hash" --arg contract_sha256 "$(sha256_file "$contract")" --arg schema_sha256 "$(sha256_file "$schema")" --arg runner_sha256 "$runner_hash" --arg source_head "$source_head" --arg workdir_head "$workdir_head" --arg effort "$effort" --arg lane "$lane" --arg permission "$expected_permission" --arg workdir_mode "$expected_workdir_mode" --arg model "$MODEL" --arg profile "$PROFILE_PREFIX-$lane" '
-      (keys | sort) == ["backend","contract_path","contract_sha256","effort","lane","max_cost_usd","max_output_chars","model","output_schema_path","output_schema_sha256","permission_mode","profile","prompt_sha256","runner_sha256","runner_source_commit","schema","task_count","timeout_seconds","workdir_commit","workdir_mode"] and
-      .schema == "delegation_glm_lane_evaluation_v1" and .profile == $profile and .lane == $lane and .model == $model and .backend == "claude-zai" and .effort == $effort and
-      .permission_mode == $permission and .workdir_mode == $workdir_mode and .workdir_commit == $workdir_head and .runner_source_commit == $source_head and
-      .prompt_sha256 == $prompt_sha256 and .contract_sha256 == $contract_sha256 and .output_schema_sha256 == $schema_sha256 and .runner_sha256 == $runner_sha256 and
-      ([.prompt_sha256,.contract_sha256,.output_schema_sha256,.runner_sha256] | all(test("^[0-9a-f]{64}$"))) and
-      ([.runner_source_commit,.workdir_commit] | all(test("^[0-9a-f]{40}$"))) and
-      (.task_count | type == "number" and floor == . and . >= 1 and . <= 100) and
-      (.timeout_seconds | type == "number" and floor == . and . >= 1 and . <= 900) and
-      (.max_output_chars | type == "number" and floor == . and . >= 1 and . <= 65536) and
-      (.max_cost_usd | type == "number" and . >= 0.01 and . <= 25)
-    ' "$manifest" >/dev/null 2>&1 || die 78 "evaluation manifest is malformed or does not bind this exact run"
-    EVALUATION_MAX_COST_USD="$(jq -r '.max_cost_usd' "$manifest")"
-    EVALUATION_TASK_COUNT="$(jq -r '.task_count' "$manifest")"
-    if [ ! -x "$SCHEMA_COMPILER" ] || ! have python3; then
-      die 69 "delegation-schema and python3 are required for structured evaluation output"
-    fi
-    # The manifest binds the normative schema. Compile only the provider transport
-    # representation in memory; never rewrite or silently replace the bound file.
-    if ! EVALUATION_OUTPUT_SCHEMA_JSON="$(
-      "$SCHEMA_COMPILER" compile --provider claude --schema "$schema"
-    )"; then
-      die 78 "evaluation output schema is incompatible with Claude transport"
-    fi
-    EVALUATION_GIT_DIR="$git_dir"
-  else
-    die 78 "unsupported evaluation manifest schema"
-  fi
-  jq -e --arg hash "$manifest_hash" --arg lane "$lane" --arg profile "$PROFILE_PREFIX-$lane" '.profiles[$profile].lanes[$lane].evaluation_manifest_sha256 | type == "array" and index($hash) != null' "$CENTRAL_GATES" >/dev/null 2>&1 || die 78 "evaluation manifest is not allowlisted by the central gate"
-  jq -e --arg hash "$manifest_hash" --arg lane "$lane" '.lanes[$lane].backends["claude-zai"].evaluation_manifest_sha256 | type == "array" and index($hash) != null' "$ROUTING_FILE" >/dev/null 2>&1 || die 78 "evaluation manifest is not allowlisted by the executable gate"
-  EVALUATION_MANIFEST_SHA256="$manifest_hash"
-  EVALUATION_PROMPT_SHA256="$prompt_hash"
-  EVALUATION_RUNNER_SOURCE_COMMIT="$(jq -r '.runner_source_commit' "$manifest")"
-  EVALUATION_RUNNER_SHA256="$runner_hash"
-  EVALUATION_WORKDIR_COMMIT="$workdir_head"
-  EVALUATION_TIMEOUT_SECONDS="$(jq -r '.timeout_seconds' "$manifest")"
-  EVALUATION_MAX_OUTPUT_CHARS="$(jq -r '.max_output_chars' "$manifest")"
-}
-
 host_status() {
   HOST_REASON=""
   if [ -n "$CLAUDE_BIN_OVERRIDE" ] || have claude || have codex; then HOST_REASON="ready"; return 0; fi
   HOST_REASON="neither Claude Code nor Codex is installed"
   return 1
 }
-
-# Each branch assigns on its own: `$(a || b)` would concatenate the stdout of
-# every branch it ran, and GNU's `-f` means --file-system, printing a block and
-# still failing. An undeterminable mode is not treated as a refusal — that would
-# brick the lane on a platform whose stat we cannot read.
 
 # An explicit ZAI_API_KEY in the environment always wins. Otherwise fall back to
 # the key install.sh stored. Parsed, never sourced: the file holds a credential,
@@ -320,89 +148,34 @@ claude_zai_status() {
   return 0
 }
 
-qualified_lanes() {
-  if [ -f "$CENTRAL_GATES" ] && have jq; then
-    jq -c --arg prefix "$PROFILE_PREFIX" '[.profiles | to_entries[] | select(.key | startswith($prefix + "-")) |
-      .value.lanes | to_entries[] | select(.value.status == "qualified") | .key] | unique | sort' "$CENTRAL_GATES" 2>/dev/null || printf '[]'
-  else
-    printf '[]'
-  fi
-}
-
-provisional_lanes() {
-  if [ -f "$CENTRAL_GATES" ] && have jq; then
-    jq -c --arg prefix "$PROFILE_PREFIX" '[.profiles | to_entries[] | select(.key | startswith($prefix + "-")) |
-      .value.lanes | to_entries[] | select(.value.status == "provisional") | .key] | unique | sort' "$CENTRAL_GATES" 2>/dev/null || printf '[]'
-  else
-    printf '[]'
-  fi
-}
-
-# Read from the gate, never a constant: check must advertise the efforts the
-# runner will actually accept, or a caller follows the advertised set straight
-# into a 78 and reads it as "this lane failed evaluation".
-gate_efforts() {
-  if [ -f "$CENTRAL_GATES" ] && have jq; then
-    jq -c --arg prefix "$PROFILE_PREFIX" '[.profiles | to_entries[] | select(.key | startswith($prefix + "-")) | .value as $p |
-      $p.lanes[] | select(.status == "qualified" or .status == "provisional") | $p.effort] | unique' "$CENTRAL_GATES" 2>/dev/null || printf '[]'
-  else
-    printf '[]'
-  fi
-}
-
-default_effort() {
-  local backend="$2"
-  [ "$backend" = claude-zai ] || return 1
-  printf '%s\n' "${DELEGATION_PROFILE_EFFORT:-max}"
-}
-
-gate_status() {
-  local lane="$1" backend="$2"
-  [ "$backend" = claude-zai ] || { printf 'disabled\n'; return; }
-  jq -r --arg profile "$PROFILE_PREFIX-$lane" '.profiles[$profile].lanes[]?.status // "disabled"' \
-    "$CENTRAL_GATES" 2>/dev/null || printf 'disabled\n'
-}
-
 is_allowed() {
-  [ "$2" = claude-zai ] || return 1
-  case "$1" in clerk|scout|builder|reviewer|policy-annotation) return 0 ;; *) return 1 ;; esac
+  local role="$1" backend="$2" r
+  [ "$backend" = "$ADAPTER" ] || return 1
+  for r in $ROLES; do [ "$r" = "$role" ] && return 0; done
+  return 1
 }
 
-qualified_effort() {
-  local lane="$1" backend="$2"
-  default_effort "$lane" "$backend"
-}
-
-validate_gate_graph() {
-  # Historical quality gates are informational; runtime checks below remain.
-  return 0
-}
+default_effort() { printf '%s\n' "${DELEGATION_PROFILE_EFFORT:-max}"; }
 
 print_check() {
-  local as_json="${1:-0}" host_ok=false claude_ok=false
+  local as_json="${1:-0}" host_ok=false claude_ok=false selected="none"
   have jq || die 69 "jq is required"
-  validate_gate_graph || die 78 "central and executable routing gates are missing, invalid, or inconsistent"
   host_status && host_ok=true || true
   claude_zai_status && claude_ok=true || true
-  local lanes provisional efforts selected="none"
-  lanes="$(qualified_lanes)"
-  provisional="$(provisional_lanes)"
-  efforts="$(gate_efforts)"
-  if [ "$host_ok" = true ] && [ "$claude_ok" = true ]; then selected="claude-zai"; fi
+  if [ "$host_ok" = true ] && [ "$claude_ok" = true ]; then selected="$ADAPTER"; fi
   if [ "$as_json" = 1 ]; then
     jq -n \
-      --arg model "$MODEL" --arg selected "$selected" \
-      --argjson efforts "$efforts" --argjson lanes "$lanes" --argjson provisional "$provisional" \
+      --arg model "$MODEL" --arg adapter "$ADAPTER" --arg selected "$selected" \
+      --argjson roles "$(printf '%s\n' $ROLES | jq -R . | jq -sc .)" --argjson efforts "$EFFORTS" \
       --argjson host "$host_ok" --arg host_reason "$HOST_REASON" \
       --argjson host_claude "$(have claude && printf true || printf false)" \
       --argjson host_codex "$(have codex && printf true || printf false)" \
       --argjson claude "$claude_ok" --arg claude_reason "$CLAUDE_ZAI_REASON" \
-      '{model:$model, efforts:$efforts, selected_backend:$selected,
+      '{model:$model, adapter:$adapter, roles:$roles, efforts:$efforts, selected_backend:$selected,
         host:{available:$host,reason:$host_reason,claude:$host_claude,codex:$host_codex},
-        qualified_lanes:$lanes,provisional_lanes:$provisional,backends:{
-          "claude-zai":{available:$claude,reason:$claude_reason}}}'
+        backends:{($adapter):{available:$claude,reason:$claude_reason}}}'
   else
-    printf '%s: selected=%s efforts=%s qualified=%s provisional=%s\n' "$MODEL" "$selected" "$efforts" "$lanes" "$provisional"
+    printf '%s: selected=%s roles=%s efforts=%s\n' "$MODEL" "$selected" "$(printf '%s' "$ROLES" | tr ' ' ',')" "$EFFORTS"
     printf '  host: %s (%s)\n' "$host_ok" "$HOST_REASON"
     printf '  claude-zai: %s (%s)\n' "$claude_ok" "$CLAUDE_ZAI_REASON"
   fi
@@ -457,21 +230,16 @@ extract_claude() {
     EXTRACT_REASON="result_error"
     return 1
   fi
-  if ! jq -se --arg structured "$EVALUATION_OUTPUT_SCHEMA_JSON" '
+  if ! jq -se '
       ([.[] | select(.type == "result")] | last // {}) as $r |
-      $r.subtype == "success" and
-      (($structured != "" and ($r.structured_output | type) == "object") or
-       (($r.result | type) == "string"))
+      $r.subtype == "success" and (($r.result | type) == "string")
     ' "$events" >/dev/null; then
     EXTRACT_REASON="invalid_stream"
     return 1
   fi
-  jq -rcs --arg structured "$EVALUATION_OUTPUT_SCHEMA_JSON" '
+  jq -rs '
     ([.[] | select(.type == "result")] | last // {}) as $r |
-    if $structured != "" and ($r.structured_output | type) == "object"
-    then $r.structured_output
-    else ($r.result | select(type == "string" and length > 0))
-    end
+    ($r.result | select(type == "string" and length > 0))
   ' "$events" >"$output" || {
     EXTRACT_REASON="invalid_stream"
     return 1
@@ -484,21 +252,14 @@ extract_claude() {
     --arg lane "$lane" --argjson started "$started" '
     ([.[] | select(.type == "system" and .subtype == "init") | .model] | unique) as $init_models |
     ([.[] | select(.type == "assistant")]) as $assistant_events |
-    ($assistant_events | length) as $assistant_event_count |
     ([$assistant_events[] | .message.model? |
-      select(type == "string" and length > 0)]) as $attributed_assistant_models |
-    ($attributed_assistant_models | unique) as $assistant_models |
-    ($assistant_event_count - ($attributed_assistant_models | length)) as $assistant_model_missing |
-    ([$attributed_assistant_models[] | select(. != $model)] | length) as $assistant_model_mismatch |
+      select(type == "string" and length > 0)] | unique) as $assistant_models |
     ([.[] | select(.type == "result")] | last // {}) as $r |
     ($r.usage // {}) as $u |
     ($r.effective_content_model // $r.canonicalModel // $r.model // null) as $result_effective |
     (if $result_effective != null then $result_effective
      elif ($assistant_models | length) == 1 then $assistant_models[0]
      else null end) as $effective |
-    (if $result_effective != null then "result"
-     elif ($assistant_models | length) == 1 then "assistant_events"
-     else null end) as $effective_source |
     ($r.modelUsage // $r.model_usage // {}) as $model_usage |
     ($model_usage | to_entries | map({
       model:.key,
@@ -509,48 +270,26 @@ extract_claude() {
       reasoning_tokens:(.value.reasoningTokens // .value.reasoning_tokens // 0),
       cache_read_tokens:(.value.cacheReadInputTokens // .value.cache_read_input_tokens // 0),
       cache_write_tokens:(.value.cacheCreationInputTokens // .value.cache_creation_input_tokens // 0),
-      model_calls:(.value.modelCalls // .value.model_calls // 0),
       cost_usd:(.value.costUSD // .value.cost_usd // 0)
     })) as $participants |
-    ($participants | map(.input_tokens) | add // 0) as $participant_input |
-    ($participants | map(.output_tokens) | add // 0) as $participant_output |
-    ($participants | map(.reasoning_tokens) | add // 0) as $participant_reasoning |
-    ($participants | map(.cache_read_tokens) | add // 0) as $participant_cache_read |
-    ($participants | map(.cache_write_tokens) | add // 0) as $participant_cache_write |
-    ($participants | map(.cost_usd) | add // 0) as $participant_cost |
-    {model:$model,requested_model:$model,observed_init_models:$init_models,
-     observed_assistant_models:$assistant_models,
-     assistant_event_count:$assistant_event_count,
-     assistant_model_attributed_count:($attributed_assistant_models | length),
-     assistant_model_missing_or_malformed_count:$assistant_model_missing,
-     assistant_model_mismatch_count:$assistant_model_mismatch,
-     effective_content_model:$effective,effective_content_model_source:$effective_source,
-     exact_model_identity_attested:(
-       $init_models == [$model] and $assistant_event_count > 0 and
-       $assistant_model_missing == 0 and $assistant_model_mismatch == 0 and
-       $assistant_models == [$model] and
-       $effective == $model and
-       any($participants[]; .model == $model and .canonical_model == $model and .provider == "firstParty")),
-     schema_version:3,provider_reported_model:$effective,model_identity_source:(if $effective == null then "requested-only" else "provider-reported" end),
-     model_usage:$model_usage,usage_participants:$participants,
-     target_usage_participant_present:($model_usage | has($model)),
-     target_usage_identity_attested:any($participants[];
-       .model == $model and .canonical_model == $model and .provider == "firstParty"),
+    {schema_version:3,model:$model,requested_model:$model,
+     provider_reported_model:$effective,
+     model_identity_source:(if $effective == null then "requested-only" else "provider-reported" end),
+     observed_init_models:$init_models,observed_assistant_models:$assistant_models,
      backend:$backend,effort:$effort,lane:$lane,
      started_at_epoch:$started,finished_at_epoch:now,
      usage_source:(if ($participants | length) > 0 then "model_usage" else "provider_aggregate" end),
      tokens:(if ($participants | length) > 0 then
-       {input:$participant_input,output:$participant_output,reasoning:$participant_reasoning,
-        cache_read:$participant_cache_read,cache_write:$participant_cache_write}
+       {input:($participants | map(.input_tokens) | add // 0),output:($participants | map(.output_tokens) | add // 0),
+        reasoning:($participants | map(.reasoning_tokens) | add // 0),cache_read:($participants | map(.cache_read_tokens) | add // 0),
+        cache_write:($participants | map(.cache_write_tokens) | add // 0)}
        else
        {input:($u.input_tokens // 0),output:($u.output_tokens // 0),
         reasoning:($u.reasoning_tokens // 0),cache_read:($u.cache_read_input_tokens // 0),
         cache_write:($u.cache_creation_input_tokens // 0)} end),
-     provider_aggregate_tokens:{input:($u.input_tokens // 0),output:($u.output_tokens // 0),
-       reasoning:($u.reasoning_tokens // 0),cache_read:($u.cache_read_input_tokens // 0),
-       cache_write:($u.cache_creation_input_tokens // 0)},
-     provider_cost_usd:(if ($participants | length) > 0 then $participant_cost else ($r.total_cost_usd // 0) end),
-     provider_total_cost_usd:($r.total_cost_usd // 0)}' "$events" >"$metrics" || {
+     usage_participants:$participants,
+     provider_cost_usd:(if ($participants | length) > 0 then ($participants | map(.cost_usd) | add // 0) else ($r.total_cost_usd // 0) end)}' \
+    "$events" >"$metrics" || {
     EXTRACT_REASON="invalid_stream"
     return 1
   }
@@ -626,7 +365,7 @@ write_failure_diagnostic() {
 
 run_command() {
   local lane="" effort="auto" backend="auto" prompt_file="" output="" workdir="" metrics="" diagnostic=""
-  local debug_dir="" max_cost="2.00" evaluation=0 evaluation_manifest_path="" allow_provisional=0
+  local debug_dir="" max_cost="2.00"
   while [ "$#" -gt 0 ]; do
     case "$1" in
       --lane) lane="${2:-}"; shift 2 ;;
@@ -639,8 +378,6 @@ run_command() {
       --max-cost-usd) max_cost="${2:-}"; shift 2 ;;
       --debug-dir) debug_dir="${2:-}"; shift 2 ;;
       --allow-provisional) printf "%s\n" "--allow-provisional is deprecated and has no effect" >&2; shift ;;
-      --evaluation) evaluation=1; shift ;;
-      --evaluation-manifest) evaluation_manifest_path="${2:-}"; shift 2 ;;
       -h|--help) usage; exit 0 ;;
       *) die 64 "unknown run argument: $1" ;;
     esac
@@ -649,12 +386,6 @@ run_command() {
   case "$effort" in auto|max) ;; *) die 64 "invalid effort: $effort (only max is supported)" ;; esac
   case "$backend" in auto|claude-zai) ;; *) die 64 "invalid backend: $backend" ;; esac
   [ -f "$prompt_file" ] || die 64 "prompt file missing: $prompt_file"
-  if [ "$evaluation" = 1 ]; then
-    [ -n "$evaluation_manifest_path" ] || die 64 "--evaluation requires --evaluation-manifest"
-    [ "$allow_provisional" = 0 ] || die 64 "--evaluation cannot be combined with --allow-provisional"
-  else
-    [ -z "$evaluation_manifest_path" ] || die 64 "--evaluation-manifest requires --evaluation"
-  fi
   [ -d "$workdir" ] || die 64 "workdir missing: $workdir"
   [ -n "$output" ] || die 64 "--output is required"
   if [ -n "$debug_dir" ]; then
@@ -663,7 +394,6 @@ run_command() {
     debug_dir="$(cd "$debug_dir" && pwd -P)"
   fi
   have jq || die 69 "jq is required"
-  validate_gate_graph || die 78 "central and executable routing gates are missing, invalid, or inconsistent"
   metrics="${metrics:-$output.metrics.json}"
   diagnostic="$output.error.json"
   mkdir -p "$(dirname "$output")" "$(dirname "$metrics")" "$(dirname "$diagnostic")"
@@ -680,41 +410,15 @@ run_command() {
     || die 64 "metrics path collides with reserved diagnostic path: $diagnostic"
 
   workdir="$(cd "$workdir" && pwd -P)"
-  if [ "$evaluation" = 1 ]; then
-    case "$normalized_output" in "$workdir"/*) die 64 "evaluation output must be outside workdir" ;; esac
-    case "$normalized_metrics" in "$workdir"/*) die 64 "evaluation metrics must be outside workdir" ;; esac
-    case "$normalized_diagnostic" in "$workdir"/*) die 64 "evaluation diagnostic must be outside workdir" ;; esac
-    if [ -n "$debug_dir" ]; then case "$debug_dir" in "$workdir"|"$workdir"/*) die 64 "evaluation debug directory must be outside workdir" ;; esac; fi
-  fi
-
-  backend="claude-zai"
-  is_allowed "$lane" "$backend" "$allow_provisional" || die 78 "unsupported lane/backend"
-  if [ "$evaluation" = 1 ]; then
-    status="$(gate_status "$lane" "$backend")"
-    case "$lane:$status" in
-      policy-annotation:candidate|builder:candidate|clerk:candidate|scout:candidate|clerk:provisional|scout:provisional) ;;
-      *) die 78 "lane '$lane' with status '$status' is not eligible for GLM qualification evaluation" ;;
-    esac
-  fi
+  backend="$ADAPTER"
+  is_allowed "$lane" "$backend" || die 78 "unsupported lane/backend"
   host_status || die 69 "$HOST_REASON"
   claude_zai_status || die 69 "$CLAUDE_ZAI_REASON"
-  [ "$effort" != auto ] || effort="$(default_effort "$lane" "$backend")"
-  # Effort restrictions belong to the adapter, independently of quality evidence.
-  if [ "$evaluation" = 0 ]; then
-    local expected_effort
-    expected_effort="$(qualified_effort "$lane" "$backend")" \
-      || die 69 "lane '$lane' has no supported effort for backend '$backend'"
-    [ "$effort" = "$expected_effort" ] \
-      || die 78 "lane '$lane' backend '$backend' supports only effort '$expected_effort'"
-  fi
-  if [ "$evaluation" = 1 ]; then
-    [ "$effort" = max ] || die 78 "GLM qualification evaluation supports only effort 'max'"
-    evaluation_manifest "$evaluation_manifest_path" "$prompt_file" "$effort" "$lane" "$workdir"
-    max_cost="$EVALUATION_MAX_COST_USD"
-  fi
+  [ "$effort" != auto ] || effort="$(default_effort)"
+  # Effort restrictions belong to the adapter.
+  [ "$effort" = max ] || die 78 "lane '$lane' backend '$backend' supports only effort 'max'"
 
-  local tmp events stderr_file rc=0 started workdir_tree_before_sha="" workdir_tree_after_sha=""
-  local git_control_before_sha="" git_control_after_sha=""
+  local tmp events stderr_file rc=0 started
   local output_parent output_name metrics_parent metrics_name
   local phase="" reason="" final_rc=0 cli_exit=null debug_warning=""
   tmp="$(mktemp -d "${TMPDIR:-/tmp}/delegation-glm.XXXXXX")"
@@ -731,102 +435,28 @@ run_command() {
   metrics_name="$(basename "$metrics")"
   RUN_OUTPUT_TMP="$(mktemp "$output_parent/.$output_name.XXXXXX")"
   RUN_METRICS_TMP="$(mktemp "$metrics_parent/.$metrics_name.XXXXXX")"
-  if [ "$evaluation" = 1 ] && [ -n "$EVALUATION_WORKDIR_COMMIT" ]; then
-    workdir_tree_before_sha="$(worktree_snapshot_sha256 "$workdir" "$tmp/workdir.before")" \
-      || die 69 "could not attest the evaluation worktree before dispatch"
-    git_control_before_sha="$(directory_snapshot_sha256 "$EVALUATION_GIT_DIR" "$tmp/git-control.before")" \
-      || die 69 "could not attest evaluation git control state before dispatch"
-  fi
   started="$(date +%s)"
 
   local permission="plan"
-  local -a evaluation_tail=(--max-budget-usd "$max_cost")
   [ "$lane" != builder ] || permission="acceptEdits"
-  if [ -n "$EVALUATION_OUTPUT_SCHEMA_JSON" ]; then
-    evaluation_tail=(--json-schema "$EVALUATION_OUTPUT_SCHEMA_JSON" --max-budget-usd "$max_cost")
-  fi
   mkdir -p "$tmp/claude-config" "$tmp/home"
-  local timeout_bin='' sandbox_profile='' claude_bin='' git_dir=''
-  if [ "$evaluation" = 1 ]; then
-    [ "$(uname)" = Darwin ] && [ -x /usr/bin/sandbox-exec ] || die 69 "GLM evaluation requires macOS sandbox-exec"
-    if have gtimeout; then timeout_bin="$(command -v gtimeout)"
-    elif have timeout; then timeout_bin="$(command -v timeout)"
-    else die 69 "GLM evaluation requires gtimeout or timeout"; fi
-    claude_bin="$CLAUDE_BIN"
-    if IFS= read -r shebang <"$claude_bin" 2>/dev/null && [[ "$shebang" == '#!'* ]]; then
-      die 69 "GLM evaluation requires a native Claude Code executable, not a script launcher"
-    fi
-    git_dir="${EVALUATION_GIT_DIR:-$tmp/empty-git-control}"
-    mkdir -p "$git_dir"
-    sandbox_profile='(version 1)
-      (allow default)
-      (deny process-exec
-        (require-all
-          (require-not (literal (param "CLAUDE_BIN")))
-          (require-not (literal "/usr/bin/true"))))
-      (deny file-read-data
-        (require-all
-          (require-not (literal "/"))
-          (require-not (subpath (param "SCRATCH")))
-          (require-not (subpath (param "WORKDIR")))
-          (require-not (literal (param "CLAUDE_BIN")))
-          (require-not (subpath "/System"))
-          (require-not (subpath "/usr/lib"))
-          (require-not (subpath "/usr/share"))
-          (require-not (subpath "/usr/bin"))
-          (require-not (subpath "/bin"))
-          (require-not (subpath "/dev"))
-          (require-not (subpath "/private/etc"))
-          (require-not (subpath "/private/var/db/timezone"))
-          (require-not (subpath "/Library/Apple"))))'
-    if [ "$lane" = builder ]; then
-      sandbox_profile+=$'\n      (deny file-write* (require-all (require-not (subpath (param "SCRATCH"))) (require-not (subpath (param "WORKDIR")))))'
-    else
-      sandbox_profile+=$'\n      (deny file-write* (require-not (subpath (param "SCRATCH"))))'
-    fi
-    sandbox_profile+=$'\n      (deny file-write* (subpath (param "GIT_DIR")))'
-  fi
   # Claude has no --cwd flag. Enter the delegated worktree explicitly so it
   # cannot inspect or edit the delegation-kit source checkout by accident.
   (
     cd "$workdir"
-    if [ "$evaluation" = 1 ]; then
-      env -i PATH="/usr/bin:/bin" LANG="${LANG:-C}" NO_COLOR=1 CI=1 \
-        USER="${USER:-$(id -un)}" \
-        FAKE_CLAUDE_CASE="${FAKE_CLAUDE_CASE:-}" \
-        FAKE_FORBIDDEN_HOME="${FAKE_FORBIDDEN_HOME:-}" \
-        FAKE_FORBIDDEN_SOURCE="${FAKE_FORBIDDEN_SOURCE:-}" \
-        FAKE_FORBIDDEN_HOST="${FAKE_FORBIDDEN_HOST:-}" \
-        ANTHROPIC_AUTH_TOKEN="$ZAI_API_KEY" \
-        ANTHROPIC_BASE_URL="https://api.z.ai/api/anthropic" \
-        ANTHROPIC_DEFAULT_OPUS_MODEL="$MODEL" \
-        HOME="$tmp/home" TMPDIR="$tmp" BUN_TMPDIR="$tmp" \
-        CLAUDE_TMPDIR="$tmp" CLAUDE_CODE_TMPDIR="$tmp" \
-        CLAUDE_CONFIG_DIR="$tmp/claude-config" \
-        CLAUDE_CODE_SIMPLE=1 CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1 \
-        API_TIMEOUT_MS=3000000 \
-        "$timeout_bin" "$EVALUATION_TIMEOUT_SECONDS" \
-        /usr/bin/sandbox-exec -D "SCRATCH=$tmp" -D "WORKDIR=$workdir" \
-        -D "GIT_DIR=$git_dir" -D "CLAUDE_BIN=$claude_bin" \
-        -p "$sandbox_profile" "$claude_bin" -p "$(<"$prompt_file")" --model opus --effort "$effort" \
-        --permission-mode "$permission" --setting-sources '' --strict-mcp-config \
-        --output-format stream-json --verbose --no-session-persistence \
-        "${evaluation_tail[@]}"
-    else
-      env -u ANTHROPIC_API_KEY -u CLAUDE_CODE_OAUTH_TOKEN -u ZAI_API_KEY \
-        -u ANTHROPIC_MODEL -u ANTHROPIC_CUSTOM_HEADERS \
-        -u CLAUDE_CODE_USE_BEDROCK -u CLAUDE_CODE_USE_VERTEX \
-        -u CLAUDE_CODE_USE_FOUNDRY \
-        ANTHROPIC_AUTH_TOKEN="$ZAI_API_KEY" \
-        ANTHROPIC_BASE_URL="https://api.z.ai/api/anthropic" \
-        ANTHROPIC_DEFAULT_OPUS_MODEL="$MODEL" \
-        CLAUDE_CONFIG_DIR="$tmp/claude-config" \
-        CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1 API_TIMEOUT_MS=3000000 \
-        "$CLAUDE_BIN" -p "$(<"$prompt_file")" --model opus --effort "$effort" \
-        --permission-mode "$permission" --setting-sources '' --strict-mcp-config \
-        --output-format stream-json --verbose --no-session-persistence \
-        --max-budget-usd "$max_cost"
-    fi
+    env -u ANTHROPIC_API_KEY -u CLAUDE_CODE_OAUTH_TOKEN -u ZAI_API_KEY \
+      -u ANTHROPIC_MODEL -u ANTHROPIC_CUSTOM_HEADERS \
+      -u CLAUDE_CODE_USE_BEDROCK -u CLAUDE_CODE_USE_VERTEX \
+      -u CLAUDE_CODE_USE_FOUNDRY \
+      ANTHROPIC_AUTH_TOKEN="$ZAI_API_KEY" \
+      ANTHROPIC_BASE_URL="https://api.z.ai/api/anthropic" \
+      ANTHROPIC_DEFAULT_OPUS_MODEL="$MODEL" \
+      CLAUDE_CONFIG_DIR="$tmp/claude-config" \
+      CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1 API_TIMEOUT_MS=3000000 \
+      "$CLAUDE_BIN" -p "$(<"$prompt_file")" --model opus --effort "$effort" \
+      --permission-mode "$permission" --setting-sources '' --strict-mcp-config \
+      --output-format stream-json --verbose --no-session-persistence \
+      --max-budget-usd "$max_cost"
   ) >"$events" 2>"$stderr_file" || rc=$?
   if [ "$rc" -eq 0 ]; then
     if ! extract_claude "$events" "$RUN_OUTPUT_TMP" "$RUN_METRICS_TMP" \
@@ -835,140 +465,21 @@ run_command() {
       reason="$EXTRACT_REASON"
       final_rc=70
     fi
-    if [ "$final_rc" -eq 0 ] && [ "$evaluation" = 1 ] &&
-        ! jq -e --arg model "$MODEL" '
-          .requested_model == $model and
-          .observed_init_models == [$model] and
-          .observed_assistant_models == [$model] and
-          .assistant_event_count > 0 and
-          .assistant_model_attributed_count == .assistant_event_count and
-          .assistant_model_missing_or_malformed_count == 0 and
-          .assistant_model_mismatch_count == 0 and
-          .effective_content_model == $model and
-          .effective_content_model_source != null and
-          .exact_model_identity_attested == true and
-          .target_usage_participant_present == true and
-          .target_usage_identity_attested == true and
-          (.model_usage | type) == "object" and
-          (.usage_participants | type) == "array"
-        ' "$RUN_METRICS_TMP" >/dev/null 2>&1; then
-      phase="extract"
-      reason="strict_identity_evaluation_void"
-      final_rc=70
-    fi
-    if [ "$final_rc" -eq 0 ] && [ "$evaluation" = 1 ] &&
-        [ "$(wc -m <"$RUN_OUTPUT_TMP" | tr -d ' ')" -gt "$EVALUATION_MAX_OUTPUT_CHARS" ]; then
-      phase="extract"
-      reason="max_output_chars"
-      final_rc=70
-    fi
-    if [ "$final_rc" -eq 0 ] && [ -n "$EVALUATION_WORKDIR_COMMIT" ]; then
-      workdir_tree_after_sha="$(worktree_snapshot_sha256 "$workdir" "$tmp/workdir.after")" \
-        || { phase="extract"; reason="workdir_snapshot_failed"; final_rc=70; }
-      git_control_after_sha="$(directory_snapshot_sha256 "$EVALUATION_GIT_DIR" "$tmp/git-control.after")" \
-        || { phase="extract"; reason="git_control_snapshot_failed"; final_rc=70; }
-      if [ "$final_rc" -eq 0 ] && [ "$git_control_before_sha" != "$git_control_after_sha" ]; then
-        phase="dispatch"
-        reason="git_control_modified"
-        final_rc=70
-      fi
-      if [ "$final_rc" -eq 0 ] && [ "$lane" != builder ] &&
-          [ "$workdir_tree_before_sha" != "$workdir_tree_after_sha" ]; then
-        phase="dispatch"
-        reason="workdir_modified"
-        final_rc=70
-      fi
-    fi
-    if [ "$final_rc" -eq 0 ] && [ -n "$EVALUATION_WORKDIR_COMMIT" ]; then
-      local receipt_tmp raw_output_sha changed_paths ignored_paths changed_path_modes diff_sha changed_paths_file ignored_paths_file path mode
-      receipt_tmp="$(mktemp "$metrics_parent/.${metrics_name}.receipt.XXXXXX")"
-      raw_output_sha="$(sha256_file "$RUN_OUTPUT_TMP")" || die 69 "sha256 tool is required for evaluation receipt"
-      changed_paths_file="$tmp/changed-paths"
-      ignored_paths_file="$tmp/ignored-paths"
-      {
-        git -C "$workdir" diff --name-only -z HEAD --
-        git -C "$workdir" ls-files -z --others --exclude-standard
-        git -C "$workdir" ls-files -z --others --ignored --exclude-standard
-      } | LC_ALL=C sort -zu >"$changed_paths_file"
-      git -C "$workdir" ls-files -z --others --ignored --exclude-standard \
-        | LC_ALL=C sort -zu >"$ignored_paths_file"
-      changed_paths="$(jq -Rsc 'split("\u0000") | map(select(length > 0))' "$changed_paths_file")"
-      ignored_paths="$(jq -Rsc 'split("\u0000") | map(select(length > 0))' "$ignored_paths_file")"
-      changed_path_modes="$({
-        while IFS= read -r -d '' path; do
-          mode="$(normalized_mode "$workdir/$path" 2>/dev/null || true)"
-          jq -nc --arg path "$path" --arg mode "$mode" \
-            '{path:$path,mode:(if $mode == "" then null else $mode end)}'
-        done <"$changed_paths_file"
-      } | jq -sc '.')"
-      if git -C "$workdir" diff --binary HEAD -- >"$tmp/workdir.diff"; then
-        diff_sha="$(sha256_file "$tmp/workdir.diff")"
-      else
-        phase="extract"; reason="workdir_diff_failed"; final_rc=70; diff_sha=""
-      fi
-      if [ "$final_rc" -eq 0 ]; then
-        jq --arg manifest_sha256 "$EVALUATION_MANIFEST_SHA256" \
-          --arg prompt_sha256 "$EVALUATION_PROMPT_SHA256" \
-          --arg runner_source_commit "$EVALUATION_RUNNER_SOURCE_COMMIT" \
-          --arg runner_sha256 "$EVALUATION_RUNNER_SHA256" \
-          --arg workdir_commit "$EVALUATION_WORKDIR_COMMIT" \
-          --arg raw_output_sha256 "$raw_output_sha" \
-          --arg workdir_diff_sha256 "$diff_sha" \
-          --arg workdir_tree_before_sha256 "$workdir_tree_before_sha" \
-          --arg workdir_tree_after_sha256 "$workdir_tree_after_sha" \
-          --arg git_control_before_sha256 "$git_control_before_sha" \
-          --arg git_control_after_sha256 "$git_control_after_sha" \
-          --argjson changed_paths "$changed_paths" \
-          --argjson ignored_paths "$ignored_paths" \
-          --argjson changed_path_modes "$changed_path_modes" \
-          --argjson task_count "$EVALUATION_TASK_COUNT" '
-            . + {evaluation_receipt:{
-              schema_version:"delegation_glm_lane_evaluation_attempt_receipt_v2",
-              evaluation_manifest_sha256:$manifest_sha256,
-              prompt_sha256:$prompt_sha256,
-              runner_source_commit:$runner_source_commit,
-              runner_sha256:$runner_sha256,
-              workdir_commit:(if $workdir_commit == "" then null else $workdir_commit end),
-              task_count:$task_count,provider_attempts:1,post_observation_retries:0,
-              raw_output_sha256:$raw_output_sha256,
-              workdir_diff_sha256:$workdir_diff_sha256,
-              workdir_tree_before_sha256:$workdir_tree_before_sha256,
-              workdir_tree_after_sha256:$workdir_tree_after_sha256,
-              git_control_before_sha256:$git_control_before_sha256,
-              git_control_after_sha256:$git_control_after_sha256,
-              changed_paths:$changed_paths,
-              ignored_paths:$ignored_paths,
-              changed_path_modes:$changed_path_modes}}
-          ' "$RUN_METRICS_TMP" >"$receipt_tmp" || { phase="extract"; reason="evaluation_receipt_failed"; final_rc=70; }
-        if [ "$final_rc" -eq 0 ]; then mv "$receipt_tmp" "$RUN_METRICS_TMP"; else rm -f -- "$receipt_tmp"; fi
-      fi
-    fi
   else
     phase="dispatch"
     reason="process_exit"
     final_rc=70
     cli_exit="$rc"
-    if [ "$evaluation" = 1 ] && { [ "$rc" -eq 124 ] || [ "$rc" -eq 137 ]; }; then
-      reason="evaluation_timeout"
-      final_rc=75
-    fi
   fi
 
   if [ "$final_rc" -ne 0 ]; then
     # A dead or malformed key is the runtime being unavailable (69), not the
-    # worker breaking (70). The API key is now GLM's only credential and
-    # claude_zai_status can only see that the string is non-empty — never that it
-    # authenticates — so this is the first place a bad key can surface.
-    #
-    # Read the structured retry events, not the text: a rejected key produces
-    # `result.subtype = "error_during_execution"` with an EMPTY result string and
-    # nothing auth-shaped in stderr, so there is no keyword to grep for. Grepping
-    # the raw stream would also misfire — an ordinary `EACCES: permission denied`
-    # from a tool call would masquerade as an auth failure.
-    #
-    # Only a dispatch failure gets reclassified: an extract-phase reason
-    # (empty_result, model_mismatch, …) already names the real defect, and a
-    # stray 429 earlier in an otherwise-completed stream must not overwrite it.
+    # worker breaking (70). claude_zai_status can only see that the key string
+    # is non-empty, never that it authenticates, so this is the first place a
+    # bad key can surface. Read the structured retry events, not the text: a
+    # rejected key produces `result.subtype = "error_during_execution"` with an
+    # empty result and nothing auth-shaped in stderr. Only a dispatch failure
+    # is reclassified: an extract-phase reason already names the real defect.
     if [ "$phase" = dispatch ]; then
       if jq -se 'any(.[]; .type == "system" and .subtype == "api_retry"
                          and (.error_status // 0) == 401)' "$events" >/dev/null 2>&1; then
@@ -976,14 +487,10 @@ run_command() {
         final_rc=69
       elif jq -se 'any(.[]; .type == "system" and .subtype == "api_retry"
                            and (.error_status // 0) == 429)' "$events" >/dev/null 2>&1; then
-        # Z.AI's numeric body codes (1302 rate/concurrency vs 1308/1310/1316/
-        # 1317 quota-window) never reach this runner: a captured api_retry
-        # event carries only the HTTP status and a normalized error string
-        # (verified 2026-08-04). The one observable quota signal is a
-        # rate_limit_event carrying an epoch reset; when present, the 429 is
-        # quota exhaustion and retrying before that instant is guaranteed
-        # waste, so surface the timestamp and a distinct reason. Both stay
-        # exit 75: the retry/stop split lives in reason + next_flush_time.
+        # The one observable quota signal is a rate_limit_event carrying an
+        # epoch reset; when present, the 429 is quota exhaustion and retrying
+        # before that instant is guaranteed waste. Both stay exit 75: the
+        # retry/stop split lives in reason + next_flush_time.
         NEXT_FLUSH_TIME="$(jq -rs '
           [.[] | select(.type == "rate_limit_event")] | last // {} |
           (.resets_at // .rate_limit.resets_at // .info.resets_at // empty) |
@@ -1028,7 +535,7 @@ run_command() {
   return 0
 }
 
-load_gate_identity
+have jq || die 69 "jq is required"
 
 case "${1:-}" in
   check)
