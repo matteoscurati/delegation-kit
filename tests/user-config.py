@@ -15,7 +15,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "bin/lib"))
-from delegation_config import review_state
+from delegation_config import review_state  # noqa: E402
 
 
 class Handler(BaseHTTPRequestHandler):

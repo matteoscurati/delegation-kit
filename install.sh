@@ -175,11 +175,11 @@ else
 fi
 
 cp "$KIT/bin/delegation-gemini" "$DATA_HOME/bin/delegation-gemini"
-cp "$KIT/config/gemini-3.7-flash-routing.json" "$DATA_HOME/config/gemini-3.7-flash-routing.json"
-rm -f -- "$DATA_HOME/config/gemini-3.6-flash-routing.json"
+cp "$KIT/config/gemini-3.8-flash-routing.json" "$DATA_HOME/config/gemini-3.8-flash-routing.json"
+rm -f -- "$DATA_HOME/config/gemini-3.6-flash-routing.json" "$DATA_HOME/config/gemini-3.7-flash-routing.json"
 chmod 755 "$DATA_HOME/bin/delegation-gemini"
 ln -sfn "$DATA_HOME/bin/delegation-gemini" "$BIN_HOME/delegation-gemini"
-echo "Gemini bridge -> $BIN_HOME/delegation-gemini (candidate gate: $DATA_HOME/config/gemini-3.7-flash-routing.json; stale 3.6 gate removed)"
+echo "Gemini bridge -> $BIN_HOME/delegation-gemini (candidate gate: $DATA_HOME/config/gemini-3.8-flash-routing.json; stale 3.6 and 3.7 gates removed)"
 
 cp "$KIT/bin/delegation-qwen" "$DATA_HOME/bin/delegation-qwen"
 cp "$KIT/config/qwen3.8-max-routing.json" "$DATA_HOME/config/qwen3.8-max-routing.json"

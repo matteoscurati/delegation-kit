@@ -1593,14 +1593,14 @@
         }
       }
     },
-    "gemini-3.7-flash": {
+    "gemini-3.8-flash": {
       "provider_family": "google",
-      "model": "gemini-3.7-flash",
+      "model": "gemini-3.8-flash",
       "runner": "delegation-gemini",
       "harness": "agy",
       "backend": "agy",
       "transport": "agent-cli-prompt-only",
-      "executable_gate": "gemini-3.7-flash-routing.json",
+      "executable_gate": "gemini-3.8-flash-routing.json",
       "efforts": [
         "medium",
         "high"
@@ -1610,8 +1610,8 @@
         "sandbox": "agy-sandbox"
       },
       "identity": {
-        "requested_model": "gemini-3.7-flash",
-        "runtime_model": "gemini-3.7-flash-<effort>",
+        "requested_model": "gemini-3.8-flash",
+        "runtime_model": "gemini-3.8-flash-<effort>",
         "observed_identity_sources": [
           "runtime-inventory-probe"
         ],
@@ -1665,7 +1665,7 @@
       },
       "lanes": {
         "scout": {
-          "central_profile": "gemini-3.7-flash-scout",
+          "central_profile": "gemini-3.8-flash-scout",
           "effort": "medium",
           "status": "candidate",
           "selection": "blocked",
@@ -1688,7 +1688,7 @@
           }
         },
         "builder": {
-          "central_profile": "gemini-3.7-flash-builder",
+          "central_profile": "gemini-3.8-flash-builder",
           "effort": "high",
           "status": "candidate",
           "selection": "blocked",
@@ -1718,7 +1718,7 @@
           }
         },
         "frontend-builder": {
-          "central_profile": "gemini-3.7-flash-frontend-builder",
+          "central_profile": "gemini-3.8-flash-frontend-builder",
           "effort": "high",
           "status": "candidate",
           "selection": "blocked",
@@ -1748,7 +1748,7 @@
           }
         },
         "reviewer": {
-          "central_profile": "gemini-3.7-flash-reviewer",
+          "central_profile": "gemini-3.8-flash-reviewer",
           "effort": "high",
           "status": "disabled",
           "selection": "blocked",
@@ -1771,7 +1771,7 @@
           }
         },
         "judgement": {
-          "central_profile": "gemini-3.7-flash-judgement",
+          "central_profile": "gemini-3.8-flash-judgement",
           "effort": "high",
           "status": "disabled",
           "selection": "blocked",
@@ -1813,7 +1813,7 @@
       "detail": "The native Kimi transport reports no usage: `usage_reported` is false, every token counter is 0 and provider_cost_usd is null. Those zeros are not measured cost."
     },
     {
-      "family": "gemini-3.7-flash",
+      "family": "gemini-3.8-flash",
       "envelope": "result",
       "detail": "The prompt-only Antigravity transport reports no usage: tokens and provider_cost_usd are null."
     },

@@ -115,6 +115,15 @@ ln -sfn "$CONTRACT_DATA/bin/delegation-executor-contract" \
   "$CONTRACT_BIN/delegation-executor-contract"
 ln -sfn "$CONTRACT_DATA/bin/delegation-patch-verify" \
   "$CONTRACT_BIN/delegation-patch-verify"
+# The personal-configuration commands resolve their library and the historical
+# gates relative to their own install root, exactly as install.sh lays them out.
+mkdir -p "$CONTRACT_DATA/bin/lib"
+cp "$ROOT"/bin/lib/*.sh "$ROOT/bin/lib/delegation_config.py" "$CONTRACT_DATA/bin/lib/"
+for command in delegation-config delegation-run delegation-openai-compatible delegation-route; do
+  cp "$ROOT/bin/$command" "$CONTRACT_DATA/bin/$command"
+  chmod 755 "$CONTRACT_DATA/bin/$command"
+  ln -sfn "$CONTRACT_DATA/bin/$command" "$CONTRACT_BIN/$command"
+done
 if env PATH="$CONTRACT_BIN:$TEST_TOOLS:$PATH" CLAUDE_HOME="$TMP/claude" \
     CODEX_HOME="$TMP/codex" DELEGATION_DATA_HOME="$CONTRACT_DATA" \
     "$ROOT/doctor.sh" >"$TMP/contract-doctor.log" 2>&1; then
@@ -129,6 +138,23 @@ grep -Fq '[ OK ] external executor contract valid' "$TMP/contract-doctor.log" ||
 }
 grep -Fq 'each provider runner still enforces its own permissions' "$TMP/contract-doctor.log" || {
   printf 'doctor did not restate the runner-enforcement boundary\n' >&2
+  exit 1
+}
+# The personal configuration is validated (the preset applies when no file
+# exists yet) and the builder lane resolves selectable profiles without any
+# authorization being granted.
+grep -Fq '[ OK ] personal configuration valid' "$TMP/contract-doctor.log" || {
+  sed 's/^/    /' "$TMP/contract-doctor.log" >&2
+  printf 'doctor did not validate the personal configuration\n' >&2
+  exit 1
+}
+grep -Fq '[ OK ] delegation-run on PATH' "$TMP/contract-doctor.log" || {
+  printf 'doctor did not find delegation-run\n' >&2
+  exit 1
+}
+grep -Eq '\[ OK \] builder lane resolves [0-9]+ selectable profiles' "$TMP/contract-doctor.log" || {
+  sed 's/^/    /' "$TMP/contract-doctor.log" >&2
+  printf 'doctor did not resolve the builder lane from the personal configuration\n' >&2
   exit 1
 }
 

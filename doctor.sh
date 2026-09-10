@@ -409,6 +409,37 @@ else
   warn "delegation-schema not installed — re-run ./install.sh"
 fi
 
+hdr "Personal configuration"
+if ! have jq; then
+  warn "jq not on PATH — the personal configuration cannot be validated"
+elif have delegation-config; then
+  config_validate="$(delegation-config validate 2>/dev/null || true)"
+  if [ -n "$config_validate" ] && printf '%s' "$config_validate" | jq -e '.valid == true' >/dev/null 2>&1; then
+    config_file="$(printf '%s' "$config_validate" | jq -r '.file')"
+    ok "personal configuration valid ($config_file)"
+    config_show="$(delegation-config show 2>/dev/null || true)"
+    info "review policy: $(printf '%s' "$config_show" | jq -r '.review_policy // "unknown"'); $(printf '%s' "$config_show" | jq -r '.profiles | length') profiles; a mandatory policy never authorizes a reviewer call"
+    if [ -f "$(dirname "$config_file")/managed/profiles.json" ]; then
+      ok "managed host snippets generated ($(dirname "$config_file")/managed)"
+    else
+      info "managed host snippets not generated yet — run delegation-config apply"
+    fi
+  else
+    bad "personal configuration missing or invalid — run delegation-config init, then delegation-config validate"
+  fi
+  for command in delegation-run delegation-openai-compatible; do
+    have "$command" && ok "$command on PATH" || bad "$command not on PATH — re-run ./install.sh"
+  done
+  builder_resolve="$(delegation-route resolve --lane builder --json 2>/dev/null || true)"
+  if [ -n "$builder_resolve" ] && printf '%s' "$builder_resolve" | jq -e '.schema_version == 2 and (.choices | length) > 0 and .authorization_granted == false' >/dev/null 2>&1; then
+    ok "builder lane resolves $(printf '%s' "$builder_resolve" | jq -r '.choices | length') selectable profiles (technical compatibility; evidence is advisory; selection grants nothing)"
+  else
+    bad "builder lane resolves no selectable profile — check delegation-config show"
+  fi
+else
+  warn "delegation-config not installed — re-run ./install.sh"
+fi
+
 hdr "Central routing gates"
 if ! have jq; then
   warn "jq not on PATH — central routing gates cannot be validated"
@@ -521,7 +552,7 @@ if ! have jq; then
 elif have delegation-glm; then
   glm_check="$(delegation-glm check --json 2>/dev/null || true)"
   if [ -n "$glm_check" ] && printf '%s' "$glm_check" | jq -e '.model == "glm-5.3-flash" and .efforts == ["max"]' >/dev/null 2>&1; then
-    ok "delegation-glm installed and pinned to glm-5.3-flash/max"
+    ok "delegation-glm installed (adapter default glm-5.3-flash/max; roles and efforts come from the adapter, evidence is advisory)"
     glm_selected="$(printf '%s' "$glm_check" | jq -r '.selected_backend')"
     glm_lanes="$(printf '%s' "$glm_check" | jq -r '.qualified_lanes | join(",")')"
     glm_provisional="$(printf '%s' "$glm_check" | jq -r '.provisional_lanes | join(",")')"
@@ -533,20 +564,20 @@ elif have delegation-glm; then
       || info "GLM has no automatically qualified lanes"
     [ -z "$glm_provisional" ] || info "GLM provisional lanes (explicit flag required): $glm_provisional"
   else
-    bad "delegation-glm check failed or is not pinned to glm-5.3-flash/max"
+    bad "delegation-glm check failed or reports an unexpected default model"
   fi
 else
   warn "delegation-glm not installed — re-run ./install.sh after evaluating GLM"
 fi
 
-# ---- optional Gemini 3.7 Flash external executor ----
-hdr "Gemini 3.7 Flash staged executor"
+# ---- optional Gemini 3.8 Flash external executor ----
+hdr "Gemini 3.8 Flash staged executor"
 if ! have jq; then
   warn "jq not on PATH — delegation-gemini cannot run"
 elif have delegation-gemini; then
   gemini_check="$(delegation-gemini check --json 2>/dev/null || true)"
-  if [ -n "$gemini_check" ] && printf '%s' "$gemini_check" | jq -e '.model == "gemini-3.7-flash" and .provisional_lanes == []' >/dev/null 2>&1; then
-    ok "delegation-gemini installed and pinned to gemini-3.7-flash"
+  if [ -n "$gemini_check" ] && printf '%s' "$gemini_check" | jq -e '.model == "gemini-3.8-flash" and .provisional_lanes == []' >/dev/null 2>&1; then
+    ok "delegation-gemini installed (adapter default gemini-3.8-flash; excluded from the current presets)"
     gemini_selected="$(printf '%s' "$gemini_check" | jq -r '.selected_backend')"
     gemini_lanes="$(printf '%s' "$gemini_check" | jq -r '.qualified_lanes | join(",")')"
     gemini_provisional="$(printf '%s' "$gemini_check" | jq -r '.provisional_lanes | join(",")')"
@@ -560,7 +591,7 @@ elif have delegation-gemini; then
       && info "Gemini has no operational lanes; staged candidates remain fail-closed" \
       || info "Gemini provisional lanes (explicit flag required): $gemini_provisional"
   else
-    bad "delegation-gemini check failed, is not pinned to gemini-3.7-flash, or exposes an unapproved lane"
+    bad "delegation-gemini check failed or reports an unexpected default model"
   fi
 else
   warn "delegation-gemini not installed — re-run ./install.sh"
@@ -575,7 +606,7 @@ elif have delegation-deepseek; then
   if [ -n "$deepseek_check" ] && printf '%s' "$deepseek_check" | jq -e '
       .model == "deepseek-flash" and .efforts == ["max"] and
       .provisional_lanes == ["builder"]' >/dev/null 2>&1; then
-    ok "delegation-deepseek installed and pinned to deepseek-flash/max"
+    ok "delegation-deepseek installed (adapter default deepseek-flash/max; text-patch builder)"
     deepseek_selected="$(printf '%s' "$deepseek_check" | jq -r '.selected_backend')"
     deepseek_candidates="$(printf '%s' "$deepseek_check" | jq -r '.candidate_lanes | join(",")')"
     if [ "$deepseek_selected" = none ]; then
@@ -585,7 +616,7 @@ elif have delegation-deepseek; then
     fi
     info "DeepSeek builder is provisional and explicit-only; all other candidates remain blocked: ${deepseek_candidates:-none}"
   else
-    bad "delegation-deepseek check failed or does not enforce deepseek-flash/max builder-only routing"
+    bad "delegation-deepseek check failed or reports an unexpected default model"
   fi
 else
   warn "delegation-deepseek not installed — re-run ./install.sh"
@@ -704,7 +735,7 @@ if ! have jq; then
 elif have delegation-qwen; then
   qwen_check="$(delegation-qwen check --json 2>/dev/null || true)"
   if [ -n "$qwen_check" ] && printf '%s' "$qwen_check" | jq -e '.model == "qwen3.8-max"' >/dev/null 2>&1; then
-    ok "delegation-qwen installed and pinned to qwen3.8-max"
+    ok "delegation-qwen installed (adapter default qwen3.8-max/xhigh; text-patch builder)"
     qwen_selected="$(printf '%s' "$qwen_check" | jq -r '.selected_backend')"
     qwen_provisional="$(printf '%s' "$qwen_check" | jq -r '.provisional_lanes | join(",")')"
     qwen_candidates="$(printf '%s' "$qwen_check" | jq -r '.candidate_lanes | join(",")')"
@@ -714,7 +745,7 @@ elif have delegation-qwen; then
     info "Qwen provisional lanes: ${qwen_provisional:-none} — explicit-only, require --allow-provisional"
     info "Qwen still-blocked candidates: ${qwen_candidates:-none}; availability is not qualification"
   else
-    bad "delegation-qwen check failed or is not pinned to qwen3.8-max"
+    bad "delegation-qwen check failed or reports an unexpected default model"
   fi
 else
   warn "delegation-qwen not installed — re-run ./install.sh to install the Qwen bridge"

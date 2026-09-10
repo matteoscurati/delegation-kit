@@ -139,7 +139,7 @@ asserts that stripping it from every external gate changes no route decision.
 | `grok-4.6` | `delegation-grok` | Grok Build CLI | `builder`, `frontend-builder` → `worktree-edit` |
 | `qwen3.8-max` | `delegation-qwen` | chat-completions | `builder` → `text-patch` |
 | `deepseek-flash` | `delegation-deepseek` | chat-completions | `builder` → `text-patch` |
-| `gemini-3.7-flash` | `delegation-gemini` | Antigravity, prompt-only | `builder`, `frontend-builder` → `text-patch` |
+| `gemini-3.8-flash` | `delegation-gemini` | Antigravity, prompt-only | `builder`, `frontend-builder` → `text-patch` |
 
 Every other declared lane is `read-only`, and every judgement, reviewer, and
 policy-annotation lane is non-dispatchable. Blocked and candidate lanes are

@@ -29,7 +29,7 @@
     "claude-opus-5": "anthropic",
     "claude-sonnet-5": "anthropic",
     "deepseek-flash": "deepseek",
-    "gemini-3.7-flash": "google",
+    "gemini-3.8-flash": "google",
     "glm-5.3-flash": "zai",
     "gpt-5.6-luna": "openai",
     "gpt-5.6-sol": "openai",
@@ -597,8 +597,8 @@
         }
       }
     },
-    "gemini-3.7-flash-scout": {
-      "model": "gemini-3.7-flash",
+    "gemini-3.8-flash-scout": {
+      "model": "gemini-3.8-flash",
       "harness": "agy",
       "effort": "medium",
       "lanes": {
@@ -607,14 +607,14 @@
           "selection": "blocked",
           "exact_evidence_ids": [],
           "context_evidence_ids": [
-            "google-gemini-3.7-flash-launch-2026-08-17"
+            "google-gemini-3.8-flash-launch-2026-09-02"
           ],
-          "evidence_gap": "The official launch confirms Gemini 3.7 Flash and medium thinking, but the current local Antigravity session cannot attest exact model inventory or OAuth. The previous Gemini 3.6 smoke does not transfer."
+          "evidence_gap": "The official launch confirms Gemini 3.8 Flash and medium thinking, but the current local Antigravity session cannot attest exact model inventory or OAuth. The previous Gemini 3.6 smoke does not transfer."
         }
       }
     },
-    "gemini-3.7-flash-builder": {
-      "model": "gemini-3.7-flash",
+    "gemini-3.8-flash-builder": {
+      "model": "gemini-3.8-flash",
       "harness": "agy",
       "effort": "high",
       "lanes": {
@@ -623,14 +623,14 @@
           "selection": "blocked",
           "exact_evidence_ids": [],
           "context_evidence_ids": [
-            "google-gemini-3.7-flash-launch-2026-08-17"
+            "google-gemini-3.8-flash-launch-2026-09-02"
           ],
           "evidence_gap": "Google reports strong DeepSWE and FrontierCode results, but they do not attest the prompt-only agy/high route and no local scoped-edit evaluation exists."
         }
       }
     },
-    "gemini-3.7-flash-frontend-builder": {
-      "model": "gemini-3.7-flash",
+    "gemini-3.8-flash-frontend-builder": {
+      "model": "gemini-3.8-flash",
       "harness": "agy",
       "effort": "high",
       "lanes": {
@@ -639,14 +639,14 @@
           "selection": "blocked",
           "exact_evidence_ids": [],
           "context_evidence_ids": [
-            "google-gemini-3.7-flash-launch-2026-08-17"
+            "google-gemini-3.8-flash-launch-2026-09-02"
           ],
           "evidence_gap": "Google reports WebDev Elo 1588, but the harness differs and no frontend-specific local agy/high evaluation exists."
         }
       }
     },
-    "gemini-3.7-flash-reviewer": {
-      "model": "gemini-3.7-flash",
+    "gemini-3.8-flash-reviewer": {
+      "model": "gemini-3.8-flash",
       "harness": "agy",
       "effort": "high",
       "lanes": {
@@ -659,8 +659,8 @@
         }
       }
     },
-    "gemini-3.7-flash-judgement": {
-      "model": "gemini-3.7-flash",
+    "gemini-3.8-flash-judgement": {
+      "model": "gemini-3.8-flash",
       "harness": "agy",
       "effort": "high",
       "lanes": {

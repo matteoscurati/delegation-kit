@@ -51,26 +51,17 @@ historical benchmarks and qualification artifacts. Their old quality statuses
 are information, not current execution permissions. Provider-specific commands
 and manifest-bound scientific evaluation workflows remain available.
 
-The configuration workflow above is unreleased work in this checkout.
+## Current release: 0.24.0
 
-## Current release: 0.23.1
-
-Version 0.23.1 makes `delegation-grok` fail closed, with the cause named, when
-Grok Build cannot apply the custom `delegation-kit` sandbox because a container
-runtime socket it denies (Docker Desktop's optional `/var/run/docker.sock`
-link) is a symlink; `check` and doctor report it instead of "ready", and a
-refusal at dispatch is classified rather than reported as a generic failure.
-Version 0.23.0 is a consolidation release: the six external runners now share
-one sourced helper library under `bin/lib/`, DeepSeek and Qwen wrap a common
-chat-completions core, the router validates every executable gate through a
-single parameterised check, `delegation-route table` finally renders the
-declared provider fallback, `fable-judge` is pinned to the exact
-`claude-fable-5-1` id, and the docs are aligned with the 0.22.0 Astra
-migration. No routing decision changes. See
-[`CHANGELOG.md`](./CHANGELOG.md) for details and full history; recent history
-in one line each: 0.22.0 moved the Codex review/judgement lanes to GPT-6 Astra,
-0.21.0 moved judgement to Fable 5.1, 0.20.x made delegation user-directed and
-shipped `npx delegation-kit`.
+Version 0.24.0 makes the models a user choice. Profiles live in a personal
+configuration (`delegation-config`), one dispatcher runs a selected profile
+through its adapter (`delegation-run`, including any OpenAI-compatible text
+endpoint), review is optional by default with `required` and `cross-family`
+policies, and the historical routing gates and benchmark evidence become
+advisory records instead of execution permissions. Explicit per-dispatch
+authorization, sandboxes, and the patch trust boundary are unchanged. DeepSeek
+is re-pinned to V4.1 Flash and the staged Gemini bridge to 3.8 Flash. See
+[`CHANGELOG.md`](./CHANGELOG.md) for details and full history.
 
 ## Documentation
 

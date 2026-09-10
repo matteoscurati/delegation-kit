@@ -101,7 +101,7 @@ env CLAUDE_HOME="$TMP/claude" CODEX_HOME="$TMP/codex" \
   || fail 'upgrade did not install the GLM 5.3-Flash/max gate'
 [ ! -e "$DATA/config/gemini-3.6-flash-routing.json" ] \
   || fail 'upgrade retained the stale Gemini 3.6 gate'
-[ -f "$DATA/config/gemini-3.7-flash-routing.json" ] \
+[ -f "$DATA/config/gemini-3.8-flash-routing.json" ] \
   || fail 'upgrade did not install the Gemini 3.7 gate'
 [ -f "$DATA/config/deepseek-flash-routing.json" ] && [ ! -e "$DATA/config/deepseek-v4-pro-routing.json" ] && [ -x "$DATA/bin/delegation-deepseek" ] \
   || fail 'install did not include the DeepSeek V4.1 Flash gate and runner (or kept the retired V4 Pro gate)'
@@ -121,6 +121,18 @@ jq -e '.model == "deepseek-flash"' "$TMP/deepseek-check.json" >/dev/null \
   || fail 'install did not include the external-executor contract and its command'
 [ -L "$TMP/bin/delegation-executor-contract" ] \
   || fail 'install did not link delegation-executor-contract onto the bin path'
+# The personal-configuration commands ship with the kit and the installer
+# initializes the configuration file (isolated here via DELEGATION_CONFIG_FILE).
+for command in delegation-config delegation-run delegation-openai-compatible; do
+  [ -L "$TMP/bin/$command" ] && [ -x "$DATA/bin/$command" ] \
+    || fail "install did not link $command onto the bin path"
+done
+[ -f "$DATA/bin/lib/delegation_config.py" ] || fail 'install did not include delegation_config.py'
+[ -f "$DELEGATION_CONFIG_FILE" ] || fail 'install did not initialize the personal configuration'
+jq -e '.schema_version == 1 and .review_policy == "optional" and (.profiles | length) > 0' "$DELEGATION_CONFIG_FILE" >/dev/null \
+  || fail 'the initialized personal configuration is not the optional-review preset'
+[ -f "$(dirname "$DELEGATION_CONFIG_FILE")/managed/profiles.json" ] \
+  || fail 'install did not generate the managed host snippets'
 "$DATA/bin/delegation-executor-contract" check --json >"$TMP/contract-check.json" 2>"$TMP/contract-check.err" \
   || { sed 's/^/    /' "$TMP/contract-check.err" >&2; fail 'the installed contract command failed its own check'; }
 jq -e '.valid == true and .read_only == true and .grants_permissions == false and
