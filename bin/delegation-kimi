@@ -1,7 +1,6 @@
 #!/usr/bin/env bash
-# Run Kimi K3 through the native Kimi Code CLI. Fails closed: model, effort,
-# backend, and qualification gates are always explicit and no backend fallback
-# occurs after dispatch starts.
+# Run Kimi K3 through the native Kimi Code CLI. Model, effort, and backend are
+# always explicit; no backend fallback occurs after dispatch starts.
 set -euo pipefail
 umask 077
 
@@ -12,13 +11,11 @@ while [ -L "$SOURCE" ]; do
   [[ "$SOURCE" = /* ]] || SOURCE="$SOURCE_DIR/$SOURCE"
 done
 ROOT="$(cd "$(dirname "$SOURCE")/.." && pwd)"
-# RUNNER_NAME and PROFILE are consumed by the sourced shared library.
+# RUNNER_NAME is consumed by the sourced shared library.
 # shellcheck disable=SC2034
-RUNNER_NAME="delegation-kimi" PROFILE="kimi-k3"
+RUNNER_NAME="delegation-kimi"
 # shellcheck source=bin/lib/delegation-runner-common.sh
 . "$ROOT/bin/lib/delegation-runner-common.sh"
-ROUTING_FILE="${DELEGATION_KIMI_ROUTING_FILE:-$ROOT/config/kimi-k3-routing.json}"
-CENTRAL_GATES="${DELEGATION_ROUTING_GATES_FILE:-$ROOT/config/routing-gates.json}"
 KIMI_HOME="${KIMI_CODE_HOME:-$HOME/.kimi-code}"
 CREDENTIAL_FILE="$KIMI_HOME/credentials/kimi-code.json"
 DATA_HOME="${DELEGATION_DATA_HOME:-${XDG_DATA_HOME:-$HOME/.local/share}/delegation-kit}"
@@ -30,8 +27,8 @@ NATIVE_MODEL="${DELEGATION_REQUESTED_MODEL:-kimi-code/k3}"
 }
 NATIVE_EFFORT="max"
 EFFORTS='["max"]'
+ROLES="clerk scout builder frontend-builder policy-annotation"
 OPERATIONAL_TIMEOUT_SECONDS=900
-EVALUATION_TIMEOUT_MAX_SECONDS=1200
 HEARTBEAT_SECONDS="${DELEGATION_KIMI_HEARTBEAT_SECONDS:-30}"
 case "$HEARTBEAT_SECONDS" in ""|*[!0-9]*|0) HEARTBEAT_SECONDS=30 ;; esac
 CANCEL_GRACE_SECONDS="${DELEGATION_KIMI_CANCEL_GRACE_SECONDS:-10}"
@@ -69,21 +66,16 @@ usage() {
 Usage:
   delegation-kimi check [--json]
   delegation-kimi pin-rg [--from <path>] [--force]
-  delegation-kimi run --lane <clerk|scout|builder|frontend-builder|reviewer|senior|judgement|policy-annotation> \
-    [--effort <auto|low|high|max>] [--backend <auto|native>] \
+  delegation-kimi run --lane <clerk|scout|builder|frontend-builder|policy-annotation> \
+    [--effort <auto|max>] [--backend <auto|native>] \
     [--oauth <serialized|shared>] \
     (--prompt-file <path> | --prompt <text>) --output <path> --workdir <path> \
-    [--metrics <path>] [--allow-provisional] [--evaluation --evaluation-manifest <path>] \
-    [--preflight-only] [--debug-dir <private-existing-directory>]
+    [--metrics <path>] [--debug-dir <private-existing-directory>]
 
-`--evaluation` permits only allowlisted candidate lanes for a controlled
-qualification run. It never promotes or mutates a gate, adds no operational
-route, and does not imply `--allow-provisional`. Policy-annotation is not the
-broad architecture/trade-off judgement lane. --preflight-only is valid only
-with --evaluation and --evaluation-manifest: it traverses the same pre-provider
-validation path as the real evaluation run, prints a
-delegation_policy_annotation_preflight_receipt_v1 receipt on stdout, and exits
-zero before provider dispatch and before any caller-visible artifact exists.
+Normally dispatched through `delegation-run --profile`, which supplies the
+requested model and aliases from the personal configuration. The adapter
+implements the roles above only; reviewer, senior, and judgement have no Kimi
+tool profile and are refused.
 
 `--oauth shared` (or DELEGATION_KIMI_OAUTH_MODE=shared) allows concurrent
 delegation-kimi dispatches: OAuth state lives in a runner-owned generation
@@ -91,12 +83,12 @@ under $DELEGATION_DATA_HOME/kimi-shared-oauth, concurrent children coordinate
 refresh through the vendor CLI's own oauth lock, and the kit lock is held only
 briefly to seed that generation and to publish it back to the ambient home.
 The default, serialized, holds the kit lock for the whole dispatch, exactly as
-before. --evaluation runs are always serialized.
+before.
 
 Exit codes: 64 invalid input; 69 runtime, login, entitlement, or quota unavailable;
 70 sandbox, output, or unclassified dispatch failure; 75 overload, 5xx, timeout,
 or temporary OAuth conflict (including a busy or superseded shared OAuth
-session); 78 lane not qualified; 130 caller cancellation.
+session); 78 role or effort unsupported by this adapter; 130 caller cancellation.
 EOF
 }
 
@@ -372,39 +364,20 @@ native_status() {
   return 0
 }
 
-gate_status() {
-  local lane="$1" backend="$2"
-  [ "$backend" = native ] || { printf 'disabled\n'; return; }
-  jq -r --arg lane "$lane" '.profiles["kimi-k3"].lanes[$lane].status // "disabled"' \
-    "$CENTRAL_GATES" 2>/dev/null || printf 'disabled\n'
-}
 
 is_allowed() {
-  [ "$2" = native ] || return 1
-  case "$1" in clerk|scout|builder|frontend-builder|policy-annotation) return 0 ;; *) return 1 ;; esac
+  local role="$1" backend="$2" r
+  [ "$backend" = native ] || return 1
+  for r in $ROLES; do [ "$r" = "$role" ] && return 0; done
+  return 1
 }
 
-preferred_backends() {
-  local lane="$1"
-  jq -r --arg lane "$lane" '
-    (.lanes[$lane].preferred_backends // .preferred_backends // ["native"])[]
-  ' "$ROUTING_FILE" 2>/dev/null || printf 'native\n'
-}
 
 default_effort() {
   printf '%s\n' "${DELEGATION_PROFILE_EFFORT:-max}"
 }
 
-qualified_effort() {
-  local lane="$1" backend="$2"
-  [ "$backend" = native ] || return 1
-  default_effort
-}
 
-validate_gate_graph() {
-  # Historical quality gates are informational; runtime checks below remain.
-  return 0
-}
 
 pinned_rg_path() { printf '%s/current/rg' "$RG_STORE"; }
 pinned_rg_digest_path() { printf '%s/current/rg.sha256' "$RG_STORE"; }
@@ -662,82 +635,7 @@ sync_native_credentials() {
   fi
 }
 
-evaluation_manifest() {
-  local manifest="$1" lane="$2" prompt_file="$3" expected_effort="$4"
-  local hash expected_hash source_head runner_hash contract_path output_schema_path contract_hash output_schema_hash
-  [ -f "$manifest" ] && [ ! -L "$manifest" ] || die 78 "evaluation manifest is missing or symlinked"
-  hash="$(sha256_file "$manifest")" || die 69 "sha256 tool is required for evaluation"
-  expected_hash="$(sha256_file "$prompt_file")" || die 69 "sha256 tool is required for evaluation"
-  source_head="$(git -C "$ROOT" rev-parse HEAD 2>/dev/null)" || die 78 "runner source checkout is unavailable"
-  runner_hash="$(sha256_file "$SOURCE")" || die 69 "sha256 tool is required for evaluation"
-  git -C "$ROOT" diff --quiet && git -C "$ROOT" diff --cached --quiet &&
-    [ -z "$(git -C "$ROOT" ls-files --others --exclude-standard)" ] || die 78 "runner source checkout is dirty"
-  jq -e --arg lane "$lane" --arg model "$NATIVE_MODEL" --arg effort "$expected_effort" \
-    --arg prompt_sha256 "$expected_hash" --arg runner_sha256 "$runner_hash" \
-    --argjson evaluation_timeout_max "$EVALUATION_TIMEOUT_MAX_SECONDS" '
-      (keys | sort) == ["backend","contract_path","contract_sha256","effort","lane","max_output_chars","model","output_schema_path","output_schema_sha256","profile","prompt_sha256","runner_sha256","runner_source_commit","schema","timeout_seconds"] and
-      .schema == "delegation_policy_annotation_evaluation_v1" and
-      .profile == "kimi-k3" and .lane == $lane and .model == $model and
-      .backend == "native" and .effort == $effort and .prompt_sha256 == $prompt_sha256 and
-      .runner_sha256 == $runner_sha256 and
-      ([.prompt_sha256,.output_schema_sha256,.contract_sha256,.runner_sha256] | all(test("^[0-9a-f]{64}$"))) and
-      (.runner_source_commit | test("^[0-9a-f]{40}$")) and
-      (.contract_path | type == "string" and test("^(?!/)(?!.*(^|/)\\.\\.(/|$)).+")) and
-      (.output_schema_path | type == "string" and test("^(?!/)(?!.*(^|/)\\.\\.(/|$)).+")) and
-      (.timeout_seconds | type == "number" and floor == . and . >= 1 and . <= $evaluation_timeout_max) and
-      (.max_output_chars | type == "number" and floor == . and . >= 1 and . <= 65536)
-    ' "$manifest" >/dev/null 2>&1 || die 78 "evaluation manifest is malformed or does not bind this exact run"
-  git -C "$ROOT" merge-base --is-ancestor "$(jq -r '.runner_source_commit' "$manifest")" "$source_head" \
-    || die 78 "evaluation manifest source commit is not an ancestor of this runner checkout"
-  contract_path="$(jq -r '.contract_path' "$manifest")"
-  output_schema_path="$(jq -r '.output_schema_path' "$manifest")"
-  [ -f "$ROOT/$contract_path" ] && [ ! -L "$ROOT/$contract_path" ] \
-    || die 78 "evaluation contract path is missing or symlinked"
-  [ -f "$ROOT/$output_schema_path" ] && [ ! -L "$ROOT/$output_schema_path" ] \
-    || die 78 "evaluation output schema path is missing or symlinked"
-  contract_hash="$(sha256_file "$ROOT/$contract_path")" || die 69 "sha256 tool is required for evaluation"
-  output_schema_hash="$(sha256_file "$ROOT/$output_schema_path")" || die 69 "sha256 tool is required for evaluation"
-  [ "$contract_hash" = "$(jq -r '.contract_sha256' "$manifest")" ] \
-    || die 78 "evaluation contract hash does not match its bound path"
-  [ "$output_schema_hash" = "$(jq -r '.output_schema_sha256' "$manifest")" ] \
-    || die 78 "evaluation output schema hash does not match its bound path"
-  jq -e --arg lane "$lane" --arg hash "$hash" '
-    .profiles["kimi-k3"].lanes[$lane].evaluation_manifest_sha256 | type == "array" and index($hash) != null
-  ' "$CENTRAL_GATES" >/dev/null 2>&1 || die 78 "evaluation manifest is not allowlisted by the central gate"
-  jq -e --arg lane "$lane" --arg hash "$hash" '
-    .lanes[$lane].backends.native.evaluation_manifest_sha256 | type == "array" and index($hash) != null
-  ' "$ROUTING_FILE" >/dev/null 2>&1 || die 78 "evaluation manifest is not allowlisted by the executable gate"
-  EVALUATION_TIMEOUT_SECONDS="$(jq -r '.timeout_seconds' "$manifest")"
-  EVALUATION_MAX_OUTPUT_CHARS="$(jq -r '.max_output_chars' "$manifest")"
-  # Bound values the run receipt republishes; recomputed locally, never caller input.
-  EVALUATION_MANIFEST_SHA256="$hash"
-  EVALUATION_PROMPT_SHA256="$expected_hash"
-  EVALUATION_RUNNER_SOURCE_COMMIT="$source_head"
-  EVALUATION_RUNNER_SHA256="$runner_hash"
-  EVALUATION_CONTRACT_SHA256="$contract_hash"
-  EVALUATION_OUTPUT_SCHEMA_SHA256="$output_schema_hash"
-}
 
-# Success stdout for --preflight-only: exactly one JSON object, every value
-# recomputed by the validation path above, never taken from caller input.
-print_preflight_receipt() {
-  local lane="$1" effort="$2"
-  jq -n --arg profile "kimi-k3" --arg model "$NATIVE_MODEL" --arg backend "native" \
-    --arg effort "$effort" --arg lane "$lane" \
-    --arg manifest_sha256 "$EVALUATION_MANIFEST_SHA256" \
-    --arg prompt_sha256 "$EVALUATION_PROMPT_SHA256" \
-    --arg source_commit "$EVALUATION_RUNNER_SOURCE_COMMIT" \
-    --arg runner_sha256 "$EVALUATION_RUNNER_SHA256" \
-    --arg contract_sha256 "$EVALUATION_CONTRACT_SHA256" \
-    --arg output_schema_sha256 "$EVALUATION_OUTPUT_SCHEMA_SHA256" \
-    '{schema_version:"delegation_policy_annotation_preflight_receipt_v1",
-      status:"READY_NO_PROVIDER_CALL",
-      profile:$profile,model:$model,backend:$backend,effort:$effort,lane:$lane,
-      evaluation_manifest_sha256:$manifest_sha256,prompt_sha256:$prompt_sha256,
-      runner_source_commit:$source_commit,runner_sha256:$runner_sha256,
-      contract_sha256:$contract_sha256,output_schema_sha256:$output_schema_sha256,
-      provider_dispatch_started:false,provider_attempts:0,post_observation_retries:0}'
-}
 
 failure_contains() {
   local events="$1" stderr="$2" pattern="$3"
@@ -750,13 +648,11 @@ failure_contains() {
 }
 
 classify_dispatch_failure() {
-  local events="$1" stderr="$2" vendor_rc="$3" evaluation="$4"
+  local events="$1" stderr="$2" vendor_rc="$3"
   if [ "$CANCEL_REQUESTED" -eq 1 ]; then
     printf '%s\n' '130|caller_cancelled|dispatch'
   elif [ "$vendor_rc" -eq 124 ] || [ "$vendor_rc" -eq 137 ]; then
-    [ "$evaluation" -eq 1 ] \
-      && printf '%s\n' '75|evaluation_timeout|dispatch' \
-      || printf '%s\n' '75|operational_timeout|dispatch'
+    printf '%s\n' '75|operational_timeout|dispatch'
   elif failure_contains "$events" "$stderr" \
       "usage limit for this billing cycle|usage limit for this period|monthly usage limit|quota (has been )?(fully )?(used|consumed|exhausted)|quota will be refreshed"; then
     printf '%s\n' '69|quota_unavailable|dispatch'
@@ -1077,12 +973,10 @@ EOF
 }
 
 print_check() {
-  local as_json="${1:-0}" native_ok=false selected="none" lanes provisional
+  local as_json="${1:-0}" native_ok=false selected="none" roles
   have jq || die 69 "jq is required"
-  validate_gate_graph || die 78 "central and executable routing gates are missing, invalid, or inconsistent"
   native_status && native_ok=true || true
-  lanes="$(qualified_lanes)"
-  provisional="$(provisional_lanes)"
+  roles="$(printf '%s\n' $ROLES | jq -R . | jq -sc .)"
   [ "$native_ok" = true ] && selected=native
   if [ "$as_json" = 1 ]; then
     jq -n \
@@ -1091,9 +985,9 @@ print_check() {
       --arg rg_version "$RG_VERSION" --arg rg_sha256 "$RG_SHA256" \
       --arg rg_dependencies_sha256 "$RG_DEPENDENCIES_SHA256" \
       --argjson rg_dependency_count "$RG_DEPENDENCY_COUNT" \
-      --arg selected "$selected" --argjson efforts "$EFFORTS" --argjson lanes "$lanes" --argjson provisional "$provisional" \
+      --arg selected "$selected" --argjson efforts "$EFFORTS" --argjson roles "$roles" \
       --argjson native "$native_ok" --arg native_reason "$NATIVE_REASON" \
-      '{model:$model,models:{native:$native_model},efforts:$efforts,
+      '{model:$model,models:{native:$native_model},adapter:"kimi-code-cli",roles:$roles,efforts:$efforts,
         runtime_cli_compatibility:"capability-probed",
         runtime_cli_version:(if $cli_version == "" then null else $cli_version end),
         process_exec:{mode:"allowlist",allowed:["rg"],attested:$native},
@@ -1104,7 +998,7 @@ print_check() {
           non_system_dependency_count:$rg_dependency_count,
           copied_per_run:true},
         terminal:false,web_tools:false,subagents:false,skills:false,
-        selected_backend:$selected,qualified_lanes:$lanes,provisional_lanes:$provisional,backends:{
+        selected_backend:$selected,backends:{
           native:{available:$native,reason:$native_reason,efforts:["max"],
             sandbox:"macos-sandbox-exec",isolated_home:true,environment_mode:"allowlist",
             ambient_home_read:false,
@@ -1115,7 +1009,7 @@ print_check() {
             oauth_modes:["serialized","shared"],
             builder_write_scope:"workdir",read_only_write_scope:"scratch"}}}'
   else
-    printf 'Kimi K3: selected=%s qualified=%s provisional=%s\n' "$selected" "$lanes" "$provisional"
+    printf 'Kimi K3: selected=%s roles=%s efforts=%s\n' "$selected" "$(printf '%s' "$ROLES" | tr ' ' ',')" "$EFFORTS"
     printf '  native: %s (%s; model=%s; effort=max; cli=%s)\n' \
       "$native_ok" "$NATIVE_REASON" "$NATIVE_MODEL" "${NATIVE_VERSION:-unknown}"
   fi
@@ -1170,9 +1064,9 @@ backend_available() {
 }
 
 run_command() {
-  local lane="" effort="auto" backend="auto" prompt_file="" prompt="" output="" workdir="" metrics="" evaluation_manifest_path=""
+  local lane="" effort="auto" backend="auto" prompt_file="" prompt="" output="" workdir="" metrics=""
   local debug_dir="" debug_run_path=""
-  local prompt_source="" backend_checked=0 expected_effort="" allow_provisional=0 evaluation=0 preflight_only=0
+  local prompt_source=""
   local oauth_mode="${DELEGATION_KIMI_OAUTH_MODE:-serialized}"
   while [ "$#" -gt 0 ]; do
     case "$1" in
@@ -1186,16 +1080,13 @@ run_command() {
       --workdir) workdir="${2:-}"; shift 2 ;;
       --metrics) metrics="${2:-}"; shift 2 ;;
       --allow-provisional) printf "%s\n" "--allow-provisional is deprecated and has no effect" >&2; shift ;;
-      --evaluation) evaluation=1; shift ;;
-      --evaluation-manifest) evaluation_manifest_path="${2:-}"; shift 2 ;;
-      --preflight-only) preflight_only=1; shift ;;
       --debug-dir) debug_dir="${2:-}"; shift 2 ;;
       -h|--help) usage; exit 0 ;;
       *) die 64 "unknown run argument: $1" ;;
     esac
   done
   case "$lane" in clerk|scout|builder|frontend-builder|reviewer|senior|judgement|policy-annotation) ;; *) die 64 "invalid lane: $lane" ;; esac
-  case "$effort" in auto|low|high|max) ;; *) die 64 "invalid effort: $effort" ;; esac
+  case "$effort" in auto|max) ;; *) die 64 "invalid effort: $effort (only max is supported)" ;; esac
   case "$backend" in auto|native) ;; *) die 64 "invalid backend: $backend" ;; esac
   case "$oauth_mode" in serialized|shared) ;; *) die 64 "invalid oauth mode: $oauth_mode" ;; esac
   OAUTH_MODE="$oauth_mode"
@@ -1207,16 +1098,6 @@ run_command() {
   fi
   [ -n "$prompt_source" ] || die 64 "--prompt-file or --prompt is required"
   [ -n "$prompt" ] || die 64 "prompt must not be empty"
-  if [ "$evaluation" = 1 ]; then
-    [ -n "$evaluation_manifest_path" ] || die 64 "--evaluation requires --evaluation-manifest"
-    [ -n "$prompt_file" ] || die 64 "--evaluation requires --prompt-file to bind its raw hash"
-    [ "$allow_provisional" = 0 ] || die 64 "--evaluation and --allow-provisional are mutually exclusive"
-    [ "$oauth_mode" = serialized ] || die 64 "--evaluation runs are always serialized"
-  else
-    [ -z "$evaluation_manifest_path" ] || die 64 "--evaluation-manifest requires --evaluation"
-  fi
-  [ "$preflight_only" = 0 ] || [ "$evaluation" = 1 ] \
-    || die 64 "--preflight-only requires --evaluation and --evaluation-manifest"
   [ -d "$workdir" ] || die 64 "workdir missing: $workdir"
   workdir="$(cd "$workdir" && pwd -P)"
   [ "$workdir" != / ] || die 64 "workdir must not be the filesystem root"
@@ -1230,58 +1111,20 @@ run_command() {
     debug_dir="$(cd "$debug_dir" && pwd -P)"
   fi
   have jq || die 69 "jq is required"
-  [ -f "$ROUTING_FILE" ] || die 69 "routing file missing: $ROUTING_FILE"
-  jq -e . "$ROUTING_FILE" >/dev/null 2>&1 || die 69 "routing file is invalid JSON"
-  validate_gate_graph || die 78 "central and executable routing gates are missing, invalid, or inconsistent"
-
-  if [ "$backend" = auto ]; then
-    local candidate qualified_seen=0
-    backend=""
-    while IFS= read -r candidate; do
-      case "$candidate" in native) ;; *) continue ;; esac
-      is_allowed "$lane" "$candidate" "$allow_provisional" "$evaluation" || continue
-      qualified_seen=1
-      if [ "$evaluation" = 1 ] || backend_available "$candidate"; then
-        backend="$candidate"; backend_checked=1; break
-      fi
-    done < <(preferred_backends "$lane")
-    if [ -z "$backend" ]; then
-      [ "$qualified_seen" = 0 ] || die 69 "$NATIVE_REASON"
-      die 78 "lane '$lane' has no implemented tool profile"
-    fi
-  else
-    if ! is_allowed "$lane" "$backend" "$allow_provisional" "$evaluation"; then
-      die 78 "lane '$lane' backend '$backend' has no implemented tool profile"
-    fi
-  fi
-
+  backend=native
+  is_allowed "$lane" "$backend" || die 78 "lane '$lane' backend '$backend' has no implemented tool profile"
   [ "$effort" != auto ] || effort="$(default_effort)"
-  expected_effort="$(qualified_effort "$lane" "$backend")" \
-    || die 69 "lane '$lane' has no supported effort for backend '$backend'"
-  [ "$effort" = "$expected_effort" ] \
-    || die 78 "lane '$lane' backend '$backend' supports only effort '$expected_effort'"
-  local tmp dispatch_prompt_file="$prompt_file"
+  # Effort restrictions belong to the adapter.
+  [ "$effort" = max ] || die 78 "lane '$lane' backend '$backend' supports only effort 'max'"
+  local tmp
   tmp="$(mktemp -d "${TMPDIR:-/tmp}/delegation-kimi.XXXXXX")"
   tmp="$(cd "$tmp" && pwd -P)"
   RUN_TMP="$tmp"
   trap cleanup_run EXIT
-  if [ "$evaluation" = 1 ]; then
-    dispatch_prompt_file="$tmp/prompt.snapshot"
-    cp -- "$prompt_file" "$dispatch_prompt_file" \
-      || die 70 "could not snapshot evaluation prompt"
-    prompt="$(cat "$dispatch_prompt_file"; printf x)"
-    prompt="${prompt%x}"
-    evaluation_manifest "$evaluation_manifest_path" "$lane" "$dispatch_prompt_file" "$expected_effort"
-  fi
-  if [ "$backend" = native ] && [ "$effort" != max ]; then
-    die 64 "native backend supports only max effort"
-  fi
-  if [ "$backend_checked" -eq 0 ] || [ "$evaluation" = 1 ]; then
-    backend_available "$backend" || die 69 "$NATIVE_REASON"
-  fi
+  backend_available "$backend" || die 69 "$NATIVE_REASON"
 
   metrics="${metrics:-$output.metrics.json}"
-  local output_parent metrics_parent output_name metrics_name commit error_json stderr_receipt
+  local output_parent metrics_parent output_name metrics_name error_json stderr_receipt
   output_parent="$(dirname "$output")"; output_name="$(basename "$output")"
   metrics_parent="$(dirname "$metrics")"; metrics_name="$(basename "$metrics")"
   case "$output_name" in .|..) die 64 "invalid output filename" ;; esac
@@ -1290,16 +1133,11 @@ run_command() {
   [ -d "$metrics_parent" ] || die 64 "metrics parent directory must already exist: $metrics_parent"
   output="$(cd "$output_parent" && pwd -P)/$output_name"
   metrics="$(cd "$metrics_parent" && pwd -P)/$metrics_name"
-  commit="$output.commit.json"
   error_json="$output.error.json"
   stderr_receipt="$output.stderr"
   [ "$output" != "$metrics" ] || die 64 "output and metrics paths resolve to the same file"
   [ "$metrics" != "$error_json" ] && [ "$metrics" != "$stderr_receipt" ] \
     || die 64 "metrics path collides with a diagnostic artifact"
-  if [ "$evaluation" = 1 ]; then
-    [ "$metrics" != "$commit" ] \
-      || die 64 "metrics path collides with evaluation commit marker"
-  fi
   [ ! -L "$output" ] || die 64 "output must not be a symlink"
   [ ! -L "$metrics" ] || die 64 "metrics must not be a symlink"
   [ ! -L "$error_json" ] || die 64 "error diagnostic must not be a symlink"
@@ -1308,10 +1146,6 @@ run_command() {
   [ ! -e "$metrics" ] || die 64 "metrics must not already exist"
   [ ! -e "$error_json" ] || die 64 "error diagnostic must not already exist"
   [ ! -e "$stderr_receipt" ] || die 64 "stderr receipt must not already exist"
-  if [ "$evaluation" = 1 ]; then
-    [ ! -L "$commit" ] || die 64 "evaluation commit marker must not be a symlink"
-    [ ! -e "$commit" ] || die 64 "evaluation commit marker must not already exist"
-  fi
   if [ "$lane" != builder ] && [ "$lane" != frontend-builder ]; then
     case "$output" in "$workdir"/*) die 64 "read-only lane output must be outside workdir" ;; esac
     case "$metrics" in "$workdir"/*) die 64 "read-only lane metrics must be outside workdir" ;; esac
@@ -1333,16 +1167,7 @@ run_command() {
   local sandbox_bin timeout_seconds
   sandbox_status || die 69 "$NATIVE_REASON"
   sandbox_bin="$KIMI_SANDBOX_BIN"
-  [ "$evaluation" -eq 1 ] \
-    && timeout_seconds="$EVALUATION_TIMEOUT_SECONDS" \
-    || timeout_seconds="$OPERATIONAL_TIMEOUT_SECONDS"
-  # Preflight ends here: every pre-provider check the real evaluation run makes
-  # has passed, and nothing caller-visible has been created. Exit before the
-  # OAuth lock, isolated dispatch home, and sandboxed CLI invocation below.
-  if [ "$preflight_only" = 1 ]; then
-    print_preflight_receipt "$lane" "$effort" || die 70 "could not emit preflight receipt"
-    exit 0
-  fi
+  timeout_seconds="$OPERATIONAL_TIMEOUT_SECONDS"
   local sandbox_profile write_scope scratch_rg
   local lock_rc=0 sync_rc=0 ambient_credential_hash=""
   if [ "$oauth_mode" = shared ]; then
@@ -1496,7 +1321,7 @@ run_command() {
     failure_phase="dispatch"
   elif [ "$rc" -ne 0 ]; then
     IFS='|' read -r final_rc failure_reason failure_phase \
-      <<<"$(classify_dispatch_failure "$events" "$tmp/stderr" "$rc" "$evaluation")"
+      <<<"$(classify_dispatch_failure "$events" "$tmp/stderr" "$rc")"
   elif [ "$sync_rc" -eq 2 ]; then
     final_rc=75
     failure_reason="oauth_conflict"
@@ -1515,46 +1340,7 @@ run_command() {
       failure_phase="output"
     fi
   fi
-  if [ "$final_rc" -eq 0 ] && [ "$evaluation" = 1 ] &&
-      [ "$(wc -m <"$result_tmp" | tr -d ' ')" -gt "$EVALUATION_MAX_OUTPUT_CHARS" ]; then
-    final_rc=70
-    failure_reason="output_too_large"
-    failure_phase="output"
-  fi
   preserve_debug_artifacts "$debug_run_path" "$events" "$tmp/stderr" "$tmp"
-  # A successful evaluation publishes its attempt receipt or publishes nothing.
-  # Every field is recomputed here from local state the manifest already bound;
-  # nothing is accepted from the caller.
-  if [ "$final_rc" -eq 0 ] && [ "$evaluation" = 1 ]; then
-    local raw_output_sha256=""
-    raw_output_sha256="$(sha256_file "$result_tmp")" || raw_output_sha256=""
-    if [ -z "$raw_output_sha256" ] || [ -z "${EVALUATION_MANIFEST_SHA256:-}" ] ||
-       [ -z "${EVALUATION_PROMPT_SHA256:-}" ] || [ -z "${EVALUATION_RUNNER_SOURCE_COMMIT:-}" ] ||
-       [ -z "${EVALUATION_RUNNER_SHA256:-}" ]; then
-      final_rc=70
-      failure_reason="evaluation_receipt_invalid"
-      failure_phase="output"
-    elif ! jq --arg manifest_sha256 "$EVALUATION_MANIFEST_SHA256" \
-        --arg prompt_sha256 "$EVALUATION_PROMPT_SHA256" \
-        --arg source_commit "$EVALUATION_RUNNER_SOURCE_COMMIT" \
-        --arg runner_sha256 "$EVALUATION_RUNNER_SHA256" \
-        --arg raw_output_sha256 "$raw_output_sha256" \
-        '.evaluation_receipt = {
-          schema_version:"delegation_policy_annotation_attempt_receipt_v1",
-          evaluation_manifest_sha256:$manifest_sha256,
-          prompt_sha256:$prompt_sha256,
-          runner_source_commit:$source_commit,
-          runner_sha256:$runner_sha256,
-          raw_output_sha256:$raw_output_sha256,
-          provider_attempts:1,
-          post_observation_retries:0}' "$metrics_tmp" >"$tmp/metrics.receipt.json" ||
-       ! mv -f "$tmp/metrics.receipt.json" "$metrics_tmp"; then
-      rm -f -- "$tmp/metrics.receipt.json"
-      final_rc=70
-      failure_reason="evaluation_receipt_invalid"
-      failure_phase="output"
-    fi
-  fi
 
   if [ "$final_rc" -ne 0 ]; then
     publish_failure_diagnostic "$output" "$failure_phase" "$failure_reason" \
@@ -1563,23 +1349,6 @@ run_command() {
         publish_stderr_receipt "$output" "$failure_reason" || true
       }
     exit "$final_rc"
-  fi
-  local commit_tmp="$tmp/publication.commit.json" metrics_sha256=""
-  if [ "$evaluation" = 1 ]; then
-    raw_output_sha256="$(sha256_file "$result_tmp")" || raw_output_sha256=""
-    metrics_sha256="$(sha256_file "$metrics_tmp")" || metrics_sha256=""
-    if [ -z "$raw_output_sha256" ] || [ -z "$metrics_sha256" ] ||
-       ! jq -n --arg raw_output_sha256 "$raw_output_sha256" \
-         --arg metrics_sha256 "$metrics_sha256" \
-         --arg manifest_sha256 "$EVALUATION_MANIFEST_SHA256" \
-         '{schema_version:"delegation_policy_annotation_publication_commit_v1",
-           raw_output_sha256:$raw_output_sha256,metrics_sha256:$metrics_sha256,
-           evaluation_manifest_sha256:$manifest_sha256}' >"$commit_tmp"; then
-      publish_failure_diagnostic "$output" publish publication_stage_failed \
-        70 "$vendor_rc" "$started" "$events" "$tmp/stderr" \
-        "$lane" "$write_scope" "$debug_run_path" || true
-      exit 70
-    fi
   fi
   if ! mv -f "$result_tmp" "$output"; then
     rm -f -- "$output"
@@ -1591,13 +1360,6 @@ run_command() {
   if ! mv -f "$metrics_tmp" "$metrics"; then
     rm -f -- "$output" "$metrics"
     publish_failure_diagnostic "$output" publish metrics_finalize_failed \
-      70 "$vendor_rc" "$started" "$events" "$tmp/stderr" \
-      "$lane" "$write_scope" "$debug_run_path" || true
-    exit 70
-  fi
-  if [ "$evaluation" = 1 ] && ! mv -f "$commit_tmp" "$commit"; then
-    rm -f -- "$output" "$metrics" "$commit"
-    publish_failure_diagnostic "$output" publish evaluation_commit_finalize_failed \
       70 "$vendor_rc" "$started" "$events" "$tmp/stderr" \
       "$lane" "$write_scope" "$debug_run_path" || true
     exit 70
