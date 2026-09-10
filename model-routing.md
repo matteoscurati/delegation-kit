@@ -1,8 +1,10 @@
 # User-directed model routing
 
-`delegation-route` reads personal configuration and the code-owned adapter
-capabilities. Models do not require kit qualification. Historical statuses,
-benchmarks and evidence remain advisory and preserve their original meanings.
+> This document is advisory reading. It governs nothing: no command reads it,
+> and no status, benchmark, or table in it authorizes or blocks a dispatch.
+
+`delegation-route` reads the personal configuration and the code-owned adapter
+capabilities. Models do not require kit qualification.
 
 Display `.choices`, obtain the user's explicit selection or permission to choose,
 and validate it with `resolve --selected-profile`. Validation never dispatches

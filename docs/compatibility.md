@@ -1,9 +1,9 @@
 # Supported-agent compatibility
 
-This page records functional compatibility separately from routing
-qualification. A successful smoke proves that the installed interface can run
-the exact model, effort, tools, and lane contract tested here. It does not
-promote a provisional or candidate lane.
+This page records functional compatibility. A successful smoke proves that the
+installed interface can run the exact model, effort, tools, and role tested
+here on the day it ran. It qualifies nothing and grants nothing: which model to
+use stays a user choice in the personal configuration.
 
 ## Gemini excluded from current defaults — 2026-09-10 (0.24.0)
 
@@ -174,10 +174,10 @@ Use `--output-format json` when the test must assert the actual model identity.
 
 ### External runners
 
-Always run `check --json` immediately before dispatch. Provisional lanes require
-an explicit decision and `--allow-provisional`; candidate or blocked lanes must
-fail rather than fall back to another model, effort, backend, or host profile.
-Semantic smoke results never mutate a routing gate.
+Always run `check --json` immediately before dispatch. A role or effort the
+adapter does not support fails with exit 78 rather than falling back to another
+model, effort, backend, or host profile. Semantic smoke results change nothing
+in the kit.
 
 ## Reproduce the integration gates
 

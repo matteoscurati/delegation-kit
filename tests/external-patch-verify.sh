@@ -892,16 +892,8 @@ jq -e --slurpfile policy "$POLICY" '
   "$TMP/denied.json" >/dev/null || fail 'a denied-path rule named an id the policy does not declare'
 pass=$((pass + 1))
 
-# The verifier is what the contract's text-patch lanes point at, and nothing in
-# the kit routes through it: it is a tool the lead runs, not a dispatch layer.
-CONTRACT="$ROOT/config/external-executor-contract.json"
-jq -e --slurpfile policy "$POLICY" '
-  .patch_policy.verifier == "delegation-patch-verify" and
-  .patch_policy.policy_file == "external-patch-policy.json" and
-  .patch_policy.policy_version == $policy[0].policy_version and
-  ([.families[].lanes[] | select(.permission_class == "text-patch")] | length) == 4' \
-  "$CONTRACT" >/dev/null || fail 'the contract does not point its text-patch lanes at this verifier'
-pass=$((pass + 1))
+# Nothing in the kit routes through the verifier: it is a tool the lead runs,
+# not a dispatch layer.
 for runner in glm kimi grok qwen deepseek gemini route; do
   ! grep -q 'delegation-patch-verify' "$ROOT/bin/delegation-$runner" \
     || fail "bin/delegation-$runner calls the patch verifier; it must stay a tool the lead runs"

@@ -9,13 +9,15 @@ while [ -L "$SOURCE" ]; do
   [[ "$SOURCE" = /* ]] || SOURCE="$SOURCE_DIR/$SOURCE"
 done
 ROOT="$(cd "$(dirname "$SOURCE")/.." && pwd)"
-# RUNNER_NAME and PROFILE are consumed by the sourced shared library.
+# RUNNER_NAME is consumed by the sourced shared library.
 # shellcheck disable=SC2034
 RUNNER_NAME="delegation-gemini"
 # shellcheck source=bin/lib/delegation-runner-common.sh
 . "$ROOT/bin/lib/delegation-runner-common.sh"
-CENTRAL_GATES="${DELEGATION_ROUTING_GATES_FILE:-$ROOT/config/routing-gates.json}"
 MODEL="${DELEGATION_REQUESTED_MODEL:-gemini-3.8-flash}"
+ADAPTER="agy"
+ROLES="scout builder frontend-builder reviewer judgement"
+EFFORTS='["medium","high"]'
 USER_KEYCHAINS="${HOME:?HOME is required}/Library/Keychains"
 RUN_TMP="" RUN_OUTPUT_TMP="" RUN_METRICS_TMP=""
 
@@ -28,10 +30,13 @@ Usage:
   delegation-gemini run --lane <scout|builder|frontend-builder|reviewer|judgement> \
     [--effort <auto|medium|high>] [--backend <auto|agy>] \
     --prompt-file <path> --output <path> --workdir <path> \
-    [--metrics <path>] [--debug-dir <path>] [--allow-provisional] [--evaluation]
+    [--metrics <path>] [--debug-dir <path>]
+
+--allow-provisional is accepted as a deprecated no-op for one release.
 
 Exit codes: 64 invalid input, 69 unavailable/authentication failure,
-70 dispatch/extract failure, 75 temporary/rate-limit failure, 78 routing gate refusal.
+70 dispatch/extract failure, 75 temporary/rate-limit failure,
+78 unsupported role or effort for this adapter.
 Failures write sanitized metadata to <output>.error.json.  Raw stdout/stderr is
 preserved only when --debug-dir is supplied.
 
@@ -111,40 +116,24 @@ agy_status() {
   AGY_REASON="ready"
 }
 
-validate_gate_graph() {
-  # Historical quality gates are informational; runtime checks below remain.
-  return 0
+is_allowed() {
+  local role="$1" candidate
+  for candidate in $ROLES; do [ "$candidate" != "$role" ] || return 0; done
+  return 1
 }
-
-# The executable config is independently validated by delegation-route; the
-# central gate remains the authority for dispatch status and pinned effort.
-gate_row() {
-  local lane="$1"
-  jq -c --arg model "$MODEL" --arg lane "$lane" '
-    [.profiles[] | select(.model == $model and .harness == "agy") |
-      select(.lanes[$lane] != null) |
-      {status:.lanes[$lane].status,effort:.effort}] | unique | first // {status:"disabled",effort:null}
-  ' "$CENTRAL_GATES" 2>/dev/null
-}
-gate_status() { gate_row "$1" | jq -r '.status'; }
-gate_effort() { gate_row "$1" | jq -r '.effort // empty'; }
-qualified_lanes() { jq -c --arg model "$MODEL" '[.profiles[] | select(.model == $model and .harness == "agy") | .lanes | to_entries[] | select(.value.status == "qualified") | .key] | unique | sort' "$CENTRAL_GATES"; }
-provisional_lanes() { jq -c --arg model "$MODEL" '[.profiles[] | select(.model == $model and .harness == "agy") | .lanes | to_entries[] | select(.value.status == "provisional") | .key] | unique | sort' "$CENTRAL_GATES"; }
-gate_efforts() { jq -c --arg model "$MODEL" '[.profiles[] | select(.model == $model and .harness == "agy") | .effort] | unique | sort' "$CENTRAL_GATES"; }
 
 print_check() {
   local as_json="${1:-0}" available=false selected="none"
   have jq || die 69 "jq is required"
-  validate_gate_graph || die 78 "central and executable routing gates are missing, invalid, or inconsistent"
   agy_status && available=true && selected=agy || true
-  local lanes provisional efforts
-  lanes="$(qualified_lanes)"; provisional="$(provisional_lanes)"; efforts='["medium","high"]'
+  local roles
+  roles="$(printf '%s\n' $ROLES | jq -R . | jq -sc .)"
   if [ "$as_json" = 1 ]; then
-    jq -n --arg model "$MODEL" --arg selected "$selected" --argjson available "$available" --arg reason "$AGY_REASON" \
-      --argjson lanes "$lanes" --argjson provisional "$provisional" --argjson efforts "$efforts" \
-      '{model:$model,selected_backend:$selected,efforts:$efforts,qualified_lanes:$lanes,provisional_lanes:$provisional,backends:{agy:{available:$available,reason:$reason}}}'
+    jq -n --arg model "$MODEL" --arg adapter "$ADAPTER" --arg selected "$selected" --argjson available "$available" --arg reason "$AGY_REASON" \
+      --argjson roles "$roles" --argjson efforts "$EFFORTS" \
+      '{model:$model,adapter:$adapter,roles:$roles,efforts:$efforts,selected_backend:$selected,backends:{agy:{available:$available,reason:$reason}}}'
   else
-    printf 'Gemini 3.8 Flash: selected=%s efforts=%s qualified=%s provisional=%s\n  agy: %s (%s)\n' "$selected" "$efforts" "$lanes" "$provisional" "$available" "$AGY_REASON"
+    printf 'Gemini 3.8 Flash: selected=%s roles=%s efforts=%s\n  agy: %s (%s)\n' "$selected" "$(printf '%s' "$ROLES" | tr ' ' ',')" "$EFFORTS" "$available" "$AGY_REASON"
   fi
 }
 
@@ -185,15 +174,16 @@ run_command() {
       --lane) lane="${2:-}"; shift 2 ;; --effort) effort="${2:-}"; shift 2 ;; --backend) backend="${2:-}"; shift 2 ;;
       --prompt-file) prompt_file="${2:-}"; shift 2 ;; --output) output="${2:-}"; shift 2 ;; --workdir) workdir="${2:-}"; shift 2 ;;
       --metrics) metrics="${2:-}"; shift 2 ;; --debug-dir) debug_dir="${2:-}"; shift 2 ;; --allow-provisional) printf "%s\n" "--allow-provisional is deprecated and has no effect" >&2; shift ;;
-      --evaluation) shift ;; -h|--help) usage; return 0 ;; *) die 64 "unknown run argument: $1" ;;
+      -h|--help) usage; return 0 ;; *) die 64 "unknown run argument: $1" ;;
     esac
   done
-  case "$lane" in scout|builder|frontend-builder|reviewer|judgement) ;; *) die 64 "invalid lane: $lane" ;; esac
+  [ -n "$lane" ] || die 64 "--lane is required"
   case "$effort" in auto|medium|high) ;; *) die 64 "invalid effort: $effort" ;; esac
   case "$backend" in auto|agy) ;; *) die 64 "invalid backend: $backend" ;; esac
   [ -f "$prompt_file" ] || die 64 "prompt file missing: $prompt_file"; [ -d "$workdir" ] || die 64 "workdir missing: $workdir"; [ -n "$output" ] || die 64 "--output is required"
   [ -z "$debug_dir" ] || { [ -d "$debug_dir" ] && [ ! -L "$debug_dir" ] || die 64 "debug directory missing or symlinked: $debug_dir"; debug_dir="$(cd "$debug_dir" && pwd -P)"; }
-  have jq || die 69 "jq is required"; validate_gate_graph || die 78 "central and executable routing gates are missing, invalid, or inconsistent"
+  have jq || die 69 "jq is required"
+  is_allowed "$lane" || die 78 "unsupported role for $ADAPTER: $lane"
   metrics="${metrics:-$output.metrics.json}"; local diagnostic="$output.error.json"
   mkdir -p "$(dirname "$output")" "$(dirname "$metrics")" "$(dirname "$diagnostic")"
   [ ! -e "$output" ] && [ ! -e "$metrics" ] && [ ! -e "$diagnostic" ] || die 64 "output, metrics, and diagnostic paths must not already exist"
@@ -203,10 +193,8 @@ run_command() {
   [ "$norm_output" != "$norm_metrics" ] || die 64 "output and metrics paths must be distinct"
   [ "$norm_output" != "$norm_diagnostic" ] && [ "$norm_metrics" != "$norm_diagnostic" ] || die 64 "path collides with reserved diagnostic path"
   backend=agy
-  local pinned
-  pinned=high
-  [ "$effort" != auto ] || effort="${DELEGATION_PROFILE_EFFORT:-$pinned}"
-  case "$effort" in medium|high) ;; *) die 78 "lane '$lane' has no pinned usable effort" ;; esac
+  [ "$effort" != auto ] || effort="${DELEGATION_PROFILE_EFFORT:-high}"
+  case "$effort" in medium|high) ;; *) die 78 "effort '$effort' is not supported by $ADAPTER" ;; esac
   local runtime_model="${MODEL}-$effort"
   agy_status "$runtime_model" || die 69 "$AGY_REASON"
   local user_prompt dispatch_prompt

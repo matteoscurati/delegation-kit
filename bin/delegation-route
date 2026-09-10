@@ -7,7 +7,7 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent / "lib"))
-from delegation_config import load, row, REVIEW_ROLES, read, ROOT
+from delegation_config import load, row, REVIEW_ROLES
 
 p = argparse.ArgumentParser()
 p.add_argument("command", choices=["check", "lane", "profile", "resolve", "table"])
@@ -21,13 +21,9 @@ a = p.parse_args()
 try:
     c = load()
     profiles = c["profiles"]
-    try:
-        compounds = read(ROOT / "config/routing-gates.json").get("compound_lanes", {})
-    except (OSError, ValueError):
-        compounds = {}
     rows = [row(k, v, r, c) for k, v in profiles.items() for r in v["roles"]]
     result = {
-        "schema_version": 2,
+        "schema_version": 3,
         "read_only": True,
         "automatic_dispatch": False,
         "requires_user_direction": True,
@@ -46,21 +42,6 @@ try:
         )
     elif a.command in {"lane", "resolve"}:
         lane = a.lane if a.command == "resolve" else a.name
-        if lane in compounds:
-            if a.selected_profile or a.producer_profile or a.producer_family:
-                raise ValueError("compound lanes require separate member selections")
-            compound = compounds[lane]
-            result.update(
-                lane=lane,
-                members=compound["members"],
-                protocol=compound["protocol"],
-                historical_evidence=compound,
-                selection_validated=False,
-                choices=[],
-                requires_explicit_member_dispatches=True,
-            )
-            print(json.dumps(result, indent=2))
-            sys.exit(0)
         candidates = [r for r in rows if r["lane"] == lane]
         if not candidates:
             raise ValueError("unknown lane")
@@ -92,7 +73,6 @@ try:
         )
     else:
         result["profiles"] = rows
-        result["compound_lanes"] = compounds
     print(json.dumps(result, indent=2))
 except (OSError, ValueError, KeyError, TypeError):
     print("delegation-route: invalid configuration or selection", file=sys.stderr)

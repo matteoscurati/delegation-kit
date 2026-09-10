@@ -1,11 +1,10 @@
 #!/usr/bin/env bash
 # Run Qwen3.8-Max through the Qwen Cloud Token Plan OpenAI-compatible endpoint.
-# Operational model choices require technical compatibility, not qualification.
 #
 # Model upgrade monitoring: `delegation-qwen check` reports whether the
 # Qwen3.8-Max-0902 snapshot (qwen3.8-max-0902) is available on this endpoint.
-# When it appears, the migration is a model-id re-pin in the routing gates
-# plus a fresh evidence row — see docs/external-executors.md.
+# When it appears, the migration is a model-id change in config/presets.json
+# and in the personal configuration — see docs/external-executors.md.
 set -euo pipefail
 umask 077
 
@@ -18,8 +17,6 @@ done
 ROOT="$(cd "$(dirname "$SOURCE")/.." && pwd)"
 RUNNER_NAME="delegation-qwen"
 PROVIDER_LABEL="Qwen3.8-Max"
-ROUTING_FILE="${DELEGATION_QWEN_ROUTING_FILE:-$ROOT/config/qwen3.8-max-routing.json}"
-CENTRAL_GATES="${DELEGATION_ROUTING_GATES_FILE:-$ROOT/config/routing-gates.json}"
 KEY_FILE="${DELEGATION_QWEN_KEY_FILE:-$ROOT/config/qwen-token-plan.env}"
 API_KEY_VAR="QWEN_TOKEN_PLAN_API_KEY"
 MODEL="${DELEGATION_REQUESTED_MODEL:-qwen3.8-max}"
@@ -27,10 +24,9 @@ MODEL="${DELEGATION_REQUESTED_MODEL:-qwen3.8-max}"
 # Token Plan endpoint. check reports its availability so the re-pin is
 # deliberate when Alibaba propagates it.
 MODEL_NEXT="qwen3.8-max-0902"
-PROFILE="qwen3.8-max"
 BACKEND="token-plan-openai"
 API_URL="https://token-plan.ap-southeast-1.maas.aliyuncs.com/compatible-mode/v1/chat/completions"
-PINNED_EFFORT="xhigh"
+DEFAULT_EFFORT="xhigh"
 BILLING="credits"
 
 # shellcheck source=bin/lib/delegation-runner-common.sh
@@ -46,26 +42,17 @@ Usage:
     [--effort <auto|none|minimal|low|medium|high|xhigh|max>] \
     [--backend <auto|token-plan-openai>] --prompt-file <path> \
     --output <path> --workdir <path> [--metrics <path>] \
-    [--debug-dir <path>] [--allow-provisional] \
-    [--evaluation --evaluation-manifest <path>] [--preflight-only]
+    [--debug-dir <path>]
 
-Operational lanes require an explicit user request and technical compatibility.
-This text-only adapter returns a patch for the lead to apply and verify; it
-cannot edit a worktree. --allow-provisional is deprecated and has no effect.
-
---evaluation is reserved for allowlisted controlled qualification runs of
-candidate lanes, never promotes or mutates a gate, and adds no operational
-route. --allow-provisional has no effect. Policy-annotation
-does not qualify broad architecture/trade-off judgement. --preflight-only is
-valid only with --evaluation and --evaluation-manifest: it traverses the same
-pre-provider validation path as the real evaluation run, prints a
-delegation_policy_annotation_preflight_receipt_v1 receipt on stdout, and exits
-zero before provider dispatch and before any caller-visible artifact exists.
+Dispatch requires an explicit user request. This text-only adapter returns a
+patch for the lead to apply and verify; it cannot edit a worktree.
+--allow-provisional is accepted as a deprecated no-op for one release.
 
 Exit codes: 64 invalid input, 69 unavailable/authentication failure,
-70 dispatch/extract failure, 75 temporary/rate-limit failure, 78 routing gate
-refusal. Failures write sanitized metadata to <output>.error.json. Raw provider
-responses and stderr are preserved only when --debug-dir is supplied.
+70 dispatch/extract failure, 75 temporary/rate-limit failure, 78 unsupported
+role or effort for this adapter. Failures write sanitized metadata to
+<output>.error.json. Raw provider responses and stderr are preserved only when
+--debug-dir is supplied.
 EOF
 }
 
@@ -87,7 +74,7 @@ provider_request_body() {
 
 # Whether the QwenCloud post-training refresh (qwen3.8-max-0902) is available
 # on this Token Plan endpoint. Read-only GET /models; never dispatches. The
-# result is informational: the re-pin is a routing-gate decision, not a
+# result is informational: the re-pin is a preset and configuration edit, not a
 # runtime side effect.
 models_endpoint_available() {
   local key="$1" body

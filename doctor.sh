@@ -7,10 +7,9 @@
 # Usage: ./doctor.sh [--ping] [--ping-glm] [--ping-kimi] [--ping-grok]
 #   --ping   also does a live round-trip (real API calls, costs a few tokens per
 #            side). Off by default; static checks are free.
-#   --ping-glm does a separate paid GLM-5.3-Flash/max ping, but only for a qualified lane.
-#   --ping-kimi does a separate Kimi K3 ping through a qualified lane, or an
-#               explicitly selected provisional read-only lane when no lane is qualified.
-#   --ping-grok does a paid Grok 4.6 ping through its provisional builder gate.
+#   --ping-glm does a separate paid GLM-5.3-Flash/max ping through its clerk role.
+#   --ping-kimi does a separate Kimi K3 ping through its scout role.
+#   --ping-grok does a paid Grok 4.6 ping through its builder role.
 # Env overrides (for testing): CLAUDE_HOME (default ~/.claude), CODEX_HOME (~/.codex)
 set -uo pipefail
 shopt -s nullglob   # unmatched globs vanish instead of staying literal
@@ -223,14 +222,14 @@ if [ -n "$sonnet_reviewer_profile" ] \
 else
   bad "sonnet-reviewer missing, stale, or not cross-family/medium/read-only — re-run ./install.sh"
 fi
-# skill + the co-located evidence-backed policy the skill points at
+# skill + the co-located advisory policy the skill points at
 if [ -f "$CLAUDE_HOME/skills/model-routing/SKILL.md" ]; then
   [ -f "$CLAUDE_HOME/skills/model-routing/model-routing.md" ] \
-    && ok "model-routing skill installed (+ evidence-backed policy)" \
+    && ok "model-routing skill installed (+ advisory policy)" \
     || warn "model-routing skill installed but model-routing.md is missing beside it (dangling pointer) — re-run ./install.sh"
 elif found_path "$CLAUDE_HOME/plugins" '*model-routing/SKILL.md'; then
   if found_path "$CLAUDE_HOME/plugins" '*model-routing/model-routing.md'; then
-    ok "model-routing skill installed (via plugin cache, + evidence-backed policy)"
+    ok "model-routing skill installed (via plugin cache, + advisory policy)"
   else
     warn "model-routing skill installed via plugin cache, but model-routing.md is not beside it — the skill's pointer dangles; run ./install.sh to co-locate it (the policy also lives at the kit root)"
   fi
@@ -257,19 +256,19 @@ elif found_path "$CLAUDE_HOME/plugins" '*kimi-executor/SKILL.md'; then
   ok "optional Kimi executor skill installed (via plugin cache; universal install still required for runner)"
 else warn "optional Kimi executor skill missing — Kimi cannot be selected even after evaluation"; fi
 if [ -f "$CLAUDE_HOME/skills/qwen-executor/SKILL.md" ]; then
-  ok "provisional Qwen builder skill installed"
+  ok "Qwen executor skill installed"
 elif found_path "$CLAUDE_HOME/plugins" '*qwen-executor/SKILL.md'; then
-  ok "provisional Qwen builder skill installed (via plugin cache; universal install still required for runner)"
+  ok "Qwen executor skill installed (via plugin cache; universal install still required for runner)"
 else warn "Qwen builder skill missing — re-run ./install.sh"; fi
 if [ -f "$CLAUDE_HOME/skills/deepseek-executor/SKILL.md" ]; then
-  ok "provisional DeepSeek builder skill installed"
+  ok "DeepSeek executor skill installed"
 elif found_path "$CLAUDE_HOME/plugins" '*deepseek-executor/SKILL.md'; then
-  ok "provisional DeepSeek builder skill installed (via plugin cache; universal install still required for runner)"
+  ok "DeepSeek executor skill installed (via plugin cache; universal install still required for runner)"
 else warn "DeepSeek builder skill missing — re-run ./install.sh"; fi
 if [ -f "$CLAUDE_HOME/skills/grok-executor/SKILL.md" ]; then
-  ok "provisional Grok builder skill installed"
+  ok "Grok executor skill installed"
 elif found_path "$CLAUDE_HOME/plugins" '*grok-executor/SKILL.md'; then
-  ok "provisional Grok builder skill installed (via plugin cache; universal install still required for runner)"
+  ok "Grok executor skill installed (via plugin cache; universal install still required for runner)"
 else warn "Grok builder skill missing — re-run ./install.sh"; fi
 # always-loaded user-direction guard (the plugin path does NOT install this —
 # install.sh does). Presence alone is not enough: the installed block must be
@@ -357,57 +356,14 @@ if [ -f "$CODEX_HOME/skills/kimi-executor/SKILL.md" ]; then
   ok "optional Kimi executor skill installed for Codex"
 else warn "optional Kimi executor skill missing for Codex"; fi
 if [ -f "$CODEX_HOME/skills/qwen-executor/SKILL.md" ]; then
-  ok "provisional Qwen builder skill installed for Codex"
+  ok "Qwen executor skill installed for Codex"
 else warn "Qwen builder skill missing for Codex"; fi
 if [ -f "$CODEX_HOME/skills/deepseek-executor/SKILL.md" ]; then
-  ok "provisional DeepSeek builder skill installed for Codex"
+  ok "DeepSeek executor skill installed for Codex"
 else warn "DeepSeek builder skill missing for Codex"; fi
 if [ -f "$CODEX_HOME/skills/grok-executor/SKILL.md" ]; then
-  ok "provisional Grok builder skill installed for Codex"
+  ok "Grok executor skill installed for Codex"
 else warn "Grok builder skill missing for Codex"; fi
-
-# ---- external evidence snapshot ----
-hdr "Model-routing evidence"
-if ! have jq; then
-  warn "jq not on PATH — model evidence cannot be validated"
-elif have delegation-evidence; then
-  evidence_check="$(delegation-evidence check --json 2>/dev/null || true)"
-  if [ -n "$evidence_check" ] && printf '%s' "$evidence_check" | jq -e '.valid == true' >/dev/null 2>&1; then
-    evidence_age="$(printf '%s' "$evidence_check" | jq -r '.age_days')"
-    ok "external model evidence snapshot valid (${evidence_age}d old)"
-    info "external evidence is advisory; versioned routing gates remain authoritative"
-  else
-    warn "model evidence missing, invalid, or stale — refresh/reinstall before changing lane qualifications"
-  fi
-else
-  warn "delegation-evidence not installed — re-run ./install.sh"
-fi
-if ! have python3; then
-  warn "python3 not on PATH — Epoch ZIP evidence cannot be inspected"
-elif have delegation-epoch; then
-  ok "Epoch ZIP advisory importer installed (live download not run by doctor)"
-else
-  warn "delegation-epoch not installed — re-run ./install.sh"
-fi
-if ! have python3; then
-  warn "python3 not on PATH — structured-output schemas cannot be compiled"
-elif have delegation-schema; then
-  schema_claude_ok=0
-  schema_codex_ok=0
-  delegation-schema check --provider claude \
-      --schema "$KIT/evaluation/glm-lane-qualification-v1/output-schema.json" \
-      >/dev/null 2>&1 && schema_claude_ok=1
-  delegation-schema check --provider codex \
-      --schema "$KIT/evaluation/policy-annotation-qualification-v3/output-schema.json" \
-      >/dev/null 2>&1 && schema_codex_ok=1
-  if [ "$schema_claude_ok" = 1 ] && [ "$schema_codex_ok" = 1 ]; then
-    ok "Claude/Codex schema transport compiler installed"
-  else
-    bad "delegation-schema cannot compile both shipped Claude and Codex transport fixtures"
-  fi
-else
-  warn "delegation-schema not installed — re-run ./install.sh"
-fi
 
 hdr "Personal configuration"
 if ! have jq; then
@@ -431,8 +387,8 @@ elif have delegation-config; then
     have "$command" && ok "$command on PATH" || bad "$command not on PATH — re-run ./install.sh"
   done
   builder_resolve="$(delegation-route resolve --lane builder --json 2>/dev/null || true)"
-  if [ -n "$builder_resolve" ] && printf '%s' "$builder_resolve" | jq -e '.schema_version == 2 and (.choices | length) > 0 and .authorization_granted == false' >/dev/null 2>&1; then
-    ok "builder lane resolves $(printf '%s' "$builder_resolve" | jq -r '.choices | length') selectable profiles (technical compatibility; evidence is advisory; selection grants nothing)"
+  if [ -n "$builder_resolve" ] && printf '%s' "$builder_resolve" | jq -e '.schema_version == 3 and (.choices | length) > 0 and .authorization_granted == false' >/dev/null 2>&1; then
+    ok "builder lane resolves $(printf '%s' "$builder_resolve" | jq -r '.choices | length') selectable profiles (technical compatibility; selection grants nothing)"
   else
     bad "builder lane resolves no selectable profile — check delegation-config show"
   fi
@@ -440,63 +396,29 @@ else
   warn "delegation-config not installed — re-run ./install.sh"
 fi
 
-hdr "Central routing gates"
+hdr "Route discovery"
 if ! have jq; then
-  warn "jq not on PATH — central routing gates cannot be validated"
+  warn "jq not on PATH — route discovery cannot be validated"
 elif have delegation-route; then
   route_check="$(delegation-route check --json 2>/dev/null || true)"
-  if [ -n "$route_check" ] && printf '%s' "$route_check" | jq -e '.valid == true and .read_only == true' >/dev/null 2>&1; then
-    ok "central routing gates valid ($(printf '%s' "$route_check" | jq -r '.profiles') profiles)"
-    info "judgement and super-judgement require explicit selection; the router never dispatches"
-    if printf '%s' "$route_check" | jq -e '
-      .schema_version == 2 and
+  if [ -n "$route_check" ] && printf '%s' "$route_check" | jq -e '
+      .schema_version == 3 and .valid == true and .read_only == true and
       (.review_policy == "optional" or .review_policy == "required" or .review_policy == "cross-family") and
       .authorization_granted == false
     ' >/dev/null 2>&1; then
-      ok "user review policy installed; selection never authorizes dispatch"
-    else
-      bad "user configuration or routing schema missing or stale"
-    fi
+    ok "route discovery reads the personal configuration ($(printf '%s' "$route_check" | jq -r '.profiles') profiles; review policy $(printf '%s' "$route_check" | jq -r '.review_policy'))"
+    info "the router lists choices and validates a selection; it never dispatches and grants nothing"
   else
-    bad "central routing gates are missing or invalid — re-run ./install.sh"
+    bad "route discovery failed or the personal configuration is stale — run delegation-config validate"
   fi
 else
   warn "delegation-route not installed — re-run ./install.sh"
 fi
 
-# ---- common external-executor contract ----
-# Static only: the contract describes what the runners already do and is checked
-# against the installed gates. No provider is contacted.
-hdr "External executor contract"
-contract_file="$DATA_HOME/config/external-executor-contract.json"
-if ! have jq; then
-  warn "jq not on PATH — the external-executor contract cannot be validated"
-elif ! have delegation-executor-contract; then
-  warn "delegation-executor-contract not installed — re-run ./install.sh"
-elif [ ! -r "$contract_file" ]; then
-  bad "installed contract missing at $contract_file — re-run ./install.sh"
-else
-  contract_check="$(delegation-executor-contract check --json 2>/dev/null || true)"
-  if [ -n "$contract_check" ] && printf '%s' "$contract_check" | jq -e '
-      .valid == true and .read_only == true and
-      .grants_permissions == false and
-      .enforcement_authority == "provider-runner" and
-      .families == 6 and
-      .permission_classes == ["read-only","text-patch","worktree-edit"] and
-      .exit_codes == [64,69,70,75,78,130]
-    ' >/dev/null 2>&1; then
-    ok "external executor contract valid ($(printf '%s' "$contract_check" | jq -r '.lane_declarations') lane declarations across $(printf '%s' "$contract_check" | jq -r '.families') families)"
-    info "the contract describes and validates; each provider runner still enforces its own permissions"
-    info "permission classes: read-only, text-patch, worktree-edit — declaring a lane grants it nothing"
-  else
-    bad "external executor contract is missing, invalid, or disagrees with the installed gates — re-run ./install.sh"
-  fi
-fi
-
 # ---- external patch policy and its read-only verifier ----
 # Static only: the installed policy is checked for shape and fail-closed
-# defaults and against the contract's text-patch declarations. No patch is
-# parsed, no worktree is touched, and no provider is contacted.
+# defaults. No patch is parsed, no worktree is touched, and no provider is
+# contacted.
 hdr "External patch verifier"
 patch_policy_file="$DATA_HOME/config/external-patch-policy.json"
 if ! have jq; then
@@ -526,23 +448,6 @@ else
   else
     bad "installed patch policy is missing, invalid, or has drifted open — re-run ./install.sh"
   fi
-  # Phase 1 consistency: the contract's text-patch lanes must name exactly the
-  # installed policy version and this verifier. A mismatch means a lane claims a
-  # boundary the installed policy does not describe.
-  if [ -z "${contract_check:-}" ]; then
-    warn "the executor contract did not validate, so its text-patch lanes could not be cross-checked"
-  elif printf '%s' "$contract_check" | jq -e \
-      --arg v "$(printf '%s' "$patch_policy_out" | jq -r '.policy_version // ""')" '
-      .patch_policy_version == $v and
-      .patch_verifier == "delegation-patch-verify" and
-      .patch_verification_required == true and
-      .patch_applied_by == "lead" and
-      .text_patch_lanes > 0
-    ' >/dev/null 2>&1; then
-    ok "every text-patch lane declares patch policy $(printf '%s' "$contract_check" | jq -r '.patch_policy_version') and requires verification ($(printf '%s' "$contract_check" | jq -r '.text_patch_lanes') lanes)"
-  else
-    bad "the executor contract's text-patch lanes do not match the installed patch policy — re-run ./install.sh"
-  fi
 fi
 
 # ---- optional GLM-5.3-Flash external executor ----
@@ -552,17 +457,12 @@ if ! have jq; then
 elif have delegation-glm; then
   glm_check="$(delegation-glm check --json 2>/dev/null || true)"
   if [ -n "$glm_check" ] && printf '%s' "$glm_check" | jq -e '.model == "glm-5.3-flash" and .efforts == ["max"]' >/dev/null 2>&1; then
-    ok "delegation-glm installed (adapter default glm-5.3-flash/max; roles and efforts come from the adapter, evidence is advisory)"
+    ok "delegation-glm installed (adapter default glm-5.3-flash/max)"
     glm_selected="$(printf '%s' "$glm_check" | jq -r '.selected_backend')"
-    glm_lanes="$(printf '%s' "$glm_check" | jq -r '.qualified_lanes | join(",")')"
-    glm_provisional="$(printf '%s' "$glm_check" | jq -r '.provisional_lanes | join(",")')"
     [ "$glm_selected" = none ] \
-      && info "GLM runtime unavailable — optional lane will not be selected" \
+      && info "GLM runtime unavailable — the adapter will not be selected" \
       || ok "GLM backend available ($glm_selected)"
-    [ -n "$glm_lanes" ] \
-      && ok "GLM evaluation-qualified lanes: $glm_lanes" \
-      || info "GLM has no automatically qualified lanes"
-    [ -z "$glm_provisional" ] || info "GLM provisional lanes (explicit flag required): $glm_provisional"
+    info "GLM adapter roles: $(printf '%s' "$glm_check" | jq -r '.roles | join(",")')"
   else
     bad "delegation-glm check failed or reports an unexpected default model"
   fi
@@ -571,25 +471,18 @@ else
 fi
 
 # ---- optional Gemini 3.8 Flash external executor ----
-hdr "Gemini 3.8 Flash staged executor"
+hdr "Gemini 3.8 Flash optional executor"
 if ! have jq; then
   warn "jq not on PATH — delegation-gemini cannot run"
 elif have delegation-gemini; then
   gemini_check="$(delegation-gemini check --json 2>/dev/null || true)"
-  if [ -n "$gemini_check" ] && printf '%s' "$gemini_check" | jq -e '.model == "gemini-3.8-flash" and .provisional_lanes == []' >/dev/null 2>&1; then
-    ok "delegation-gemini installed (adapter default gemini-3.8-flash; excluded from the current presets)"
+  if [ -n "$gemini_check" ] && printf '%s' "$gemini_check" | jq -e '.model == "gemini-3.8-flash" and .adapter == "agy"' >/dev/null 2>&1; then
+    ok "delegation-gemini installed (adapter default gemini-3.8-flash; excluded from the shipped presets)"
     gemini_selected="$(printf '%s' "$gemini_check" | jq -r '.selected_backend')"
-    gemini_lanes="$(printf '%s' "$gemini_check" | jq -r '.qualified_lanes | join(",")')"
-    gemini_provisional="$(printf '%s' "$gemini_check" | jq -r '.provisional_lanes | join(",")')"
     [ "$gemini_selected" = none ] \
-      && info "Gemini Antigravity runtime unavailable — optional lane will not be selected" \
+      && info "Gemini Antigravity runtime unavailable — the adapter will not be selected" \
       || ok "Gemini backend available ($gemini_selected)"
-    [ -n "$gemini_lanes" ] \
-      && ok "Gemini evaluation-qualified lanes: $gemini_lanes" \
-      || info "Gemini has no automatically qualified lanes"
-    [ -z "$gemini_provisional" ] \
-      && info "Gemini has no operational lanes; staged candidates remain fail-closed" \
-      || info "Gemini provisional lanes (explicit flag required): $gemini_provisional"
+    info "Gemini adapter roles: $(printf '%s' "$gemini_check" | jq -r '.roles | join(",")'); add a profile to the personal configuration to use it"
   else
     bad "delegation-gemini check failed or reports an unexpected default model"
   fi
@@ -597,24 +490,22 @@ else
   warn "delegation-gemini not installed — re-run ./install.sh"
 fi
 
-# ---- DeepSeek V4.1 Flash/max provisional builder ----
+# ---- DeepSeek V4.1 Flash/max text-patch adapter ----
 hdr "DeepSeek V4.1 Flash/max builder"
 if ! have jq; then
   warn "jq not on PATH — delegation-deepseek cannot run"
 elif have delegation-deepseek; then
   deepseek_check="$(delegation-deepseek check --json 2>/dev/null || true)"
   if [ -n "$deepseek_check" ] && printf '%s' "$deepseek_check" | jq -e '
-      .model == "deepseek-flash" and .efforts == ["max"] and
-      .provisional_lanes == ["builder"]' >/dev/null 2>&1; then
-    ok "delegation-deepseek installed (adapter default deepseek-flash/max; text-patch builder)"
+      .model == "deepseek-flash" and .adapter == "deepseek-api" and .default_effort == "max"' >/dev/null 2>&1; then
+    ok "delegation-deepseek installed (adapter default deepseek-flash/max; text-patch adapter)"
     deepseek_selected="$(printf '%s' "$deepseek_check" | jq -r '.selected_backend')"
-    deepseek_candidates="$(printf '%s' "$deepseek_check" | jq -r '.candidate_lanes | join(",")')"
     if [ "$deepseek_selected" = none ]; then
       info "DeepSeek API runtime unavailable"
     else
       ok "DeepSeek API runtime available ($deepseek_selected)"
     fi
-    info "DeepSeek builder is provisional and explicit-only; all other candidates remain blocked: ${deepseek_candidates:-none}"
+    info "DeepSeek adapter roles: $(printf '%s' "$deepseek_check" | jq -r '.roles | join(",")'); a patch is applied only by the lead after verification"
   else
     bad "delegation-deepseek check failed or reports an unexpected default model"
   fi
@@ -664,20 +555,15 @@ elif have delegation-kimi; then
     ' >/dev/null 2>&1; then
     ok "delegation-kimi installed for kimi-k3/max with agent-file, pinned Grep, and sandboxed runtime controls"
     kimi_selected="$(printf '%s' "$kimi_check" | jq -r '.selected_backend')"
-    kimi_lanes="$(printf '%s' "$kimi_check" | jq -r '.qualified_lanes | join(",")')"
-    kimi_provisional="$(printf '%s' "$kimi_check" | jq -r '.provisional_lanes | join(",")')"
     [ "$kimi_selected" = none ] \
-      && info "Kimi runtime unavailable — optional lanes will not be selected" \
+      && info "Kimi runtime unavailable — the adapter will not be selected" \
       || ok "Kimi backend available ($kimi_selected)"
-    [ -n "$kimi_lanes" ] \
-      && ok "Kimi evaluation-qualified lanes: $kimi_lanes" \
-      || info "Kimi has no automatically qualified lanes"
-    [ -z "$kimi_provisional" ] || info "Kimi provisional lanes (explicit flag required): $kimi_provisional"
+    info "Kimi adapter roles: $(printf '%s' "$kimi_check" | jq -r '.roles | join(",")')"
   else
     bad "delegation-kimi check failed or does not enforce the current Kimi sandbox contract"
   fi
 else
-  warn "delegation-kimi not installed — re-run ./install.sh to install the gated candidate"
+  warn "delegation-kimi not installed — re-run ./install.sh"
 fi
 
 # ---- optional Grok 4.6 builder executor ----
@@ -711,7 +597,6 @@ elif have delegation-grok; then
     ' >/dev/null 2>&1; then
     ok "delegation-grok installed for grok-4.6/high with capability-probed runtime controls"
     grok_selected="$(printf '%s' "$grok_check" | jq -r '.selected_backend')"
-    grok_provisional="$(printf '%s' "$grok_check" | jq -r '.provisional_lanes | join(",")')"
     if [ "$grok_selected" = none ]; then
       info "Grok Build runtime unavailable: $(printf '%s' "$grok_check" | jq -r '.backends["grok-build"].reason')"
     else
@@ -720,7 +605,7 @@ elif have delegation-grok; then
       [ "$grok_cli_source" = pinned ] \
         || info "the compatible CLI is not privately archived — run 'delegation-grok pin' to preserve the selected bytes"
     fi
-    [ -z "$grok_provisional" ] || info "Grok provisional lanes (explicit flag required): $grok_provisional"
+    info "Grok adapter roles: $(printf '%s' "$grok_check" | jq -r '.roles | join(",")')"
   else
     bad "delegation-grok check failed or is not capability-compatible with grok-4.6/high"
   fi
@@ -728,22 +613,19 @@ else
   warn "delegation-grok not installed — re-run ./install.sh"
 fi
 
-# ---- Qwen3.8-Max provisional builder ----
+# ---- Qwen3.8-Max text-patch adapter ----
 hdr "Qwen3.8-Max builder"
 if ! have jq; then
   warn "jq not on PATH — delegation-qwen cannot run"
 elif have delegation-qwen; then
   qwen_check="$(delegation-qwen check --json 2>/dev/null || true)"
-  if [ -n "$qwen_check" ] && printf '%s' "$qwen_check" | jq -e '.model == "qwen3.8-max"' >/dev/null 2>&1; then
-    ok "delegation-qwen installed (adapter default qwen3.8-max/xhigh; text-patch builder)"
+  if [ -n "$qwen_check" ] && printf '%s' "$qwen_check" | jq -e '.model == "qwen3.8-max" and .adapter == "token-plan-openai"' >/dev/null 2>&1; then
+    ok "delegation-qwen installed (adapter default qwen3.8-max/xhigh; text-patch adapter)"
     qwen_selected="$(printf '%s' "$qwen_check" | jq -r '.selected_backend')"
-    qwen_provisional="$(printf '%s' "$qwen_check" | jq -r '.provisional_lanes | join(",")')"
-    qwen_candidates="$(printf '%s' "$qwen_check" | jq -r '.candidate_lanes | join(",")')"
     [ "$qwen_selected" = none ] \
       && info "Qwen Token Plan runtime unavailable" \
       || ok "Qwen Token Plan runtime available ($qwen_selected)"
-    info "Qwen provisional lanes: ${qwen_provisional:-none} — explicit-only, require --allow-provisional"
-    info "Qwen still-blocked candidates: ${qwen_candidates:-none}; availability is not qualification"
+    info "Qwen adapter roles: $(printf '%s' "$qwen_check" | jq -r '.roles | join(",")'); a patch is applied only by the lead after verification"
   else
     bad "delegation-qwen check failed or reports an unexpected default model"
   fi
@@ -785,16 +667,16 @@ if [ "$DO_GLM_PING" = 1 ]; then
     bad "GLM ping unavailable — delegation-glm is not installed"
   else
     glm_check="$(delegation-glm check --json 2>/dev/null || true)"
-    glm_lane="$(printf '%s' "$glm_check" | jq -r '.qualified_lanes[0] // empty' 2>/dev/null)"
+    glm_lane="$(printf '%s' "$glm_check" | jq -r '.roles | map(select(. == "clerk" or . == "scout"))[0] // empty' 2>/dev/null)"
     if [ -z "$glm_lane" ]; then
-      info "skipped — no GLM lane has passed the evaluation gate"
+      info "skipped — the GLM adapter exposes no read-only role"
     else
       ping_dir="$(mktemp -d "${TMPDIR:-/tmp}/delegation-glm-ping.XXXXXX")"
       printf 'Reply with exactly PONG and do not edit files.\n' >"$ping_dir/prompt.txt"
       if delegation-glm run --lane "$glm_lane" --effort auto --backend auto \
           --prompt-file "$ping_dir/prompt.txt" --output "$ping_dir/out.txt" --workdir "$ping_dir" \
           >/dev/null 2>&1 && grep -Fxq PONG "$ping_dir/out.txt"; then
-        ok "GLM-5.3-Flash/max qualified-lane ping returned PONG"
+        ok "GLM-5.3-Flash/max $glm_lane ping returned PONG"
       else
         bad "GLM-5.3-Flash/max ping failed"
       fi
@@ -809,30 +691,16 @@ if [ "$DO_KIMI_PING" = 1 ]; then
     bad "Kimi ping unavailable — delegation-kimi is not installed"
   else
     kimi_check="$(delegation-kimi check --json 2>/dev/null || true)"
-    kimi_lane="$(printf '%s' "$kimi_check" | jq -r '
-      ([.qualified_lanes[] | select(. == "scout" or . == "clerk")][0] //
-       [.provisional_lanes[] | select(. == "scout" or . == "clerk")][0] // empty)
-    ' 2>/dev/null)"
+    kimi_lane="$(printf '%s' "$kimi_check" | jq -r '.roles | map(select(. == "scout" or . == "clerk"))[0] // empty' 2>/dev/null)"
     if [ -z "$kimi_lane" ]; then
-      info "skipped — no Kimi lane has passed the evaluation gate"
+      info "skipped — the Kimi adapter exposes no read-only role"
     else
       ping_dir="$(mktemp -d "${TMPDIR:-/tmp}/delegation-kimi-ping.XXXXXX")"
       mkdir -p "$ping_dir/work"
       printf 'Reply with exactly PONG and do not edit files.\n' >"$ping_dir/prompt.txt"
-      kimi_ping_provisional=0
-      printf '%s' "$kimi_check" | jq -e --arg lane "$kimi_lane" \
-        '.provisional_lanes | index($lane) != null' >/dev/null 2>&1 \
-        && kimi_ping_provisional=1
-      if {
-        { [ "$kimi_ping_provisional" = 0 ] &&
-          delegation-kimi run --lane "$kimi_lane" --effort auto --backend auto \
-            --prompt-file "$ping_dir/prompt.txt" --output "$ping_dir/out.txt" \
-            --workdir "$ping_dir/work"; } ||
-        { [ "$kimi_ping_provisional" = 1 ] &&
-          delegation-kimi run --lane "$kimi_lane" --allow-provisional \
-            --effort auto --backend auto --prompt-file "$ping_dir/prompt.txt" \
-            --output "$ping_dir/out.txt" --workdir "$ping_dir/work"; }
-      } >/dev/null 2>&1; then
+      if delegation-kimi run --lane "$kimi_lane" --effort auto --backend auto \
+          --prompt-file "$ping_dir/prompt.txt" --output "$ping_dir/out.txt" \
+          --workdir "$ping_dir/work" >/dev/null 2>&1; then
         if grep -Fxq PONG "$ping_dir/out.txt"; then
           ok "Kimi K3 ping returned PONG"
         else
@@ -852,17 +720,17 @@ if [ "$DO_GROK_PING" = 1 ]; then
     bad "Grok ping unavailable — delegation-grok is not installed"
   else
     grok_check="$(delegation-grok check --json 2>/dev/null || true)"
-    if ! printf '%s' "$grok_check" | jq -e '.provisional_lanes | index("builder") != null' >/dev/null 2>&1; then
-      info "skipped — Grok builder lane is not provisional"
+    if ! printf '%s' "$grok_check" | jq -e '.roles | index("builder") != null' >/dev/null 2>&1; then
+      info "skipped — the Grok adapter exposes no builder role"
     else
       ping_dir="$(mktemp -d "${TMPDIR:-/tmp}/delegation-grok-ping.XXXXXX")"
       mkdir -p "$ping_dir/work" "$ping_dir/results"
       printf 'Reply with exactly PONG and do not edit files.\n' >"$ping_dir/prompt.txt"
-      if delegation-grok run --lane builder --allow-provisional \
+      if delegation-grok run --lane builder \
           --effort auto --backend auto --prompt-file "$ping_dir/prompt.txt" \
           --output "$ping_dir/results/out.txt" --workdir "$ping_dir/work" \
           >/dev/null 2>&1 && grep -Fxq PONG "$ping_dir/results/out.txt"; then
-        ok "Grok 4.6 provisional builder ping returned PONG"
+        ok "Grok 4.6 builder ping returned PONG"
       else
         bad "Grok 4.6 ping failed"
       fi

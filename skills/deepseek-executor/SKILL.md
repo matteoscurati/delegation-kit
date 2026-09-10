@@ -16,13 +16,13 @@ Use `delegation-route resolve --lane LANE --json` to inspect `.choices`, then
 `--selected-profile PROFILE` to validate the user's selection without dispatch.
 Profiles come from `${XDG_CONFIG_HOME:-$HOME/.config}/delegation-kit/config.json`
 or `DELEGATION_CONFIG_FILE`, never automatically from the project repository.
-Evidence is advisory; missing or unfavorable benchmarks do not veto a choice.
+No benchmark or kit qualification is required to choose a profile.
 
 Dispatch the chosen profile once using `delegation-run --profile PROFILE
 --lane LANE --prompt-file FILE --output FILE --workdir DIR`. Output and receipt
 paths must be new and outside the worktree. `--allow-provisional` is deprecated
-and unnecessary. Use provider-specific commands for their diagnostic and
-controlled evaluation options; their technical restrictions still apply.
+and unnecessary. A provider's `check --json` reports the adapter's roles,
+efforts, and runtime availability; its technical restrictions still apply.
 
 Review follows the configuration: `optional` by default, `required` for any
 compatible reviewer, `cross-family` for a different declared family. Required
@@ -35,5 +35,4 @@ provider-reported, or provider-reported identity as independent certification.
 
 The adapter cannot write directly to the worktree. Supply all context in the
 prompt. For a builder task request a unified text patch, then inspect and apply
-it with the existing `delegation-executor-contract` and
-`delegation-patch-verify` workflow. A role does not confer filesystem access.
+it with the `delegation-patch-verify` workflow. A role does not confer filesystem access.

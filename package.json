@@ -1,6 +1,6 @@
 {
   "name": "delegation-kit",
-  "version": "0.24.0",
+  "version": "0.25.0",
   "description": "User-directed model delegation for Claude Code and Codex with personal model configuration, technical adapter controls and optional review.",
   "keywords": [
     "claude-code",

@@ -1,6 +1,5 @@
 #!/usr/bin/env bash
 # Run DeepSeek V4.1 Flash (deepseek-flash) through the DeepSeek OpenAI-compatible API.
-# Operational model choices require technical compatibility, not qualification.
 set -euo pipefail
 umask 077
 
@@ -13,15 +12,12 @@ done
 ROOT="$(cd "$(dirname "$SOURCE")/.." && pwd)"
 RUNNER_NAME="delegation-deepseek"
 PROVIDER_LABEL="DeepSeek V4.1 Flash"
-ROUTING_FILE="${DELEGATION_DEEPSEEK_ROUTING_FILE:-$ROOT/config/deepseek-flash-routing.json}"
-CENTRAL_GATES="${DELEGATION_ROUTING_GATES_FILE:-$ROOT/config/routing-gates.json}"
 KEY_FILE="${DELEGATION_DEEPSEEK_KEY_FILE:-$ROOT/config/deepseek.env}"
 API_KEY_VAR="DEEPSEEK_API_KEY"
 MODEL="${DELEGATION_REQUESTED_MODEL:-deepseek-flash}"
-PROFILE="deepseek-flash"
 BACKEND="deepseek-api"
 API_URL="https://api.deepseek.com/v1/chat/completions"
-PINNED_EFFORT="max"
+DEFAULT_EFFORT="max"
 BILLING="api"
 
 # shellcheck source=bin/lib/delegation-runner-common.sh
@@ -37,26 +33,17 @@ Usage:
     [--effort <auto|none|minimal|low|medium|high|xhigh|max>] \
     [--backend <auto|deepseek-api>] --prompt-file <path> \
     --output <path> --workdir <path> [--metrics <path>] \
-    [--debug-dir <path>] [--allow-provisional] \
-    [--evaluation --evaluation-manifest <path>] [--preflight-only]
+    [--debug-dir <path>]
 
-Operational lanes require an explicit user request and technical compatibility.
-This text-only adapter returns a patch for the lead to apply and verify; it
-cannot edit a worktree. --allow-provisional is deprecated and has no effect.
-
---evaluation is reserved for allowlisted controlled qualification runs of
-candidate lanes, never promotes or mutates a gate, and adds no operational
-route. --allow-provisional has no effect. Policy-annotation
-does not qualify broad architecture/trade-off judgement. --preflight-only is
-valid only with --evaluation and --evaluation-manifest: it traverses the same
-pre-provider validation path as the real evaluation run, prints a
-delegation_policy_annotation_preflight_receipt_v1 receipt on stdout, and exits
-zero before provider dispatch and before any caller-visible artifact exists.
+Dispatch requires an explicit user request. This text-only adapter returns a
+patch for the lead to apply and verify; it cannot edit a worktree.
+--allow-provisional is accepted as a deprecated no-op for one release.
 
 Exit codes: 64 invalid input, 69 unavailable/authentication failure,
-70 dispatch/extract failure, 75 temporary/rate-limit failure, 78 routing gate
-refusal. Failures write sanitized metadata to <output>.error.json. Raw provider
-responses and stderr are preserved only when --debug-dir is supplied.
+70 dispatch/extract failure, 75 temporary/rate-limit failure, 78 unsupported
+role or effort for this adapter. Failures write sanitized metadata to
+<output>.error.json. Raw provider responses and stderr are preserved only when
+--debug-dir is supplied.
 EOF
 }
 

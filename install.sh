@@ -89,19 +89,21 @@ done
 
 chmod 644 "$DATA_HOME"/bin/lib/*.sh
 echo "Shared runner library -> $DATA_HOME/bin/lib (sourced by the external runners; not on PATH)"
-cp "$KIT/bin/delegation-schema" "$DATA_HOME/bin/delegation-schema"
-chmod 755 "$DATA_HOME/bin/delegation-schema"
-ln -sfn "$DATA_HOME/bin/delegation-schema" "$BIN_HOME/delegation-schema"
-echo "Schema transport compiler -> $BIN_HOME/delegation-schema (Claude/Codex, read-only)"
+# Routing gates, executor contract, evidence snapshot, and the schema compiler
+# shipped until 0.24.0. The personal configuration replaced them; remove the
+# installed copies and the commands that read them.
+rm -f -- "$DATA_HOME"/config/*-routing.json \
+  "$DATA_HOME/config/routing-gates.json" \
+  "$DATA_HOME/config/external-executor-contract.json" \
+  "$DATA_HOME/config/model-evidence.json"
+for retired in delegation-schema delegation-evidence delegation-epoch delegation-executor-contract; do
+  rm -f -- "$DATA_HOME/bin/$retired" "$BIN_HOME/$retired"
+done
+echo "Retired routing gates, executor contract, evidence, and schema commands removed from $DATA_HOME"
 cp "$KIT/bin/delegation-glm" "$DATA_HOME/bin/delegation-glm"
-rm -f "$DATA_HOME/config/glm-5.2-routing.json" \
-  "$DATA_HOME/config/glm-5.3-high-routing.json" \
-  "$DATA_HOME/config/glm-5.3-max-routing.json"
-cp "$KIT/config/glm-5.3-flash-max-routing.json" \
-  "$DATA_HOME/config/glm-5.3-flash-max-routing.json"
 chmod 755 "$DATA_HOME/bin/delegation-glm"
 ln -sfn "$DATA_HOME/bin/delegation-glm" "$BIN_HOME/delegation-glm"
-echo "GLM bridge -> $BIN_HOME/delegation-glm (only gate: $DATA_HOME/config/glm-5.3-flash-max-routing.json; retired GLM gates removed)"
+echo "GLM bridge -> $BIN_HOME/delegation-glm"
 
 # GLM's only transport is the Z.AI API, so without a key the lane is dead. Ask
 # once, interactively, and never overwrite an existing key without consent.
@@ -155,10 +157,9 @@ if [ "$zai_ask" = 1 ]; then
   fi
 fi
 cp "$KIT/bin/delegation-kimi" "$DATA_HOME/bin/delegation-kimi"
-cp "$KIT/config/kimi-k3-routing.json" "$DATA_HOME/config/kimi-k3-routing.json"
 chmod 755 "$DATA_HOME/bin/delegation-kimi"
 ln -sfn "$DATA_HOME/bin/delegation-kimi" "$BIN_HOME/delegation-kimi"
-echo "Kimi bridge -> $BIN_HOME/delegation-kimi (routing gate: $DATA_HOME/config/kimi-k3-routing.json)"
+echo "Kimi bridge -> $BIN_HOME/delegation-kimi"
 # Kimi Code itself remains vendor-managed and is never updated here. Archive the
 # currently selected ripgrep bytes for the Grep-only process allowlist. A
 # different existing archive is retained unless the owner explicitly uses
@@ -174,32 +175,15 @@ else
   echo "  ! rg not on PATH — install ripgrep, then run 'delegation-kimi pin-rg'"
 fi
 
-cp "$KIT/bin/delegation-gemini" "$DATA_HOME/bin/delegation-gemini"
-cp "$KIT/config/gemini-3.8-flash-routing.json" "$DATA_HOME/config/gemini-3.8-flash-routing.json"
-rm -f -- "$DATA_HOME/config/gemini-3.6-flash-routing.json" "$DATA_HOME/config/gemini-3.7-flash-routing.json"
-chmod 755 "$DATA_HOME/bin/delegation-gemini"
-ln -sfn "$DATA_HOME/bin/delegation-gemini" "$BIN_HOME/delegation-gemini"
-echo "Gemini bridge -> $BIN_HOME/delegation-gemini (candidate gate: $DATA_HOME/config/gemini-3.8-flash-routing.json; stale 3.6 and 3.7 gates removed)"
-
-cp "$KIT/bin/delegation-qwen" "$DATA_HOME/bin/delegation-qwen"
-cp "$KIT/config/qwen3.8-max-routing.json" "$DATA_HOME/config/qwen3.8-max-routing.json"
-chmod 755 "$DATA_HOME/bin/delegation-qwen"
-ln -sfn "$DATA_HOME/bin/delegation-qwen" "$BIN_HOME/delegation-qwen"
-echo "Qwen bridge -> $BIN_HOME/delegation-qwen (provisional builder gate: $DATA_HOME/config/qwen3.8-max-routing.json)"
-
-cp "$KIT/bin/delegation-deepseek" "$DATA_HOME/bin/delegation-deepseek"
-cp "$KIT/config/deepseek-flash-routing.json" "$DATA_HOME/config/deepseek-flash-routing.json"
-rm -f -- "$DATA_HOME/config/deepseek-v4-pro-routing.json"
-chmod 755 "$DATA_HOME/bin/delegation-deepseek"
-ln -sfn "$DATA_HOME/bin/delegation-deepseek" "$BIN_HOME/delegation-deepseek"
-echo "DeepSeek bridge -> $BIN_HOME/delegation-deepseek (provisional builder gate: $DATA_HOME/config/deepseek-flash-routing.json; retired V4 Pro gate removed)"
-
-cp "$KIT/bin/delegation-grok" "$DATA_HOME/bin/delegation-grok"
-cp "$KIT/config/grok-4.6-routing.json" "$DATA_HOME/config/grok-4.6-routing.json"
-rm -f -- "$DATA_HOME/config/grok-4.5-routing.json"
-chmod 755 "$DATA_HOME/bin/delegation-grok"
-ln -sfn "$DATA_HOME/bin/delegation-grok" "$BIN_HOME/delegation-grok"
-echo "Grok bridge -> $BIN_HOME/delegation-grok (provisional builder gate: $DATA_HOME/config/grok-4.6-routing.json)"
+for runner in delegation-gemini delegation-qwen delegation-deepseek delegation-grok; do
+  cp "$KIT/bin/$runner" "$DATA_HOME/bin/$runner"
+  chmod 755 "$DATA_HOME/bin/$runner"
+  ln -sfn "$DATA_HOME/bin/$runner" "$BIN_HOME/$runner"
+done
+echo "Gemini bridge -> $BIN_HOME/delegation-gemini"
+echo "Qwen bridge -> $BIN_HOME/delegation-qwen"
+echo "DeepSeek bridge -> $BIN_HOME/delegation-deepseek"
+echo "Grok bridge -> $BIN_HOME/delegation-grok"
 
 # Qwen Token Plan credentials are isolated from DashScope and from ai-consultants.
 # Never copy a key from another tool silently; accept an explicit environment
@@ -280,39 +264,15 @@ if [ "$qwen_ask" = 1 ]; then
   fi
 fi
 
-# Shared, read-only evidence inspector. This snapshot informs routing decisions
-# but deliberately has no code path that mutates either executor gate.
-cp "$KIT/bin/delegation-evidence" "$DATA_HOME/bin/delegation-evidence"
-cp "$KIT/bin/delegation-epoch" "$DATA_HOME/bin/delegation-epoch"
-cp "$KIT/config/model-evidence.json" "$DATA_HOME/config/model-evidence.json"
-chmod 755 "$DATA_HOME/bin/delegation-evidence" "$DATA_HOME/bin/delegation-epoch"
-ln -sfn "$DATA_HOME/bin/delegation-evidence" "$BIN_HOME/delegation-evidence"
-ln -sfn "$DATA_HOME/bin/delegation-epoch" "$BIN_HOME/delegation-epoch"
-echo "Model evidence -> $BIN_HOME/delegation-evidence (snapshot: $DATA_HOME/config/model-evidence.json)"
-echo "Epoch ZIP feed -> $BIN_HOME/delegation-epoch (advisory only; raw data is not persisted)"
-
+# Read-only route discovery over the personal configuration.
 cp "$KIT/bin/delegation-route" "$DATA_HOME/bin/delegation-route"
-cp "$KIT/config/routing-gates.json" "$DATA_HOME/config/routing-gates.json"
 chmod 755 "$DATA_HOME/bin/delegation-route"
 ln -sfn "$DATA_HOME/bin/delegation-route" "$BIN_HOME/delegation-route"
-echo "Routing gates -> $BIN_HOME/delegation-route (decisions: $DATA_HOME/config/routing-gates.json)"
+echo "Route discovery -> $BIN_HOME/delegation-route (reads the personal configuration)"
 
-# The common external-executor contract. It describes and validates the shared
-# vocabulary — permission classes, identity/usage fields, envelope shapes, exit
-# codes — and grants nothing: each provider runner keeps enforcing its own
-# permissions. Installed after the gates it cross-checks.
-cp "$KIT/bin/delegation-executor-contract" "$DATA_HOME/bin/delegation-executor-contract"
-cp "$KIT/config/external-executor-contract.json" \
-  "$DATA_HOME/config/external-executor-contract.json"
-chmod 755 "$DATA_HOME/bin/delegation-executor-contract"
-ln -sfn "$DATA_HOME/bin/delegation-executor-contract" "$BIN_HOME/delegation-executor-contract"
-echo "Executor contract -> $BIN_HOME/delegation-executor-contract (contract: $DATA_HOME/config/external-executor-contract.json; describes only, runners still enforce)"
-
-# The read-only patch verifier for text-patch lanes, and the versioned policy it
-# enforces. Installed alongside the contract that requires it, because the
-# contract's text-patch declarations name this exact policy version. The
-# verifier validates and describes a patch; it never applies one — the lead
-# remains the only actor that applies and tests.
+# The read-only patch verifier for text-patch adapters, and the versioned
+# policy it enforces. The verifier validates and describes a patch; it never
+# applies one — the lead remains the only actor that applies and tests.
 cp "$KIT/bin/delegation-patch-verify" "$DATA_HOME/bin/delegation-patch-verify"
 cp "$KIT/config/external-patch-policy.json" \
   "$DATA_HOME/config/external-patch-policy.json"
@@ -321,8 +281,8 @@ ln -sfn "$DATA_HOME/bin/delegation-patch-verify" "$BIN_HOME/delegation-patch-ver
 echo "Patch verifier -> $BIN_HOME/delegation-patch-verify (policy: $DATA_HOME/config/external-patch-policy.json; validates only, the lead applies)"
 
 # A vendor auto-update replaces the ambient Grok CLI and prunes its own download
-# cache. Validate/retain the archive only after the current router, evidence,
-# central gate, and executable gate have all been installed atomically.
+# cache. Validate/retain the archive only after the runners and the router
+# have been installed.
 if grok_pin_out="$(DELEGATION_DATA_HOME="$DATA_HOME" "$DATA_HOME/bin/delegation-grok" pin 2>&1)"; then
   printf '  + %s\n' "$(printf '%s\n' "$grok_pin_out" | head -1)"
 elif grok_check_out="$(DELEGATION_DATA_HOME="$DATA_HOME" "$DATA_HOME/bin/delegation-grok" check --json 2>/dev/null)" \
@@ -348,8 +308,8 @@ if [ "$do_claude" = 1 ]; then
   # previous orchestration policy) during the upgrade.
   append_guarded "$CLAUDE_HOME/CLAUDE.md" "@$KIT/claude/CLAUDE.delegation.md"
   cp -R "$KIT/skills/model-routing" "$CLAUDE_HOME/skills/"
-  cp "$KIT/model-routing.md" "$CLAUDE_HOME/skills/model-routing/"   # co-locate the evidence-backed policy so the skill's pointer resolves
-  echo "  + model-routing skill (+ evidence-backed policy) -> $CLAUDE_HOME/skills/model-routing/"
+  cp "$KIT/model-routing.md" "$CLAUDE_HOME/skills/model-routing/"   # co-locate the advisory policy so the skill's pointer resolves
+  echo "  + model-routing skill (+ advisory policy) -> $CLAUDE_HOME/skills/model-routing/"
   cp -R "$KIT/skills/orchestrate" "$CLAUDE_HOME/skills/"
   echo "  + orchestrate skill -> $CLAUDE_HOME/skills/orchestrate/"
   cp -R "$KIT/skills/glm-executor" "$CLAUDE_HOME/skills/"

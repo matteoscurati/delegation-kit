@@ -46,28 +46,29 @@ An absent identity is usable as `requested-only`; an incompatible response model
 fails unless its alias was explicitly configured. Provider reports are not
 independent certification.
 
-`delegation-evidence`, the distributed routing records and `evaluation/` retain
-historical benchmarks and qualification artifacts. Their old quality statuses
-are information, not current execution permissions. Provider-specific commands
-and manifest-bound scientific evaluation workflows remain available.
+The kit ships no routing gates, benchmark evidence, or qualification
+machinery. `config/presets.json` holds the starting profiles, adapters own their
+roles and efforts, and `evaluation/` is a frozen archive of earlier
+qualification runs that no command reads.
 
-## Current release: 0.24.0
+## Current release: 0.25.0
 
-Version 0.24.0 makes the models a user choice. Profiles live in a personal
-configuration (`delegation-config`), one dispatcher runs a selected profile
-through its adapter (`delegation-run`, including any OpenAI-compatible text
-endpoint), review is optional by default with `required` and `cross-family`
-policies, and the historical routing gates and benchmark evidence become
-advisory records instead of execution permissions. Explicit per-dispatch
-authorization, sandboxes, and the patch trust boundary are unchanged. DeepSeek
-is re-pinned to V4.1 Flash and the staged Gemini bridge to 3.8 Flash. See
+Version 0.25.0 removes the qualification machinery that 0.24.0 had demoted to
+history: the central and executable routing gates, the executor contract, the
+evidence snapshot and Epoch importer, the schema compiler, and the runners'
+`--evaluation` and `--preflight-only` modes are gone, together with roughly
+13,000 lines of code, records, tests, and documentation. The starting profiles now live
+in `config/presets.json`; each runner's `check` reports the adapter's roles and
+efforts; `delegation-route` is a read-only discovery over the personal
+configuration. Explicit per-dispatch authorization, sandboxes, model identity
+checks, and the patch trust boundary are unchanged. See
 [`CHANGELOG.md`](./CHANGELOG.md) for details and full history.
 
 ## Documentation
 
 - [Personal configuration, adapters and migration](docs/user-configuration.md)
-- [Routing policy](model-routing.md)
-- [External executors and technical contracts](docs/external-executors.md)
+- [Routing policy (advisory)](model-routing.md)
+- [External executors: adapters and their limits](docs/external-executors.md)
 - [Compatibility and release verification](docs/compatibility.md)
 - [Adapting the kit](ADAPTING.md)
 

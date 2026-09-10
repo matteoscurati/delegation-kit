@@ -26,7 +26,7 @@ function makeLocalRepo() {
   sh("uninstall.sh", 'echo "uninstall ran with: $*"; exit 0');
   sh("doctor.sh", "echo doctor-ok; exit 0");
   mkdirSync(join(dir, "config"), { recursive: true });
-  writeFileSync(join(dir, "config", "routing-gates.json"), "{}\n");
+  writeFileSync(join(dir, "config", "presets.json"), "{}\n");
   mkdirSync(join(dir, "claude"), { recursive: true });
   copyFileSync(
     join(ROOT, "claude", "CLAUDE.delegation.md"),

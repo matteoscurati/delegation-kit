@@ -1,3 +1,12 @@
+> **Archive.** Since delegation-kit 0.25.0 nothing in the kit reads this
+> directory. The commands and files this page names — `delegation-route check`
+> over routing gates, `config/routing-gates.json`, the executable
+> `config/*-routing.json` gates, `delegation-evidence`, `delegation-epoch`,
+> `delegation-executor-contract`, `delegation-schema`, and the runners'
+> `--evaluation` / `--preflight-only` modes — were removed in that release.
+> The frozen artifacts stay as the record of how the earlier profiles were
+> qualified; the text below describes the model as it stood at 0.24.0.
+
 # Evidence-backed model routing
 
 The kit separates three facts that are easy to blur together:
