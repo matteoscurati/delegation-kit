@@ -3,75 +3,39 @@ name: grok-executor
 description: Use only when the current user explicitly selects a Grok lane or authorizes the lead to choose it from displayed choices. Never dispatch Grok automatically.
 ---
 
-# Grok 4.6 builder executor
+# grok-executor
 
-## User direction is required
+## User direction and selection
 
-This skill grants no standing permission to call another model. The current user
-must select the exact lane/profile, or explicitly authorize the lead to choose
-from `delegation-route resolve` choices. Authorization is per dispatch and does
-not silently carry to retries, reviewers, advisors, or additional workers.
+This skill grants no permission to dispatch. The current user must select the
+profile and task, or explicitly authorize the lead to choose from displayed
+choices. Authorization is per dispatch; retries, fallbacks, review and further
+workers require their own explicit authorization. No automatic substitution.
 
+Use `delegation-route resolve --lane LANE --json` to inspect `.choices`, then
+`--selected-profile PROFILE` to validate the user's selection without dispatch.
+Profiles come from `${XDG_CONFIG_HOME:-$HOME/.config}/delegation-kit/config.json`
+or `DELEGATION_CONFIG_FILE`, never automatically from the project repository.
+Evidence is advisory; missing or unfavorable benchmarks do not veto a choice.
 
-Grok 4.6 is provisionally available for `builder` and `frontend-builder` through
-the native Grok Build CLI at reasoning effort `high`.
+Dispatch the chosen profile once using `delegation-run --profile PROFILE
+--lane LANE --prompt-file FILE --output FILE --workdir DIR`. Output and receipt
+paths must be new and outside the worktree. `--allow-provisional` is deprecated
+and unnecessary. Use provider-specific commands for their diagnostic and
+controlled evaluation options; their technical restrictions still apply.
 
-Before every dispatch, run `delegation-grok check --json`. Require
-`selected_backend == "grok-build"` and the requested lane in
-`provisional_lanes`, then make an explicit routing decision and pass
-`--allow-provisional`. No other operational lane is exposed.
-`policy-annotation` at `high` is a separate candidate/blocked evaluation lane.
-It may run only with an allowlisted manifest, removes editing tools, requires
-the read-only sandbox, and neither promotes itself nor qualifies broad
-judgement.
+Review follows the configuration: `optional` by default, `required` for any
+compatible reviewer, `cross-family` for a different declared family. Required
+review never grants permission for a second call. Keep the result pending if
+authorization or a compatible reviewer is absent. The lead owns integration,
+verification, and the final response. Never claim a requested-only model as
+provider-reported, or provider-reported identity as independent certification.
 
-Write a bounded, self-contained implementation brief to a file and run:
+## Native execution boundary
 
-```sh
-delegation-grok run \
-  --lane <builder|frontend-builder> --allow-provisional \
-  [--oauth shared] \
-  --backend auto --effort auto --prompt-file "$brief" \
-  --output "$result" --metrics "$metrics" --workdir "$repo"
-```
-
-The runner capability-probes Grok Build CLI and pins `grok-4.6`, effort `high`,
-JSON output, 40 turns, and a 15-minute wall timeout. It uses an ephemeral HOME,
-disables memory, subagents, web tools, plugins, MCP, compatibility imports, and
-automatic updates, and requires the custom OS-enforced `delegation-kit` sandbox to attest
-successful enforcement before publishing output. Grok Build refuses that custom
-profile when a container runtime socket it denies (for example Docker
-Desktop's `/var/run/docker.sock` link) is a symlink; `delegation-grok check`
-then reports the lane unavailable with the path, and no dispatch happens. Permission mode is `dontAsk`,
-with only file edits explicitly allowed; the terminal tool is not exposed. The
-lead runs all tests and commands after inspecting the diff.
-
-OAuth is serialized by default and refreshed credentials are published back
-atomically. When several Grok workers must run concurrently, every invocation
-must pass `--oauth shared`. The workers then use one runner-owned persistent
-Grok generation, the vendor auth lock coordinates refresh, and a short kit lock
-protects generation adoption and publication. Never mix a manual `grok login`
-with active work: the external login wins and affected runs fail temporarily.
-Evaluation runs never permit shared OAuth.
-
-Any CLI version is accepted when it exposes the required flags, authenticated
-`grok-4.6` inventory, isolation state, structured output, and sandbox
-attestation. The observed version is provenance only. `delegation-grok pin`
-optionally preserves the currently compatible bytes in a private store with a
-digest (add `--from <path>` to choose the binary); a digest mismatch means the
-archived copy changed and must be replaced deliberately with `--force`.
-
-Failures write only a sanitized `<output>.error.json`. Raw provider output and
-stderr are retained only when the caller explicitly supplies an existing private
-`--debug-dir`; those artifacts may contain sensitive prompt or model data.
-
-Never use `--evaluation` for ordinary work. A pre-registered
-`policy-annotation` qualification must supply `--evaluation-manifest` and is
-still treated as unqualified evidence until the owner reviews its frozen result.
-
-Treat the returned text and all worktree edits as unverified. Inspect the diff,
-run the acceptance checks yourself, and preserve unrelated user changes. Exit
-69 means runtime/model/authentication unavailable, 70 means dispatch or output
-validation failed, 75 means timeout or temporary/rate-limit failure, and 78
-means the gate refused the tuple. Never silently substitute a neighboring model
-or lane.
+Retain the runner's isolated home, credential handling, enforced sandbox,
+allowed tools, worktree restrictions and patch checks. A new model does not
+change these permissions. Runtime unavailability is a stop, never permission
+for another backend. Inspect the selected provider command's help for native
+runtime prerequisites and diagnostic/evaluation options. Kimi implements only
+clerk, scout, builder, frontend-builder and policy-annotation tool profiles.

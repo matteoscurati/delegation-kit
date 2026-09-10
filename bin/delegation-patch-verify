@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Validate and describe one patch produced by a text-only external executor.
 #
-# `text-patch` lanes (Qwen3.8-Max, DeepSeek V4 Pro today) have no filesystem and
+# `text-patch` lanes (Qwen3.8-Max, DeepSeek V4.1 Flash today) have no filesystem and
 # no tools: their product is diff text that somebody has to apply. This command
 # closes that trust boundary from the reading side. It parses the patch, holds it
 # against config/external-patch-policy.json, fixes the strip level from the

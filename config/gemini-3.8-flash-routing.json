@@ -1,11 +1,13 @@
 {
-  "model": "gemini-3.7-flash",
+  "model": "gemini-3.8-flash",
   "status": "candidate",
-  "evaluated_at": "2026-08-17T00:00:00Z",
-  "source_run": "2026-08-17-gemini-3.7-staging",
+  "evaluated_at": "2026-09-10T00:00:00Z",
+  "source_run": "2026-09-10-gemini-3.8-staging",
   "external_evidence_file": "model-evidence.json",
-  "external_evidence_ids": ["google-gemini-3.7-flash-launch-2026-08-17"],
-  "qualification_basis": "Gemini 3.7 Flash is staged on the fail-closed Antigravity bridge. Google confirms the exact API model and low/medium/high thinking levels, but the current local Antigravity session cannot attest model inventory or OAuth. No operational lane is inherited from Gemini 3.6; every lane remains blocked until an exact local runtime smoke and lane-specific evaluation exist.",
+  "external_evidence_ids": [
+    "google-gemini-3.8-flash-launch-2026-09-02"
+  ],
+  "qualification_basis": "Gemini 3.8 Flash (gemini-3.8-flash, released 2026-09-02) replaces the 3.7 staging rows on the prompt-only Antigravity bridge. Every lane stays candidate or disabled and blocked: no local Antigravity inventory, identity, or OAuth smoke exists for 3.8, and Gemini is excluded from the current personal-configuration presets by owner decision. The runner and the corrected tab-separated inventory parser remain available for an explicit personal profile.",
   "preferred_backends": [
     "agy"
   ],
@@ -20,7 +22,7 @@
           "status": "candidate",
           "selection": "blocked",
           "effort": "medium",
-          "runtime_model": "gemini-3.7-flash-medium",
+          "runtime_model": "gemini-3.8-flash-medium",
           "runtime_controls": {
             "sandbox": "agy-sandbox",
             "isolated_home": true,
@@ -47,7 +49,7 @@
           "status": "candidate",
           "selection": "blocked",
           "effort": "high",
-          "runtime_model": "gemini-3.7-flash-high",
+          "runtime_model": "gemini-3.8-flash-high",
           "runtime_controls": {
             "sandbox": "agy-sandbox",
             "isolated_home": true,
@@ -74,7 +76,7 @@
           "status": "candidate",
           "selection": "blocked",
           "effort": "high",
-          "runtime_model": "gemini-3.7-flash-high",
+          "runtime_model": "gemini-3.8-flash-high",
           "runtime_controls": {
             "sandbox": "agy-sandbox",
             "isolated_home": true,
@@ -101,7 +103,7 @@
           "status": "disabled",
           "selection": "blocked",
           "effort": "high",
-          "runtime_model": "gemini-3.7-flash-high",
+          "runtime_model": "gemini-3.8-flash-high",
           "runtime_controls": {
             "sandbox": "agy-sandbox",
             "isolated_home": true,
@@ -128,7 +130,7 @@
           "status": "disabled",
           "selection": "blocked",
           "effort": "high",
-          "runtime_model": "gemini-3.7-flash-high",
+          "runtime_model": "gemini-3.8-flash-high",
           "runtime_controls": {
             "sandbox": "agy-sandbox",
             "isolated_home": true,

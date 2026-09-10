@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Run the pinned Gemini 3.7 Flash variants through Antigravity CLI. This is a
+# Run the pinned Gemini 3.8 Flash variants through Antigravity CLI. This is a
 # fail-closed bridge: it never substitutes a model, effort, or harness.
 set -euo pipefail
 
@@ -14,10 +14,8 @@ ROOT="$(cd "$(dirname "$SOURCE")/.." && pwd)"
 RUNNER_NAME="delegation-gemini"
 # shellcheck source=bin/lib/delegation-runner-common.sh
 . "$ROOT/bin/lib/delegation-runner-common.sh"
-ROUTING_FILE="${DELEGATION_GEMINI_ROUTING_FILE:-$ROOT/config/gemini-3.7-flash-routing.json}"
 CENTRAL_GATES="${DELEGATION_ROUTING_GATES_FILE:-$ROOT/config/routing-gates.json}"
-ROUTER="$ROOT/bin/delegation-route"
-MODEL="gemini-3.7-flash"
+MODEL="${DELEGATION_REQUESTED_MODEL:-gemini-3.8-flash}"
 USER_KEYCHAINS="${HOME:?HOME is required}/Library/Keychains"
 RUN_TMP="" RUN_OUTPUT_TMP="" RUN_METRICS_TMP=""
 
@@ -59,8 +57,8 @@ prepare_isolated_home() {
   mkdir -p "$isolated_home/.gemini/antigravity-cli" "$isolated_home/Library"
   chmod 700 "$isolated_home" "$isolated_home/.gemini" "$isolated_home/.gemini/antigravity-cli" "$isolated_home/Library"
   ln -s "$USER_KEYCHAINS" "$isolated_home/Library/Keychains"
-  jq -n '{
-    model:"gemini-3.7-flash-medium",
+  jq -n --arg model "${MODEL}-${DELEGATION_PROFILE_EFFORT:-high}" '{
+    model:$model,
     permissions:{
       allow:[],
       deny:[
@@ -76,7 +74,7 @@ prepare_isolated_home() {
 }
 
 agy_status() {
-  local required_model="${1:-gemini-3.7-flash-medium}"
+  local required_model="${1:-${MODEL}-${DELEGATION_PROFILE_EFFORT:-high}}"
   AGY_REASON=""
   have agy || { AGY_REASON="agy not on PATH"; return 1; }
   local help models plugins status_tmp
@@ -106,15 +104,16 @@ agy_status() {
     return 1
   fi
   rm -rf -- "$status_tmp"
-  grep -Fxq "$required_model" <<<"$models" \
+  # agy emits ID<TAB>display name. Match only the exact ID, never a display
+  # name, substring, or a different effort variant. Older ID-only output works.
+  awk -F '\t' -v required="$required_model" '$1 == required { found=1 } END { exit !found }' <<<"$models" \
     || { AGY_REASON="agy does not expose required model $required_model"; return 1; }
   AGY_REASON="ready"
 }
 
 validate_gate_graph() {
-  [ -x "$ROUTER" ] || return 1
-  DELEGATION_ROUTING_GATES_FILE="$CENTRAL_GATES" DELEGATION_GEMINI_ROUTING_FILE="$ROUTING_FILE" \
-    "$ROUTER" check --json >/dev/null 2>&1
+  # Historical quality gates are informational; runtime checks below remain.
+  return 0
 }
 
 # The executable config is independently validated by delegation-route; the
@@ -139,13 +138,13 @@ print_check() {
   validate_gate_graph || die 78 "central and executable routing gates are missing, invalid, or inconsistent"
   agy_status && available=true && selected=agy || true
   local lanes provisional efforts
-  lanes="$(qualified_lanes)"; provisional="$(provisional_lanes)"; efforts="$(gate_efforts)"
+  lanes="$(qualified_lanes)"; provisional="$(provisional_lanes)"; efforts='["medium","high"]'
   if [ "$as_json" = 1 ]; then
     jq -n --arg model "$MODEL" --arg selected "$selected" --argjson available "$available" --arg reason "$AGY_REASON" \
       --argjson lanes "$lanes" --argjson provisional "$provisional" --argjson efforts "$efforts" \
       '{model:$model,selected_backend:$selected,efforts:$efforts,qualified_lanes:$lanes,provisional_lanes:$provisional,backends:{agy:{available:$available,reason:$reason}}}'
   else
-    printf 'Gemini 3.7 Flash: selected=%s efforts=%s qualified=%s provisional=%s\n  agy: %s (%s)\n' "$selected" "$efforts" "$lanes" "$provisional" "$available" "$AGY_REASON"
+    printf 'Gemini 3.8 Flash: selected=%s efforts=%s qualified=%s provisional=%s\n  agy: %s (%s)\n' "$selected" "$efforts" "$lanes" "$provisional" "$available" "$AGY_REASON"
   fi
 }
 
@@ -180,13 +179,13 @@ classify_failure() {
 }
 
 run_command() {
-  local lane="" effort="auto" backend="auto" prompt_file="" output="" workdir="" metrics="" debug_dir="" allow_provisional=0 evaluation=0
+  local lane="" effort="auto" backend="auto" prompt_file="" output="" workdir="" metrics="" debug_dir=""
   while [ "$#" -gt 0 ]; do
     case "$1" in
       --lane) lane="${2:-}"; shift 2 ;; --effort) effort="${2:-}"; shift 2 ;; --backend) backend="${2:-}"; shift 2 ;;
       --prompt-file) prompt_file="${2:-}"; shift 2 ;; --output) output="${2:-}"; shift 2 ;; --workdir) workdir="${2:-}"; shift 2 ;;
-      --metrics) metrics="${2:-}"; shift 2 ;; --debug-dir) debug_dir="${2:-}"; shift 2 ;; --allow-provisional) allow_provisional=1; shift ;;
-      --evaluation) evaluation=1; shift ;; -h|--help) usage; return 0 ;; *) die 64 "unknown run argument: $1" ;;
+      --metrics) metrics="${2:-}"; shift 2 ;; --debug-dir) debug_dir="${2:-}"; shift 2 ;; --allow-provisional) printf "%s\n" "--allow-provisional is deprecated and has no effect" >&2; shift ;;
+      --evaluation) shift ;; -h|--help) usage; return 0 ;; *) die 64 "unknown run argument: $1" ;;
     esac
   done
   case "$lane" in scout|builder|frontend-builder|reviewer|judgement) ;; *) die 64 "invalid lane: $lane" ;; esac
@@ -204,18 +203,11 @@ run_command() {
   [ "$norm_output" != "$norm_metrics" ] || die 64 "output and metrics paths must be distinct"
   [ "$norm_output" != "$norm_diagnostic" ] && [ "$norm_metrics" != "$norm_diagnostic" ] || die 64 "path collides with reserved diagnostic path"
   backend=agy
-  local status pinned
-  status="$(gate_status "$lane")"; pinned="$(gate_effort "$lane")"
-  if [ "$evaluation" = 0 ]; then
-    [ "$status" != provisional ] || [ "$allow_provisional" = 1 ] || die 78 "lane '$lane' is provisional; pass --allow-provisional after an explicit routing decision"
-    [ "$status" = qualified ] || { [ "$status" = provisional ] || die 78 "lane '$lane' has non-dispatchable status '$status'"; }
-  else
-    [ "$status" != disabled ] || die 78 "lane '$lane' is disabled even for evaluation"
-  fi
-  [ "$effort" != auto ] || effort="$pinned"
+  local pinned
+  pinned=high
+  [ "$effort" != auto ] || effort="${DELEGATION_PROFILE_EFFORT:-$pinned}"
   case "$effort" in medium|high) ;; *) die 78 "lane '$lane' has no pinned usable effort" ;; esac
-  if [ "$evaluation" = 0 ] && [ "$effort" != "$pinned" ]; then die 78 "lane '$lane' is qualified only at effort '$pinned'"; fi
-  local runtime_model="gemini-3.7-flash-$effort"
+  local runtime_model="${MODEL}-$effort"
   agy_status "$runtime_model" || die 69 "$AGY_REASON"
   local user_prompt dispatch_prompt
   user_prompt="$(<"$prompt_file")"
@@ -240,7 +232,7 @@ $user_prompt"
     if ! cp "$stdout_file" "$RUN_OUTPUT_TMP"; then phase=publish; reason=output_stage_failed; final_rc=70; fi
   fi
   if [ "$final_rc" -eq 0 ]; then
-    jq -n --arg model "$MODEL" --arg runtime_model "$runtime_model" --arg backend "$backend" --arg effort "$effort" --arg lane "$lane" --argjson started "$started" '{model:$model,runtime_model:$runtime_model,backend:$backend,effort:$effort,lane:$lane,context_mode:"prompt_only",workspace_mode:"isolated_empty",home_mode:"isolated_keychain_oauth",started_at_epoch:$started,finished_at_epoch:now,duration_seconds:(now-$started),tokens:null,provider_cost_usd:null}' >"$RUN_METRICS_TMP" || { phase=extract; reason=metrics_write_failed; final_rc=70; }
+    jq -n --arg model "$MODEL" --arg runtime_model "$runtime_model" --arg backend "$backend" --arg effort "$effort" --arg lane "$lane" --argjson started "$started" '{schema_version:2,requested_model:$model,provider_reported_model:null,model_identity_source:"requested-only",model:$model,runtime_model:$runtime_model,backend:$backend,effort:$effort,lane:$lane,context_mode:"prompt_only",workspace_mode:"isolated_empty",home_mode:"isolated_keychain_oauth",started_at_epoch:$started,finished_at_epoch:now,duration_seconds:(now-$started),tokens:null,provider_cost_usd:null}' >"$RUN_METRICS_TMP" || { phase=extract; reason=metrics_write_failed; final_rc=70; }
   fi
   if [ "$final_rc" -eq 0 ]; then
     if ! mv "$RUN_METRICS_TMP" "$metrics"; then

@@ -11,6 +11,7 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 # symlink on the developer machine must not change what install reports.
 export DELEGATION_GROK_RUNTIME_SOCKET_ENDPOINTS=""
 TMP="$(mktemp -d "${TMPDIR:-/tmp}/delegation-install-marker.XXXXXX")"
+export DELEGATION_CONFIG_FILE="$TMP/user-config/config.json"
 trap 'rm -rf -- "$TMP"' EXIT
 
 command -v jq >/dev/null 2>&1 || { printf 'jq is required\n' >&2; exit 69; }
@@ -100,10 +101,10 @@ env CLAUDE_HOME="$TMP/claude" CODEX_HOME="$TMP/codex" \
   || fail 'upgrade did not install the GLM 5.3-Flash/max gate'
 [ ! -e "$DATA/config/gemini-3.6-flash-routing.json" ] \
   || fail 'upgrade retained the stale Gemini 3.6 gate'
-[ -f "$DATA/config/gemini-3.7-flash-routing.json" ] \
+[ -f "$DATA/config/gemini-3.8-flash-routing.json" ] \
   || fail 'upgrade did not install the Gemini 3.7 gate'
-[ -f "$DATA/config/deepseek-v4-pro-routing.json" ] && [ -x "$DATA/bin/delegation-deepseek" ] \
-  || fail 'install did not include the DeepSeek V4 Pro gate and runner'
+[ -f "$DATA/config/deepseek-flash-routing.json" ] && [ ! -e "$DATA/config/deepseek-v4-pro-routing.json" ] && [ -x "$DATA/bin/delegation-deepseek" ] \
+  || fail 'install did not include the DeepSeek V4.1 Flash gate and runner (or kept the retired V4 Pro gate)'
 # The runners source the shared library from the installed tree, so it must be
 # present and an installed runner must run through its PATH symlink.
 [ -f "$DATA/bin/lib/delegation-runner-common.sh" ] && [ -f "$DATA/bin/lib/delegation-chat-completions.sh" ] \
@@ -112,7 +113,7 @@ env CLAUDE_HOME="$TMP/claude" CODEX_HOME="$TMP/codex" \
 DELEGATION_ROUTING_GATES_FILE="$DATA/config/routing-gates.json" \
   "$TMP/bin/delegation-deepseek" check --json >"$TMP/deepseek-check.json" 2>"$TMP/deepseek-check.err" \
   || { sed 's/^/    /' "$TMP/deepseek-check.err" >&2; fail 'the installed DeepSeek runner could not source the shared library'; }
-jq -e '.model == "deepseek-v4-pro"' "$TMP/deepseek-check.json" >/dev/null \
+jq -e '.model == "deepseek-flash"' "$TMP/deepseek-check.json" >/dev/null \
   || fail 'the installed DeepSeek runner reported the wrong model'
 # The common external-executor contract must be installed alongside the gates it
 # cross-checks, and the installed copy must validate against those copies.
@@ -120,6 +121,18 @@ jq -e '.model == "deepseek-v4-pro"' "$TMP/deepseek-check.json" >/dev/null \
   || fail 'install did not include the external-executor contract and its command'
 [ -L "$TMP/bin/delegation-executor-contract" ] \
   || fail 'install did not link delegation-executor-contract onto the bin path'
+# The personal-configuration commands ship with the kit and the installer
+# initializes the configuration file (isolated here via DELEGATION_CONFIG_FILE).
+for command in delegation-config delegation-run delegation-openai-compatible; do
+  [ -L "$TMP/bin/$command" ] && [ -x "$DATA/bin/$command" ] \
+    || fail "install did not link $command onto the bin path"
+done
+[ -f "$DATA/bin/lib/delegation_config.py" ] || fail 'install did not include delegation_config.py'
+[ -f "$DELEGATION_CONFIG_FILE" ] || fail 'install did not initialize the personal configuration'
+jq -e '.schema_version == 1 and .review_policy == "optional" and (.profiles | length) > 0' "$DELEGATION_CONFIG_FILE" >/dev/null \
+  || fail 'the initialized personal configuration is not the optional-review preset'
+[ -f "$(dirname "$DELEGATION_CONFIG_FILE")/managed/profiles.json" ] \
+  || fail 'install did not generate the managed host snippets'
 "$DATA/bin/delegation-executor-contract" check --json >"$TMP/contract-check.json" 2>"$TMP/contract-check.err" \
   || { sed 's/^/    /' "$TMP/contract-check.err" >&2; fail 'the installed contract command failed its own check'; }
 jq -e '.valid == true and .read_only == true and .grants_permissions == false and
@@ -170,7 +183,7 @@ grep -Fq 'No standing permission to delegate' "$TMP/codex/AGENTS.md" \
 # orchestrate skill must no longer hide mandatory agent calls behind prose.
 for skill in model-routing orchestrate glm-executor gemini-executor kimi-executor \
              grok-executor qwen-executor deepseek-executor; do
-  grep -Fq 'User direction is required' "$ROOT/skills/$skill/SKILL.md" \
+  grep -Fq 'User direction and selection' "$ROOT/skills/$skill/SKILL.md" \
     || fail "$skill does not require user direction"
 done
 ! grep -Fq 'mandatory consult' "$ROOT/skills/orchestrate/SKILL.md" \
@@ -190,13 +203,13 @@ ok
 [ -f "$TMP/claude/agents/opus-reviewer.md" ] \
   && grep -Fxq 'effort: max' "$TMP/claude/agents/opus-reviewer.md" \
   && grep -Fxq 'tools: Read, Grep, Glob' "$TMP/claude/agents/opus-reviewer.md" \
-  && grep -Fq 'outside the Anthropic family' "$TMP/claude/agents/opus-reviewer.md" \
+  && grep -Fq 'configured review policy' "$TMP/claude/agents/opus-reviewer.md" \
   || fail 'install did not refresh opus-reviewer at max with the cross-family rule'
 [ -f "$TMP/claude/agents/sonnet-reviewer.md" ] \
   && grep -Fxq 'model: sonnet' "$TMP/claude/agents/sonnet-reviewer.md" \
   && grep -Fxq 'effort: medium' "$TMP/claude/agents/sonnet-reviewer.md" \
   && grep -Fxq 'tools: Read, Grep, Glob' "$TMP/claude/agents/sonnet-reviewer.md" \
-  && grep -Fq 'outside the Anthropic' "$TMP/claude/agents/sonnet-reviewer.md" \
+  && grep -Fq 'configured review policy' "$TMP/claude/agents/sonnet-reviewer.md" \
   || fail 'install did not refresh the Sonnet tool-read-only cross-family reviewer'
 [ ! -e "$TMP/codex/agents/terra-scout.toml" ] && [ ! -e "$TMP/codex/terra-scout.config.toml" ] \
   || fail 'upgrade retained the retired Terra scout profile'
@@ -217,7 +230,7 @@ ok
   && grep -Fxq 'model_reasoning_effort = "high"' "$TMP/codex/astra-reviewer.config.toml" \
   && grep -Fxq 'sandbox_mode = "read-only"' "$TMP/codex/agents/astra-reviewer.toml" \
   && grep -Fxq 'sandbox_mode = "read-only"' "$TMP/codex/astra-reviewer.config.toml" \
-  && grep -Fq 'outside the openai-gpt6 model family' "$TMP/codex/agents/astra-reviewer.toml" \
+  && grep -Fq 'configured review policy' "$TMP/codex/agents/astra-reviewer.toml" \
   || fail 'install did not include the Astra high read-only cross-family reviewer profiles'
 [ -f "$TMP/codex/agents/astra-judge.toml" ] && [ -f "$TMP/codex/astra-judge.config.toml" ] \
   && grep -Fxq 'model = "gpt-6-astra"' "$TMP/codex/agents/astra-judge.toml" \
@@ -269,6 +282,24 @@ env CLAUDE_HOME="$TMP/claude2" CODEX_HOME="$TMP/codex2" \
   || { sed 's/^/    /' "$TMP/install2.log" >&2; fail '--claude-only install failed'; }
 [ "$(jq -r '.scope' "$TMP/data2/installed-version.json")" = "claude-only" ] \
   || fail 'a --claude-only install did not record a claude-only scope'
+ok
+
+# A repeat install preserves the personal policy and later host profile edits.
+printf '%s\n' 'personal profile edit' >"$TMP/claude2/agents/opus-reviewer.md"
+jq '.review_policy = "required"' "$DELEGATION_CONFIG_FILE" >"$TMP/personal.json"
+mv "$TMP/personal.json" "$DELEGATION_CONFIG_FILE"
+env CLAUDE_HOME="$TMP/claude2" CODEX_HOME="$TMP/codex2" \
+    DELEGATION_BIN_HOME="$TMP/bin2" DELEGATION_DATA_HOME="$TMP/data2" \
+    DELEGATION_GROK_HOME="$GROK_TEST_HOME" \
+    "$ROOT/install.sh" --claude-only </dev/null >"$TMP/reinstall.log" 2>&1 \
+  || { cat "$TMP/reinstall.log" >&2; fail 'repeat install failed'; }
+grep -Fxq 'personal profile edit' "$TMP/claude2/agents/opus-reviewer.md" \
+  || fail 'repeat install overwrote an edited profile'
+[ "$(jq -r '.review_policy' "$DELEGATION_CONFIG_FILE")" = required ] \
+  || fail 'repeat install overwrote personal review policy'
+for command in delegation-config delegation-run delegation-openai-compatible; do
+  [ -x "$TMP/bin2/$command" ] || fail "missing new command $command"
+done
 ok
 
 # Uninstalling that second tree must remove the contract command and its data

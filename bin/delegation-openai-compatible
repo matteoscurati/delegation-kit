@@ -1,0 +1,42 @@
+#!/usr/bin/env bash
+# Text-only adapter. Shares the existing Chat Completions execution engine.
+set -euo pipefail
+umask 077
+SOURCE="${BASH_SOURCE[0]}"
+while [ -L "$SOURCE" ]; do
+  SOURCE_DIR="$(cd "$(dirname "$SOURCE")" && pwd)"
+  SOURCE="$(readlink "$SOURCE")"
+  [[ "$SOURCE" = /* ]] || SOURCE="$SOURCE_DIR/$SOURCE"
+done
+ROOT="$(cd "$(dirname "$SOURCE")/.." && pwd)"
+RUNNER_NAME=delegation-openai-compatible
+PROVIDER_LABEL=OpenAI-compatible
+MODEL="${DELEGATION_REQUESTED_MODEL:?use delegation-run --profile}"
+API_URL="${DELEGATION_API_URL:?use delegation-run --profile}"
+API_KEY_VAR="${DELEGATION_CREDENTIAL_ENV:-DELEGATION_LOCAL_UNUSED_KEY}"
+AUTH_OPTIONAL="${DELEGATION_AUTH_OPTIONAL:-0}"
+KEY_FILE=/dev/null
+PROFILE=custom
+BACKEND=openai-compatible
+PINNED_EFFORT=none
+BILLING=unknown
+CENTRAL_GATES="$ROOT/config/routing-gates.json"
+ROUTING_FILE="$CENTRAL_GATES"
+# shellcheck source=bin/lib/delegation-runner-common.sh
+. "$ROOT/bin/lib/delegation-runner-common.sh"
+# shellcheck source=bin/lib/delegation-chat-completions.sh
+. "$ROOT/bin/lib/delegation-chat-completions.sh"
+usage() { printf '%s\n' 'Use delegation-run --profile PROFILE --lane LANE --prompt-file FILE --output FILE --workdir DIR'; }
+provider_request_body() {
+  jq -n --arg model "$MODEL" --rawfile prompt "$1" --argjson max_tokens "$3" \
+    '{model:$model,messages:[{role:"user",content:$prompt}],max_tokens:$max_tokens,stream:false}'
+}
+# Validate endpoint even if called directly, before any credential can be sent.
+python3 - "$API_URL" <<'PY'
+import sys
+from urllib.parse import urlsplit
+u=urlsplit(sys.argv[1])
+if not u.hostname or u.username or u.password or u.query or u.fragment or any(ord(c)<33 for c in sys.argv[1]) or not (u.scheme=='https' or (u.scheme=='http' and u.hostname in {'localhost','127.0.0.1','::1'})):
+    sys.exit('invalid endpoint: remote URLs require HTTPS; inline credentials forbidden')
+PY
+chat_completions_main "$@"

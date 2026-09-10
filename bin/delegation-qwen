@@ -1,9 +1,6 @@
 #!/usr/bin/env bash
 # Run Qwen3.8-Max through the Qwen Cloud Token Plan OpenAI-compatible endpoint.
-# Only the builder lane is promoted, and only as provisional/explicit-only: it
-# requires --allow-provisional after an explicit routing decision. Every other
-# lane stays blocked until exact local evaluation promotes it in both the
-# central and executable gates.
+# Operational model choices require technical compatibility, not qualification.
 #
 # Model upgrade monitoring: `delegation-qwen check` reports whether the
 # Qwen3.8-Max-0902 snapshot (qwen3.8-max-0902) is available on this endpoint.
@@ -22,12 +19,10 @@ ROOT="$(cd "$(dirname "$SOURCE")/.." && pwd)"
 RUNNER_NAME="delegation-qwen"
 PROVIDER_LABEL="Qwen3.8-Max"
 ROUTING_FILE="${DELEGATION_QWEN_ROUTING_FILE:-$ROOT/config/qwen3.8-max-routing.json}"
-ROUTING_FILE_ENV="DELEGATION_QWEN_ROUTING_FILE"
 CENTRAL_GATES="${DELEGATION_ROUTING_GATES_FILE:-$ROOT/config/routing-gates.json}"
-ROUTER="$ROOT/bin/delegation-route"
 KEY_FILE="${DELEGATION_QWEN_KEY_FILE:-$ROOT/config/qwen-token-plan.env}"
 API_KEY_VAR="QWEN_TOKEN_PLAN_API_KEY"
-MODEL="qwen3.8-max"
+MODEL="${DELEGATION_REQUESTED_MODEL:-qwen3.8-max}"
 # Post-training refresh released 2026-09-02 on QwenCloud; not yet on this
 # Token Plan endpoint. check reports its availability so the re-pin is
 # deliberate when Alibaba propagates it.
@@ -54,14 +49,13 @@ Usage:
     [--debug-dir <path>] [--allow-provisional] \
     [--evaluation --evaluation-manifest <path>] [--preflight-only]
 
-The builder lane is provisional: pass --allow-provisional after an explicit
-routing decision. It is text-only — the Token Plan chat-completions transport
-cannot edit a worktree, so builder returns a patch the lead applies and
-verifies. Normal dispatch is refused while lanes are candidate/disabled.
+Operational lanes require an explicit user request and technical compatibility.
+This text-only adapter returns a patch for the lead to apply and verify; it
+cannot edit a worktree. --allow-provisional is deprecated and has no effect.
 
 --evaluation is reserved for allowlisted controlled qualification runs of
 candidate lanes, never promotes or mutates a gate, and adds no operational
-route. It cannot be combined with --allow-provisional. Policy-annotation
+route. --allow-provisional has no effect. Policy-annotation
 does not qualify broad architecture/trade-off judgement. --preflight-only is
 valid only with --evaluation and --evaluation-manifest: it traverses the same
 pre-provider validation path as the real evaluation run, prints a

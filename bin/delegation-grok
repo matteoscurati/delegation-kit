@@ -20,10 +20,10 @@ RUNNER_NAME="delegation-grok" PROFILE="grok-build"
 . "$ROOT/bin/lib/delegation-runner-common.sh"
 ROUTING_FILE="${DELEGATION_GROK_ROUTING_FILE:-$ROOT/config/grok-4.6-routing.json}"
 CENTRAL_GATES="${DELEGATION_ROUTING_GATES_FILE:-$ROOT/config/routing-gates.json}"
-ROUTER="$ROOT/bin/delegation-route"
-MODEL="grok-4.6"
-RUNTIME_MODEL="grok-4.6"
-USAGE_MODEL="grok-4.6-build"
+MODEL="${DELEGATION_REQUESTED_MODEL:-grok-4.6}"
+RUNTIME_MODEL="$MODEL"
+USAGE_MODEL=""
+[ "$MODEL" != grok-4.6 ] || USAGE_MODEL="grok-4.6-build"
 BACKEND="grok-build"
 EFFORTS='["high"]'
 CLI_COMPATIBILITY="capability-probed"
@@ -669,10 +669,8 @@ sandbox_attested_for_run() {
 }
 
 validate_gate_graph() {
-  [ -x "$ROUTER" ] || return 1
-  DELEGATION_ROUTING_GATES_FILE="$CENTRAL_GATES" \
-    DELEGATION_GROK_ROUTING_FILE="$ROUTING_FILE" \
-    "$ROUTER" check --json >/dev/null 2>&1
+  # Historical quality gates are informational; runtime checks below remain.
+  return 0
 }
 
 # Grok Build's sandbox denies these container runtime sockets in every profile,
@@ -761,8 +759,8 @@ runtime_status() {
   fi
   grep -Fq "You are logged in with grok.com." <<<"$models" \
     || { rm -rf -- "$status_tmp"; GROK_REASON="Grok Build is logged out; run: grok login"; return 1; }
-  grep -Eq '^[[:space:]]*\*?[[:space:]]*grok-4\.6([[:space:]]|$)' <<<"$models" \
-    || { rm -rf -- "$status_tmp"; GROK_REASON="Grok Build does not expose required model grok-4.6"; return 1; }
+  awk -v model="$RUNTIME_MODEL" '{for(i=1;i<=NF;i++) if($i==model) found=1} END {exit !found}' <<<"$models" \
+    || { rm -rf -- "$status_tmp"; GROK_REASON="Grok Build does not expose required model $RUNTIME_MODEL"; return 1; }
   inspect_isolation "$status_tmp/home" "$status_tmp/inspect.json" \
     || { rm -rf -- "$status_tmp"; return 1; }
   rm -rf -- "$status_tmp"
@@ -776,13 +774,11 @@ gate_status() {
 }
 
 is_allowed() {
-  local lane="$1" allow_provisional="$2" status
-  status="$(gate_status "$lane")"
-  [ "$status" = qualified ] || { [ "$status" = provisional ] && [ "$allow_provisional" = 1 ]; }
+  case "$1" in builder|frontend-builder|policy-annotation) return 0 ;; *) return 1 ;; esac
 }
 
 default_effort() {
-  jq -r '.profiles["grok-build"].effort // empty' "$CENTRAL_GATES" 2>/dev/null
+  printf '%s\n' "${DELEGATION_PROFILE_EFFORT:-high}"
 }
 
 print_check() {
@@ -864,6 +860,7 @@ extract_result() {
     ($r.usage.reasoning_tokens // 0) as $reasoning |
     {model:$model,requested_model:$model,runtime_model:$runtime_model,
      effective_content_model:(if (($r.model | type) == "string" and ($r.model | length) > 0) then $r.model else null end),
+     schema_version:3,provider_reported_model:($r.model // null),model_identity_source:(if ($r.model // "") == "" then "requested-only" else "provider-reported" end),
      exact_model_identity_attested:(($r.model // null) == $runtime_model),
      usage_model:$usage_model,
      target_usage_participant_present:(($usage[$usage_model] | type) == "object"),
@@ -943,7 +940,7 @@ run_command() {
       --metrics) metrics="${2:-}"; shift 2 ;;
       --debug-dir) debug_dir="${2:-}"; shift 2 ;;
       --oauth) oauth_mode="${2:-}"; shift 2 ;;
-      --allow-provisional) allow_provisional=1; shift ;;
+      --allow-provisional) printf "%s\n" "--allow-provisional is deprecated and has no effect" >&2; shift ;;
       --evaluation) evaluation=1; shift ;;
       --evaluation-manifest) evaluation_manifest_path="${2:-}"; shift 2 ;;
       --preflight-only) preflight_only=1; shift ;;
@@ -969,19 +966,14 @@ run_command() {
   [ -r "$ROUTING_FILE" ] || die 69 "routing file missing: $ROUTING_FILE"
   jq -e . "$ROUTING_FILE" >/dev/null 2>&1 || die 69 "routing file is invalid JSON"
   validate_gate_graph || die 78 "central and executable routing gates are missing, invalid, or inconsistent"
-  if [ "$evaluation" = 0 ]; then is_allowed "$lane" "$allow_provisional" || {
-    status="$(gate_status "$lane")"
-    if [ "$status" != provisional ]; then
-      die 78 "lane '$lane' has non-dispatchable status '$status'"
-    else
-      die 78 "lane '$lane' is provisional; pass --allow-provisional after an explicit routing decision"
-    fi
-  }; else
+  if [ "$evaluation" = 0 ]; then
+    is_allowed "$lane" "$allow_provisional" || die 78 "unsupported lane"
+  else
     [ "$lane" = policy-annotation ] || die 78 "--evaluation permits policy-annotation candidate only"
     [ "$(gate_status "$lane")" = candidate ] || die 78 "policy-annotation is not a candidate in the central gate"
   fi
   [ "$effort" != auto ] || effort="$(default_effort)"
-  [ "$effort" = high ] || die 78 "lane '$lane' is qualified only at effort 'high'"
+  [ "$effort" = high ] || die 78 "lane '$lane' supports only effort 'high'"
   RUN_TMP="$(mktemp -d "${TMPDIR:-/tmp}/delegation-grok.XXXXXX")"
   cp -- "$prompt_file" "$RUN_TMP/prompt.txt" \
     || die 70 "could not snapshot prompt into runner-owned storage"
@@ -1153,7 +1145,7 @@ run_command() {
   # but a separately surfaced mismatch is a known silent substitution and fails
   # every lane closed.
   if jq -e '.model | type == "string" and length > 0' "$response" >/dev/null 2>&1 &&
-     ! jq -e --arg runtime_model "$RUNTIME_MODEL" '.model == $runtime_model' "$response" >/dev/null 2>&1; then
+     ! jq -e --arg runtime_model "$RUNTIME_MODEL" --argjson aliases "${DELEGATION_MODEL_ALIASES:-[]}" '.model as $m | $m == $runtime_model or ($aliases | index($m) != null)' "$response" >/dev/null 2>&1; then
     preserve_debug "$debug_dir" "$response" "$stderr_file"
     write_diagnostic "$diagnostic" "identity" "provider_identity_mismatch" 0 "$started" "$response" "$stderr_file" "$DEBUG_PATH"
     die 70 "Grok Build surfaced a different effective content model; sanitized diagnostic: $diagnostic"

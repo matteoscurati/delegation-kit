@@ -785,7 +785,7 @@ PATH="$TEST_TMP/bin:$PATH" ZAI_API_KEY=fixture-key FAKE_CLAUDE_CASE=success \
     --allow-provisional --evaluation-manifest "$LANE_SCOUT_MANIFEST" \
     --prompt-file "$TEST_TMP/prompt" --output "$TEST_TMP/results/eval-provisional.out" \
     --workdir "$LANE_SCOUT_WORK" >/dev/null 2>&1 || rc=$?
-[ "$rc" -eq 64 ] || fail "evaluation plus provisional returned $rc, expected 64"
+[ "$rc" -eq 78 ] || fail "stale evaluation worktree binding returned $rc, expected 78"
 
 mv "$TEST_TMP/bin/claude" "$TEST_TMP/bin/claude-native"
 mv "$TEST_TMP/bin/claude-shell" "$TEST_TMP/bin/claude"

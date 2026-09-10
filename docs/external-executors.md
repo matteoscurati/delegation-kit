@@ -1,6 +1,6 @@
 # The common external-executor contract
 
-Six external executor families are reachable from this kit — GLM, Kimi, Grok,
+The six historical native/provider executor declarations are retained by this kit — GLM, Kimi, Grok,
 Qwen, DeepSeek, and Gemini. Each has its own runner, its own transport, its own
 sandbox, and its own reasons for refusing. That is deliberate, and this page does
 not change it.
@@ -8,7 +8,11 @@ not change it.
 What was missing was a **shared vocabulary**: the same words for the same things
 across six runners, so drift is detectable instead of invisible.
 [`config/external-executor-contract.json`](../config/external-executor-contract.json)
-is that vocabulary, and `delegation-executor-contract` validates it.
+is that historical vocabulary, and `delegation-executor-contract` validates it.
+For current configuration, the new custom adapter and review policy, see
+[user configuration](user-configuration.md). The historical contract describes
+its pinned evaluation variants; custom profiles use the versioned routing and
+run receipts. Permission and patch verification requirements below still apply.
 
 ## The boundary, stated once
 
@@ -25,7 +29,7 @@ is that vocabulary, and `delegation-executor-contract` validates it.
   is created by an entry in this file. If the contract and a runner disagree,
   the runner wins at runtime and the disagreement is a validation failure to be
   fixed in the contract — never a reason to widen a runner.
-- **There is no universal dispatch layer, and none is planned here.** No runner
+- **`delegation-run` forwards a selected user profile to its adapter.** No runner
   reads the contract; the regression suite asserts that. The contract is
   inspected by people and by CI, not by dispatch code.
 
@@ -134,8 +138,8 @@ asserts that stripping it from every external gate changes no route decision.
 | `kimi-k3` | `delegation-kimi` | native Kimi Code CLI | `builder`, `frontend-builder` → `worktree-edit` |
 | `grok-4.6` | `delegation-grok` | Grok Build CLI | `builder`, `frontend-builder` → `worktree-edit` |
 | `qwen3.8-max` | `delegation-qwen` | chat-completions | `builder` → `text-patch` |
-| `deepseek-v4-pro` | `delegation-deepseek` | chat-completions | `builder` → `text-patch` |
-| `gemini-3.7-flash` | `delegation-gemini` | Antigravity, prompt-only | `builder`, `frontend-builder` → `text-patch` |
+| `deepseek-flash` | `delegation-deepseek` | chat-completions | `builder` → `text-patch` |
+| `gemini-3.8-flash` | `delegation-gemini` | Antigravity, prompt-only | `builder`, `frontend-builder` → `text-patch` |
 
 Every other declared lane is `read-only`, and every judgement, reviewer, and
 policy-annotation lane is non-dispatchable. Blocked and candidate lanes are
@@ -312,7 +316,7 @@ Every `text-patch` lane declares the same block, and nothing else may:
 block, on a block attached to a lane that returns no patch, and on a policy file
 that has drifted open — deletions allowed by default, mode changes permitted,
 `--unsafe-paths` no longer refused, a denied-path class removed. The four
-governed lanes today are `qwen3.8-max.builder`, `deepseek-v4-pro.builder`, and
+governed lanes today are `qwen3.8-max.builder`, `deepseek-flash.builder`, and
 the two **blocked** Gemini lanes. Blocked lanes are held to the same rule on
 purpose: a declaration that is wrong while blocked becomes wrong and operational
 the day it is promoted.
@@ -340,11 +344,11 @@ Four things that are routinely conflated are kept apart:
 
 | concept | field | what it proves |
 |---|---|---|
-| requested identity | `identity.requested_model`, `requested_model` | what the gate told the runner to pin — never read from a provider response |
+| requested identity | `identity.requested_model`, `requested_model` | what the user profile requested — never read from a provider response |
 | observed / effective identity | `observed_identity_sources`, `effective_content_model` | what the provider says actually produced the content |
 | usage participation | `usage_participation`, `usage_participants` | that a model appears in the provider's own billing accounting — **not** that it wrote the content |
 | permission class | `permission_class` | what the runner is allowed to touch |
-| qualification status | `status` / `selection` | whether the lane may be dispatched at all, and how |
+| qualification status | `status` / `selection` | historical qualification evidence; not an operational execution gate |
 
 Usage participation is graded, because the transports genuinely differ:
 `first-party-model-usage` (GLM), `model-usage-participants` (Grok),

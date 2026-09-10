@@ -1,0 +1,202 @@
+{
+  "model": "deepseek-flash",
+  "status": "provisional",
+  "evaluated_at": "2026-09-10T00:00:00Z",
+  "promoted_at": "2026-09-10T00:00:00Z",
+  "source_run": "2026-09-10-deepseek-flash-max-smoke",
+  "external_evidence_file": "model-evidence.json",
+  "external_evidence_ids": [
+    "deepseek-v41-flash-launch-2026-09-10"
+  ],
+  "qualification_basis": "Explicit owner decision on 2026-09-10: re-pin from deepseek-v4-pro to deepseek-flash (DeepSeek V4.1 Flash). DeepSeek routes every deepseek-v4-pro request to V4.1 Flash after 2026-09-14 12:00 Beijing time, which would fail the runner's exact identity check; the provider reports V4.1 Flash ahead of V4 Pro on its own tests. The text-only builder route stays provisional and explicit-only; the 2026-08-17 V4 Pro smoke does not transfer and a fresh exact-tuple smoke is recorded in local_evaluation when run. The lead applies and verifies returned patches.",
+  "preferred_backends": [
+    "deepseek-api"
+  ],
+  "qualified_lanes": [],
+  "provisional_lanes": [
+    "builder"
+  ],
+  "lanes": {
+    "builder": {
+      "default_effort": "max",
+      "preferred_backends": [
+        "deepseek-api"
+      ],
+      "backends": {
+        "deepseek-api": {
+          "qualified": false,
+          "status": "provisional",
+          "selection": "explicit-only",
+          "effort": "max",
+          "runtime_model": "deepseek-flash",
+          "runtime_controls": {
+            "transport": "chat-completions",
+            "permission_mode": null,
+            "worktree_edits": false,
+            "worktree_access": "none",
+            "write_scope": "none",
+            "terminal": "denied",
+            "network": "denied",
+            "mcp": "denied",
+            "plugins": "denied",
+            "subagents": "denied",
+            "tools": []
+          },
+          "local_evaluation": {
+            "run_id": "2026-09-10-deepseek-flash-max-smoke",
+            "outcome": "passed-exact-api-identity-smoke",
+            "task_count": 1,
+            "repeats": 1,
+            "confidence": "low",
+            "limitations": "One deterministic PONG probe on the builder lane verified exact API model identity (response model deepseek-flash), reasoning_effort=max acceptance with 13 reasoning tokens reported, and a valid text response in about one second. It is not a held-out repeated implementation pack. The runner is text-only and cannot edit a worktree."
+          }
+        }
+      }
+    },
+    "clerk": {
+      "default_effort": "max",
+      "backends": {
+        "deepseek-api": {
+          "qualified": false,
+          "status": "candidate",
+          "selection": "blocked",
+          "effort": "max",
+          "runtime_controls": {
+            "transport": "chat-completions",
+            "permission_mode": null,
+            "worktree_edits": false,
+            "worktree_access": "none",
+            "write_scope": "none",
+            "terminal": "denied",
+            "network": "denied",
+            "mcp": "denied",
+            "plugins": "denied",
+            "subagents": "denied",
+            "tools": []
+          }
+        }
+      }
+    },
+    "scout": {
+      "default_effort": "max",
+      "backends": {
+        "deepseek-api": {
+          "qualified": false,
+          "status": "candidate",
+          "selection": "blocked",
+          "effort": "max",
+          "runtime_controls": {
+            "transport": "chat-completions",
+            "permission_mode": null,
+            "worktree_edits": false,
+            "worktree_access": "none",
+            "write_scope": "none",
+            "terminal": "denied",
+            "network": "denied",
+            "mcp": "denied",
+            "plugins": "denied",
+            "subagents": "denied",
+            "tools": []
+          }
+        }
+      }
+    },
+    "reviewer": {
+      "default_effort": "max",
+      "backends": {
+        "deepseek-api": {
+          "qualified": false,
+          "status": "candidate",
+          "selection": "blocked",
+          "effort": "max",
+          "runtime_controls": {
+            "transport": "chat-completions",
+            "permission_mode": null,
+            "worktree_edits": false,
+            "worktree_access": "none",
+            "write_scope": "none",
+            "terminal": "denied",
+            "network": "denied",
+            "mcp": "denied",
+            "plugins": "denied",
+            "subagents": "denied",
+            "tools": []
+          }
+        }
+      }
+    },
+    "senior": {
+      "default_effort": "max",
+      "backends": {
+        "deepseek-api": {
+          "qualified": false,
+          "status": "candidate",
+          "selection": "blocked",
+          "effort": "max",
+          "runtime_controls": {
+            "transport": "chat-completions",
+            "permission_mode": null,
+            "worktree_edits": false,
+            "worktree_access": "none",
+            "write_scope": "none",
+            "terminal": "denied",
+            "network": "denied",
+            "mcp": "denied",
+            "plugins": "denied",
+            "subagents": "denied",
+            "tools": []
+          }
+        }
+      }
+    },
+    "judgement": {
+      "default_effort": "max",
+      "backends": {
+        "deepseek-api": {
+          "qualified": false,
+          "status": "disabled",
+          "selection": "blocked",
+          "effort": "max",
+          "runtime_controls": {
+            "transport": "chat-completions",
+            "permission_mode": null,
+            "worktree_edits": false,
+            "worktree_access": "none",
+            "write_scope": "none",
+            "terminal": "denied",
+            "network": "denied",
+            "mcp": "denied",
+            "plugins": "denied",
+            "subagents": "denied",
+            "tools": []
+          }
+        }
+      }
+    },
+    "policy-annotation": {
+      "default_effort": "max",
+      "backends": {
+        "deepseek-api": {
+          "qualified": false,
+          "status": "candidate",
+          "selection": "blocked",
+          "effort": "max",
+          "evaluation_manifest_sha256": [],
+          "runtime_controls": {
+            "transport": "chat-completions",
+            "permission_mode": null,
+            "worktree_edits": false,
+            "worktree_access": "none",
+            "write_scope": "none",
+            "terminal": "denied",
+            "network": "denied",
+            "mcp": "denied",
+            "plugins": "denied",
+            "subagents": "denied",
+            "tools": []
+          }
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,311 @@
+#!/usr/bin/env python3
+"""Dispatch one selected profile once. Reviews are separate explicit dispatches."""
+
+import argparse
+import json
+import os
+import subprocess
+import sys
+import tempfile
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent / "lib"))
+from delegation_config import (
+    load,
+    row,
+    ADAPTERS,
+    ROOT,
+    atomic,
+    review_state,
+    REVIEW_ROLES,
+)
+
+p = argparse.ArgumentParser()
+p.add_argument("--profile", required=True)
+p.add_argument("--lane", required=True)
+p.add_argument("--prompt-file", required=True)
+p.add_argument("--output", required=True)
+p.add_argument("--workdir", required=True)
+p.add_argument("--metrics")
+p.add_argument("--allow-provisional", action="store_true")
+p.add_argument("--reviewer-profile")
+p.add_argument("--review-authorized", action="store_true")
+a = p.parse_args()
+os.umask(0o077)
+if a.allow_provisional:
+    print("--allow-provisional is deprecated and has no effect", file=sys.stderr)
+try:
+    c = load()
+    profile = c["profiles"][a.profile]
+    if (
+        a.lane not in profile["roles"]
+        or not row(a.profile, profile, a.lane, c)["technical_compatibility"]
+    ):
+        raise ValueError("unsupported role")
+    reviewer = c["profiles"].get(a.reviewer_profile) if a.reviewer_profile else None
+    if a.reviewer_profile and (
+        reviewer is None
+        or not any(
+            r in REVIEW_ROLES
+            and row(a.reviewer_profile, reviewer, r, c)["technical_compatibility"]
+            for r in reviewer["roles"]
+        )
+    ):
+        reviewer = None
+    # Capture policy before dispatch. A supplied reviewer never initiates another call.
+    review = review_state(c["review_policy"], profile, reviewer, a.review_authorized)
+    workdir = Path(a.workdir).resolve(strict=True)
+    prompt = Path(a.prompt_file).resolve(strict=True)
+    if not workdir.is_dir() or not prompt.is_file():
+        raise ValueError("invalid input paths")
+    output = Path(a.output).absolute()
+    metrics = Path(a.metrics or str(output) + ".metrics.json").absolute()
+    destinations = [
+        output,
+        metrics,
+        Path(str(output) + ".error.json"),
+        Path(str(output) + ".result.json"),
+    ]
+    normalized = []
+    for path in destinations:
+        resolved = path.parent.resolve(strict=True) / path.name
+        if (
+            path.exists()
+            or path.is_symlink()
+            or resolved == workdir
+            or workdir in resolved.parents
+            or resolved in normalized
+        ):
+            raise ValueError("output paths must be new, distinct and outside workdir")
+        normalized.append(resolved)
+    adapter = profile["adapter"]
+    params = profile.get("parameters", {})
+    env = os.environ.copy()
+    # Do not inherit stale adapter settings from another profile dispatch.
+    for key in [
+        "DELEGATION_REQUESTED_MODEL",
+        "DELEGATION_PROFILE_EFFORT",
+        "DELEGATION_MODEL_ALIASES",
+        "DELEGATION_MAX_TOKENS",
+        "DELEGATION_TIMEOUT",
+        "DELEGATION_API_URL",
+        "DELEGATION_CREDENTIAL_ENV",
+        "DELEGATION_AUTH_OPTIONAL",
+    ]:
+        env.pop(key, None)
+    model = profile["model"]
+    if adapter == "kimi-code-cli" and model == "kimi-k3":
+        model = "kimi-code/k3"
+    env["DELEGATION_REQUESTED_MODEL"] = model
+    env["DELEGATION_MODEL_ALIASES"] = json.dumps(profile.get("aliases", []))
+    for key, var in [
+        ("effort", "DELEGATION_PROFILE_EFFORT"),
+        ("max_tokens", "DELEGATION_MAX_TOKENS"),
+        ("timeout", "DELEGATION_TIMEOUT"),
+    ]:
+        if key in params:
+            env[var] = str(params[key])
+    if "credential_env" in profile:
+        key = env.get(profile["credential_env"])
+        if not key:
+            atomic(
+                str(output) + ".error.json",
+                {
+                    "schema_version": 2,
+                    "reason": "missing_credentials",
+                    "provider_attempts": 0,
+                },
+            )
+            sys.exit(69)
+        target = {
+            "deepseek-api": "DEEPSEEK_API_KEY",
+            "token-plan-openai": "QWEN_TOKEN_PLAN_API_KEY",
+            "claude-zai": "ANTHROPIC_AUTH_TOKEN",
+        }.get(adapter, profile["credential_env"])
+        env[target] = key
+    if adapter == "openai-compatible":
+        env["DELEGATION_API_URL"] = (
+            profile["base_url"].rstrip("/") + "/chat/completions"
+        )
+        env["DELEGATION_CREDENTIAL_ENV"] = profile.get(
+            "credential_env", "DELEGATION_LOCAL_UNUSED_KEY"
+        )
+        env["DELEGATION_AUTH_OPTIONAL"] = "0" if "credential_env" in profile else "1"
+        if "credential_env" not in profile:
+            env.pop("DELEGATION_LOCAL_UNUSED_KEY", None)
+    runner = ADAPTERS[adapter][0]
+    if runner:
+        command = [
+            str(ROOT / "bin" / ("delegation-" + runner)),
+            "run",
+            "--lane",
+            a.lane,
+            "--prompt-file",
+            str(prompt),
+            "--output",
+            str(output),
+            "--metrics",
+            str(metrics),
+            "--workdir",
+            str(workdir),
+        ]
+        if "effort" in params:
+            command += ["--effort", params["effort"]]
+        rc = subprocess.run(command, env=env).returncode
+    else:
+        # Native CLI adapters use their own execution engines. The common entry
+        # is deliberately read-only; native builder profiles remain available
+        # in their host integration with their original sandbox configuration.
+        with tempfile.TemporaryDirectory(prefix="delegation-native-") as tmp:
+            if adapter == "codex":
+                command = [
+                    "codex",
+                    "exec",
+                    "--model",
+                    model,
+                    "--sandbox",
+                    "read-only",
+                    "--skip-git-repo-check",
+                    "--json",
+                    "--output-last-message",
+                    str(Path(tmp) / "answer"),
+                    "-c",
+                    "mcp_servers={}",
+                    "-c",
+                    "features.multi_agent=false",
+                    "-c",
+                    "model_reasoning_effort="
+                    + json.dumps(params.get("effort", "high")),
+                    "-",
+                ]
+            else:
+                command = [
+                    "claude",
+                    "-p",
+                    "--model",
+                    model,
+                    "--effort",
+                    params.get("effort", "high"),
+                    "--output-format",
+                    "json",
+                    "--tools",
+                    "",
+                    "--strict-mcp-config",
+                    "--mcp-config",
+                    '{"mcpServers":{}}',
+                    "--disable-slash-commands",
+                    "--no-session-persistence",
+                    "--setting-sources",
+                    "",
+                    "--settings",
+                    '{"disableAllHooks":true}',
+                ]
+            proc = subprocess.run(
+                command,
+                input=prompt.read_text(),
+                text=True,
+                capture_output=True,
+                cwd=tmp,
+                env=env,
+            )
+            rc = proc.returncode
+            reported = None
+            if rc == 0:
+                if adapter == "codex":
+                    answer = (Path(tmp) / "answer").read_text()
+                    events = [
+                        json.loads(line)
+                        for line in proc.stdout.splitlines()
+                        if line.strip()
+                    ]
+                    identities = []
+                    for event in events:
+                        for value in [
+                            event.get("model"),
+                            event.get("response", {}).get("model"),
+                        ]:
+                            if value is not None:
+                                identities.append(value)
+                    for identity in identities:
+                        if identity != model and identity not in profile.get(
+                            "aliases", []
+                        ):
+                            atomic(
+                                str(output) + ".error.json",
+                                {
+                                    "schema_version": 2,
+                                    "reason": "provider_identity_mismatch",
+                                },
+                            )
+                            sys.exit(70)
+                    reported = identities[-1] if identities else None
+                else:
+                    response = json.loads(proc.stdout)
+                    if response.get("is_error"):
+                        raise ValueError("native response failed")
+                    reported = response.get("model")
+                    answer = response.get("result")
+                if (
+                    reported
+                    and reported != model
+                    and reported not in profile.get("aliases", [])
+                ):
+                    atomic(
+                        str(output) + ".error.json",
+                        {"schema_version": 2, "reason": "provider_identity_mismatch"},
+                    )
+                    sys.exit(70)
+                if not isinstance(answer, str) or not answer.strip():
+                    raise ValueError("empty native response")
+                with output.open("x") as f:
+                    f.write(answer)
+                os.chmod(output, 0o600)
+                atomic(
+                    metrics,
+                    {
+                        "schema_version": 2,
+                        "requested_model": model,
+                        "provider_reported_model": reported,
+                        "model_identity_source": "provider-reported"
+                        if reported
+                        else "requested-only",
+                        "capabilities": ["read-only", "text-patch"],
+                    },
+                )
+            else:
+                atomic(
+                    str(output) + ".error.json",
+                    {
+                        "schema_version": 2,
+                        "reason": "native_dispatch_failed",
+                        "exit_code": rc,
+                    },
+                )
+    if rc:
+        sys.exit(rc)
+    identity_metrics = json.loads(metrics.read_text())
+    receipt = {
+        "model_identity_source": identity_metrics.get(
+            "model_identity_source", "requested-only"
+        ),
+        "provider_reported_model": identity_metrics.get("provider_reported_model"),
+        "schema_version": 2,
+        "profile": a.profile,
+        "requested_model": profile["model"],
+        "dispatch_status": "succeeded",
+        "review_policy": c["review_policy"],
+        "review_status": review,
+        "status": "ready-for-integration"
+        if review == "not-required"
+        else "pending-review",
+        "automatic_review": False,
+        "verification_owner": "integrating-lead",
+    }
+    atomic(str(output) + ".result.json", receipt)
+    print(json.dumps(receipt, indent=2))
+except (OSError, ValueError, KeyError, TypeError):
+    print(
+        "delegation-run: invalid configuration, paths, unavailable executable or malformed native response",
+        file=sys.stderr,
+    )
+    sys.exit(65)

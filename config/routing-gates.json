@@ -28,8 +28,8 @@
     "claude-fable-5-1": "anthropic",
     "claude-opus-5": "anthropic",
     "claude-sonnet-5": "anthropic",
-    "deepseek-v4-pro": "deepseek",
-    "gemini-3.7-flash": "google",
+    "deepseek-flash": "deepseek",
+    "gemini-3.8-flash": "google",
     "glm-5.3-flash": "zai",
     "gpt-5.6-luna": "openai",
     "gpt-5.6-sol": "openai",
@@ -597,8 +597,8 @@
         }
       }
     },
-    "gemini-3.7-flash-scout": {
-      "model": "gemini-3.7-flash",
+    "gemini-3.8-flash-scout": {
+      "model": "gemini-3.8-flash",
       "harness": "agy",
       "effort": "medium",
       "lanes": {
@@ -607,14 +607,14 @@
           "selection": "blocked",
           "exact_evidence_ids": [],
           "context_evidence_ids": [
-            "google-gemini-3.7-flash-launch-2026-08-17"
+            "google-gemini-3.8-flash-launch-2026-09-02"
           ],
-          "evidence_gap": "The official launch confirms Gemini 3.7 Flash and medium thinking, but the current local Antigravity session cannot attest exact model inventory or OAuth. The previous Gemini 3.6 smoke does not transfer."
+          "evidence_gap": "The official launch confirms Gemini 3.8 Flash and medium thinking, but the current local Antigravity session cannot attest exact model inventory or OAuth. The previous Gemini 3.6 smoke does not transfer."
         }
       }
     },
-    "gemini-3.7-flash-builder": {
-      "model": "gemini-3.7-flash",
+    "gemini-3.8-flash-builder": {
+      "model": "gemini-3.8-flash",
       "harness": "agy",
       "effort": "high",
       "lanes": {
@@ -623,14 +623,14 @@
           "selection": "blocked",
           "exact_evidence_ids": [],
           "context_evidence_ids": [
-            "google-gemini-3.7-flash-launch-2026-08-17"
+            "google-gemini-3.8-flash-launch-2026-09-02"
           ],
           "evidence_gap": "Google reports strong DeepSWE and FrontierCode results, but they do not attest the prompt-only agy/high route and no local scoped-edit evaluation exists."
         }
       }
     },
-    "gemini-3.7-flash-frontend-builder": {
-      "model": "gemini-3.7-flash",
+    "gemini-3.8-flash-frontend-builder": {
+      "model": "gemini-3.8-flash",
       "harness": "agy",
       "effort": "high",
       "lanes": {
@@ -639,14 +639,14 @@
           "selection": "blocked",
           "exact_evidence_ids": [],
           "context_evidence_ids": [
-            "google-gemini-3.7-flash-launch-2026-08-17"
+            "google-gemini-3.8-flash-launch-2026-09-02"
           ],
           "evidence_gap": "Google reports WebDev Elo 1588, but the harness differs and no frontend-specific local agy/high evaluation exists."
         }
       }
     },
-    "gemini-3.7-flash-reviewer": {
-      "model": "gemini-3.7-flash",
+    "gemini-3.8-flash-reviewer": {
+      "model": "gemini-3.8-flash",
       "harness": "agy",
       "effort": "high",
       "lanes": {
@@ -659,8 +659,8 @@
         }
       }
     },
-    "gemini-3.7-flash-judgement": {
-      "model": "gemini-3.7-flash",
+    "gemini-3.8-flash-judgement": {
+      "model": "gemini-3.8-flash",
       "harness": "agy",
       "effort": "high",
       "lanes": {
@@ -812,8 +812,8 @@
         }
       }
     },
-    "deepseek-v4-pro": {
-      "model": "deepseek-v4-pro",
+    "deepseek-flash": {
+      "model": "deepseek-flash",
       "harness": "deepseek-api",
       "effort": "max",
       "lanes": {
@@ -822,17 +822,17 @@
           "selection": "explicit-only",
           "exact_evidence_ids": [],
           "context_evidence_ids": [
-            "deepseek-v4-pro-launch-2026-08-17"
+            "deepseek-v41-flash-launch-2026-09-10"
           ],
           "local_evaluation": {
-            "run_id": "2026-08-17-deepseek-v4-pro-max-smoke",
+            "run_id": "2026-09-10-deepseek-flash-max-smoke",
             "task_count": 1,
             "repeats": 1,
             "confidence": "low",
-            "limitations": "One deterministic off-by-one diagnosis and patch task verified exact API model identity, reasoning_effort=max, valid structured output, and the expected result. This was not a held-out repeated implementation pack. The runner is text-only and cannot edit a worktree."
+            "limitations": "One deterministic PONG probe on the builder lane verified exact API model identity (response model deepseek-flash), reasoning_effort=max acceptance with 13 reasoning tokens reported, and a valid text response in about one second. It is not a held-out repeated implementation pack. The runner is text-only and cannot edit a worktree."
           },
-          "qualification_basis": "Explicit owner decision on 2026-08-17. The live exact-tuple smoke permits a provisional text-only builder route, but does not qualify it. Dispatch requires --allow-provisional and the lead applies and verifies returned patches.",
-          "evidence_gap": "The provider reports Terminal-Bench 2.0 for a different harness, no DeepSWE row exists, and WebDev only supports frontend work."
+          "qualification_basis": "Explicit owner decision on 2026-09-10: re-pin from deepseek-v4-pro to deepseek-flash (DeepSeek V4.1 Flash). DeepSeek routes every deepseek-v4-pro request to V4.1 Flash after 2026-09-14 12:00 Beijing time, which would fail the runner's exact identity check; the provider reports V4.1 Flash ahead of V4 Pro on its own tests. The text-only builder route stays provisional and explicit-only; the 2026-08-17 V4 Pro smoke does not transfer and a fresh exact-tuple smoke is recorded in local_evaluation when run. The lead applies and verifies returned patches.",
+          "evidence_gap": "Provider-reported DeepSWE v1.1 74.2 uses DeepSeek's own harness; no Artificial Analysis or Epoch exact row exists for deepseek-flash yet, and the local smoke is a single deterministic task, not a held-out pack."
         },
         "clerk": {
           "status": "candidate",

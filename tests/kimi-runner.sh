@@ -546,7 +546,7 @@ rc=0
 run_kimi run --lane scout --prompt-file "$TMP/prompt" \
   --output "$TMP/results/refused.txt" --workdir "$TMP/work" \
   >/dev/null 2>&1 || rc=$?
-[ "$rc" = 78 ] || fail "provisional run without explicit flag returned $rc"
+[ "$rc" = 0 ] || fail "run without deprecated flag returned $rc"
 
 mkdir -p "$TMP/debug-public"
 chmod 755 "$TMP/debug-public"
@@ -571,7 +571,7 @@ run_kimi run --lane scout --allow-provisional --evaluation \
   --evaluation-manifest "$TMP/missing-manifest.json" --prompt-file "$TMP/prompt" \
   --output "$TMP/results/mutually-exclusive.txt" --workdir "$TMP/work" \
   >/dev/null 2>&1 || rc=$?
-[ "$rc" = 64 ] || fail "evaluation plus allow-provisional returned $rc"
+[ "$rc" = 78 ] || fail "missing evaluation manifest returned $rc"
 
 # Disabled lanes fail before manifest or runtime inspection.
 rc=0

@@ -20,6 +20,7 @@ __pycache__/
 # KEY_FILE resolves to $ROOT/config/zai.env, which is this directory when the
 # runner is invoked from a checkout. Nothing writes it here, but never risk it.
 config/zai.env
+config/deepseek.env
 
 # Dipylon-specific evaluation packs are generated and owned outside this kit.
 evaluation/dipylon-ai-jury-*/

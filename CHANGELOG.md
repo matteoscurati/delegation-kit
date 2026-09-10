@@ -2,6 +2,83 @@
 
 All notable changes to delegation-kit are documented here.
 
+## [0.24.0] — 2026-09-10
+
+### Added
+
+- **Personal configuration.** `delegation-config init|validate|show|apply`
+  manages `${XDG_CONFIG_HOME:-$HOME/.config}/delegation-kit/config.json`
+  (schema 1, `DELEGATION_CONFIG_FILE` override): profiles carry an adapter, the
+  actual requested model, a declared family, roles, and supported parameters.
+  Credentials are never stored in profiles; `credential_env` names a variable
+  for the three HTTP adapters. `init` derives a preset from the historical
+  gates, snapshots a legacy install as `migration-v1-backup`, and never
+  overwrites an existing file; `apply` regenerates managed Claude/Codex
+  snippets and preserves edited ones. `install.sh` runs `init` and `apply` and
+  keeps hand-edited host profiles.
+- **`delegation-run`.** One dispatcher runs a selected profile once through its
+  adapter and writes output, metrics, and a version 2 `.result.json` receipt
+  with `review_status`, requested versus provider-reported identity, and
+  `authorization_granted: false`. Native `codex` and `claude-code` profiles run
+  read-only through the CLIs; provider runners keep their own sandboxes.
+- **`delegation-openai-compatible`.** A text-only adapter for any OpenAI-
+  compatible `/chat/completions` endpoint on the shared chat-completions core:
+  HTTPS required except loopback, one non-streaming request, optional bearer
+  auth, no `/models` call, no tools, no retry.
+- `docs/user-configuration.md` and the `user-config` regression suite
+  (loopback HTTP, isolated configuration, no provider accounts).
+
+### Changed
+
+- **Review is optional by default**, for new and migrated installs.
+  `required` accepts any compatible reviewer, `cross-family` requires two
+  declared, different families. A mandatory policy never authorizes the
+  reviewer call: results stay `pending-review` until the lead obtains it.
+  `init --preset strict` selects `cross-family`.
+- **The router reads the personal configuration** and reports schema 2:
+  `configuration_valid`, `technical_compatibility`, `capabilities`, and the
+  historical `evidence` per row; `check`, `lane`, `profile`, `resolve`, and
+  `table` stay read-only; a compound lane returns its members and protocol
+  and requires separate member selections.
+- **Evidence and gates are advisory.** `config/routing-gates.json`, the
+  executable gates, the executor contract, `delegation-evidence`, and
+  `evaluation/` keep their historical meaning and validation, but no longer
+  grant or block execution; adapters own capabilities, roles, and efforts.
+  `--allow-provisional` is accepted as a deprecated no-op everywhere.
+- **DeepSeek re-pinned to `deepseek-flash` (DeepSeek V4.1 Flash, released
+  2026-09-10).** DeepSeek routes every `deepseek-v4-pro` request to V4.1 Flash
+  after 2026-09-14 12:00 Beijing time, which would have failed the runner's
+  exact identity check on every dispatch. Profile, executable gate
+  (`config/deepseek-flash-routing.json`, the V4 Pro gate is removed on
+  upgrade), contract family, runner default, doctor, installer, tests, and
+  docs follow. One live exact-identity smoke at `max` passed on 2026-09-10; the
+  builder lane stays provisional and explicit-only in the historical record.
+- **Gemini re-pinned to `gemini-3.8-flash`** on the staged bridge (gate
+  `config/gemini-3.8-flash-routing.json`, the 3.7 gate is removed on upgrade),
+  every lane still candidate or disabled; Gemini is excluded from the current
+  presets by owner decision and existing personal choices are preserved.
+- Doctor gains a "Personal configuration" section (configuration valid,
+  review policy, managed snippets, the new commands on PATH, the builder lane
+  resolving selectable profiles) and describes the runners by their adapter
+  defaults instead of pinned qualification.
+- Reviewer profiles on both hosts apply the configured review policy instead
+  of hard-coded cross-family exclusion; the resident guards describe the three
+  policies.
+
+### Removed
+
+- The routing-gate drift suite (central gate versus executable gates,
+  producer-family exclusion, fallback). With execution no longer gated by
+  evidence, those checks guarded a decision the kit no longer takes;
+  `delegation-executor-contract check` and `delegation-evidence check` still
+  validate the historical records for consistency.
+
+### Fixed
+
+- The Antigravity inventory parser matches exact ids in tab-separated
+  ID/display-name rows.
+- `config/deepseek.env` is gitignored like the other key files.
+
 ## [0.23.1] — 2026-09-07
 
 ### Fixed

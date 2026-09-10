@@ -3,48 +3,37 @@ name: deepseek-executor
 description: Use only when the current user explicitly selects the DeepSeek text-patch builder or asks to inspect DeepSeek choices. Never dispatch DeepSeek automatically.
 ---
 
-# DeepSeek V4 Pro executor
+# deepseek-executor
 
-## User direction is required
+## User direction and selection
 
-This skill grants no standing permission to call another model. The current user
-must select the exact lane/profile, or explicitly authorize the lead to choose
-from `delegation-route resolve` choices. Authorization is per dispatch and does
-not silently carry to retries, reviewers, advisors, or additional workers.
+This skill grants no permission to dispatch. The current user must select the
+profile and task, or explicitly authorize the lead to choose from displayed
+choices. Authorization is per dispatch; retries, fallbacks, review and further
+workers require their own explicit authorization. No automatic substitution.
 
+Use `delegation-route resolve --lane LANE --json` to inspect `.choices`, then
+`--selected-profile PROFILE` to validate the user's selection without dispatch.
+Profiles come from `${XDG_CONFIG_HOME:-$HOME/.config}/delegation-kit/config.json`
+or `DELEGATION_CONFIG_FILE`, never automatically from the project repository.
+Evidence is advisory; missing or unfavorable benchmarks do not veto a choice.
 
-Use this skill only after an explicit decision to select the provisional
-`builder` lane. The runner is pinned to `deepseek-v4-pro` through the official
-OpenAI-compatible API with `reasoning_effort=max`; it has no provider, model, or
-effort fallback.
+Dispatch the chosen profile once using `delegation-run --profile PROFILE
+--lane LANE --prompt-file FILE --output FILE --workdir DIR`. Output and receipt
+paths must be new and outside the worktree. `--allow-provisional` is deprecated
+and unnecessary. Use provider-specific commands for their diagnostic and
+controlled evaluation options; their technical restrictions still apply.
 
-Run `delegation-deepseek check --json` first. Then dispatch with:
+Review follows the configuration: `optional` by default, `required` for any
+compatible reviewer, `cross-family` for a different declared family. Required
+review never grants permission for a second call. Keep the result pending if
+authorization or a compatible reviewer is absent. The lead owns integration,
+verification, and the final response. Never claim a requested-only model as
+provider-reported, or provider-reported identity as independent certification.
 
-```sh
-delegation-deepseek run --lane builder --allow-provisional \
-  --effort auto --backend auto --prompt-file "$brief" \
-  --output "$result" --metrics "$metrics" --workdir "$repo"
-```
+## Text output boundary
 
-The lane is text-only. It cannot inspect or edit the worktree and has no tools
-or terminal, so the brief must contain every relevant file excerpt and require
-a complete patch. For a unified diff, explicitly require `--- a/<path>` and
-`+++ b/<path>` headers. The lead applies the patch, reviews it, and runs all
-verification; successful provider output is never proof that the change works.
-
-This route is provisional because one live deterministic patch smoke proved
-only exact provider identity, `max` effort acceptance, structured output, and a
-correct off-by-one fix. It was not a held-out repeated builder pack. The
-provider's Terminal-Bench result uses another harness, and no DeepSWE row exists
-for this exact route.
-
-`clerk`, `scout`, `reviewer`, `senior`, and `policy-annotation` remain blocked
-candidates; `judgement` is disabled. Never substitute one of them when builder
-is refused. Exit 69 means the API key/runtime is unavailable, 70 means provider
-or output validation failed, 75 means a temporary provider failure, and 78 is a
-routing refusal. Raw provider data is retained only with an explicit private
-`--debug-dir`.
-
-The API key is read from `DEEPSEEK_API_KEY` or the mode-600 key file selected by
-`DELEGATION_DEEPSEEK_KEY_FILE`. Do not copy credentials from another tool
-silently.
+The adapter cannot write directly to the worktree. Supply all context in the
+prompt. For a builder task request a unified text patch, then inspect and apply
+it with the existing `delegation-executor-contract` and
+`delegation-patch-verify` workflow. A role does not confer filesystem access.

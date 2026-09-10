@@ -348,7 +348,7 @@ rm -f -- "$TMP/grok-home/.delegation-kit-oauth.lock"
 rc=0
 run_grok run --lane builder --prompt-file "$TMP/prompt.txt" \
   --output "$TMP/results/refused.txt" --workdir "$TMP/work" >/dev/null 2>&1 || rc=$?
-[ "$rc" = 78 ] || fail "provisional run without explicit flag returned $rc"
+[ "$rc" = 0 ] || fail "run without deprecated flag returned $rc"
 
 run_grok run --lane builder --allow-provisional --prompt-file "$TMP/prompt.txt" \
   --output "$TMP/results/builder.txt" --workdir "$TMP/work"
