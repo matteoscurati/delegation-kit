@@ -58,6 +58,7 @@ runtime_status() {
   PROVIDER_REASON=""
   have curl || { PROVIDER_REASON="curl not on PATH"; return 1; }
   have jq || { PROVIDER_REASON="jq not on PATH"; return 1; }
+  [ "${AUTH_OPTIONAL:-0}" != 1 ] || return 0
   load_key
   if [ -z "${!API_KEY_VAR:-}" ]; then PROVIDER_REASON="${PROVIDER_KEY_PROBLEM:-$API_KEY_VAR is unset and $KEY_FILE holds no key}"; return 1; fi
   if declare -F provider_validate_key >/dev/null; then provider_validate_key || return 1; fi
@@ -65,9 +66,8 @@ runtime_status() {
 }
 
 validate_gate_graph() {
-  [ -x "$ROUTER" ] || return 1
-  env DELEGATION_ROUTING_GATES_FILE="$CENTRAL_GATES" "$ROUTING_FILE_ENV=$ROUTING_FILE" \
-    "$ROUTER" check --json >/dev/null 2>&1
+  # Quality archives do not control operational execution.
+  return 0
 }
 
 lane_status() { jq -r --arg profile "$PROFILE" --arg lane "$1" '.profiles[$profile].lanes[$lane].status // "disabled"' "$CENTRAL_GATES"; }
@@ -218,7 +218,7 @@ run_command() {
       --backend) backend="${2:-}"; shift 2 ;; --prompt-file) prompt_file="${2:-}"; shift 2 ;;
       --output) output="${2:-}"; shift 2 ;; --workdir) workdir="${2:-}"; shift 2 ;;
       --metrics) metrics="${2:-}"; shift 2 ;; --debug-dir) debug_dir="${2:-}"; shift 2 ;;
-      --allow-provisional) allow_provisional=1; shift ;;
+      --allow-provisional) printf "%s\n" "--allow-provisional is deprecated and has no effect" >&2; shift ;;
       --evaluation) evaluation=1; shift ;;
       --evaluation-manifest) evaluation_manifest_path="${2:-}"; shift 2 ;;
       --preflight-only) preflight_only=1; shift ;;
@@ -245,26 +245,15 @@ run_command() {
   }
   validate_gate_graph || die 78 "central and executable routing gates are missing, invalid, or inconsistent"
   backend="$BACKEND"
-  local status; status="$(lane_status "$lane")"
-  if [ "$evaluation" = 0 ]; then
-    case "$status" in
-      qualified) ;;
-      provisional)
-        [ "$allow_provisional" = 1 ] \
-          || die 78 "lane '$lane' is provisional; pass --allow-provisional after an explicit routing decision"
-        case "$(lane_selection "$lane")" in
-          explicit-only|preferred-explicit) ;;
-          *) die 78 "lane '$lane' is provisional but its selection is not explicit" ;;
-        esac
-        ;;
-      *) die 78 "lane '$lane' has non-dispatchable status '$status'" ;;
-    esac
-  else
-    [ "$status" = candidate ] || die 78 "lane '$lane' has status '$status'; --evaluation permits candidate lanes only"
+  local status=""
+  [ "$evaluation" = 0 ] || status="$(lane_status "$lane")"
+  if [ "$evaluation" = 1 ]; then
+    [ "$status" = candidate ] || die 78 "evaluation requires a candidate manifest"
   fi
-  [ "$effort" != auto ] || effort="$(lane_effort)"
-  if [ "$effort" != "$(lane_effort)" ]; then die 78 "lane '$lane' is pinned only at effort '$(lane_effort)'"; fi
-  [ "$effort" != none ] || die 64 "$MODEL requires thinking; effort 'none' is not supported"
+  [ "$effort" != auto ] || effort="${DELEGATION_PROFILE_EFFORT:-$PINNED_EFFORT}"
+  if [ "$BACKEND" != openai-compatible ] && [ "$effort" = none ]; then
+    die 64 "$MODEL requires thinking; effort none is unsupported"
+  fi
   local tmp dispatch_prompt="$prompt_file"
   tmp="$(mktemp -d "${TMPDIR:-/tmp}/$RUNNER_NAME.XXXXXX")"
   RUN_TMP="$tmp"
@@ -337,17 +326,20 @@ run_command() {
   if [ "$evaluation" = 1 ]; then
     RUN_COMMIT_TMP="$(mktemp "$output_parent/.$output_name.commit.XXXXXX")"
   fi
-  local max_tokens=4096
+  local max_tokens="${DELEGATION_MAX_TOKENS:-4096}"
   # Evaluation runs annotate whole policy documents; 4096 truncated them.
   [ "$evaluation" = 0 ] || max_tokens=16384
   provider_request_body "$dispatch_prompt" "$effort" "$max_tokens" >"$body"
   # Keep the bearer token out of the process argv. The runner-wide umask makes
   # this transient curl config mode 600, and the EXIT trap removes it.
-  printf 'header = "Authorization: Bearer %s"\nheader = "Content-Type: application/json"\n' \
-    "${!API_KEY_VAR}" >"$curl_config"
-  local max_time=600
+  printf 'header = "Content-Type: application/json"\n' >"$curl_config"
+  if [ -n "${!API_KEY_VAR:-}" ]; then
+    case "${!API_KEY_VAR}" in *$'\n'*|*$'\r'*|*'"'*|*'\'*) die 64 "invalid credential characters" ;; esac
+    printf 'header = "Authorization: Bearer %s"\n' "${!API_KEY_VAR}" >>"$curl_config"
+  fi
+  local max_time="${DELEGATION_TIMEOUT:-600}"
   [ "$evaluation" = 0 ] || max_time="$EVALUATION_TIMEOUT_SECONDS"
-  http_code="$(curl --config "$curl_config" -sS -o "$response" -w '%{http_code}' \
+  http_code="$(curl -q --config "$curl_config" -sS -o "$response" -w '%{http_code}' \
     --connect-timeout 20 --max-time "$max_time" --data-binary "@$body" "$API_URL" 2>"$stderr_file")" || curl_rc=$?
   if [ "$curl_rc" -ne 0 ]; then
     http_code=000; phase=dispatch; reason=transport_failure; final_rc=75
@@ -363,8 +355,31 @@ run_command() {
       *) phase=dispatch; reason=provider_error; final_rc=70 ;;
     esac
   fi
-  if [ "$final_rc" -eq 0 ] && ! provider_model="$(jq -er --arg model "$MODEL" '.model | select(type == "string" and . == $model)' "$response")"; then
-    phase=extract; reason=provider_identity_mismatch; final_rc=70
+  local identity_source=requested-only
+  if [ "$final_rc" -eq 0 ]; then
+    if ! jq -e 'type == "object" and (.model == null or (.model | type == "string"))' "$response" >/dev/null 2>&1; then
+      phase=extract; reason=invalid_or_empty_response; final_rc=70
+    else
+      provider_model="$(jq -r '.model // empty' "$response")"
+      if [ -n "$provider_model" ]; then
+        if [ "$provider_model" = "$MODEL" ] || jq -en --arg m "$provider_model" --argjson aliases "${DELEGATION_MODEL_ALIASES:-[]}" '$aliases | index($m) != null' >/dev/null; then
+          identity_source=provider-reported
+        else
+          phase=extract; reason=provider_identity_mismatch; final_rc=70
+        fi
+      fi
+    fi
+  fi
+  if [ "$final_rc" -eq 0 ] && [ "$(jq -r '.choices[0].finish_reason // empty' "$response")" = length ]; then
+    phase=extract; reason=output_truncated; final_rc=70
+  fi
+  if [ "$final_rc" -eq 0 ] && ! jq -e '
+    (.choices[0].message.tool_calls // [] | length == 0) and
+    (.choices[0].finish_reason == null or .choices[0].finish_reason == "stop") and
+    ([.usage.prompt_tokens?, .usage.completion_tokens?] |
+      all(.[]; . == null or (type == "number" and . >= 0)))
+  ' "$response" >/dev/null 2>&1; then
+    phase=extract; reason=invalid_or_empty_response; final_rc=70
   fi
   if [ "$final_rc" -eq 0 ] && ! jq -er \
     '.choices[0].message.content | select(type == "string" and length > 0)' \
@@ -390,7 +405,7 @@ run_command() {
   if [ "$final_rc" -eq 0 ] && declare -F provider_usage_extra >/dev/null; then
     usage_extra="$(provider_usage_extra "$response")" || usage_extra='{"reasoning":0,"cache_read":0}'
   fi
-  if [ "$final_rc" -eq 0 ] && ! jq -n --arg model "$provider_model" --arg effort "$effort" \
+  if [ "$final_rc" -eq 0 ] && ! jq -n --arg model "$provider_model" --arg requested_model "$MODEL" --arg identity_source "$identity_source" --arg effort "$effort" \
     --arg lane "$lane" --arg backend "$BACKEND" --arg billing "$BILLING" --argjson started "$started" \
     --argjson input "$(jq '.usage.prompt_tokens // 0' "$response")" \
     --argjson output_tokens "$(jq '.usage.completion_tokens // 0' "$response")" \
@@ -401,7 +416,7 @@ run_command() {
     --arg source_commit "${EVALUATION_RUNNER_SOURCE_COMMIT:-}" \
     --arg runner_sha256 "${EVALUATION_RUNNER_SHA256:-}" \
     --arg raw_output_sha256 "$raw_output_sha256" \
-    '{model:$model,backend:$backend,effort:$effort,lane:$lane,
+    '{schema_version:2,model:$requested_model,requested_model:$requested_model,provider_reported_model:(if $model == "" then null else $model end),model_identity_source:$identity_source,backend:$backend,effort:$effort,lane:$lane,
       started_at_epoch:$started,finished_at_epoch:now,billing:$billing,
       provider_cost_usd:null,tokens:{input:$input,output:$output_tokens,
       reasoning:($usage_extra.reasoning // 0),cache_read:($usage_extra.cache_read // 0),cache_write:0}} +

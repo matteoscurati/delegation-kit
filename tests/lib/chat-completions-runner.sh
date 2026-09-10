@@ -162,12 +162,12 @@ jq -e --arg model "$MODEL" --arg backend "$BACKEND" \
 # The real builder lane is provisional: it dispatches only behind an explicit
 # --allow-provisional decision, and the production gates stay untouched here.
 rc=0
-PATH="/usr/bin:/bin" \
+PATH="$TMP/bin:$PATH" \
   "$RUNNER" run --lane builder --prompt-file "$TMP/prompt" \
   --output "$TMP/results/builder-refused.out" --workdir "$TMP/work" \
   >/dev/null 2>&1 || rc=$?
-[ "$rc" = 78 ] || fail "provisional builder without --allow-provisional returned $rc"
-[ ! -e "$TMP/results/builder-refused.out" ] || fail 'refused builder wrote output'
+[ "$rc" = 0 ] || fail "builder without deprecated flag returned $rc"
+[ -s "$TMP/results/builder-refused.out" ] || fail 'builder omitted output'
 
 rc=0
 PATH="$TMP/bin:$PATH" TMPDIR="$TMP/runtime" \
@@ -195,7 +195,7 @@ PATH="$TMP/bin:$PATH" FAKE_PROVIDER_CASE=success \
   "$RUNNER" run --lane builder --allow-provisional --effort high \
   --prompt-file "$TMP/prompt" --output "$TMP/results/builder-effort.out" \
   --workdir "$TMP/work" >/dev/null 2>&1 || rc=$?
-[ "$rc" = 78 ] || fail "builder at unpinned effort returned $rc"
+[ "$rc" = 0 ] || fail "supported effort returned $rc"
 
 # Disabled lanes remain blocked even for controlled evaluations and must fail
 # before runtime/authentication inspection.
@@ -284,7 +284,7 @@ for spec in \
   'rate 75 rate_limited dispatch 429' \
   'server 75 provider_temporary_failure dispatch 503' \
   'provider 70 provider_error dispatch 400' \
-  'malformed 70 provider_identity_mismatch extract 200' \
+  'malformed 70 invalid_or_empty_response extract 200' \
   'empty 70 invalid_or_empty_response extract 200' \
   'identity 70 provider_identity_mismatch extract 200' \
   'transport 75 transport_failure dispatch 000' \

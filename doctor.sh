@@ -199,8 +199,8 @@ if [ -n "$opus_reviewer_profile" ] \
     && grep -Fxq 'model: claude-opus-5' "$opus_reviewer_profile" \
     && grep -Fxq 'effort: max' "$opus_reviewer_profile" \
     && grep -Fxq 'tools: Read, Grep, Glob' "$opus_reviewer_profile" \
-    && grep -Fq 'outside the Anthropic family' "$opus_reviewer_profile"; then
-  ok "opus-reviewer pinned to claude-opus-5/max and cross-family only"
+    && grep -Fq 'configured review policy' "$opus_reviewer_profile"; then
+  ok "opus-reviewer pinned to claude-opus-5/max and configured review policy"
 else
   bad "opus-reviewer missing, stale, or not cross-family/max — re-run ./install.sh"
 fi
@@ -218,8 +218,8 @@ if [ -n "$sonnet_reviewer_profile" ] \
     && grep -Fxq 'model: sonnet' "$sonnet_reviewer_profile" \
     && grep -Fxq 'effort: medium' "$sonnet_reviewer_profile" \
     && grep -Fxq 'tools: Read, Grep, Glob' "$sonnet_reviewer_profile" \
-    && grep -Fq 'outside the Anthropic' "$sonnet_reviewer_profile"; then
-  ok "sonnet-reviewer pinned to sonnet/medium, tool-read-only, and cross-family only"
+    && grep -Fq 'configured review policy' "$sonnet_reviewer_profile"; then
+  ok "sonnet-reviewer pinned to sonnet/medium, tool-read-only, and configured review policy"
 else
   bad "sonnet-reviewer missing, stale, or not cross-family/medium/read-only — re-run ./install.sh"
 fi
@@ -310,8 +310,8 @@ if [ -f "$CODEX_HOME/agents/terra-reviewer.toml" ] \
     && grep -Fxq 'model_reasoning_effort = "max"' "$CODEX_HOME/terra-reviewer.config.toml" \
     && grep -Fxq 'sandbox_mode = "read-only"' "$CODEX_HOME/agents/terra-reviewer.toml" \
     && grep -Fxq 'sandbox_mode = "read-only"' "$CODEX_HOME/terra-reviewer.config.toml" \
-    && grep -Fq 'outside the OpenAI model family' "$CODEX_HOME/agents/terra-reviewer.toml"; then
-  ok "terra-reviewer pinned to gpt-5.6-terra/max, read-only, and cross-family only"
+    && grep -Fq 'configured review policy' "$CODEX_HOME/agents/terra-reviewer.toml"; then
+  ok "terra-reviewer pinned to gpt-5.6-terra/max, read-only, and configured review policy"
 else
   bad "terra-reviewer missing, stale, or not cross-family/max/read-only — re-run ./install.sh"
 fi
@@ -323,8 +323,8 @@ if [ -f "$CODEX_HOME/agents/astra-reviewer.toml" ] \
     && grep -Fxq 'model_reasoning_effort = "high"' "$CODEX_HOME/astra-reviewer.config.toml" \
     && grep -Fxq 'sandbox_mode = "read-only"' "$CODEX_HOME/agents/astra-reviewer.toml" \
     && grep -Fxq 'sandbox_mode = "read-only"' "$CODEX_HOME/astra-reviewer.config.toml" \
-    && grep -Fq 'outside the openai-gpt6 model family' "$CODEX_HOME/agents/astra-reviewer.toml"; then
-  ok "astra-reviewer pinned to gpt-6-astra/high, read-only, and cross-family only"
+    && grep -Fq 'configured review policy' "$CODEX_HOME/agents/astra-reviewer.toml"; then
+  ok "astra-reviewer pinned to gpt-6-astra/high, read-only, and configured review policy"
 else
   bad "astra-reviewer missing, stale, or not cross-family/high/read-only — re-run ./install.sh"
 fi
@@ -417,26 +417,15 @@ elif have delegation-route; then
   if [ -n "$route_check" ] && printf '%s' "$route_check" | jq -e '.valid == true and .read_only == true' >/dev/null 2>&1; then
     ok "central routing gates valid ($(printf '%s' "$route_check" | jq -r '.profiles') profiles)"
     info "judgement and super-judgement require explicit selection; the router never dispatches"
-    route_table="$(delegation-route table --json 2>/dev/null || true)"
-    if [ -n "$route_table" ] && printf '%s' "$route_table" | jq -e '
-      .review_policy.require_cross_family == true and
-      .review_policy.availability_must_be_verified == true and
-      (.review_policy.review_lanes | sort) == ["material-review","routine-review","security"] and
-      .model_families["claude-opus-5"] == "anthropic" and
-      .model_families["gpt-5.6-terra"] == "openai"
+    if printf '%s' "$route_check" | jq -e '
+      .schema_version == 2 and
+      (.review_policy == "optional" or .review_policy == "required" or .review_policy == "cross-family") and
+      .authorization_granted == false
     ' >/dev/null 2>&1; then
-      ok "cross-family review policy and model-family registry installed"
+      ok "user review policy installed; selection never authorizes dispatch"
     else
-      bad "cross-family review policy missing or stale — re-run ./install.sh"
+      bad "user configuration or routing schema missing or stale"
     fi
-    if delegation-route resolve --lane material-review --json >/dev/null 2>&1; then
-      review_without_producer_rc=0
-    else
-      review_without_producer_rc=$?
-    fi
-    [ "$review_without_producer_rc" -eq 64 ] \
-      && ok "review routing fails closed without producer identity" \
-      || bad "review routing accepted missing producer identity"
   else
     bad "central routing gates are missing or invalid — re-run ./install.sh"
   fi
@@ -577,16 +566,16 @@ else
   warn "delegation-gemini not installed — re-run ./install.sh"
 fi
 
-# ---- DeepSeek V4 Pro/max provisional builder ----
-hdr "DeepSeek V4 Pro/max builder"
+# ---- DeepSeek V4.1 Flash/max provisional builder ----
+hdr "DeepSeek V4.1 Flash/max builder"
 if ! have jq; then
   warn "jq not on PATH — delegation-deepseek cannot run"
 elif have delegation-deepseek; then
   deepseek_check="$(delegation-deepseek check --json 2>/dev/null || true)"
   if [ -n "$deepseek_check" ] && printf '%s' "$deepseek_check" | jq -e '
-      .model == "deepseek-v4-pro" and .efforts == ["max"] and
+      .model == "deepseek-flash" and .efforts == ["max"] and
       .provisional_lanes == ["builder"]' >/dev/null 2>&1; then
-    ok "delegation-deepseek installed and pinned to deepseek-v4-pro/max"
+    ok "delegation-deepseek installed and pinned to deepseek-flash/max"
     deepseek_selected="$(printf '%s' "$deepseek_check" | jq -r '.selected_backend')"
     deepseek_candidates="$(printf '%s' "$deepseek_check" | jq -r '.candidate_lanes | join(",")')"
     if [ "$deepseek_selected" = none ]; then
@@ -596,7 +585,7 @@ elif have delegation-deepseek; then
     fi
     info "DeepSeek builder is provisional and explicit-only; all other candidates remain blocked: ${deepseek_candidates:-none}"
   else
-    bad "delegation-deepseek check failed or does not enforce deepseek-v4-pro/max builder-only routing"
+    bad "delegation-deepseek check failed or does not enforce deepseek-flash/max builder-only routing"
   fi
 else
   warn "delegation-deepseek not installed — re-run ./install.sh"

@@ -15,6 +15,7 @@ set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 TMP="$(mktemp -d "${TMPDIR:-/tmp}/delegation-contract-tests.XXXXXX")"
+export DELEGATION_CONFIG_FILE="$TMP/user-config/config.json"
 trap 'rm -rf -- "$TMP"' EXIT
 
 command -v jq >/dev/null 2>&1 || { printf 'jq is required\n' >&2; exit 69; }
@@ -74,7 +75,7 @@ pass=$((pass + 1))
 
 # The six current external executor families are all covered.
 jq -e '(.families | keys | sort) ==
-  ["deepseek-v4-pro","gemini-3.7-flash","glm-5.3-flash","grok-4.6","kimi-k3","qwen3.8-max"]' \
+  ["deepseek-flash","gemini-3.7-flash","glm-5.3-flash","grok-4.6","kimi-k3","qwen3.8-max"]' \
   "$CONTRACT" >/dev/null || fail 'the six external executor families are not all declared'
 jq -e '[.families[].provider_family] | sort ==
   ["alibaba","deepseek","google","moonshot","xai","zai"]' "$CONTRACT" >/dev/null \
@@ -118,7 +119,7 @@ jq -e '
      "worktree_access","worktree_edits","write_scope"])
 ' "$CONTRACT" >/dev/null || fail 'a lane leaves a security-relevant control unstated'
 for gate in glm-5.3-flash-max-routing kimi-k3-routing grok-4.6-routing \
-            qwen3.8-max-routing deepseek-v4-pro-routing gemini-3.7-flash-routing; do
+            qwen3.8-max-routing deepseek-flash-routing gemini-3.7-flash-routing; do
   jq -e --slurpfile contract "$CONTRACT" '
     ($contract[0].executable_gate_controls.required_fields) as $required |
     [.lanes[].backends[] |
@@ -144,7 +145,7 @@ jq -e '
   || fail 'a GLM gate row claims an isolated HOME the runner does not create'
 # Every isolation claim a gate row does state is one its family declares.
 for gate in glm-5.3-flash-max-routing kimi-k3-routing grok-4.6-routing \
-            qwen3.8-max-routing deepseek-v4-pro-routing gemini-3.7-flash-routing; do
+            qwen3.8-max-routing deepseek-flash-routing gemini-3.7-flash-routing; do
   jq -e --slurpfile contract "$CONTRACT" --arg gate "$gate.json" '
     ($contract[0].families | to_entries[] | select(.value.executable_gate == $gate) |
       .value) as $family |
@@ -646,10 +647,10 @@ drift_fails qwen-builder-tools '
 drift_fails qwen-scout-worktree '
   .families["qwen3.8-max"].lanes.scout.worktree_access = "read"'
 drift_fails deepseek-builder-tools '
-  .families["deepseek-v4-pro"].lanes.builder.tool_policy |=
+  .families["deepseek-flash"].lanes.builder.tool_policy |=
     (.mode = "allowlist" | .allowed_tools = ["Read","Write"])'
 drift_fails deepseek-clerk-worktree '
-  .families["deepseek-v4-pro"].lanes.clerk.worktree_access = "read"'
+  .families["deepseek-flash"].lanes.clerk.worktree_access = "read"'
 
 # Gemini is blocked on every lane; a blocked lane may not drift either.
 drift_fails gemini-builder-permission-mode '
@@ -745,7 +746,7 @@ jq '.vocabularies.permission_classes["text-patch"].returns_patch = false' "$CONT
 expect_failure 65 with_contract "$TMP/ambiguous-class.json" check
 
 # Identity-shape mismatch inside the contract itself.
-jq '.families["deepseek-v4-pro"].identity.requested_model = "deepseek-v4"' "$CONTRACT" \
+jq '.families["deepseek-flash"].identity.requested_model = "deepseek-v4"' "$CONTRACT" \
   >"$TMP/identity-mismatch.json"
 expect_failure 65 with_contract "$TMP/identity-mismatch.json" check
 jq '.families["glm-5.3-flash"].identity.usage_participation = "trust-me"' "$CONTRACT" \
@@ -814,9 +815,9 @@ jq '.lanes.scout.backends.native.effort = "high"' config/kimi-k3-routing.json \
 expect_failure 65 env DELEGATION_EXECUTOR_GATE_DIR="$TMP/gates" "$CMD" check
 cp config/kimi-k3-routing.json "$TMP/gates/kimi-k3-routing.json"
 jq '.lanes.builder.backends["deepseek-api"].runtime_controls.worktree_edits = true' \
-  config/deepseek-v4-pro-routing.json >"$TMP/gates/deepseek-v4-pro-routing.json"
+  config/deepseek-flash-routing.json >"$TMP/gates/deepseek-flash-routing.json"
 expect_failure 65 env DELEGATION_EXECUTOR_GATE_DIR="$TMP/gates" "$CMD" check
-cp config/deepseek-v4-pro-routing.json "$TMP/gates/deepseek-v4-pro-routing.json"
+cp config/deepseek-flash-routing.json "$TMP/gates/deepseek-flash-routing.json"
 jq 'del(.lanes.senior)' config/qwen3.8-max-routing.json >"$TMP/gates/qwen3.8-max-routing.json"
 expect_failure 65 env DELEGATION_EXECUTOR_GATE_DIR="$TMP/gates" "$CMD" check
 cp config/qwen3.8-max-routing.json "$TMP/gates/qwen3.8-max-routing.json"
@@ -861,7 +862,7 @@ gate_fails grok-4.6-routing.json \
   'del(.lanes["policy-annotation"].backends["grok-build"].runtime_controls.subagents)'
 gate_fails qwen3.8-max-routing.json \
   'del(.lanes.clerk.backends["token-plan-openai"].runtime_controls)'
-gate_fails deepseek-v4-pro-routing.json \
+gate_fails deepseek-flash-routing.json \
   '.lanes.builder.backends["deepseek-api"].runtime_controls.write_scope = "workdir"'
 gate_fails gemini-3.7-flash-routing.json \
   'del(.lanes.scout.backends.agy.runtime_controls)'
@@ -906,7 +907,7 @@ pass=$((pass + 1))
 # plus the two blocked Gemini lanes.
 jq -e '[.families | to_entries[] as $f | $f.value.lanes | to_entries[] |
   select(.value.permission_class == "text-patch") | "\($f.key).\(.key)"] | sort ==
-  ["deepseek-v4-pro.builder","gemini-3.7-flash.builder",
+  ["deepseek-flash.builder","gemini-3.7-flash.builder",
    "gemini-3.7-flash.frontend-builder","qwen3.8-max.builder"]' "$CONTRACT" >/dev/null \
   || fail 'the governed text-patch lane set moved'
 jq -e '[.families["gemini-3.7-flash"].lanes[] |
@@ -937,7 +938,7 @@ expect_failure 65 with_contract "$TMP/no-patch-policy.json" check
 jq '.families["qwen3.8-max"].lanes.builder |= del(.patch_policy)' "$CONTRACT" \
   >"$TMP/lane-no-policy.json"
 expect_failure 65 with_contract "$TMP/lane-no-policy.json" check
-jq '.families["deepseek-v4-pro"].lanes.builder.patch_policy.policy_version = "0.9.0"' \
+jq '.families["deepseek-flash"].lanes.builder.patch_policy.policy_version = "0.9.0"' \
   "$CONTRACT" >"$TMP/lane-stale-policy.json"
 expect_failure 65 with_contract "$TMP/lane-stale-policy.json" check
 jq '.families["gemini-3.7-flash"].lanes.builder |= del(.patch_policy)' "$CONTRACT" \

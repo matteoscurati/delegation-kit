@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "snapshot_at": "2026-08-17T00:00:00Z",
+  "snapshot_at": "2026-09-10T00:00:00Z",
   "max_snapshot_age_days": 45,
   "policy": {
     "external_evidence_never_auto_qualifies": true,
@@ -421,6 +421,17 @@
       "publisher": "OpenAI",
       "date": "2026-09-03",
       "notes": "Vendor launch benchmarks for gpt-6-astra: SWE, computer use, ExploitGym. Vendor-published; never a promotion on its own."
+    },
+    "deepseek-v41-flash-launch-2026-09-10": {
+      "name": "DeepSeek V4.1 Flash official change log and pricing",
+      "url": "https://api-docs.deepseek.com/updates/",
+      "documentation_url": "https://api-docs.deepseek.com/guides/thinking_mode",
+      "pricing_url": "https://api-docs.deepseek.com/quick_start/pricing",
+      "observed_at": "2026-09-10",
+      "data_date": "2026-09-10",
+      "category": "first-party-release-evidence",
+      "scope": "Official deepseek-flash identity (DeepSeek V4.1 Flash, released 2026-09-10), OpenAI-compatible API, thinking mode with low/high/max effort, one-million-token context, 384K maximum output, native image input, and the notice that deepseek-v4-pro requests are routed to V4.1 Flash after 2026-09-14 12:00 Beijing time. Provider-reported DeepSWE v1.1 74.2 as relayed by secondary coverage on release day.",
+      "limitations": "Provider-reported benchmark claims use DeepSeek's own harness and do not attest delegation-deepseek. The local exact-tuple smoke is recorded separately in the routing gate and is not a held-out capability evaluation."
     }
   },
   "lane_evidence": {
@@ -3090,6 +3101,19 @@
         "coding": {
           "terminal_bench_v2_pass_pct": 67.9,
           "swe_bench_verified_pass_pct": 80.6
+        }
+      }
+    },
+    {
+      "id": "deepseek-v41-flash-launch-2026-09-10",
+      "model": "deepseek-flash",
+      "harness": "deepseek-reported-mixed",
+      "effort": "max",
+      "source": "deepseek-v41-flash-launch-2026-09-10",
+      "contextual_only": true,
+      "metrics": {
+        "coding": {
+          "deep_swe_pass_pct": 74.2
         }
       }
     },

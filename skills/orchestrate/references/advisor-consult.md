@@ -4,21 +4,12 @@ The advisor is a **critic and strategist, never an executor**. It reads, judges,
 and returns a verdict. Consults are the most expensive resource in the system —
 keep them rare and material-rich.
 
-**Who answers.** This kit splits the source pattern's single advisor across two
-lanes by content (see the routing policy):
-
-- **Plan critique and ship/synthesis go to Judgement** (author: Fable for
-  architecture/trade-offs/synthesis, or Sol for feasibility/repository fit) — decomposition, architecture-moving risk, cross-attempt synthesis, the
-  final go/no-go. This is the two-touch lane: consult #1 (plan) and #2 (ship) are
-  mandatory; anything beyond needs a crossed commitment boundary.
-- **Material technical and security review goes to an eligible read-only
-  cross-family reviewer.** Resolve with the producer profile first; Opus and
-  Terra can both review at `max`, while Sol remains eligible only when the
-  producer is outside the OpenAI family. User-facing taste remains with the lead.
-
-Reach either as a one-shot Agent/Workflow call with the model pinned
-(`fable-judge`, Codex `astra-judge`, or a resolved cross-family reviewer) and this prompt; force a
-structured return so nothing gets lost.
+**Who answers.** Select a technically compatible judgement or review profile
+from `delegation-route` only when the user requests a consult. Neither plan nor
+ship consultations are mandatory. Review family restrictions apply only under
+`cross-family` policy. A required policy does not authorize another dispatch.
+Use the selected model once and request a structured return. The lead owns
+user-facing judgement and integration.
 
 For an explicitly approved `super-judgement`, do not use this single-consult
 shape. Follow `dual-judgement.md`: independent verdicts, then cross-review, then

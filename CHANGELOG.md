@@ -2,6 +2,29 @@
 
 All notable changes to delegation-kit are documented here.
 
+## Unreleased
+
+- **DeepSeek re-pinned to `deepseek-flash` (DeepSeek V4.1 Flash, released
+  2026-09-10).** DeepSeek routes every `deepseek-v4-pro` request to V4.1 Flash
+  after 2026-09-14 12:00 Beijing time, which would have failed the runner's
+  exact identity check on every dispatch. Profile, executable gate
+  (`config/deepseek-flash-routing.json`, the V4 Pro gate is removed on
+  upgrade), contract family, runner default, doctor, installer, tests, and docs
+  follow. The builder lane stays provisional and explicit-only on an owner
+  decision; the 2026-08-17 V4 Pro smoke does not transfer. `config/deepseek.env`
+  is now gitignored like the other key files.
+
+- Exclude Gemini from current presets by owner decision; preserve existing
+  personal and migrated choices. Retain the corrected Antigravity inventory
+  parser for tab-separated ID/display-name rows.
+
+- Add personal versioned configuration, a common profile dispatcher and a
+  text-only OpenAI-compatible adapter using the shared Chat Completions transport.
+- Separate technical compatibility from historical model qualification; review
+  defaults to optional, including migrations, with required/strict alternatives.
+- Preserve explicit per-dispatch authorization, sandbox and patch controls,
+  personal edits and migration backups. Report requested/provider identity separately.
+
 ## [0.23.1] — 2026-09-07
 
 ### Fixed

@@ -1,7 +1,7 @@
 {
   "name": "delegation-kit",
   "version": "0.23.1",
-  "description": "Teach Claude Code how and when to delegate coding work across user-directed lanes — small support, max-effort Opus/Terra build and review, mandatory cross-family verification, and explicit judgement. Delegation happens only when the user names the profile or explicitly delegates the choice for the current request; nothing dispatches automatically.",
+  "description": "Teach Claude Code how and when to delegate coding work across user-directed lanes — small support, max-effort Opus/Terra build and review, user-configured review, and explicit judgement. Delegation happens only when the user names the profile or explicitly delegates the choice for the current request; nothing dispatches automatically.",
   "author": {
     "name": "Matteo Scurati",
     "url": "https://github.com/matteoscurati"

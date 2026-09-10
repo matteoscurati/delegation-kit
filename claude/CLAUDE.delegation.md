@@ -26,9 +26,12 @@ delegation-route resolve --lane <lane> [--producer-profile <profile>] --json
 
 Present `.choices` to the user. After the user selects a profile, validate it
 with `--selected-profile <profile>`; this validation never dispatches and grants
-nothing. A delegated result still requires eligible cross-family review before
-shipping, but that reviewer call must also be user-authorized. If it is not,
-pause and ask rather than spawning it automatically.
+nothing. Review follows `review_policy` in the user configuration: `optional`
+(default), `required`, or `cross-family`. Mandatory policies never authorize a
+reviewer call. If that call was not explicitly requested, retain the result as
+pending review and ask before dispatching it. Missing benchmark evidence and
+requested-only model identity do not block an explicit, technically supported
+choice. The lead still verifies all results before integration.
 
 The lead owns integration, verification, and the final response. Never silently
 substitute a profile, widen a lane, merge, deploy, or claim that provider output

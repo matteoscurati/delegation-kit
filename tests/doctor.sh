@@ -6,6 +6,7 @@ set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 TMP="$(mktemp -d "${TMPDIR:-/tmp}/delegation-doctor-tests.XXXXXX")"
+export DELEGATION_CONFIG_FILE="$TMP/user-config/config.json"
 trap 'rm -rf -- "$TMP"' EXIT
 command -v jq >/dev/null 2>&1 || { printf 'jq is required\n' >&2; exit 69; }
 
@@ -82,9 +83,9 @@ else
   :
 fi
 grep -Fq '[ OK ] opus-builder pinned to claude-opus-5/max' "$TMP/plugin-doctor.log"
-grep -Fq '[ OK ] opus-reviewer pinned to claude-opus-5/max and cross-family only' "$TMP/plugin-doctor.log"
+grep -Fq '[ OK ] opus-reviewer pinned to claude-opus-5/max and configured review policy' "$TMP/plugin-doctor.log"
 grep -Fq '[ OK ] fable-judge pinned to claude-fable-5-1/max and read-only judgement' "$TMP/plugin-doctor.log"
-grep -Fq '[ OK ] sonnet-reviewer pinned to sonnet/medium, tool-read-only, and cross-family only' "$TMP/plugin-doctor.log"
+grep -Fq '[ OK ] sonnet-reviewer pinned to sonnet/medium, tool-read-only, and configured review policy' "$TMP/plugin-doctor.log"
 grep -Fq '== External executor contract ==' "$TMP/plugin-doctor.log" || {
   printf 'doctor did not report on the external executor contract\n' >&2
   exit 1

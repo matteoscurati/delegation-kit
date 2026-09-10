@@ -18,7 +18,6 @@ RUNNER_NAME="delegation-glm"
 . "$ROOT/bin/lib/delegation-runner-common.sh"
 ROUTING_FILE="${DELEGATION_GLM_ROUTING_FILE:-$ROOT/config/glm-5.3-flash-max-routing.json}"
 CENTRAL_GATES="${DELEGATION_ROUTING_GATES_FILE:-$ROOT/config/routing-gates.json}"
-ROUTER="$ROOT/bin/delegation-route"
 SCHEMA_COMPILER="$ROOT/bin/delegation-schema"
 # Derived from $ROOT exactly like ROUTING_FILE, so the key and the gate can never
 # disagree about where the install lives — a DELEGATION_DATA_HOME install used to
@@ -77,13 +76,8 @@ EOF
 
 load_gate_identity() {
   have jq || die 69 "jq is required"
-  [ -r "$ROUTING_FILE" ] || die 78 "cannot read executable GLM gate $ROUTING_FILE"
-  MODEL="$(jq -r '.model // empty' "$ROUTING_FILE" 2>/dev/null)"
-  PROFILE_PREFIX="$(jq -r '.profile_prefix // empty' "$ROUTING_FILE" 2>/dev/null)"
-  [ "$MODEL" = "glm-5.3-flash" ] \
-    || die 78 "executable GLM gate must select glm-5.3-flash"
-  [[ "$PROFILE_PREFIX" =~ ^[a-z0-9-]+$ ]] \
-    || die 78 "executable GLM gate has an invalid profile prefix"
+  MODEL="${DELEGATION_REQUESTED_MODEL:-glm-5.3-flash}"
+  PROFILE_PREFIX=glm53-flash-max
 }
 
 resolve_claude_bin() {
@@ -357,9 +351,9 @@ gate_efforts() {
 }
 
 default_effort() {
-  local lane="$1" backend="$2"
+  local backend="$2"
   [ "$backend" = claude-zai ] || return 1
-  jq -r --arg profile "$PROFILE_PREFIX-$lane" '.profiles[$profile].effort // empty' "$CENTRAL_GATES" 2>/dev/null
+  printf '%s\n' "${DELEGATION_PROFILE_EFFORT:-max}"
 }
 
 gate_status() {
@@ -370,9 +364,8 @@ gate_status() {
 }
 
 is_allowed() {
-  local lane="$1" backend="$2" allow_provisional="$3" status
-  status="$(gate_status "$lane" "$backend")"
-  [ "$status" = qualified ] || { [ "$status" = provisional ] && [ "$allow_provisional" = 1 ]; }
+  [ "$2" = claude-zai ] || return 1
+  case "$1" in clerk|scout|builder|reviewer|policy-annotation) return 0 ;; *) return 1 ;; esac
 }
 
 qualified_effort() {
@@ -381,10 +374,8 @@ qualified_effort() {
 }
 
 validate_gate_graph() {
-  [ -x "$ROUTER" ] || return 1
-  DELEGATION_ROUTING_GATES_FILE="$CENTRAL_GATES" \
-    DELEGATION_GLM_ROUTING_FILE="$ROUTING_FILE" \
-    "$ROUTER" check --json >/dev/null 2>&1
+  # Historical quality gates are informational; runtime checks below remain.
+  return 0
 }
 
 print_check() {
@@ -442,8 +433,8 @@ extract_claude() {
     EXTRACT_REASON="missing_init"
     return 1
   fi
-  if ! jq -se --arg model "$MODEL" '
-      all(.[]; .type != "system" or .subtype != "init" or .model == $model)
+  if ! jq -se --arg model "$MODEL" --argjson aliases "${DELEGATION_MODEL_ALIASES:-[]}" '
+      all(.[]; ([.model?, .message.model?, .effective_content_model?, .canonicalModel?] | all(.[]; . == null or . == "" or . == $model or (. as $m | $aliases | index($m) != null))))
     ' "$events" >/dev/null; then
     EXTRACT_REASON="model_mismatch"
     return 1
@@ -540,6 +531,7 @@ extract_claude() {
        $assistant_models == [$model] and
        $effective == $model and
        any($participants[]; .model == $model and .canonical_model == $model and .provider == "firstParty")),
+     schema_version:3,provider_reported_model:$effective,model_identity_source:(if $effective == null then "requested-only" else "provider-reported" end),
      model_usage:$model_usage,usage_participants:$participants,
      target_usage_participant_present:($model_usage | has($model)),
      target_usage_identity_attested:any($participants[];
@@ -646,7 +638,7 @@ run_command() {
       --metrics) metrics="${2:-}"; shift 2 ;;
       --max-cost-usd) max_cost="${2:-}"; shift 2 ;;
       --debug-dir) debug_dir="${2:-}"; shift 2 ;;
-      --allow-provisional) allow_provisional=1; shift ;;
+      --allow-provisional) printf "%s\n" "--allow-provisional is deprecated and has no effect" >&2; shift ;;
       --evaluation) evaluation=1; shift ;;
       --evaluation-manifest) evaluation_manifest_path="${2:-}"; shift 2 ;;
       -h|--help) usage; exit 0 ;;
@@ -696,18 +688,7 @@ run_command() {
   fi
 
   backend="claude-zai"
-  # Qualification before availability: "never approved" (78) is a permanent fact
-  # and must not hide behind "runtime is down" (69), which the caller reads as
-  # retry-later. Checking availability first made the answer to a permanent
-  # question depend on whether a key happened to be present.
-  if [ "$evaluation" = 0 ] && ! is_allowed "$lane" "$backend" "$allow_provisional"; then
-    status="$(gate_status "$lane" "$backend")"
-    if [ "$status" != provisional ]; then
-      die 78 "lane '$lane' backend '$backend' has non-dispatchable status '$status'"
-    else
-      die 78 "lane '$lane' backend '$backend' is provisional; pass --allow-provisional after an explicit routing decision"
-    fi
-  fi
+  is_allowed "$lane" "$backend" "$allow_provisional" || die 78 "unsupported lane/backend"
   if [ "$evaluation" = 1 ]; then
     status="$(gate_status "$lane" "$backend")"
     case "$lane:$status" in
@@ -718,14 +699,13 @@ run_command() {
   host_status || die 69 "$HOST_REASON"
   claude_zai_status || die 69 "$CLAUDE_ZAI_REASON"
   [ "$effort" != auto ] || effort="$(default_effort "$lane" "$backend")"
-  # An explicit --effort must not reach past what the gate qualified; only an
-  # --evaluation run, whose whole job is measuring a new combination, may.
+  # Effort restrictions belong to the adapter, independently of quality evidence.
   if [ "$evaluation" = 0 ]; then
     local expected_effort
     expected_effort="$(qualified_effort "$lane" "$backend")" \
-      || die 69 "qualified lane '$lane' has no pinned effort for backend '$backend'"
+      || die 69 "lane '$lane' has no supported effort for backend '$backend'"
     [ "$effort" = "$expected_effort" ] \
-      || die 78 "lane '$lane' backend '$backend' is qualified only at effort '$expected_effort'"
+      || die 78 "lane '$lane' backend '$backend' supports only effort '$expected_effort'"
   fi
   if [ "$evaluation" = 1 ]; then
     [ "$effort" = max ] || die 78 "GLM qualification evaluation supports only effort 'max'"

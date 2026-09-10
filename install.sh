@@ -43,6 +43,35 @@ append_guarded() { # $1=file  $2=content
   echo "  + registered/refreshed in $file$backed"
 }
 
+# Preserve edits made after the first managed installation. The initial host
+# profile is backed up once before migration, independently of the config backup.
+copy_managed() {
+  python3 - "$1" "$2" "$DATA_HOME" <<'PYMANAGED'
+import hashlib, json, os, shutil, sys, tempfile
+from pathlib import Path
+source, target, data = map(Path, sys.argv[1:])
+data.mkdir(parents=True, exist_ok=True)
+manifest = data / 'managed-profile-hashes.json'
+hashes = json.loads(manifest.read_text()) if manifest.exists() else {}
+key = str(target)
+if target.exists() and key in hashes and hashlib.sha256(target.read_bytes()).hexdigest() != hashes[key]:
+    print('  + preserved edited profile: ' + key)
+    sys.exit(0)
+if target.exists() and key not in hashes:
+    backup = Path(str(target) + '.pre-config-v1.bak')
+    if not backup.exists(): shutil.copy2(target, backup)
+shutil.copy2(source, target)
+hashes[key] = hashlib.sha256(target.read_bytes()).hexdigest()
+fd, temporary = tempfile.mkstemp(dir=data, prefix='.managed-profile-')
+with os.fdopen(fd, 'w') as stream: json.dump(hashes, stream)
+os.replace(temporary, manifest)
+PYMANAGED
+}
+
+# Snapshot legacy configuration before updating any distributed files. User
+# configuration lives separately and an existing v1 file is never overwritten.
+"$KIT/bin/delegation-config" init
+
 # Shared optional external-model bridges. Installing a command does not make its
 # model routable: the runtime check and versioned evaluation manifest must pass.
 mkdir -p "$BIN_HOME" "$DATA_HOME/bin" "$DATA_HOME/bin/lib" "$DATA_HOME/config"
@@ -50,6 +79,14 @@ mkdir -p "$BIN_HOME" "$DATA_HOME/bin" "$DATA_HOME/bin/lib" "$DATA_HOME/config"
 # shared helpers from the sibling lib/ directory, so the library is installed
 # before any runner and is never linked onto PATH.
 cp "$KIT"/bin/lib/*.sh "$DATA_HOME/bin/lib/"
+cp "$KIT/bin/lib/delegation_config.py" "$DATA_HOME/bin/lib/"
+for command in delegation-config delegation-run delegation-openai-compatible; do
+  cp "$KIT/bin/$command" "$DATA_HOME/bin/$command"
+  chmod 755 "$DATA_HOME/bin/$command"
+  ln -sfn "$DATA_HOME/bin/$command" "$BIN_HOME/$command"
+done
+"$KIT/bin/delegation-config" apply
+
 chmod 644 "$DATA_HOME"/bin/lib/*.sh
 echo "Shared runner library -> $DATA_HOME/bin/lib (sourced by the external runners; not on PATH)"
 cp "$KIT/bin/delegation-schema" "$DATA_HOME/bin/delegation-schema"
@@ -151,10 +188,11 @@ ln -sfn "$DATA_HOME/bin/delegation-qwen" "$BIN_HOME/delegation-qwen"
 echo "Qwen bridge -> $BIN_HOME/delegation-qwen (provisional builder gate: $DATA_HOME/config/qwen3.8-max-routing.json)"
 
 cp "$KIT/bin/delegation-deepseek" "$DATA_HOME/bin/delegation-deepseek"
-cp "$KIT/config/deepseek-v4-pro-routing.json" "$DATA_HOME/config/deepseek-v4-pro-routing.json"
+cp "$KIT/config/deepseek-flash-routing.json" "$DATA_HOME/config/deepseek-flash-routing.json"
+rm -f -- "$DATA_HOME/config/deepseek-v4-pro-routing.json"
 chmod 755 "$DATA_HOME/bin/delegation-deepseek"
 ln -sfn "$DATA_HOME/bin/delegation-deepseek" "$BIN_HOME/delegation-deepseek"
-echo "DeepSeek bridge -> $BIN_HOME/delegation-deepseek (provisional builder gate: $DATA_HOME/config/deepseek-v4-pro-routing.json)"
+echo "DeepSeek bridge -> $BIN_HOME/delegation-deepseek (provisional builder gate: $DATA_HOME/config/deepseek-flash-routing.json; retired V4 Pro gate removed)"
 
 cp "$KIT/bin/delegation-grok" "$DATA_HOME/bin/delegation-grok"
 cp "$KIT/config/grok-4.6-routing.json" "$DATA_HOME/config/grok-4.6-routing.json"
@@ -302,7 +340,7 @@ if [ "$do_claude" = 1 ]; then
   # Remove the profile retired by the 2026-08-17 owner routing decision. A plain
   # glob copy cannot remove a stale name left by an older installation.
   rm -f "$CLAUDE_HOME/agents/sonnet-builder.md"
-  cp "$KIT"/agents/*.md "$CLAUDE_HOME/agents/"
+  for profile in "$KIT"/agents/*.md; do copy_managed "$profile" "$CLAUDE_HOME/agents/$(basename "$profile")"; done
   echo "  + 6 subagent profiles -> $CLAUDE_HOME/agents/"
   # register the user-direction guard first — it is the linchpin, so a missing
   # optional skill source below cannot abort install (set -e) before the bridge
@@ -332,9 +370,9 @@ if [ "$do_codex" = 1 ]; then
   echo "Codex -> $CODEX_HOME"
   mkdir -p "$CODEX_HOME/agents" "$CODEX_HOME/skills"
   rm -f "$CODEX_HOME/agents/terra-scout.toml" "$CODEX_HOME/terra-scout.config.toml"
-  cp "$KIT"/codex/agents/*.toml "$CODEX_HOME/agents/"
+  for profile in "$KIT"/codex/agents/*.toml; do copy_managed "$profile" "$CODEX_HOME/agents/$(basename "$profile")"; done
   echo "  + 5 native subagent profiles -> $CODEX_HOME/agents/"
-  cp "$KIT"/codex/profiles/*.config.toml "$CODEX_HOME/"
+  for profile in "$KIT"/codex/profiles/*.config.toml; do copy_managed "$profile" "$CODEX_HOME/$(basename "$profile")"; done
   echo "  + 5 ephemeral -p profiles -> $CODEX_HOME/"
   cp -R "$KIT/skills/glm-executor" "$CODEX_HOME/skills/"
   echo "  + optional GLM executor skill -> $CODEX_HOME/skills/glm-executor/"

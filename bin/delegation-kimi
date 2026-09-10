@@ -19,12 +19,15 @@ RUNNER_NAME="delegation-kimi" PROFILE="kimi-k3"
 . "$ROOT/bin/lib/delegation-runner-common.sh"
 ROUTING_FILE="${DELEGATION_KIMI_ROUTING_FILE:-$ROOT/config/kimi-k3-routing.json}"
 CENTRAL_GATES="${DELEGATION_ROUTING_GATES_FILE:-$ROOT/config/routing-gates.json}"
-ROUTER="$ROOT/bin/delegation-route"
 KIMI_HOME="${KIMI_CODE_HOME:-$HOME/.kimi-code}"
 CREDENTIAL_FILE="$KIMI_HOME/credentials/kimi-code.json"
 DATA_HOME="${DELEGATION_DATA_HOME:-${XDG_DATA_HOME:-$HOME/.local/share}/delegation-kit}"
 RG_STORE="${DELEGATION_KIMI_RG_STORE:-$DATA_HOME/kimi-rg}"
-NATIVE_MODEL="kimi-code/k3"
+NATIVE_MODEL="${DELEGATION_REQUESTED_MODEL:-kimi-code/k3}"
+[[ "$NATIVE_MODEL" =~ ^[a-zA-Z0-9][a-zA-Z0-9._:/@+-]*$ ]] || {
+  printf '%s\n' 'delegation-kimi: invalid native model identifier' >&2
+  exit 64
+}
 NATIVE_EFFORT="max"
 EFFORTS='["max"]'
 OPERATIONAL_TIMEOUT_SECONDS=900
@@ -377,11 +380,8 @@ gate_status() {
 }
 
 is_allowed() {
-  local lane="$1" backend="$2" allow_provisional="$3" evaluation="$4" status
-  status="$(gate_status "$lane" "$backend")"
-  [ "$status" = qualified ] ||
-    { [ "$status" = provisional ] && [ "$allow_provisional" = 1 ]; } ||
-    { [ "$status" = candidate ] && [ "$evaluation" = 1 ]; }
+  [ "$2" = native ] || return 1
+  case "$1" in clerk|scout|builder|frontend-builder|policy-annotation) return 0 ;; *) return 1 ;; esac
 }
 
 preferred_backends() {
@@ -392,21 +392,18 @@ preferred_backends() {
 }
 
 default_effort() {
-  jq -r '.profiles["kimi-k3"].effort // empty' "$CENTRAL_GATES" 2>/dev/null
+  printf '%s\n' "${DELEGATION_PROFILE_EFFORT:-max}"
 }
 
 qualified_effort() {
   local lane="$1" backend="$2"
   [ "$backend" = native ] || return 1
-  [ "$(gate_status "$lane" "$backend")" != disabled ] || return 1
   default_effort
 }
 
 validate_gate_graph() {
-  [ -x "$ROUTER" ] || return 1
-  DELEGATION_ROUTING_GATES_FILE="$CENTRAL_GATES" \
-    DELEGATION_KIMI_ROUTING_FILE="$ROUTING_FILE" \
-    "$ROUTER" check --json >/dev/null 2>&1
+  # Historical quality gates are informational; runtime checks below remain.
+  return 0
 }
 
 pinned_rg_path() { printf '%s/current/rg' "$RG_STORE"; }
@@ -979,7 +976,7 @@ prepare_native_home() {
       ;;
   esac
   cat >"$target/config.toml" <<EOF
-default_model = "kimi-code/k3"
+default_model = "$NATIVE_MODEL"
 default_permission_mode = "auto"
 default_plan_mode = false
 merge_all_available_skills = false
@@ -1020,9 +1017,9 @@ base_url = "https://api.kimi.com/coding/v1"
 storage = "file"
 key = "oauth/kimi-code"
 
-[models."kimi-code/k3"]
+[models."$NATIVE_MODEL"]
 provider = "managed:kimi-code"
-model = "k3"
+model = "${NATIVE_MODEL#kimi-code/}"
 max_context_size = 1048576
 capabilities = [ "thinking", "always_thinking", "image_in", "video_in", "tool_use" ]
 display_name = "K3"
@@ -1126,6 +1123,12 @@ print_check() {
 
 extract_native() {
   local events="$1" output="$2" metrics="$3" started="$4" effort="$5" lane="$6" write_scope="$7"
+  jq -es --arg model "$NATIVE_MODEL" --argjson aliases "${DELEGATION_MODEL_ALIASES:-[]}" '
+    all(.[]; (.model? // .message.model? // null) as $m |
+      $m == null or $m == "" or $m == $model or ($aliases | index($m) != null))
+  ' "$events" >/dev/null || return 1
+  local reported_model
+  reported_model="$(jq -rs '[.[] | select(.role == "assistant") | (.model? // .message.model? // empty)] | last // empty' "$events")"
   jq -ers '
     [.[] | select(.role == "assistant") | .content |
       if type == "string" then .
@@ -1135,13 +1138,13 @@ extract_native() {
       select(length > 0)] | last // empty
   ' "$events" >"$output" || return 1
   [ -s "$output" ] || return 1
-  jq -n --arg model "$NATIVE_MODEL" --arg effort "$effort" --arg lane "$lane" \
+  jq -n --arg model "$NATIVE_MODEL" --arg reported_model "$reported_model" --arg effort "$effort" --arg lane "$lane" \
     --arg cli_version "$NATIVE_VERSION" --arg write_scope "$write_scope" \
     --arg rg_version "$RG_VERSION" --arg rg_sha256 "$RG_SHA256" \
     --arg rg_dependencies_sha256 "$RG_DEPENDENCIES_SHA256" \
     --arg oauth_mode "$OAUTH_MODE" \
     --argjson started "$started" '
-    {model:$model,backend:"native",effort:$effort,lane:$lane,runtime_cli_version:$cli_version,
+    {schema_version:2,requested_model:$model,provider_reported_model:(if $reported_model == "" then null else $reported_model end),model_identity_source:(if $reported_model == "" then "requested-only" else "provider-reported" end),model:$model,backend:"native",effort:$effort,lane:$lane,runtime_cli_version:$cli_version,
      runtime_cli_compatibility:"capability-probed",
      sandbox:"macos-sandbox-exec",isolated_home:true,environment_mode:"allowlist",
      ambient_home_read:false,
@@ -1182,7 +1185,7 @@ run_command() {
       --output) output="${2:-}"; shift 2 ;;
       --workdir) workdir="${2:-}"; shift 2 ;;
       --metrics) metrics="${2:-}"; shift 2 ;;
-      --allow-provisional) allow_provisional=1; shift ;;
+      --allow-provisional) printf "%s\n" "--allow-provisional is deprecated and has no effect" >&2; shift ;;
       --evaluation) evaluation=1; shift ;;
       --evaluation-manifest) evaluation_manifest_path="${2:-}"; shift 2 ;;
       --preflight-only) preflight_only=1; shift ;;
@@ -1243,38 +1246,20 @@ run_command() {
       fi
     done < <(preferred_backends "$lane")
     if [ -z "$backend" ]; then
-      # A qualified lane whose runtime is merely down is 69 (unavailable), not 78
-      # (never approved). The caller must read "keep the incumbent for now", not
-      # "this lane failed evaluation" — they are different facts with different
-      # lifetimes.
       [ "$qualified_seen" = 0 ] || die 69 "$NATIVE_REASON"
-      status="$(gate_status "$lane" native)"
-      if [ "$status" = provisional ]; then
-        die 78 "lane '$lane' is provisional; pass --allow-provisional after an explicit routing decision"
-      elif [ "$status" = candidate ]; then
-        die 78 "lane '$lane' is candidate; pass --evaluation only for a controlled qualification run"
-      else
-        die 78 "lane '$lane' has non-dispatchable status '$status'"
-      fi
+      die 78 "lane '$lane' has no implemented tool profile"
     fi
   else
     if ! is_allowed "$lane" "$backend" "$allow_provisional" "$evaluation"; then
-      status="$(gate_status "$lane" "$backend")"
-      if [ "$status" = provisional ]; then
-        die 78 "lane '$lane' backend '$backend' is provisional; pass --allow-provisional after an explicit routing decision"
-      elif [ "$status" = candidate ]; then
-        die 78 "lane '$lane' backend '$backend' is candidate; pass --evaluation only for a controlled qualification run"
-      else
-        die 78 "lane '$lane' backend '$backend' has non-dispatchable status '$status'"
-      fi
+      die 78 "lane '$lane' backend '$backend' has no implemented tool profile"
     fi
   fi
 
   [ "$effort" != auto ] || effort="$(default_effort)"
   expected_effort="$(qualified_effort "$lane" "$backend")" \
-    || die 69 "qualified lane '$lane' has no pinned effort for backend '$backend'"
+    || die 69 "lane '$lane' has no supported effort for backend '$backend'"
   [ "$effort" = "$expected_effort" ] \
-    || die 78 "lane '$lane' backend '$backend' is qualified only at effort '$expected_effort'"
+    || die 78 "lane '$lane' backend '$backend' supports only effort '$expected_effort'"
   local tmp dispatch_prompt_file="$prompt_file"
   tmp="$(mktemp -d "${TMPDIR:-/tmp}/delegation-kimi.XXXXXX")"
   tmp="$(cd "$tmp" && pwd -P)"

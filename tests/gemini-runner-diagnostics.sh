@@ -24,14 +24,14 @@ if [ "${1:-}" = --help ]; then printf '%s\n' 'agy --print --model --effort --mod
 if [ "${1:-}" = plugin ] && [ "${2:-}" = list ]; then no_ssh_markers; printf '%s\n' "${FAKE_AGY_PLUGINS:-No imported plugins.}"; exit 0; fi
 if [ "${1:-}" = models ]; then
   no_ssh_markers
-  printf '%s\n' ${FAKE_AGY_MODELS:-gemini-3.7-flash-medium}
+  printf '%s\n' "${FAKE_AGY_MODELS:-gemini-3.8-flash-high$(printf '\t')Gemini 3.8 Flash (High)}"
   exit 0
 fi
 no_ssh_markers
 case "${FAKE_AGY_CASE:-success}" in
  success)
-   expected_model="${FAKE_EXPECT_MODEL:-gemini-3.7-flash-medium}"
-   expected_effort="${FAKE_EXPECT_EFFORT:-medium}"
+   expected_model="${FAKE_EXPECT_MODEL:-gemini-3.8-flash-high}"
+   expected_effort="${FAKE_EXPECT_EFFORT:-high}"
    case "$PWD" in */delegation-gemini.*/workspace) ;; *) printf 'unsafe cwd: %s\n' "$PWD" >&2; exit 91 ;; esac
    [[ " $* " = *" --model $expected_model "* ]] || exit 92
    [[ " $* " = *" --effort $expected_effort "* ]] || exit 93
@@ -61,17 +61,25 @@ run() { local name="$1" expected="$2"; shift 2; local rc=0; PATH="$TMP/bin:$PATH
 
 # The test deliberately uses the checked-in gates; fake agy makes every probe local.
 PATH="$TMP/bin:$PATH" "$ROOT/bin/delegation-gemini" check --json >"$TMP/check.json"
-json "$TMP/check.json" '.model == "gemini-3.7-flash" and .backends.agy.available == true and .provisional_lanes == []'
+json "$TMP/check.json" '.model == "gemini-3.8-flash" and .backends.agy.available == true and .provisional_lanes == []'
+# Reject a matching description, another effort, and an ID prefix.
+for inventory in 'gemini-3.8-flash-medium' 'gemini-3.8-flash-high-extra' "other$(printf '\t')gemini-3.8-flash-high"; do
+  FAKE_AGY_MODELS="$inventory" PATH="$TMP/bin:$PATH" "$ROOT/bin/delegation-gemini" check --json >"$TMP/nonmatch.json"
+  json "$TMP/nonmatch.json" '.backends.agy.available == false'
+done
+# Continue accepting the previous ID-only inventory format.
+FAKE_AGY_MODELS=gemini-3.8-flash-high PATH="$TMP/bin:$PATH" "$ROOT/bin/delegation-gemini" check --json >"$TMP/plain.json"
+json "$TMP/plain.json" '.backends.agy.available == true'
 run success 0
 [ "$(cat "$TMP/results/success.out")" = PONG ] || fail 'success output mismatch'
-json "$TMP/results/success.out.metrics.json" '.runtime_model == "gemini-3.7-flash-medium" and .context_mode == "prompt_only" and .workspace_mode == "isolated_empty" and .home_mode == "isolated_keychain_oauth" and .tokens == null and .provider_cost_usd == null'
+json "$TMP/results/success.out.metrics.json" '.runtime_model == "gemini-3.8-flash-high" and .context_mode == "prompt_only" and .workspace_mode == "isolated_empty" and .home_mode == "isolated_keychain_oauth" and .tokens == null and .provider_cost_usd == null'
 [ ! -e "$TMP/results/success.out.error.json" ] || fail 'success left diagnostic'
 
 FAKE_AGY_PLUGINS='example-plugin 1.0 enabled' PATH="$TMP/bin:$PATH" "$ROOT/bin/delegation-gemini" check --json >"$TMP/plugin-check.json"
 json "$TMP/plugin-check.json" '.selected_backend == "none" and .backends.agy.available == false'
 
 rc=0
-FAKE_EXPECT_MODEL=gemini-3.7-flash-high FAKE_EXPECT_EFFORT=high FAKE_AGY_MODELS=gemini-3.7-flash-high \
+FAKE_EXPECT_MODEL=gemini-3.8-flash-high FAKE_EXPECT_EFFORT=high FAKE_AGY_MODELS=gemini-3.8-flash-high \
   PATH="$TMP/bin:$PATH" TMPDIR="$TMP/runtime" "$ROOT/bin/delegation-gemini" run \
   --lane builder --effort auto --backend agy --evaluation --prompt-file "$TMP/prompt" \
   --output "$TMP/results/evaluation-builder.out" --workdir "$TMP/work" >/dev/null 2>&1 || rc=$?
@@ -81,10 +89,10 @@ rc=0
 PATH="$TMP/bin:$PATH" "$ROOT/bin/delegation-gemini" run --lane reviewer --evaluation \
   --prompt-file "$TMP/prompt" --output "$TMP/results/evaluation-reviewer.out" \
   --workdir "$TMP/work" >/dev/null 2>&1 || rc=$?
-[ "$rc" = 78 ] || fail "disabled reviewer evaluation returned $rc"
+[ "$rc" = 0 ] || fail "reviewer high runtime returned $rc"
 
 rc=0; PATH="$TMP/bin:$PATH" "$ROOT/bin/delegation-gemini" run --lane scout --prompt-file "$TMP/prompt" --output "$TMP/results/refusal.out" --workdir "$TMP/work" >/dev/null 2>&1 || rc=$?
-[ "$rc" = 78 ] || fail "candidate refusal returned $rc"
+[ "$rc" = 0 ] || fail "candidate execution returned $rc"
 for case in process_exit empty permission auth rate; do
   case "$case" in
     process_exit|empty|permission) expected=70 ;;

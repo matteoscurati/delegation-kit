@@ -1355,14 +1355,14 @@
         }
       }
     },
-    "deepseek-v4-pro": {
+    "deepseek-flash": {
       "provider_family": "deepseek",
-      "model": "deepseek-v4-pro",
+      "model": "deepseek-flash",
       "runner": "delegation-deepseek",
       "harness": "deepseek-api",
       "backend": "deepseek-api",
       "transport": "chat-completions",
-      "executable_gate": "deepseek-v4-pro-routing.json",
+      "executable_gate": "deepseek-flash-routing.json",
       "efforts": [
         "max"
       ],
@@ -1371,8 +1371,8 @@
         "sandbox": null
       },
       "identity": {
-        "requested_model": "deepseek-v4-pro",
-        "runtime_model": "deepseek-v4-pro",
+        "requested_model": "deepseek-flash",
+        "runtime_model": "deepseek-flash",
         "observed_identity_sources": [
           "response-body"
         ],
@@ -1424,7 +1424,7 @@
       },
       "lanes": {
         "builder": {
-          "central_profile": "deepseek-v4-pro",
+          "central_profile": "deepseek-flash",
           "effort": "max",
           "status": "provisional",
           "selection": "explicit-only",
@@ -1454,7 +1454,7 @@
           }
         },
         "clerk": {
-          "central_profile": "deepseek-v4-pro",
+          "central_profile": "deepseek-flash",
           "effort": "max",
           "status": "candidate",
           "selection": "blocked",
@@ -1477,7 +1477,7 @@
           }
         },
         "scout": {
-          "central_profile": "deepseek-v4-pro",
+          "central_profile": "deepseek-flash",
           "effort": "max",
           "status": "candidate",
           "selection": "blocked",
@@ -1500,7 +1500,7 @@
           }
         },
         "reviewer": {
-          "central_profile": "deepseek-v4-pro",
+          "central_profile": "deepseek-flash",
           "effort": "max",
           "status": "candidate",
           "selection": "blocked",
@@ -1523,7 +1523,7 @@
           }
         },
         "senior": {
-          "central_profile": "deepseek-v4-pro",
+          "central_profile": "deepseek-flash",
           "effort": "max",
           "status": "candidate",
           "selection": "blocked",
@@ -1546,7 +1546,7 @@
           }
         },
         "judgement": {
-          "central_profile": "deepseek-v4-pro",
+          "central_profile": "deepseek-flash",
           "effort": "max",
           "status": "disabled",
           "selection": "blocked",
@@ -1569,7 +1569,7 @@
           }
         },
         "policy-annotation": {
-          "central_profile": "deepseek-v4-pro",
+          "central_profile": "deepseek-flash",
           "effort": "max",
           "status": "candidate",
           "selection": "blocked",

@@ -30,6 +30,7 @@ set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 TMP="$(mktemp -d "${TMPDIR:-/tmp}/delegation-patch-verify-tests.XXXXXX")"
+export DELEGATION_CONFIG_FILE="$TMP/user-config/config.json"
 trap 'rm -rf -- "$TMP"' EXIT
 
 command -v jq >/dev/null 2>&1 || { printf 'jq is required\n' >&2; exit 69; }
