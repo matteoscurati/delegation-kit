@@ -2,6 +2,77 @@
 
 All notable changes to delegation-kit are documented here.
 
+## [0.25.0] — 2026-09-11
+
+The idea behind 0.24.0 was that which model runs is the user's call, not the
+kit's. That release made it true for the user and left the qualification
+machinery in place as history. This release removes it.
+
+### Removed
+
+- **Routing gates.** `config/routing-gates.json` and the six executable
+  `config/*-routing.json` gates. No runner, router, or preset reads a gate
+  any more; `install.sh` deletes the installed copies on upgrade.
+- **The executor contract, evidence, and Epoch importer.**
+  `bin/delegation-executor-contract` with
+  `config/external-executor-contract.json`, `bin/delegation-evidence` with
+  `config/model-evidence.json`, and `bin/delegation-epoch`, together with
+  their suites (`external-executor-contract.sh`, `epoch-zip.sh`) and the CI
+  step that ran them. `uninstall.sh` keeps removing the retired commands for
+  one release.
+- **The schema compiler.** `bin/delegation-schema` and `schema-transport.sh`;
+  it served only the evaluation mode below.
+- **The runners' qualification mode.** `--evaluation`,
+  `--evaluation-manifest`, and `--preflight-only` are gone from
+  `delegation-glm`, `delegation-kimi`, `delegation-grok`, `delegation-gemini`,
+  and the shared chat-completions core behind `delegation-qwen`,
+  `delegation-deepseek`, and `delegation-openai-compatible`, with the manifest
+  verification, preflight receipts, attempt receipts, publication commit
+  markers, and the "dirty checkout" refusal. Passing a removed flag is an
+  unknown argument (exit 64). The Grok strict-identity VOID path is gone: a
+  missing content model is tolerated everywhere, a surfaced mismatch still
+  fails closed.
+- The gate-status helpers in `bin/lib/delegation-runner-common.sh`, the
+  `evidence` column of `delegation-route`, compound lanes, and the doctor
+  sections "Model-routing evidence", "Central routing gates", and "External
+  executor contract".
+- `docs/external-executors.md` shrinks from the contract description to the
+  adapters, permission classes, patch verifier, identity, and exit codes.
+
+### Changed
+
+- **`config/presets.json`** is the shipped profile list (22 profiles, Gemini
+  excluded), maintained by hand; `delegation-config init` copies it. The npm
+  wrapper verifies this file instead of the gates. A legacy
+  `routing-gates.json` is still imported on first migration and falls back to
+  the preset when it is malformed.
+- **Runner `check`** reports `{model, adapter, roles, efforts,
+  selected_backend, backends}` (plus `default_effort` for the chat-completions
+  adapters and the native runtime controls); `qualified_lanes`,
+  `provisional_lanes`, and `candidate_lanes` are gone. An unsupported role or
+  effort exits 78 before any credential or runtime inspection.
+- **`delegation-route`** reports schema 3: rows carry `technical_compatibility`,
+  `capabilities`, and `selection` only.
+- Doctor gains a "Route discovery" section over the personal configuration,
+  reads adapter roles from each runner, and pings through adapter roles.
+- `--allow-provisional` stays a deprecated no-op that prints a warning; it is
+  removed in the next minor release.
+- CLAUDE.md replaces "Routing gates" with "Presets and configuration";
+  `evaluation/README.md` is marked as an archive; `model-routing.md` states it
+  governs nothing.
+
+### Migration
+
+- Nothing to do for a 0.24.0 personal configuration: the schema is unchanged.
+  Re-run `./install.sh`; it removes the retired files and commands from the
+  data directory. Profiles that name a model the provider no longer serves
+  (for example `deepseek-v4-pro`) are the user's to edit in the personal
+  configuration.
+- Scripts that called `delegation-executor-contract`, `delegation-evidence`,
+  `delegation-epoch`, `delegation-schema`, or a runner's `--evaluation` mode
+  have no replacement; the frozen artifacts under `evaluation/` remain as a
+  record.
+
 ## [0.24.0] — 2026-09-10
 
 ### Added

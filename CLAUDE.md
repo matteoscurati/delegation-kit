@@ -97,14 +97,15 @@ warning — normal while unreleased work sits on `main`, and the fix is the same
 re-run `./install.sh`. The marker is written last, so it exists only if the
 install reached the end.
 
-## Routing gates
+## Presets and configuration
 
-Never promote a lane, widen a selection, or edit `config/routing-gates.json` and
-the executable `config/*-routing.json` gates as a side effect of other work. A
-promotion is an explicit owner decision and must say in the gate whether it rests
-on measured evidence or on an owner override. `bin/delegation-route` validates
-that the central and executable gates agree; run `delegation-route check` after
-touching either.
+`config/presets.json` is the only shipped profile list; it is edited by hand and
+`delegation-config init` copies it into the personal configuration. Never
+change a preset's model, adapter, roles, or effort as a side effect of other
+work: that is an owner decision recorded in the CHANGELOG. Which roles and
+efforts an adapter supports is code (the `ROLES`/`EFFORTS` tables in each
+runner and the `ADAPTERS` table in `bin/lib/delegation_config.py`); keep those
+two in agreement when a runner changes. No command reads `evaluation/`.
 
 Frozen evaluation artifacts under `evaluation/*-qualification-v*/` are historical
 records. Do not rewrite them when a model, pin, or runner changes — supersede
