@@ -38,16 +38,22 @@ esac
 EOF
 chmod 700 "$TEST_TOOLS/claude"
 
-# Seed an upgrade-shaped install: stale Grok 4.5 and retired GLM gates plus a
-# digest-valid Grok archive. The installer must remove the stale gates and
-# recognize the retained archive only after current routing files exist.
-mkdir -p "$DATA/config" "$DATA/grok-cli/current" "$GROK_TEST_HOME"
+# Seed an upgrade-shaped install: the routing gates, executor contract,
+# evidence snapshot, and retired commands a 0.24.0 install left behind, plus a
+# digest-valid Grok archive. The installer must remove every retired file and
+# recognize the retained archive.
+mkdir -p "$DATA/config" "$DATA/bin" "$DATA/grok-cli/current" "$GROK_TEST_HOME" "$TMP/bin"
 printf '%s\n' '{}' >"$GROK_TEST_HOME/auth.json"
-printf '%s\n' '{}' >"$DATA/config/grok-4.5-routing.json"
-printf '%s\n' '{}' >"$DATA/config/glm-5.2-routing.json"
-printf '%s\n' '{}' >"$DATA/config/glm-5.3-high-routing.json"
-printf '%s\n' '{}' >"$DATA/config/glm-5.3-max-routing.json"
-printf '%s\n' '{}' >"$DATA/config/gemini-3.6-flash-routing.json"
+for retired_config in routing-gates.json grok-4.6-routing.json glm-5.3-flash-max-routing.json \
+    kimi-k3-routing.json gemini-3.8-flash-routing.json qwen3.8-max-routing.json \
+    deepseek-flash-routing.json external-executor-contract.json model-evidence.json; do
+  printf '%s\n' '{}' >"$DATA/config/$retired_config"
+done
+for retired_command in delegation-schema delegation-evidence delegation-epoch delegation-executor-contract; do
+  printf '#!/bin/sh\nexit 0\n' >"$DATA/bin/$retired_command"
+  chmod 755 "$DATA/bin/$retired_command"
+  ln -sfn "$DATA/bin/$retired_command" "$TMP/bin/$retired_command"
+done
 cat >"$DATA/grok-cli/current/grok" <<'EOF'
 #!/usr/bin/env bash
 case "${1:-}" in
@@ -87,40 +93,27 @@ env CLAUDE_HOME="$TMP/claude" CODEX_HOME="$TMP/codex" \
     "$ROOT/install.sh" </dev/null >"$TMP/install.log" 2>&1 \
   || { sed 's/^/    /' "$TMP/install.log" >&2; fail 'install.sh exited non-zero'; }
 
-[ ! -e "$DATA/config/grok-4.5-routing.json" ] \
-  || fail 'upgrade retained the stale Grok 4.5 gate'
-[ -f "$DATA/config/grok-4.6-routing.json" ] \
-  || fail 'upgrade did not install the Grok 4.6 gate'
-[ ! -e "$DATA/config/glm-5.2-routing.json" ] \
-  || fail 'upgrade retained the stale GLM 5.2 gate'
-[ ! -e "$DATA/config/glm-5.3-high-routing.json" ] \
-  || fail 'upgrade retained the stale GLM 5.3/high gate'
-[ ! -e "$DATA/config/glm-5.3-max-routing.json" ] \
-  || fail 'upgrade retained the retired GLM 5.3/max gate'
-[ -f "$DATA/config/glm-5.3-flash-max-routing.json" ] \
-  || fail 'upgrade did not install the GLM 5.3-Flash/max gate'
-[ ! -e "$DATA/config/gemini-3.6-flash-routing.json" ] \
-  || fail 'upgrade retained the stale Gemini 3.6 gate'
-[ -f "$DATA/config/gemini-3.8-flash-routing.json" ] \
-  || fail 'upgrade did not install the Gemini 3.7 gate'
-[ -f "$DATA/config/deepseek-flash-routing.json" ] && [ ! -e "$DATA/config/deepseek-v4-pro-routing.json" ] && [ -x "$DATA/bin/delegation-deepseek" ] \
-  || fail 'install did not include the DeepSeek V4.1 Flash gate and runner (or kept the retired V4 Pro gate)'
+for retired_config in routing-gates.json grok-4.6-routing.json glm-5.3-flash-max-routing.json \
+    kimi-k3-routing.json gemini-3.8-flash-routing.json qwen3.8-max-routing.json \
+    deepseek-flash-routing.json external-executor-contract.json model-evidence.json; do
+  [ ! -e "$DATA/config/$retired_config" ] || fail "upgrade retained the retired $retired_config"
+done
+for retired_command in delegation-schema delegation-evidence delegation-epoch delegation-executor-contract; do
+  [ ! -e "$DATA/bin/$retired_command" ] && [ ! -e "$TMP/bin/$retired_command" ] && [ ! -L "$TMP/bin/$retired_command" ] \
+    || fail "upgrade retained the retired command $retired_command"
+done
+[ "$(find "$DATA/config" -maxdepth 1 -name '*.json' | sort | xargs -n1 basename)" = external-patch-policy.json ] \
+  || fail "install left unexpected JSON files in $DATA/config: $(ls "$DATA/config")"
+[ -x "$DATA/bin/delegation-deepseek" ] || fail 'install did not include the DeepSeek runner'
 # The runners source the shared library from the installed tree, so it must be
 # present and an installed runner must run through its PATH symlink.
 [ -f "$DATA/bin/lib/delegation-runner-common.sh" ] && [ -f "$DATA/bin/lib/delegation-chat-completions.sh" ] \
   || fail 'install did not include the shared runner library'
 [ ! -e "$TMP/bin/lib" ] || fail 'install linked the shared runner library onto the bin path'
-DELEGATION_ROUTING_GATES_FILE="$DATA/config/routing-gates.json" \
-  "$TMP/bin/delegation-deepseek" check --json >"$TMP/deepseek-check.json" 2>"$TMP/deepseek-check.err" \
+"$TMP/bin/delegation-deepseek" check --json >"$TMP/deepseek-check.json" 2>"$TMP/deepseek-check.err" \
   || { sed 's/^/    /' "$TMP/deepseek-check.err" >&2; fail 'the installed DeepSeek runner could not source the shared library'; }
-jq -e '.model == "deepseek-flash"' "$TMP/deepseek-check.json" >/dev/null \
-  || fail 'the installed DeepSeek runner reported the wrong model'
-# The common external-executor contract must be installed alongside the gates it
-# cross-checks, and the installed copy must validate against those copies.
-[ -f "$DATA/config/external-executor-contract.json" ] && [ -x "$DATA/bin/delegation-executor-contract" ] \
-  || fail 'install did not include the external-executor contract and its command'
-[ -L "$TMP/bin/delegation-executor-contract" ] \
-  || fail 'install did not link delegation-executor-contract onto the bin path'
+jq -e '.model == "deepseek-flash" and .adapter == "deepseek-api" and (.roles | index("builder") != null)' "$TMP/deepseek-check.json" >/dev/null \
+  || fail 'the installed DeepSeek runner reported the wrong model or adapter contract'
 # The personal-configuration commands ship with the kit and the installer
 # initializes the configuration file (isolated here via DELEGATION_CONFIG_FILE).
 for command in delegation-config delegation-run delegation-openai-compatible; do
@@ -133,17 +126,8 @@ jq -e '.schema_version == 1 and .review_policy == "optional" and (.profiles | le
   || fail 'the initialized personal configuration is not the optional-review preset'
 [ -f "$(dirname "$DELEGATION_CONFIG_FILE")/managed/profiles.json" ] \
   || fail 'install did not generate the managed host snippets'
-"$DATA/bin/delegation-executor-contract" check --json >"$TMP/contract-check.json" 2>"$TMP/contract-check.err" \
-  || { sed 's/^/    /' "$TMP/contract-check.err" >&2; fail 'the installed contract command failed its own check'; }
-jq -e '.valid == true and .read_only == true and .grants_permissions == false and
-       .enforcement_authority == "provider-runner" and .families == 6 and
-       .permission_classes == ["read-only","text-patch","worktree-edit"] and
-       .exit_codes == [64,69,70,75,78,130]' "$TMP/contract-check.json" >/dev/null \
-  || fail 'the installed contract does not describe the expected families or classes'
-# The text-patch trust boundary must be installed as a whole: the verifier, the
-# versioned policy it enforces, and a contract whose text-patch lanes name that
-# exact version. Installing one without the others leaves a lane declaring a
-# boundary nothing on this machine can hold.
+# The text-patch trust boundary: the verifier and the versioned policy it
+# enforces are installed together.
 [ -f "$DATA/config/external-patch-policy.json" ] && [ -x "$DATA/bin/delegation-patch-verify" ] \
   || fail 'install did not include the external patch policy and its verifier'
 [ -L "$TMP/bin/delegation-patch-verify" ] \
@@ -159,12 +143,6 @@ jq -e '.schema_version == 1 and .verifier == "delegation-patch-verify" and
        (.git_apply.never_passed | index("--unsafe-paths")) != null' \
   "$TMP/patch-policy.json" >/dev/null \
   || fail 'the installed patch policy is not the fail-closed policy this kit ships'
-jq -e --slurpfile policy "$TMP/patch-policy.json" '
-       .patch_verifier == "delegation-patch-verify" and
-       .patch_verification_required == true and .patch_applied_by == "lead" and
-       .text_patch_lanes == 4 and
-       .patch_policy_version == $policy[0].policy_version' "$TMP/contract-check.json" >/dev/null \
-  || fail 'the installed contract does not require the installed patch policy version'
 [ -f "$TMP/claude/skills/deepseek-executor/SKILL.md" ] && [ -f "$TMP/codex/skills/deepseek-executor/SKILL.md" ] \
   || fail 'install did not include the DeepSeek executor skill on both surfaces'
 
@@ -302,20 +280,14 @@ for command in delegation-config delegation-run delegation-openai-compatible; do
 done
 ok
 
-# Uninstalling that second tree must remove the contract command and its data
+# Uninstalling that second tree must remove the commands and their data
 # without touching the credentials/archives the uninstaller deliberately keeps.
-[ -f "$TMP/data2/config/external-executor-contract.json" ] \
-  || fail 'the --claude-only install did not include the contract file'
 [ -f "$TMP/data2/config/external-patch-policy.json" ] \
   || fail 'the --claude-only install did not include the patch policy'
 env CLAUDE_HOME="$TMP/claude2" CODEX_HOME="$TMP/codex2" \
     DELEGATION_BIN_HOME="$TMP/bin2" DELEGATION_DATA_HOME="$TMP/data2" \
     "$ROOT/uninstall.sh" </dev/null >"$TMP/uninstall2.log" 2>&1 \
   || { sed 's/^/    /' "$TMP/uninstall2.log" >&2; fail 'uninstall.sh exited non-zero'; }
-[ ! -e "$TMP/bin2/delegation-executor-contract" ] \
-  || fail 'uninstall left the contract command on the bin path'
-[ ! -e "$TMP/data2/config/external-executor-contract.json" ] \
-  || fail 'uninstall left the installed contract file behind'
 [ ! -e "$TMP/bin2/delegation-patch-verify" ] \
   || fail 'uninstall left the patch verifier on the bin path'
 [ ! -e "$TMP/data2/config/external-patch-policy.json" ] \

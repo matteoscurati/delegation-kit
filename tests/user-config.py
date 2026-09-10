@@ -283,8 +283,23 @@ class ConfigTests(unittest.TestCase):
         (self.base / "config.json").unlink()
         legacy = self.base / "data/config"
         legacy.mkdir(parents=True)
-        (legacy / "routing-gates.json").write_bytes(
-            (ROOT / "config/routing-gates.json").read_bytes()
+        # A pre-0.24 install shipped its profiles as routing gates; the kit no
+        # longer carries that file, so the fixture is the minimal legacy shape.
+        (legacy / "routing-gates.json").write_text(
+            json.dumps(
+                {
+                    "schema_version": 1,
+                    "model_families": {"gpt-5.6-luna": "openai"},
+                    "profiles": {
+                        "legacy-clerk": {
+                            "model": "gpt-5.6-luna",
+                            "harness": "codex",
+                            "effort": "max",
+                            "lanes": {"clerk": {"status": "qualified"}},
+                        }
+                    },
+                }
+            )
         )
         (legacy / "key.env").write_text("SECRET=kept")
         (legacy / "key.env").chmod(0o600)
@@ -295,6 +310,16 @@ class ConfigTests(unittest.TestCase):
             (backup / "routing-gates.json").read_bytes()
         ).hexdigest()
         migrated = json.loads((self.base / "config.json").read_text())
+        self.assertEqual(
+            migrated["profiles"]["legacy-clerk"],
+            {
+                "adapter": "codex",
+                "model": "gpt-5.6-luna",
+                "family": "openai",
+                "roles": ["clerk"],
+                "parameters": {"effort": "max"},
+            },
+        )
         migrated["review_policy"] = "required"
         (self.base / "config.json").write_text(json.dumps(migrated))
         self.command("delegation-config", "apply")
@@ -312,6 +337,16 @@ class ConfigTests(unittest.TestCase):
             digest,
         )
         self.assertEqual((backup / "key.env").read_text(), "SECRET=kept")
+
+    def test_migration_from_malformed_legacy_snapshot_uses_preset(self):
+        (self.base / "config.json").unlink()
+        legacy = self.base / "data/config"
+        legacy.mkdir(parents=True)
+        (legacy / "routing-gates.json").write_text("{}")
+        result = json.loads(self.command("delegation-config", "init").stdout)
+        self.assertIsNotNone(result["backup"])
+        migrated = json.loads((self.base / "config.json").read_text())
+        self.assertIn("luna-clerk", migrated["profiles"])
 
     def test_native_cli_forwarding_with_fake_executables(self):
         tools = self.base / "tools"

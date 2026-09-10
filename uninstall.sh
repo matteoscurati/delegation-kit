@@ -45,9 +45,10 @@ rm -rf "$CODEX_HOME/skills/glm-executor" "$CODEX_HOME/skills/gemini-executor" \
 echo "  - removed 5 current native + 5 ephemeral profiles and retired Terra scout copies"
 strip_guarded "$CODEX_HOME/AGENTS.md"
 rm -f "$BIN_HOME/delegation-config" "$BIN_HOME/delegation-run" "$BIN_HOME/delegation-openai-compatible" \
-  "$BIN_HOME/delegation-schema" "$BIN_HOME/delegation-glm" "$BIN_HOME/delegation-gemini" "$BIN_HOME/delegation-kimi" "$BIN_HOME/delegation-qwen" "$BIN_HOME/delegation-deepseek" "$BIN_HOME/delegation-grok" \
-  "$BIN_HOME/delegation-evidence" "$BIN_HOME/delegation-epoch" "$BIN_HOME/delegation-route" \
-  "$BIN_HOME/delegation-executor-contract" "$BIN_HOME/delegation-patch-verify"
+  "$BIN_HOME/delegation-glm" "$BIN_HOME/delegation-gemini" "$BIN_HOME/delegation-kimi" "$BIN_HOME/delegation-qwen" "$BIN_HOME/delegation-deepseek" "$BIN_HOME/delegation-grok" \
+  "$BIN_HOME/delegation-route" "$BIN_HOME/delegation-patch-verify" \
+  "$BIN_HOME/delegation-schema" "$BIN_HOME/delegation-evidence" "$BIN_HOME/delegation-epoch" \
+  "$BIN_HOME/delegation-executor-contract"
 # Everything else under $DATA_HOME is a byte-for-byte copy of a repo file that
 # re-running install.sh restores; the keys and archived runtime binaries are the
 # unrecoverable things here. Back them up rather than destroy them, matching the

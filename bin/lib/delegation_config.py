@@ -111,19 +111,26 @@ def read(path):
 def preset(strict=False, source=None):
     """The shipped preset (config/presets.json), or the profiles imported from a
     legacy routing-gates.json snapshot when migrating a pre-0.24 install."""
-    if source is None:
-        profiles = read(ROOT / "config/presets.json")["profiles"]
-    else:
-        old = read(source)
-        profiles = {}
-        for key, p in old["profiles"].items():
-            profiles[key] = {
-                "adapter": p["harness"],
-                "model": p["model"],
-                "family": old.get("model_families", {}).get(p["model"]),
-                "roles": list(p["lanes"]),
-                "parameters": {"effort": p["effort"]},
+    profiles = None
+    if source is not None:
+        # A legacy snapshot that does not parse or lacks the expected shape
+        # falls back to the shipped preset instead of failing the install.
+        try:
+            old = read(source)
+            profiles = {
+                key: {
+                    "adapter": p["harness"],
+                    "model": p["model"],
+                    "family": old.get("model_families", {}).get(p["model"]),
+                    "roles": list(p["lanes"]),
+                    "parameters": {"effort": p["effort"]},
+                }
+                for key, p in old["profiles"].items()
             }
+        except (ValueError, KeyError, TypeError, AttributeError, OSError):
+            profiles = None
+    if not profiles:
+        profiles = read(ROOT / "config/presets.json")["profiles"]
     return {
         "schema_version": 1,
         "review_policy": "cross-family" if strict else "optional",
