@@ -14,23 +14,29 @@ are not an instruction to use this provider.
 
 ## Verified snapshot
 
-The 0.23.0 release-candidate gate was verified on **2026-09-07** on macOS
+The 0.24.0 release-candidate gate was verified on **2026-09-10** on macOS
 26.5.1 with ambient Codex CLI `0.153.4` and ambient Claude Code `2.1.263`.
-The release candidate passed all 14 regression suites in 56 seconds, including
-66 central routing checks, 267 executor-contract checks, 113 patch-verifier
-checks, and 17 install-marker checks, plus ShellCheck at `-S warning` over 31
-tracked shell files (the two new `bin/lib/` libraries included), evidence
+The merge commit passed all 15 regression suites in 54 seconds, including the
+new `user-config` suite (loopback HTTP, isolated configuration), 267
+executor-contract checks, 113 patch-verifier checks, 18 install-marker checks
+(now covering the three configuration commands, the initialized personal
+configuration and the managed snippets), ShellCheck at `-S warning` over 32
+tracked shell files, ruff over the Python commands, evidence and contract
 validation, the eight Node tests of the npm wrapper, and the ten-check version
-gate. A reinstall from the candidate branch put the shared runner library in
-place and every installed runner answered `check` through its PATH symlink;
-the Qwen Token Plan runtime reported available once its key was stored by the
-installer. Static doctor reported `56 OK, 0 WARN, 0 FAIL`; `doctor.sh --ping`
-reported `58 OK, 0 WARN, 0 FAIL`, with the Claude→Codex round-trip returning
-`PONG` and the Claude endpoint accepting the configured model and effort. The
-GLM-5.3-Flash v4 pack was not re-run in this pass (no Z.AI key on the
-verifying machine); its 2026-08-29 result stands as the last exact-runner
-evidence for that lane, and this release changes no routing decision. A fresh
-reinstall from the merged/tagged commit remains required before the release is
+gate. A reinstall from the merge commit initialized the personal configuration
+(27 profiles, review `optional`, legacy gates snapshotted as
+`migration-v1-backup`) and static doctor reported `62 OK, 0 WARN, 0 FAIL`
+with the new "Personal configuration" section green; `doctor.sh --ping`
+reported `64 OK, 0 WARN, 0 FAIL` with the Claude→Codex round-trip returning
+`PONG`. Two authorized `delegation-run` probes on the clerk lane returned
+`PONG` through the new dispatcher: `luna-clerk` via `codex exec` in 8 seconds
+and `sonnet-clerk` via `claude -p` in 3 seconds, each with a version 2
+`.result.json` receipt (`ready-for-integration`, review `not-required`,
+`automatic_review: false`). Both native CLIs report no model in their
+responses, so identity is `requested-only` for them by design. The DeepSeek
+V4.1 Flash exact-identity smoke of the same day is recorded in its row below;
+no Gemini, GLM or Kimi inference was executed in this pass. A fresh reinstall
+from the merged/tagged commit remains required before the release is
 considered complete. Numeric vendor versions are provenance only
 wherever the runner uses capability probing.
 
