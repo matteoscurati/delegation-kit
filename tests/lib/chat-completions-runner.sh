@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Shared diagnostics for the OpenAI-compatible text-only runners.
-# Provider wrappers set the exact model, backend, effort, key name, and gate.
+# Provider wrappers set the exact model, backend, default effort, and key name.
 set -euo pipefail
 
 : "${PROVIDER_SLUG:?}"
@@ -9,35 +9,15 @@ set -euo pipefail
 : "${BACKEND:?}"
 : "${EFFORT:?}"
 : "${RUNNER_NAME:?}"
-: "${ROUTING_FILE:?}"
 : "${API_KEY_ENV:?}"
 : "${API_KEY_VALUE:?}"
 : "${EXPECT_THINKING:?}"
 
-SOURCE_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 TMP="$(mktemp -d "${TMPDIR:-/tmp}/delegation-${PROVIDER_SLUG}-test.XXXXXX")"
-# rm of the large .git copy can transiently fail on CI when background
-# system processes touch the tree mid-delete; the temp dir is under $TMPDIR
-# and OS-cleaned, so a failed sweep must not fail the suite.
 trap 'rm -rf -- "$TMP" 2>/dev/null || true' EXIT
 mkdir -p "$TMP/bin" "$TMP/work" "$TMP/results" "$TMP/runtime" "$TMP/debug"
 printf 'Respond with PONG.\n' >"$TMP/prompt"
-
-# Evaluation rejects a dirty runner checkout.  Exercise it in a throwaway,
-# committed copy of the current tree, never by weakening that production check.
-ROOT="$TMP/repo"
-cp -R "$SOURCE_ROOT/." "$ROOT"
-rm -rf -- "$ROOT/.git"
-rm -f -- "$ROOT/.claude/settings.local.json"
-mkdir -p "$ROOT/evaluation/test-fixtures"
-printf '%s\n' 'policy annotation contract fixture' >"$ROOT/evaluation/test-fixtures/contract.txt"
-printf '%s\n' '{"type":"object","required":["annotation"]}' >"$ROOT/evaluation/test-fixtures/output-schema.json"
-git -C "$ROOT" init -q
-git -C "$ROOT" config user.email test@example.invalid
-git -C "$ROOT" config user.name delegation-runner-test
-git -C "$ROOT" add -A
-git -C "$ROOT" commit -qm 'evaluation fixture base'
-BASE_COMMIT="$(git -C "$ROOT" rev-parse HEAD)"
 
 cat >"$TMP/bin/curl" <<'EOF'
 #!/usr/bin/env bash
@@ -104,39 +84,14 @@ case "${FAKE_PROVIDER_CASE:-success}" in
 esac
 EOF
 chmod +x "$TMP/bin/curl"
+chmod +x "$TMP/bin/curl"
 
 RUNNER="$ROOT/bin/$RUNNER_NAME"
-ROUTING_PATH="$ROOT/$ROUTING_FILE"
 export "$API_KEY_ENV=$API_KEY_VALUE"
 export FAKE_PROVIDER_MODEL="$MODEL"
 
 fail() { printf 'FAIL: %s\n' "$*" >&2; exit 1; }
 json() { jq -e "$2" "$1" >/dev/null || fail "$1 did not satisfy $2"; }
-sha256() { shasum -a 256 "$1" | awk '{print $1}'; }
-
-write_manifest() {
-  jq -n \
-    --arg prompt_sha256 "$(sha256 "$TMP/prompt")" \
-    --arg runner_sha256 "$(sha256 "$RUNNER")" \
-    --arg contract_sha256 "$(sha256 "$ROOT/evaluation/test-fixtures/contract.txt")" \
-    --arg output_schema_sha256 "$(sha256 "$ROOT/evaluation/test-fixtures/output-schema.json")" \
-    --arg source_commit "$BASE_COMMIT" \
-    --arg model "$MODEL" --arg backend "$BACKEND" --arg effort "$EFFORT" \
-    '{schema:"delegation_policy_annotation_evaluation_v1",profile:$model,lane:"policy-annotation",model:$model,backend:$backend,effort:$effort,prompt_sha256:$prompt_sha256,runner_source_commit:$source_commit,runner_sha256:$runner_sha256,contract_path:"evaluation/test-fixtures/contract.txt",contract_sha256:$contract_sha256,output_schema_path:"evaluation/test-fixtures/output-schema.json",output_schema_sha256:$output_schema_sha256,timeout_seconds:60,max_output_chars:1024}' \
-    >"$TMP/manifest.json"
-}
-write_manifest
-MANIFEST_SHA="$(sha256 "$TMP/manifest.json")"
-jq --arg hash "$MANIFEST_SHA" --arg profile "$MODEL" '
-  .profiles[$profile].lanes["policy-annotation"].evaluation_manifest_sha256 = [$hash]
-' "$ROOT/config/routing-gates.json" >"$TMP/gates.json"
-mv "$TMP/gates.json" "$ROOT/config/routing-gates.json"
-jq --arg hash "$MANIFEST_SHA" --arg backend "$BACKEND" '
-  .lanes["policy-annotation"].backends[$backend].evaluation_manifest_sha256 = [$hash]
-' "$ROUTING_PATH" >"$TMP/provider-routing.json"
-mv "$TMP/provider-routing.json" "$ROUTING_PATH"
-git -C "$ROOT" add config/routing-gates.json "$ROUTING_FILE"
-git -C "$ROOT" commit -qm 'allowlist evaluation fixture'
 
 run_case() {
   local name="$1" expected="$2"
@@ -146,8 +101,7 @@ run_case() {
     FAKE_PROVIDER_CASE="$name" \
     FAKE_PROVIDER_REQUEST_CAPTURE="$TMP/results/$name.request.json" \
     "$RUNNER" run --lane policy-annotation --effort auto \
-    --backend "$BACKEND" --evaluation --prompt-file "$TMP/prompt" \
-    --evaluation-manifest "$TMP/manifest.json" \
+    --backend "$BACKEND" --prompt-file "$TMP/prompt" \
     --output "$TMP/results/$name.out" --workdir "$TMP/work" "$@" \
     >"$TMP/results/$name.stdout" 2>"$TMP/results/$name.stderr" || rc=$?
   [ "$rc" = "$expected" ] || fail "$name returned $rc, expected $expected"
@@ -155,31 +109,30 @@ run_case() {
 
 PATH="$TMP/bin:$PATH" \
   "$RUNNER" check --json >"$TMP/check.json"
-jq -e --arg model "$MODEL" --arg backend "$BACKEND" \
-  '.model == $model and .backends[$backend].available == true' \
-  "$TMP/check.json" >/dev/null || fail 'provider check did not expose the configured backend'
+jq -e --arg model "$MODEL" --arg backend "$BACKEND" --arg effort "$EFFORT" \
+  '.model == $model and .adapter == $backend and
+   .roles == ["builder","clerk","scout","reviewer","senior","judgement","policy-annotation"] and
+   (.efforts | index($effort) != null) and .default_effort == $effort and
+   .selected_backend == $backend and .backends[$backend].available == true' \
+  "$TMP/check.json" >/dev/null || fail 'provider check did not expose the adapter contract'
+PATH="$TMP/bin:$PATH" "$RUNNER" check >"$TMP/check.txt"
+grep -q "selected=$BACKEND roles=builder,clerk,scout,reviewer,senior,judgement,policy-annotation" "$TMP/check.txt" \
+  || fail 'text check did not report the adapter roles'
 
-# The real builder lane is provisional: it dispatches only behind an explicit
-# --allow-provisional decision, and the production gates stay untouched here.
-rc=0
-PATH="$TMP/bin:$PATH" \
-  "$RUNNER" run --lane builder --prompt-file "$TMP/prompt" \
-  --output "$TMP/results/builder-refused.out" --workdir "$TMP/work" \
-  >/dev/null 2>&1 || rc=$?
-[ "$rc" = 0 ] || fail "builder without deprecated flag returned $rc"
-[ -s "$TMP/results/builder-refused.out" ] || fail 'builder omitted output'
-
+# The builder role dispatches at the adapter default effort with the 4096 ceiling.
 rc=0
 PATH="$TMP/bin:$PATH" TMPDIR="$TMP/runtime" \
   FAKE_PROVIDER_CASE=success \
   FAKE_PROVIDER_REQUEST_CAPTURE="$TMP/results/builder.request.json" \
-  "$RUNNER" run --lane builder --allow-provisional \
+  "$RUNNER" run --lane builder \
   --prompt-file "$TMP/prompt" --output "$TMP/results/builder.out" \
   --workdir "$TMP/work" >/dev/null 2>&1 || rc=$?
-[ "$rc" = 0 ] || fail "provisional builder with --allow-provisional returned $rc"
+[ "$rc" = 0 ] || fail "builder returned $rc"
 [ "$(cat "$TMP/results/builder.out")" = PONG ] || fail 'builder output mismatch'
-jq -e --arg model "$MODEL" --arg effort "$EFFORT" \
-  '.model == $model and .lane == "builder" and .effort == $effort' \
+jq -e --arg model "$MODEL" --arg effort "$EFFORT" --arg backend "$BACKEND" \
+  '.schema_version == 2 and .model == $model and .requested_model == $model and
+   .provider_reported_model == $model and .model_identity_source == "provider-reported" and
+   .backend == $backend and .lane == "builder" and .effort == $effort' \
   "$TMP/results/builder.out.metrics.json" >/dev/null || fail 'builder metrics mismatch'
 json "$TMP/results/builder.out.metrics.json" 'has("evaluation_receipt") | not'
 jq -e --arg effort "$EFFORT" '.max_tokens == 4096 and .reasoning_effort == $effort' \
@@ -189,65 +142,62 @@ if [ "$EXPECT_THINKING" = true ]; then
 fi
 [ ! -e "$TMP/results/builder.out.commit.json" ] || fail 'builder run wrote commit marker'
 
-# The effort is pinned: builder cannot be dispatched at another tier.
+# --allow-provisional is a deprecated no-op that only warns.
 rc=0
-PATH="$TMP/bin:$PATH" FAKE_PROVIDER_CASE=success \
-  "$RUNNER" run --lane builder --allow-provisional --effort high \
+PATH="$TMP/bin:$PATH" TMPDIR="$TMP/runtime" FAKE_PROVIDER_CASE=success \
+  "$RUNNER" run --lane builder --allow-provisional \
+  --prompt-file "$TMP/prompt" --output "$TMP/results/builder-deprecated.out" \
+  --workdir "$TMP/work" >/dev/null 2>"$TMP/results/builder-deprecated.stderr" || rc=$?
+[ "$rc" = 0 ] || fail "deprecated flag returned $rc"
+grep -q 'deprecated' "$TMP/results/builder-deprecated.stderr" || fail 'deprecated flag did not warn'
+
+# The caller chooses the effort; any tier the provider exposes is accepted.
+rc=0
+PATH="$TMP/bin:$PATH" TMPDIR="$TMP/runtime" FAKE_PROVIDER_CASE=success \
+  FAKE_PROVIDER_REQUEST_CAPTURE="$TMP/results/builder-effort.request.json" \
+  "$RUNNER" run --lane builder --effort high \
   --prompt-file "$TMP/prompt" --output "$TMP/results/builder-effort.out" \
   --workdir "$TMP/work" >/dev/null 2>&1 || rc=$?
-[ "$rc" = 0 ] || fail "supported effort returned $rc"
+[ "$rc" = 0 ] || fail "explicit effort returned $rc"
+json "$TMP/results/builder-effort.request.json" '.reasoning_effort == "high"'
 
-# Disabled lanes remain blocked even for controlled evaluations and must fail
-# before runtime/authentication inspection.
+# Removed qualification flags are unknown arguments, never silent no-ops.
+for removed in --evaluation --preflight-only; do
+  rc=0
+  PATH="$TMP/bin:$PATH" "$RUNNER" run --lane builder "$removed" \
+    --prompt-file "$TMP/prompt" --output "$TMP/results/removed-flag.out" \
+    --workdir "$TMP/work" >/dev/null 2>&1 || rc=$?
+  [ "$rc" = 64 ] || fail "removed flag $removed returned $rc"
+  [ ! -e "$TMP/results/removed-flag.out" ] || fail "removed flag $removed created output"
+done
+rc=0
+PATH="$TMP/bin:$PATH" "$RUNNER" run --lane builder \
+  --evaluation-manifest "$TMP/missing-manifest.json" \
+  --prompt-file "$TMP/prompt" --output "$TMP/results/removed-flag.out" \
+  --workdir "$TMP/work" >/dev/null 2>&1 || rc=$?
+[ "$rc" = 64 ] || fail "removed flag --evaluation-manifest returned $rc"
+
+# A role the text-only adapter does not support fails closed before any
+# runtime or credential inspection.
 rc=0
 env PATH="/usr/bin:/bin" "$API_KEY_ENV=" \
-  "$RUNNER" run --lane judgement --evaluation \
-  --evaluation-manifest "$TMP/missing-manifest.json" --prompt-file "$TMP/prompt" --output "$TMP/results/judgement.out" \
+  "$RUNNER" run --lane frontend-builder --prompt-file "$TMP/prompt" \
+  --output "$TMP/results/unsupported-role.out" \
   --workdir "$TMP/work" >/dev/null 2>&1 || rc=$?
-[ "$rc" = 78 ] || fail "disabled judgement evaluation returned $rc"
+[ "$rc" = 78 ] || fail "unsupported role returned $rc"
+[ ! -e "$TMP/results/unsupported-role.out" ] || fail 'unsupported role created output'
 
 run_case success 0
 [ "$(cat "$TMP/results/success.out")" = PONG ] || fail 'success output mismatch'
 jq -e --arg model "$MODEL" --arg effort "$EFFORT" \
-  '.model == $model and .effort == $effort and
+  '.model == $model and .effort == $effort and .lane == "policy-annotation" and
    .tokens.input == 7 and .tokens.output == 3' \
   "$TMP/results/success.out.metrics.json" >/dev/null || fail 'success metrics mismatch'
 [ ! -e "$TMP/results/success.out.error.json" ] || fail 'success left diagnostic'
+[ ! -e "$TMP/results/success.out.commit.json" ] || fail 'success wrote commit marker'
+json "$TMP/results/success.request.json" '.max_tokens == 4096'
 
-# A successful policy-annotation evaluation publishes the runner-emitted receipt
-# with exactly the bound fields, recomputed here from independent sources.
-json "$TMP/results/success.request.json" '.max_tokens == 16384'
-jq -e --arg manifest_sha "$MANIFEST_SHA" \
-  --arg prompt_sha "$(sha256 "$TMP/prompt")" \
-  --arg source_commit "$(git -C "$ROOT" rev-parse HEAD)" \
-  --arg runner_sha "$(sha256 "$RUNNER")" \
-  --arg output_sha "$(sha256 "$TMP/results/success.out")" \
-  '(.evaluation_receipt | keys | sort) ==
-     ["evaluation_manifest_sha256","post_observation_retries","prompt_sha256",
-      "provider_attempts","raw_output_sha256","runner_sha256",
-      "runner_source_commit","schema_version"] and
-   .evaluation_receipt.schema_version == "delegation_policy_annotation_attempt_receipt_v1" and
-   .evaluation_receipt.evaluation_manifest_sha256 == $manifest_sha and
-   .evaluation_receipt.prompt_sha256 == $prompt_sha and
-   .evaluation_receipt.runner_source_commit == $source_commit and
-   .evaluation_receipt.runner_sha256 == $runner_sha and
-   .evaluation_receipt.raw_output_sha256 == $output_sha and
-   .evaluation_receipt.provider_attempts == 1 and
-   .evaluation_receipt.post_observation_retries == 0' \
-  "$TMP/results/success.out.metrics.json" >/dev/null \
-  || fail 'evaluation receipt mismatch'
-jq -e --arg output_sha "$(sha256 "$TMP/results/success.out")" \
-  --arg metrics_sha "$(sha256 "$TMP/results/success.out.metrics.json")" \
-  --arg manifest_sha "$MANIFEST_SHA" \
-  '(keys | sort) == ["evaluation_manifest_sha256","metrics_sha256",
-    "raw_output_sha256","schema_version"] and
-   .schema_version == "delegation_policy_annotation_publication_commit_v1" and
-   .raw_output_sha256 == $output_sha and .metrics_sha256 == $metrics_sha and
-   .evaluation_manifest_sha256 == $manifest_sha' \
-  "$TMP/results/success.out.commit.json" >/dev/null \
-  || fail 'evaluation publication commit mismatch'
-
-# Handled publication failures clean every member; the marker is always last.
+# Handled publication failures clean every member.
 mkdir -p "$TMP/mv-fail"
 cat >"$TMP/mv-fail/mv" <<'EOF'
 #!/usr/bin/env bash
@@ -259,23 +209,22 @@ fi
 exec /bin/mv "$@"
 EOF
 chmod 755 "$TMP/mv-fail/mv"
-for phase in output metrics commit; do
+for phase in output metrics; do
   out="$TMP/results/publish-$phase.out"
   case "$phase" in
     output) target="$out" ;;
     metrics) target="$out.metrics.json" ;;
-    commit) target="$out.commit.json" ;;
   esac
   target="$(cd "$(dirname "$target")" && pwd -P)/$(basename "$target")"
   rc=0
   FAIL_MV_TARGET="$target" PATH="$TMP/mv-fail:$TMP/bin:$PATH" \
     TMPDIR="$TMP/runtime" FAKE_PROVIDER_CASE=success \
     "$RUNNER" run --lane policy-annotation --effort auto \
-    --backend "$BACKEND" --evaluation --prompt-file "$TMP/prompt" \
-    --evaluation-manifest "$TMP/manifest.json" --output "$out" --workdir "$TMP/work" \
+    --backend "$BACKEND" --prompt-file "$TMP/prompt" \
+    --output "$out" --workdir "$TMP/work" \
     >/dev/null 2>&1 || rc=$?
   [ "$rc" = 70 ] || fail "$phase publication failure returned $rc"
-  [ ! -e "$out" ] && [ ! -e "$out.metrics.json" ] && [ ! -e "$out.commit.json" ] \
+  [ ! -e "$out" ] && [ ! -e "$out.metrics.json" ] \
     || fail "$phase publication failure left a published member"
 done
 
@@ -303,7 +252,6 @@ EOF
     || fail "$name diagnostic leaked raw provider data"
   [ ! -e "$TMP/results/$name.out" ] || fail "$name left partial output"
   [ ! -e "$TMP/results/$name.out.metrics.json" ] || fail "$name left partial metrics"
-  [ ! -e "$TMP/results/$name.out.commit.json" ] || fail "$name left publication commit"
   [ ! -e "$TMP/results/$name.out.stderr" ] || fail "$name left legacy raw stderr"
 done
 
@@ -326,8 +274,7 @@ done
 printf 'existing\n' >"$TMP/results/existing.out"
 rc=0
 PATH="$TMP/bin:$PATH" \
-  "$RUNNER" run --lane policy-annotation --evaluation \
-  --evaluation-manifest "$TMP/manifest.json" \
+  "$RUNNER" run --lane policy-annotation \
   --prompt-file "$TMP/prompt" --output "$TMP/results/existing.out" \
   --workdir "$TMP/work" >/dev/null 2>&1 || rc=$?
 [ "$rc" = 64 ] || fail 'existing output accepted'
@@ -336,8 +283,7 @@ PATH="$TMP/bin:$PATH" \
 ln -s "$TMP/results/existing.out" "$TMP/results/symlink.out.error.json"
 rc=0
 PATH="$TMP/bin:$PATH" \
-  "$RUNNER" run --lane policy-annotation --evaluation \
-  --evaluation-manifest "$TMP/manifest.json" \
+  "$RUNNER" run --lane policy-annotation \
   --prompt-file "$TMP/prompt" --output "$TMP/results/symlink.out" \
   --workdir "$TMP/work" >/dev/null 2>&1 || rc=$?
 [ "$rc" = 64 ] || fail 'symlink diagnostic accepted'
@@ -346,179 +292,17 @@ PATH="$TMP/bin:$PATH" \
 mkdir "$TMP/work/debug"
 rc=0
 PATH="$TMP/bin:$PATH" \
-  "$RUNNER" run --lane policy-annotation --evaluation \
-  --evaluation-manifest "$TMP/manifest.json" \
+  "$RUNNER" run --lane policy-annotation \
   --prompt-file "$TMP/prompt" --output "$TMP/results/worktree-debug.out" \
   --workdir "$TMP/work" --debug-dir "$TMP/work/debug" >/dev/null 2>&1 || rc=$?
 [ "$rc" = 64 ] || fail 'debug directory inside read-only workdir accepted'
 
-# ---- evaluation preflight: full validation, no provider dispatch, no artifacts ----
-rc=0
-PATH="$TMP/bin:$PATH" TMPDIR="$TMP/runtime" \
-  FAKE_PROVIDER_CASE=success FAKE_PROVIDER_REQUEST_CAPTURE="$TMP/results/preflight.request.json" \
-  "$RUNNER" run --lane policy-annotation --effort auto \
-  --backend "$BACKEND" --evaluation --evaluation-manifest "$TMP/manifest.json" \
-  --preflight-only --prompt-file "$TMP/prompt" \
-  --output "$TMP/results/preflight.out" --workdir "$TMP/work" \
-  >"$TMP/results/preflight.stdout" 2>"$TMP/results/preflight.stderr" || rc=$?
-[ "$rc" = 0 ] || fail "preflight returned $rc"
-[ ! -s "$TMP/results/preflight.stderr" ] || fail 'preflight wrote to stderr'
-jq -e --arg manifest_sha "$MANIFEST_SHA" \
-  --arg prompt_sha "$(sha256 "$TMP/prompt")" \
-  --arg source_commit "$(git -C "$ROOT" rev-parse HEAD)" \
-  --arg runner_sha "$(sha256 "$RUNNER")" \
-  --arg contract_sha "$(sha256 "$ROOT/evaluation/test-fixtures/contract.txt")" \
-  --arg output_schema_sha "$(sha256 "$ROOT/evaluation/test-fixtures/output-schema.json")" \
-  --arg model "$MODEL" --arg backend "$BACKEND" --arg effort "$EFFORT" \
-  '(keys | sort) ==
-     ["backend","contract_sha256","effort","evaluation_manifest_sha256","lane",
-      "model","output_schema_sha256","post_observation_retries","profile",
-      "prompt_sha256","provider_attempts","provider_dispatch_started",
-      "runner_sha256","runner_source_commit","schema_version","status"] and
-   .schema_version == "delegation_policy_annotation_preflight_receipt_v1" and
-   .status == "READY_NO_PROVIDER_CALL" and
-   .profile == $model and .model == $model and
-   .backend == $backend and .effort == $effort and
-   .lane == "policy-annotation" and
-   .evaluation_manifest_sha256 == $manifest_sha and
-   .prompt_sha256 == $prompt_sha and
-   .runner_source_commit == $source_commit and
-   .runner_sha256 == $runner_sha and
-   .contract_sha256 == $contract_sha and
-   .output_schema_sha256 == $output_schema_sha and
-   .provider_dispatch_started == false and
-   .provider_attempts == 0 and .post_observation_retries == 0' \
-  "$TMP/results/preflight.stdout" >/dev/null || fail 'preflight receipt mismatch'
-[ ! -e "$TMP/results/preflight.request.json" ] || fail 'preflight dispatched to the provider'
-[ ! -e "$TMP/results/preflight.out" ] && [ ! -e "$TMP/results/preflight.out.metrics.json" ] &&
-  [ ! -e "$TMP/results/preflight.out.error.json" ] && [ ! -e "$TMP/results/preflight.out.commit.json" ] \
-  || fail 'preflight created a caller-visible artifact'
-
-# --preflight-only is rejected for ordinary (non-evaluation) runs.
 rc=0
 PATH="$TMP/bin:$PATH" \
-  "$RUNNER" run --lane policy-annotation --preflight-only \
-  --prompt-file "$TMP/prompt" --output "$TMP/results/preflight-ordinary.out" \
+  "$RUNNER" run --lane policy-annotation \
+  --prompt-file "$TMP/prompt" --output "$TMP/work/inside.out" \
   --workdir "$TMP/work" >/dev/null 2>&1 || rc=$?
-[ "$rc" = 64 ] || fail "--preflight-only without --evaluation returned $rc"
-[ ! -e "$TMP/results/preflight-ordinary.out" ] || fail 'rejected preflight created output'
-
-# Manifest validation failures stay failures before provider use.
-rc=0
-PATH="$TMP/bin:$PATH" \
-  FAKE_PROVIDER_CASE=success FAKE_PROVIDER_REQUEST_CAPTURE="$TMP/results/preflight-missing.request.json" \
-  "$RUNNER" run --lane policy-annotation --evaluation \
-  --evaluation-manifest "$TMP/missing-manifest.json" --preflight-only \
-  --prompt-file "$TMP/prompt" --output "$TMP/results/preflight-missing.out" \
-  --workdir "$TMP/work" >/dev/null 2>&1 || rc=$?
-[ "$rc" = 78 ] || fail "preflight with missing manifest returned $rc"
-[ ! -e "$TMP/results/preflight-missing.request.json" ] \
-  || fail 'provider invoked despite manifest failure'
-[ ! -e "$TMP/results/preflight-missing.out" ] || fail 'manifest failure created output'
-
-# Regression: an allowlisted evaluation manifest may pin timeout_seconds=900.
-# The ceiling is exactly 900, so preflight must accept it and still stop before
-# any provider dispatch or artifact.
-jq '.timeout_seconds = 900' "$TMP/manifest.json" >"$TMP/manifest-timeout900.json"
-TIMEOUT900_MANIFEST_SHA="$(sha256 "$TMP/manifest-timeout900.json")"
-jq --arg hash "$TIMEOUT900_MANIFEST_SHA" --arg profile "$MODEL" '
-  .profiles[$profile].lanes["policy-annotation"].evaluation_manifest_sha256 += [$hash]
-' "$ROOT/config/routing-gates.json" >"$TMP/gates.json"
-mv "$TMP/gates.json" "$ROOT/config/routing-gates.json"
-jq --arg hash "$TIMEOUT900_MANIFEST_SHA" --arg backend "$BACKEND" '
-  .lanes["policy-annotation"].backends[$backend].evaluation_manifest_sha256 += [$hash]
-' "$ROUTING_PATH" >"$TMP/provider-routing.json"
-mv "$TMP/provider-routing.json" "$ROUTING_PATH"
-git -C "$ROOT" add config/routing-gates.json "$ROUTING_FILE"
-git -C "$ROOT" commit -qm 'allowlist ceiling timeout fixture'
-rc=0
-PATH="$TMP/bin:$PATH" TMPDIR="$TMP/runtime" \
-  FAKE_PROVIDER_CASE=success FAKE_PROVIDER_REQUEST_CAPTURE="$TMP/results/preflight-900.request.json" \
-  "$RUNNER" run --lane policy-annotation --effort auto \
-  --backend "$BACKEND" --evaluation --evaluation-manifest "$TMP/manifest-timeout900.json" \
-  --preflight-only --prompt-file "$TMP/prompt" \
-  --output "$TMP/results/preflight-900.out" --workdir "$TMP/work" \
-  >"$TMP/results/preflight-900.stdout" 2>"$TMP/results/preflight-900.stderr" || rc=$?
-[ "$rc" = 0 ] || fail "timeout_seconds=900 preflight returned $rc"
-[ ! -s "$TMP/results/preflight-900.stderr" ] || fail 'timeout 900 preflight wrote to stderr'
-jq -e --arg manifest_sha "$TIMEOUT900_MANIFEST_SHA" \
-  '.schema_version == "delegation_policy_annotation_preflight_receipt_v1" and
-   .status == "READY_NO_PROVIDER_CALL" and
-   .evaluation_manifest_sha256 == $manifest_sha and
-   .provider_dispatch_started == false and
-   .provider_attempts == 0 and .post_observation_retries == 0' \
-  "$TMP/results/preflight-900.stdout" >/dev/null \
-  || fail 'timeout 900 preflight receipt mismatch'
-[ ! -e "$TMP/results/preflight-900.request.json" ] \
-  || fail 'ceiling manifest dispatched to the provider'
-[ ! -e "$TMP/results/preflight-900.out" ] && [ ! -e "$TMP/results/preflight-900.out.metrics.json" ] &&
-  [ ! -e "$TMP/results/preflight-900.out.error.json" ] && [ ! -e "$TMP/results/preflight-900.out.commit.json" ] \
-  || fail 'ceiling manifest preflight left artifacts'
-
-# timeout_seconds=901 exceeds the manifest ceiling and stays rejected before
-# any dispatch, even when the manifest itself is allowlisted.
-jq '.timeout_seconds = 901' "$TMP/manifest.json" >"$TMP/manifest-timeout901.json"
-TIMEOUT901_MANIFEST_SHA="$(sha256 "$TMP/manifest-timeout901.json")"
-jq --arg hash "$TIMEOUT901_MANIFEST_SHA" --arg profile "$MODEL" '
-  .profiles[$profile].lanes["policy-annotation"].evaluation_manifest_sha256 += [$hash]
-' "$ROOT/config/routing-gates.json" >"$TMP/gates.json"
-mv "$TMP/gates.json" "$ROOT/config/routing-gates.json"
-jq --arg hash "$TIMEOUT901_MANIFEST_SHA" --arg backend "$BACKEND" '
-  .lanes["policy-annotation"].backends[$backend].evaluation_manifest_sha256 += [$hash]
-' "$ROUTING_PATH" >"$TMP/provider-routing.json"
-mv "$TMP/provider-routing.json" "$ROUTING_PATH"
-git -C "$ROOT" add config/routing-gates.json "$ROUTING_FILE"
-git -C "$ROOT" commit -qm 'allowlist out-of-bounds timeout fixture'
-rc=0
-PATH="$TMP/bin:$PATH" TMPDIR="$TMP/runtime" \
-  FAKE_PROVIDER_CASE=success FAKE_PROVIDER_REQUEST_CAPTURE="$TMP/results/preflight-901.request.json" \
-  "$RUNNER" run --lane policy-annotation --effort auto \
-  --backend "$BACKEND" --evaluation --evaluation-manifest "$TMP/manifest-timeout901.json" \
-  --preflight-only --prompt-file "$TMP/prompt" \
-  --output "$TMP/results/preflight-901.out" --workdir "$TMP/work" \
-  >"$TMP/results/preflight-901.stdout" 2>"$TMP/results/preflight-901.stderr" || rc=$?
-[ "$rc" = 78 ] || fail "timeout_seconds=901 preflight returned $rc"
-[ ! -e "$TMP/results/preflight-901.request.json" ] \
-  || fail 'out-of-bounds manifest reached the provider'
-[ ! -e "$TMP/results/preflight-901.out" ] && [ ! -e "$TMP/results/preflight-901.out.metrics.json" ] &&
-  [ ! -e "$TMP/results/preflight-901.out.error.json" ] && [ ! -e "$TMP/results/preflight-901.out.commit.json" ] \
-  || fail 'out-of-bounds manifest left artifacts'
-
-# Flip the throwaway lane to qualified in BOTH gates so ordinary (non-evaluation)
-# dispatch can be exercised; the production gates stay candidate and untouched.
-jq --arg profile "$MODEL" '.profiles[$profile].lanes["policy-annotation"].status = "qualified" |
-    .profiles[$profile].lanes["policy-annotation"].selection = "explicit-only" |
-    .profiles[$profile].lanes["policy-annotation"].evaluation_manifest_sha256 = []' \
-  "$ROOT/config/routing-gates.json" >"$TMP/gates.json"
-mv "$TMP/gates.json" "$ROOT/config/routing-gates.json"
-jq --arg backend "$BACKEND" '.qualified_lanes = ["policy-annotation"] |
-    .lanes["policy-annotation"].backends[$backend].status = "qualified" |
-    .lanes["policy-annotation"].backends[$backend].selection = "explicit-only" |
-    .lanes["policy-annotation"].backends[$backend].qualified = true |
-    del(.lanes["policy-annotation"].backends[$backend].evaluation_manifest_sha256)' \
-  "$ROUTING_PATH" >"$TMP/provider-routing.json"
-mv "$TMP/provider-routing.json" "$ROUTING_PATH"
-git -C "$ROOT" add config/routing-gates.json "$ROUTING_FILE"
-git -C "$ROOT" commit -qm 'qualify policy-annotation for ordinary dispatch test'
-
-rc=0
-PATH="$TMP/bin:$PATH" TMPDIR="$TMP/runtime" \
-  FAKE_PROVIDER_CASE=success \
-  FAKE_PROVIDER_REQUEST_CAPTURE="$TMP/results/ordinary.request.json" \
-  "$RUNNER" run --lane policy-annotation --effort auto \
-  --backend "$BACKEND" --prompt-file "$TMP/prompt" \
-  --output "$TMP/results/ordinary.out" --workdir "$TMP/work" \
-  >"$TMP/results/ordinary.stdout" 2>"$TMP/results/ordinary.stderr" || rc=$?
-[ "$rc" = 0 ] || fail "ordinary qualified run returned $rc"
-[ "$(cat "$TMP/results/ordinary.out")" = PONG ] || fail 'ordinary output mismatch'
-jq -e --arg model "$MODEL" \
-  '.model == $model and .tokens.input == 7 and .tokens.output == 3' \
-  "$TMP/results/ordinary.out.metrics.json" >/dev/null || fail 'ordinary metrics mismatch'
-# Ordinary runs never claim the evaluation receipt and keep the 4096 ceiling.
-json "$TMP/results/ordinary.out.metrics.json" 'has("evaluation_receipt") | not'
-json "$TMP/results/ordinary.request.json" '.max_tokens == 4096'
-[ ! -e "$TMP/results/ordinary.out.commit.json" ] || fail 'ordinary run wrote commit marker'
-[ ! -e "$TMP/results/ordinary.out.error.json" ] || fail 'ordinary run left diagnostic'
+[ "$rc" = 64 ] || fail 'output inside the workdir accepted'
 
 [ -z "$(find "$TMP/runtime" -mindepth 1 -maxdepth 1 -name "delegation-${PROVIDER_SLUG}.*" -print)" ] \
   || fail 'temporary directories not cleaned'

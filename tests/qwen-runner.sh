@@ -10,7 +10,6 @@ MODEL=qwen3.8-max
 BACKEND=token-plan-openai
 EFFORT=xhigh
 RUNNER_NAME=delegation-qwen
-ROUTING_FILE=config/qwen3.8-max-routing.json
 API_KEY_ENV=QWEN_TOKEN_PLAN_API_KEY
 API_KEY_VALUE=sk-sp-test
 EXPECT_THINKING=false

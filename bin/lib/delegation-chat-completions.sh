@@ -7,16 +7,16 @@
 #
 #   RUNNER_NAME       command name, error prefix and temp-dir prefix
 #   PROVIDER_LABEL    human label printed by `check`
-#   MODEL PROFILE     exact model id and central routing profile key
-#   BACKEND           executable-gate backend key and receipt backend name
+#   MODEL             exact model id
+#   BACKEND           adapter key reported by `check` and in receipts
 #   API_URL           chat-completions endpoint
 #   API_KEY_VAR       name of the environment variable that carries the key
 #   KEY_FILE          mode-600 file holding `API_KEY_VAR=...`
-#   ROUTING_FILE      executable gate path
-#   ROUTING_FILE_ENV  env var name the router reads that gate from
-#   CENTRAL_GATES ROUTER
-#   PINNED_EFFORT     the only effort the gate pins (printed by `check`)
+#   DEFAULT_EFFORT    effort used when the caller passes --effort auto
 #   BILLING           receipt billing class: api or credits
+#
+# and may override ROLES (space-separated roles the adapter supports; the
+# text-only default below) and EFFORTS (JSON array printed by `check`).
 #
 # and defines these hooks:
 #
@@ -29,14 +29,15 @@
 #                                                                into `check --json`
 #   provider_check_extra_text                                    optional; extra `check` lines
 
-RUN_TMP="" RUN_OUTPUT_TMP="" RUN_METRICS_TMP="" RUN_COMMIT_TMP=""
+RUN_TMP="" RUN_OUTPUT_TMP="" RUN_METRICS_TMP=""
 DEBUG_RUN_DIR=""
 PROVIDER_REASON="" PROVIDER_KEY_PROBLEM=""
+ROLES="${ROLES:-builder clerk scout reviewer senior judgement policy-annotation}"
+EFFORTS="${EFFORTS:-[\"minimal\",\"low\",\"medium\",\"high\",\"xhigh\",\"max\"]}"
 
 cleanup_run() {
   [ -z "$RUN_OUTPUT_TMP" ] || rm -f -- "$RUN_OUTPUT_TMP"
   [ -z "$RUN_METRICS_TMP" ] || rm -f -- "$RUN_METRICS_TMP"
-  [ -z "$RUN_COMMIT_TMP" ] || rm -f -- "$RUN_COMMIT_TMP"
   [ -z "$RUN_TMP" ] || rm -rf -- "$RUN_TMP"
 }
 
@@ -65,90 +66,10 @@ runtime_status() {
   PROVIDER_REASON="ready"; return 0
 }
 
-validate_gate_graph() {
-  # Quality archives do not control operational execution.
-  return 0
-}
-
-lane_status() { jq -r --arg profile "$PROFILE" --arg lane "$1" '.profiles[$profile].lanes[$lane].status // "disabled"' "$CENTRAL_GATES"; }
-lane_selection() { jq -r --arg profile "$PROFILE" --arg lane "$1" '.profiles[$profile].lanes[$lane].selection // "blocked"' "$CENTRAL_GATES"; }
-lane_effort() { jq -r --arg profile "$PROFILE" '.profiles[$profile].effort // empty' "$CENTRAL_GATES"; }
-
-evaluation_manifest() {
-  local manifest="$1" lane="$2" prompt_file="$3" expected_effort="$4"
-  local hash expected_hash source_head runner_hash contract_path output_schema_path contract_hash output_schema_hash
-  [ -f "$manifest" ] && [ ! -L "$manifest" ] || die 78 "evaluation manifest is missing or symlinked"
-  hash="$(sha256_file "$manifest")" || die 69 "sha256 tool is required for evaluation"
-  expected_hash="$(sha256_file "$prompt_file")" || die 69 "sha256 tool is required for evaluation"
-  source_head="$(git -C "$ROOT" rev-parse HEAD 2>/dev/null)" || die 78 "runner source checkout is unavailable"
-  runner_hash="$(sha256_file "$SOURCE")" || die 69 "sha256 tool is required for evaluation"
-  git -C "$ROOT" diff --quiet && git -C "$ROOT" diff --cached --quiet &&
-    [ -z "$(git -C "$ROOT" ls-files --others --exclude-standard)" ] || die 78 "runner source checkout is dirty"
-  jq -e --arg lane "$lane" --arg model "$MODEL" --arg profile "$PROFILE" --arg effort "$expected_effort" \
-    --arg backend "$BACKEND" \
-    --arg prompt_sha256 "$expected_hash" --arg runner_sha256 "$runner_hash" '
-      (keys | sort) == ["backend","contract_path","contract_sha256","effort","lane","max_output_chars","model","output_schema_path","output_schema_sha256","profile","prompt_sha256","runner_sha256","runner_source_commit","schema","timeout_seconds"] and
-      .schema == "delegation_policy_annotation_evaluation_v1" and
-      .profile == $profile and .lane == $lane and .model == $model and
-      .backend == $backend and .effort == $effort and .prompt_sha256 == $prompt_sha256 and
-      .runner_sha256 == $runner_sha256 and
-      ([.prompt_sha256,.output_schema_sha256,.contract_sha256,.runner_sha256] | all(test("^[0-9a-f]{64}$"))) and
-      (.runner_source_commit | test("^[0-9a-f]{40}$")) and
-      (.contract_path | type == "string" and test("^(?!/)(?!.*(^|/)\\.\\.(/|$)).+")) and
-      (.output_schema_path | type == "string" and test("^(?!/)(?!.*(^|/)\\.\\.(/|$)).+")) and
-      (.timeout_seconds | type == "number" and floor == . and . >= 1 and . <= 900) and
-      (.max_output_chars | type == "number" and floor == . and . >= 1 and . <= 65536)
-    ' "$manifest" >/dev/null 2>&1 || die 78 "evaluation manifest is malformed or does not bind this exact run"
-  git -C "$ROOT" merge-base --is-ancestor "$(jq -r '.runner_source_commit' "$manifest")" "$source_head" \
-    || die 78 "evaluation manifest source commit is not an ancestor of this runner checkout"
-  contract_path="$(jq -r '.contract_path' "$manifest")"
-  output_schema_path="$(jq -r '.output_schema_path' "$manifest")"
-  [ -f "$ROOT/$contract_path" ] && [ ! -L "$ROOT/$contract_path" ] \
-    || die 78 "evaluation contract path is missing or symlinked"
-  [ -f "$ROOT/$output_schema_path" ] && [ ! -L "$ROOT/$output_schema_path" ] \
-    || die 78 "evaluation output schema path is missing or symlinked"
-  contract_hash="$(sha256_file "$ROOT/$contract_path")" || die 69 "sha256 tool is required for evaluation"
-  output_schema_hash="$(sha256_file "$ROOT/$output_schema_path")" || die 69 "sha256 tool is required for evaluation"
-  [ "$contract_hash" = "$(jq -r '.contract_sha256' "$manifest")" ] \
-    || die 78 "evaluation contract hash does not match its bound path"
-  [ "$output_schema_hash" = "$(jq -r '.output_schema_sha256' "$manifest")" ] \
-    || die 78 "evaluation output schema hash does not match its bound path"
-  jq -e --arg profile "$PROFILE" --arg lane "$lane" --arg hash "$hash" '
-    .profiles[$profile].lanes[$lane].evaluation_manifest_sha256 | type == "array" and index($hash) != null
-  ' "$CENTRAL_GATES" >/dev/null 2>&1 || die 78 "evaluation manifest is not allowlisted by the central gate"
-  jq -e --arg lane "$lane" --arg backend "$BACKEND" --arg hash "$hash" '
-    .lanes[$lane].backends[$backend].evaluation_manifest_sha256 | type == "array" and index($hash) != null
-  ' "$ROUTING_FILE" >/dev/null 2>&1 || die 78 "evaluation manifest is not allowlisted by the executable gate"
-  EVALUATION_TIMEOUT_SECONDS="$(jq -r '.timeout_seconds' "$manifest")"
-  EVALUATION_MAX_OUTPUT_CHARS="$(jq -r '.max_output_chars' "$manifest")"
-  # Bound values the run receipt republishes; recomputed locally, never caller input.
-  EVALUATION_MANIFEST_SHA256="$hash"
-  EVALUATION_PROMPT_SHA256="$expected_hash"
-  EVALUATION_RUNNER_SOURCE_COMMIT="$source_head"
-  EVALUATION_RUNNER_SHA256="$runner_hash"
-  EVALUATION_CONTRACT_SHA256="$contract_hash"
-  EVALUATION_OUTPUT_SCHEMA_SHA256="$output_schema_hash"
-}
-
-# Success stdout for --preflight-only: exactly one JSON object, every value
-# recomputed by the validation path above, never taken from caller input.
-print_preflight_receipt() {
-  local lane="$1" effort="$2"
-  jq -n --arg profile "$PROFILE" --arg model "$MODEL" --arg backend "$BACKEND" \
-    --arg effort "$effort" --arg lane "$lane" \
-    --arg manifest_sha256 "$EVALUATION_MANIFEST_SHA256" \
-    --arg prompt_sha256 "$EVALUATION_PROMPT_SHA256" \
-    --arg source_commit "$EVALUATION_RUNNER_SOURCE_COMMIT" \
-    --arg runner_sha256 "$EVALUATION_RUNNER_SHA256" \
-    --arg contract_sha256 "$EVALUATION_CONTRACT_SHA256" \
-    --arg output_schema_sha256 "$EVALUATION_OUTPUT_SCHEMA_SHA256" \
-    '{schema_version:"delegation_policy_annotation_preflight_receipt_v1",
-      status:"READY_NO_PROVIDER_CALL",
-      profile:$profile,model:$model,backend:$backend,effort:$effort,lane:$lane,
-      evaluation_manifest_sha256:$manifest_sha256,prompt_sha256:$prompt_sha256,
-      runner_source_commit:$source_commit,runner_sha256:$runner_sha256,
-      contract_sha256:$contract_sha256,output_schema_sha256:$output_schema_sha256,
-      provider_dispatch_started:false,provider_attempts:0,post_observation_retries:0}'
+is_allowed() {
+  local role="$1" candidate
+  for candidate in $ROLES; do [ "$candidate" != "$role" ] || return 0; done
+  return 1
 }
 
 preserve_debug() {
@@ -189,29 +110,28 @@ write_diagnostic() {
 }
 
 print_check() {
-  local as_json="${1:-0}" ready=false selected=none extra_json='{}'
-  validate_gate_graph || die 78 "central and executable routing gates are missing, invalid, or inconsistent"
+  local as_json="${1:-0}" ready=false selected=none extra_json='{}' roles
   runtime_status && ready=true || true
   [ "$ready" = true ] && selected="$BACKEND"
+  roles="$(printf '%s\n' $ROLES | jq -R . | jq -sc .)"
   if [ "$as_json" = 1 ]; then
     if declare -F provider_check_extra_json >/dev/null; then extra_json="$(provider_check_extra_json)"; fi
     jq -n --arg model "$MODEL" --arg selected "$selected" --arg reason "$PROVIDER_REASON" \
-      --arg backend "$BACKEND" --arg effort "$PINNED_EFFORT" \
-      --argjson available "$ready" --argjson qualified "$(qualified_lanes)" \
-      --argjson provisional "$(provisional_lanes)" --argjson candidate "$(candidate_lanes)" \
-      --argjson extra "$extra_json" \
-      '{model:$model,efforts:[$effort],selected_backend:$selected,qualified_lanes:$qualified,provisional_lanes:$provisional,candidate_lanes:$candidate}
+      --arg backend "$BACKEND" --arg default_effort "$DEFAULT_EFFORT" \
+      --argjson roles "$roles" --argjson efforts "$EFFORTS" \
+      --argjson available "$ready" --argjson extra "$extra_json" \
+      '{model:$model,adapter:$backend,roles:$roles,efforts:$efforts,default_effort:$default_effort,selected_backend:$selected}
        + $extra
        + {backends:{($backend):{available:$available,reason:$reason}}}'
   else
-    printf '%s: selected=%s qualified=%s provisional=%s candidate=%s\n' "$PROVIDER_LABEL" "$selected" "$(qualified_lanes)" "$(provisional_lanes)" "$(candidate_lanes)"
-    printf '  %s: %s (%s; effort=%s)\n' "$BACKEND" "$ready" "$PROVIDER_REASON" "$PINNED_EFFORT"
+    printf '%s: selected=%s roles=%s efforts=%s\n' "$PROVIDER_LABEL" "$selected" "$(printf '%s' "$ROLES" | tr ' ' ',')" "$EFFORTS"
+    printf '  %s: %s (%s; default effort=%s)\n' "$BACKEND" "$ready" "$PROVIDER_REASON" "$DEFAULT_EFFORT"
     if declare -F provider_check_extra_text >/dev/null; then provider_check_extra_text; fi
   fi
 }
 
 run_command() {
-  local lane="" effort=auto backend=auto prompt_file="" output="" workdir="" metrics="" debug_dir="" allow_provisional=0 evaluation=0 evaluation_manifest_path="" preflight_only=0
+  local lane="" effort=auto backend=auto prompt_file="" output="" workdir="" metrics="" debug_dir=""
   while [ "$#" -gt 0 ]; do
     case "$1" in
       --lane) lane="${2:-}"; shift 2 ;; --effort) effort="${2:-}"; shift 2 ;;
@@ -219,38 +139,22 @@ run_command() {
       --output) output="${2:-}"; shift 2 ;; --workdir) workdir="${2:-}"; shift 2 ;;
       --metrics) metrics="${2:-}"; shift 2 ;; --debug-dir) debug_dir="${2:-}"; shift 2 ;;
       --allow-provisional) printf "%s\n" "--allow-provisional is deprecated and has no effect" >&2; shift ;;
-      --evaluation) evaluation=1; shift ;;
-      --evaluation-manifest) evaluation_manifest_path="${2:-}"; shift 2 ;;
-      --preflight-only) preflight_only=1; shift ;;
       -h|--help) usage; exit 0 ;; *) die 64 "unknown run argument: $1" ;;
     esac
   done
-  case "$lane" in builder|clerk|scout|reviewer|senior|judgement|policy-annotation) ;; *) die 64 "invalid lane: $lane" ;; esac
+  [ -n "$lane" ] || die 64 "--lane is required"
   case "$effort" in auto|none|minimal|low|medium|high|xhigh|max) ;; *) die 64 "invalid effort: $effort" ;; esac
   case "$backend" in auto|"$BACKEND") ;; *) die 64 "invalid backend: $backend" ;; esac
   [ -f "$prompt_file" ] || die 64 "prompt file missing: $prompt_file"
-  if [ "$evaluation" = 1 ]; then
-    [ -n "$evaluation_manifest_path" ] || die 64 "--evaluation requires --evaluation-manifest"
-    [ "$allow_provisional" = 0 ] || die 64 "--evaluation and --allow-provisional are mutually exclusive"
-  else
-    [ -z "$evaluation_manifest_path" ] || die 64 "--evaluation-manifest requires --evaluation"
-  fi
-  [ "$preflight_only" = 0 ] || [ "$evaluation" = 1 ] \
-    || die 64 "--preflight-only requires --evaluation and --evaluation-manifest"
   [ -d "$workdir" ] || die 64 "workdir missing: $workdir"
   [ -n "$output" ] || die 64 "--output is required"
   [ -z "$debug_dir" ] || {
     [ -d "$debug_dir" ] && [ ! -L "$debug_dir" ] || die 64 "debug directory missing or symlinked: $debug_dir"
     debug_dir="$(cd "$debug_dir" && pwd -P)"
   }
-  validate_gate_graph || die 78 "central and executable routing gates are missing, invalid, or inconsistent"
+  is_allowed "$lane" || die 78 "unsupported role for $BACKEND: $lane"
   backend="$BACKEND"
-  local status=""
-  [ "$evaluation" = 0 ] || status="$(lane_status "$lane")"
-  if [ "$evaluation" = 1 ]; then
-    [ "$status" = candidate ] || die 78 "evaluation requires a candidate manifest"
-  fi
-  [ "$effort" != auto ] || effort="${DELEGATION_PROFILE_EFFORT:-$PINNED_EFFORT}"
+  [ "$effort" != auto ] || effort="${DELEGATION_PROFILE_EFFORT:-$DEFAULT_EFFORT}"
   if [ "$BACKEND" != openai-compatible ] && [ "$effort" = none ]; then
     die 64 "$MODEL requires thinking; effort none is unsupported"
   fi
@@ -258,15 +162,10 @@ run_command() {
   tmp="$(mktemp -d "${TMPDIR:-/tmp}/$RUNNER_NAME.XXXXXX")"
   RUN_TMP="$tmp"
   trap cleanup_run EXIT
-  if [ "$evaluation" = 1 ]; then
-    dispatch_prompt="$tmp/prompt.snapshot"
-    cp -- "$prompt_file" "$dispatch_prompt" || die 70 "could not snapshot evaluation prompt"
-    evaluation_manifest "$evaluation_manifest_path" "$lane" "$dispatch_prompt" "$effort"
-  fi
   runtime_status || die 69 "$PROVIDER_REASON"
 
   metrics="${metrics:-$output.metrics.json}"
-  local diagnostic="$output.error.json" commit="$output.commit.json"
+  local diagnostic="$output.error.json"
   local output_parent metrics_parent diagnostic_parent output_name metrics_name diagnostic_name
   output_parent="$(dirname "$output")"; output_name="$(basename "$output")"
   metrics_parent="$(dirname "$metrics")"; metrics_name="$(basename "$metrics")"
@@ -277,44 +176,28 @@ run_command() {
   output="$(cd "$output_parent" && pwd -P)/$output_name"
   metrics="$(cd "$metrics_parent" && pwd -P)/$metrics_name"
   diagnostic="$(cd "$diagnostic_parent" && pwd -P)/$diagnostic_name"
-  commit="$output.commit.json"
   workdir="$(cd "$workdir" && pwd -P)"
   if [ -n "$debug_dir" ]; then
     case "$debug_dir" in
       "$workdir"|"$workdir"/*) die 64 "non-editing runner debug directory must be outside workdir" ;;
     esac
   fi
-  if [ -e "$output" ] || [ -e "$metrics" ] || [ -e "$diagnostic" ] ||
-     { [ "$evaluation" = 1 ] && [ -e "$commit" ]; }; then
-    die 64 "output, metrics, diagnostic, and commit paths must not already exist"
+  if [ -e "$output" ] || [ -e "$metrics" ] || [ -e "$diagnostic" ]; then
+    die 64 "output, metrics, and diagnostic paths must not already exist"
   fi
-  if [ -L "$output" ] || [ -L "$metrics" ] || [ -L "$diagnostic" ] ||
-     { [ "$evaluation" = 1 ] && [ -L "$commit" ]; }; then
-    die 64 "output, metrics, diagnostic, and commit paths must not be symlinks"
+  if [ -L "$output" ] || [ -L "$metrics" ] || [ -L "$diagnostic" ]; then
+    die 64 "output, metrics, and diagnostic paths must not be symlinks"
   fi
-  local norm_output norm_metrics norm_diagnostic norm_commit
+  local norm_output norm_metrics norm_diagnostic
   norm_output="$(normalized_destination "$output")"
   norm_metrics="$(normalized_destination "$metrics")"
   norm_diagnostic="$(normalized_destination "$diagnostic")"
-  norm_commit="$(normalized_destination "$commit")"
   [ "$norm_output" != "$norm_metrics" ] || die 64 "output and metrics paths resolve to the same file"
   [ "$norm_output" != "$norm_diagnostic" ] && [ "$norm_metrics" != "$norm_diagnostic" ] \
     || die 64 "path collides with reserved diagnostic path"
-  if [ "$evaluation" = 1 ]; then
-    [ "$norm_commit" != "$norm_output" ] && [ "$norm_commit" != "$norm_metrics" ] \
-      && [ "$norm_commit" != "$norm_diagnostic" ] || die 64 "commit path collision"
-  fi
   case "$output" in "$workdir"/*) die 64 "non-editing runner output must be outside workdir" ;; esac
   case "$metrics" in "$workdir"/*) die 64 "non-editing runner metrics must be outside workdir" ;; esac
   case "$diagnostic" in "$workdir"/*) die 64 "non-editing runner diagnostic must be outside workdir" ;; esac
-
-  # Preflight ends here: every pre-provider check the real evaluation run makes
-  # has passed, and nothing caller-visible has been created. Exit before the
-  # request body, curl config, and staged temp files below exist.
-  if [ "$preflight_only" = 1 ]; then
-    print_preflight_receipt "$lane" "$effort" || die 70 "could not emit preflight receipt"
-    exit 0
-  fi
 
   local body response stderr_file http_code started curl_rc=0 curl_config provider_model=""
   local phase="" reason="" final_rc=0
@@ -323,12 +206,7 @@ run_command() {
   : >"$response"; : >"$stderr_file"
   RUN_OUTPUT_TMP="$(mktemp "$output_parent/.$output_name.XXXXXX")"
   RUN_METRICS_TMP="$(mktemp "$metrics_parent/.$metrics_name.XXXXXX")"
-  if [ "$evaluation" = 1 ]; then
-    RUN_COMMIT_TMP="$(mktemp "$output_parent/.$output_name.commit.XXXXXX")"
-  fi
   local max_tokens="${DELEGATION_MAX_TOKENS:-4096}"
-  # Evaluation runs annotate whole policy documents; 4096 truncated them.
-  [ "$evaluation" = 0 ] || max_tokens=16384
   provider_request_body "$dispatch_prompt" "$effort" "$max_tokens" >"$body"
   # Keep the bearer token out of the process argv. The runner-wide umask makes
   # this transient curl config mode 600, and the EXIT trap removes it.
@@ -338,7 +216,6 @@ run_command() {
     printf 'header = "Authorization: Bearer %s"\n' "${!API_KEY_VAR}" >>"$curl_config"
   fi
   local max_time="${DELEGATION_TIMEOUT:-600}"
-  [ "$evaluation" = 0 ] || max_time="$EVALUATION_TIMEOUT_SECONDS"
   http_code="$(curl -q --config "$curl_config" -sS -o "$response" -w '%{http_code}' \
     --connect-timeout 20 --max-time "$max_time" --data-binary "@$body" "$API_URL" 2>"$stderr_file")" || curl_rc=$?
   if [ "$curl_rc" -ne 0 ]; then
@@ -386,21 +263,6 @@ run_command() {
     "$response" >"$RUN_OUTPUT_TMP"; then
     phase=extract; reason=invalid_or_empty_response; final_rc=70
   fi
-  if [ "$final_rc" -eq 0 ] && [ "$evaluation" = 1 ] && [ "$(wc -m <"$RUN_OUTPUT_TMP" | tr -d ' ')" -gt "$EVALUATION_MAX_OUTPUT_CHARS" ]; then
-    phase=extract; reason=output_limit_exceeded; final_rc=70
-  fi
-  # A successful evaluation publishes its attempt receipt or publishes nothing.
-  # Every field is recomputed here from local state the manifest already bound;
-  # nothing is accepted from the caller.
-  local raw_output_sha256=""
-  if [ "$final_rc" -eq 0 ] && [ "$evaluation" = 1 ]; then
-    raw_output_sha256="$(sha256_file "$RUN_OUTPUT_TMP")" || raw_output_sha256=""
-    if [ -z "$raw_output_sha256" ] || [ -z "${EVALUATION_MANIFEST_SHA256:-}" ] ||
-       [ -z "${EVALUATION_PROMPT_SHA256:-}" ] || [ -z "${EVALUATION_RUNNER_SOURCE_COMMIT:-}" ] ||
-       [ -z "${EVALUATION_RUNNER_SHA256:-}" ]; then
-      phase=extract; reason=receipt_uncomputable; final_rc=70
-    fi
-  fi
   local usage_extra='{"reasoning":0,"cache_read":0}'
   if [ "$final_rc" -eq 0 ] && declare -F provider_usage_extra >/dev/null; then
     usage_extra="$(provider_usage_extra "$response")" || usage_extra='{"reasoning":0,"cache_read":0}'
@@ -410,39 +272,11 @@ run_command() {
     --argjson input "$(jq '.usage.prompt_tokens // 0' "$response")" \
     --argjson output_tokens "$(jq '.usage.completion_tokens // 0' "$response")" \
     --argjson usage_extra "$usage_extra" \
-    --argjson evaluation "$evaluation" \
-    --arg manifest_sha256 "${EVALUATION_MANIFEST_SHA256:-}" \
-    --arg prompt_sha256 "${EVALUATION_PROMPT_SHA256:-}" \
-    --arg source_commit "${EVALUATION_RUNNER_SOURCE_COMMIT:-}" \
-    --arg runner_sha256 "${EVALUATION_RUNNER_SHA256:-}" \
-    --arg raw_output_sha256 "$raw_output_sha256" \
     '{schema_version:2,model:$requested_model,requested_model:$requested_model,provider_reported_model:(if $model == "" then null else $model end),model_identity_source:$identity_source,backend:$backend,effort:$effort,lane:$lane,
       started_at_epoch:$started,finished_at_epoch:now,billing:$billing,
       provider_cost_usd:null,tokens:{input:$input,output:$output_tokens,
-      reasoning:($usage_extra.reasoning // 0),cache_read:($usage_extra.cache_read // 0),cache_write:0}} +
-    (if $evaluation == 1 then {evaluation_receipt:{
-      schema_version:"delegation_policy_annotation_attempt_receipt_v1",
-      evaluation_manifest_sha256:$manifest_sha256,
-      prompt_sha256:$prompt_sha256,
-      runner_source_commit:$source_commit,
-      runner_sha256:$runner_sha256,
-      raw_output_sha256:$raw_output_sha256,
-      provider_attempts:1,
-      post_observation_retries:0}} else {} end)' >"$RUN_METRICS_TMP"; then
+      reasoning:($usage_extra.reasoning // 0),cache_read:($usage_extra.cache_read // 0),cache_write:0}}' >"$RUN_METRICS_TMP"; then
     phase=extract; reason=metrics_write_failed; final_rc=70
-  fi
-  local metrics_sha256=""
-  if [ "$final_rc" -eq 0 ] && [ "$evaluation" = 1 ]; then
-    metrics_sha256="$(sha256_file "$RUN_METRICS_TMP")" || metrics_sha256=""
-    if [ -z "$metrics_sha256" ] || ! jq -n \
-      --arg raw_output_sha256 "$raw_output_sha256" \
-      --arg metrics_sha256 "$metrics_sha256" \
-      --arg manifest_sha256 "$EVALUATION_MANIFEST_SHA256" \
-      '{schema_version:"delegation_policy_annotation_publication_commit_v1",
-        raw_output_sha256:$raw_output_sha256,metrics_sha256:$metrics_sha256,
-        evaluation_manifest_sha256:$manifest_sha256}' >"$RUN_COMMIT_TMP"; then
-      phase=extract; reason=commit_marker_write_failed; final_rc=70
-    fi
   fi
   if [ "$final_rc" -eq 0 ]; then
     if ! mv "$RUN_OUTPUT_TMP" "$output"; then
@@ -455,14 +289,6 @@ run_command() {
         phase=publish; reason=metrics_publish_failed; final_rc=70
       else
         RUN_METRICS_TMP=""
-        if [ "$evaluation" = 1 ]; then
-          if ! mv "$RUN_COMMIT_TMP" "$commit"; then
-            rm -f -- "$output" "$metrics" "$commit"
-            phase=publish; reason=commit_publish_failed; final_rc=70
-          else
-            RUN_COMMIT_TMP=""
-          fi
-        fi
       fi
     fi
   fi

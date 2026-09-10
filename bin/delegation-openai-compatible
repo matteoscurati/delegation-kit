@@ -16,12 +16,10 @@ API_URL="${DELEGATION_API_URL:?use delegation-run --profile}"
 API_KEY_VAR="${DELEGATION_CREDENTIAL_ENV:-DELEGATION_LOCAL_UNUSED_KEY}"
 AUTH_OPTIONAL="${DELEGATION_AUTH_OPTIONAL:-0}"
 KEY_FILE=/dev/null
-PROFILE=custom
 BACKEND=openai-compatible
-PINNED_EFFORT=none
+DEFAULT_EFFORT=none
+EFFORTS='["none","minimal","low","medium","high","xhigh","max"]'
 BILLING=unknown
-CENTRAL_GATES="$ROOT/config/routing-gates.json"
-ROUTING_FILE="$CENTRAL_GATES"
 # shellcheck source=bin/lib/delegation-runner-common.sh
 . "$ROOT/bin/lib/delegation-runner-common.sh"
 # shellcheck source=bin/lib/delegation-chat-completions.sh
