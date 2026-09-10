@@ -288,8 +288,9 @@ jq -e '
   .runtime_cli_compatibility == "capability-probed" and
   .runtime_cli_source == "path" and
   .selected_backend == "grok-build" and
-  .provisional_lanes == ["builder","frontend-builder"] and
-  .qualified_lanes == [] and
+  .adapter == "grok-build" and
+  .roles == ["builder","frontend-builder","policy-annotation"] and
+  .efforts == ["high"] and
   .backends["grok-build"].sandbox == "delegation-kit" and
   .backends["grok-build"].permission_mode == "dontAsk" and
   .backends["grok-build"].oauth_mode == "serialized" and
@@ -370,11 +371,8 @@ jq -e '
   .permission_mode == "dontAsk" and .max_turns == 40 and
   .timeout_seconds == 900 and .isolated_home == true
 ' "$TMP/results/builder.txt.metrics.json" >/dev/null || fail "metrics mismatch"
-# Ordinary (non-evaluation) runs never claim the evaluation receipt.
-jq -e 'has("evaluation_receipt") | not' "$TMP/results/builder.txt.metrics.json" >/dev/null \
-  || fail "non-evaluation run claimed an evaluation receipt"
 [ ! -e "$TMP/results/builder.txt.commit.json" ] \
-  || fail "non-evaluation run wrote an evaluation commit marker"
+  || fail "builder run wrote a commit marker"
 jq -e '.oauth_mode == "serialized" and .oauth_sync == "ok"' \
   "$TMP/results/builder.txt.metrics.json" >/dev/null \
   || fail "serialized OAuth metrics mismatch"
@@ -617,51 +615,9 @@ run_grok run --lane frontend-builder --allow-provisional --prompt-file "$TMP/pro
   --output "$TMP/results/frontend.txt" --workdir "$TMP/work"
 [ "$(cat "$TMP/results/frontend.txt")" = PONG ] || fail "frontend lane failed"
 
-# Exercise the manifest gate, read-only tool surface, sandbox attestation, and
-# separately surfaced effective content identity from a clean committed runner checkout.
-EVAL_ROOT="$TMP/eval-repo"
-cp -R "$ROOT/." "$EVAL_ROOT"
-rm -rf -- "$EVAL_ROOT/.git"
-rm -f -- "$EVAL_ROOT/.claude/settings.local.json"
-mkdir -p "$EVAL_ROOT/evaluation/test-fixtures"
-printf '%s\n' 'policy annotation contract fixture' \
-  >"$EVAL_ROOT/evaluation/test-fixtures/contract.txt"
-printf '%s\n' '{"type":"object","required":["annotation"]}' \
-  >"$EVAL_ROOT/evaluation/test-fixtures/output-schema.json"
-git -C "$EVAL_ROOT" init -q
-git -C "$EVAL_ROOT" config user.email test@example.invalid
-git -C "$EVAL_ROOT" config user.name delegation-runner-test
-git -C "$EVAL_ROOT" add -A
-git -C "$EVAL_ROOT" commit -qm 'evaluation fixture base'
-EVAL_BASE_COMMIT="$(git -C "$EVAL_ROOT" rev-parse HEAD)"
-sha256() { shasum -a 256 "$1" | awk '{print $1}'; }
-jq -n \
-  --arg prompt_sha256 "$(sha256 "$TMP/prompt.txt")" \
-  --arg runner_sha256 "$(sha256 "$EVAL_ROOT/bin/delegation-grok")" \
-  --arg contract_sha256 "$(sha256 "$EVAL_ROOT/evaluation/test-fixtures/contract.txt")" \
-  --arg output_schema_sha256 "$(sha256 "$EVAL_ROOT/evaluation/test-fixtures/output-schema.json")" \
-  --arg source_commit "$EVAL_BASE_COMMIT" \
-  '{schema:"delegation_policy_annotation_evaluation_v1",profile:"grok-build",lane:"policy-annotation",model:"grok-4.6",backend:"grok-build",effort:"high",prompt_sha256:$prompt_sha256,runner_source_commit:$source_commit,runner_sha256:$runner_sha256,contract_path:"evaluation/test-fixtures/contract.txt",contract_sha256:$contract_sha256,output_schema_path:"evaluation/test-fixtures/output-schema.json",output_schema_sha256:$output_schema_sha256,timeout_seconds:60,max_output_chars:1024}' \
-  >"$TMP/grok-evaluation-manifest.json"
-GROK_MANIFEST_SHA="$(sha256 "$TMP/grok-evaluation-manifest.json")"
-jq --arg hash "$GROK_MANIFEST_SHA" '
-  .profiles["grok-build"].lanes["policy-annotation"].evaluation_manifest_sha256 = [$hash]
-' "$EVAL_ROOT/config/routing-gates.json" >"$TMP/grok-central.json"
-mv "$TMP/grok-central.json" "$EVAL_ROOT/config/routing-gates.json"
-jq --arg hash "$GROK_MANIFEST_SHA" '
-  .lanes["policy-annotation"].backends["grok-build"].evaluation_manifest_sha256 = [$hash]
-' "$EVAL_ROOT/config/grok-4.6-routing.json" >"$TMP/grok-routing.json"
-mv "$TMP/grok-routing.json" "$EVAL_ROOT/config/grok-4.6-routing.json"
-git -C "$EVAL_ROOT" add config/routing-gates.json config/grok-4.6-routing.json
-git -C "$EVAL_ROOT" commit -qm 'allowlist Grok evaluation fixture'
-EVAL_HEAD="$(git -C "$EVAL_ROOT" rev-parse HEAD)"
-
-DELEGATION_GROK_HOME="$TMP/grok-home" \
-DELEGATION_GROK_BIN_STORE="$TMP/eval-store" \
-DELEGATION_GROK_BIN="$TMP/bin/grok" \
-PATH="$TMP/bin:$PATH" "$EVAL_ROOT/bin/delegation-grok" run \
-  --lane policy-annotation --effort high --backend grok-build --evaluation \
-  --evaluation-manifest "$TMP/grok-evaluation-manifest.json" \
+# The policy-annotation role runs read-only: read-only tool surface and the
+# read-only sandbox profile, output outside the workdir.
+run_grok run --lane policy-annotation --effort high --backend grok-build \
   --prompt-file "$TMP/prompt.txt" --output "$TMP/results/policy-annotation.txt" \
   --workdir "$TMP/work"
 [ "$(cat "$TMP/results/policy-annotation.txt")" = PONG ] \
@@ -671,130 +627,20 @@ jq -e '
   .effort == "high" and .sandbox == "delegation-kit-read-only"
 ' "$TMP/results/policy-annotation.txt.metrics.json" >/dev/null \
   || fail "policy-annotation metrics mismatch"
+[ ! -e "$TMP/results/policy-annotation.txt.commit.json" ] \
+  || fail "policy-annotation run wrote a commit marker"
 
-# A successful policy-annotation evaluation publishes the runner-emitted
-# receipt with exactly the bound fields, recomputed here independently.
-jq -e --arg manifest_sha "$GROK_MANIFEST_SHA" \
-  --arg prompt_sha "$(sha256 "$TMP/prompt.txt")" \
-  --arg source_commit "$EVAL_HEAD" \
-  --arg runner_sha "$(sha256 "$EVAL_ROOT/bin/delegation-grok")" \
-  --arg output_sha "$(sha256 "$TMP/results/policy-annotation.txt")" \
-  '(.evaluation_receipt | keys | sort) ==
-     ["evaluation_manifest_sha256","post_observation_retries","prompt_sha256",
-      "provider_attempts","raw_output_sha256","runner_sha256",
-      "runner_source_commit","schema_version"] and
-   .evaluation_receipt.schema_version == "delegation_policy_annotation_attempt_receipt_v1" and
-   .evaluation_receipt.evaluation_manifest_sha256 == $manifest_sha and
-   .evaluation_receipt.prompt_sha256 == $prompt_sha and
-   .evaluation_receipt.runner_source_commit == $source_commit and
-   .evaluation_receipt.runner_sha256 == $runner_sha and
-   .evaluation_receipt.raw_output_sha256 == $output_sha and
-   .evaluation_receipt.provider_attempts == 1 and
-   .evaluation_receipt.post_observation_retries == 0' \
-  "$TMP/results/policy-annotation.txt.metrics.json" >/dev/null \
-  || fail "evaluation receipt mismatch"
-jq -e --arg output_sha "$(sha256 "$TMP/results/policy-annotation.txt")" \
-  --arg metrics_sha "$(sha256 "$TMP/results/policy-annotation.txt.metrics.json")" \
-  --arg manifest_sha "$GROK_MANIFEST_SHA" \
-  '(keys | sort) == ["evaluation_manifest_sha256","metrics_sha256",
-    "raw_output_sha256","schema_version"] and
-   .schema_version == "delegation_policy_annotation_publication_commit_v1" and
-   .raw_output_sha256 == $output_sha and .metrics_sha256 == $metrics_sha and
-   .evaluation_manifest_sha256 == $manifest_sha' \
-  "$TMP/results/policy-annotation.txt.commit.json" >/dev/null \
-  || fail "evaluation publication commit mismatch"
-
-# ---- evaluation preflight: full validation, no provider dispatch, no artifacts ----
-# GROK_FAKE_MODE=auth makes any real dispatch fail with 69; a zero exit here is
-# only possible if the provider task never began.
-rc=0
-DELEGATION_GROK_HOME="$TMP/grok-home" \
-DELEGATION_GROK_BIN_STORE="$TMP/eval-store" \
-DELEGATION_GROK_BIN="$TMP/bin/grok" \
-GROK_FAKE_MODE=auth PATH="$TMP/bin:$PATH" "$EVAL_ROOT/bin/delegation-grok" run \
-  --lane policy-annotation --effort high --backend grok-build --evaluation \
-  --evaluation-manifest "$TMP/grok-evaluation-manifest.json" --preflight-only \
-  --prompt-file "$TMP/prompt.txt" --output "$TMP/results/policy-preflight.txt" \
-  --workdir "$TMP/work" >"$TMP/results/policy-preflight.stdout" \
-  2>"$TMP/results/policy-preflight.stderr" || rc=$?
-[ "$rc" = 0 ] || fail "preflight returned $rc"
-[ ! -s "$TMP/results/policy-preflight.stderr" ] || fail "preflight wrote to stderr"
-jq -e --arg manifest_sha "$GROK_MANIFEST_SHA" \
-  --arg prompt_sha "$(sha256 "$TMP/prompt.txt")" \
-  --arg source_commit "$(git -C "$EVAL_ROOT" rev-parse HEAD)" \
-  --arg runner_sha "$(sha256 "$EVAL_ROOT/bin/delegation-grok")" \
-  --arg contract_sha "$(sha256 "$EVAL_ROOT/evaluation/test-fixtures/contract.txt")" \
-  --arg output_schema_sha "$(sha256 "$EVAL_ROOT/evaluation/test-fixtures/output-schema.json")" \
-  '(keys | sort) ==
-     ["backend","contract_sha256","effort","evaluation_manifest_sha256","lane",
-      "model","output_schema_sha256","post_observation_retries","profile",
-      "prompt_sha256","provider_attempts","provider_dispatch_started",
-      "runner_sha256","runner_source_commit","schema_version","status"] and
-   .schema_version == "delegation_policy_annotation_preflight_receipt_v1" and
-   .status == "READY_NO_PROVIDER_CALL" and
-   .profile == "grok-build" and .model == "grok-4.6" and
-   .backend == "grok-build" and .effort == "high" and
-   .lane == "policy-annotation" and
-   .evaluation_manifest_sha256 == $manifest_sha and
-   .prompt_sha256 == $prompt_sha and
-   .runner_source_commit == $source_commit and
-   .runner_sha256 == $runner_sha and
-   .contract_sha256 == $contract_sha and
-   .output_schema_sha256 == $output_schema_sha and
-   .provider_dispatch_started == false and
-   .provider_attempts == 0 and .post_observation_retries == 0' \
-  "$TMP/results/policy-preflight.stdout" >/dev/null || fail "preflight receipt mismatch"
-[ ! -e "$TMP/results/policy-preflight.txt" ] &&
-  [ ! -e "$TMP/results/policy-preflight.txt.metrics.json" ] &&
-  [ ! -e "$TMP/results/policy-preflight.txt.error.json" ] &&
-  [ ! -e "$TMP/results/policy-preflight.txt.commit.json" ] \
-  || fail "preflight created a caller-visible artifact"
-
-# ---- regression: preflight rejects a workdir-bound forbidden Grok config ----
+# ---- regression: a workdir-bound forbidden Grok config refuses the run ----
 # The project configuration under the workdir enables hooks. runtime_status
 # inspects from the runner's own directory and stays clean; only the
-# workdir-bound inspection the real run performs can see the contamination,
-# so preflight must traverse it too and refuse the receipt. The dispatch log
-# proves no provider work began; GROK_FAKE_MODE=auth would turn any real
-# dispatch into an authentication failure rather than a receipt.
+# workdir-bound inspection the real run performs can see the contamination.
+# The dispatch log proves no provider work began.
 mkdir -p "$TMP/work-contaminated/.grok"
 printf '%s\n' 'hooks = ["project-hook"]' \
   >"$TMP/work-contaminated/.grok/project-config.toml"
 rc=0
-DELEGATION_GROK_HOME="$TMP/grok-home" \
-DELEGATION_GROK_BIN_STORE="$TMP/eval-store" \
-DELEGATION_GROK_BIN="$TMP/bin/grok" \
-GROK_FAKE_MODE=auth GROK_FAKE_DISPATCH_LOG="$TMP/contaminated-dispatch.log" \
-PATH="$TMP/bin:$PATH" "$EVAL_ROOT/bin/delegation-grok" run \
-  --lane policy-annotation --effort high --backend grok-build --evaluation \
-  --evaluation-manifest "$TMP/grok-evaluation-manifest.json" --preflight-only \
-  --prompt-file "$TMP/prompt.txt" \
-  --output "$TMP/results/policy-preflight-contaminated.txt" \
-  --workdir "$TMP/work-contaminated" \
-  >"$TMP/results/policy-preflight-contaminated.stdout" \
-  2>"$TMP/results/policy-preflight-contaminated.stderr" || rc=$?
-[ "$rc" = 69 ] || fail "preflight with contaminated workdir returned $rc"
-grep -q 'isolation is contaminated' "$TMP/results/policy-preflight-contaminated.stderr" \
-  || fail "preflight with contaminated workdir did not name the isolation failure"
-[ ! -s "$TMP/results/policy-preflight-contaminated.stdout" ] \
-  || fail "preflight emitted a receipt for a contaminated workdir"
-[ ! -e "$TMP/contaminated-dispatch.log" ] \
-  || fail "preflight with contaminated workdir dispatched to the provider"
-[ ! -e "$TMP/results/policy-preflight-contaminated.txt" ] &&
-  [ ! -e "$TMP/results/policy-preflight-contaminated.txt.metrics.json" ] &&
-  [ ! -e "$TMP/results/policy-preflight-contaminated.txt.error.json" ] &&
-  [ ! -e "$TMP/results/policy-preflight-contaminated.txt.commit.json" ] \
-  || fail "contaminated preflight created a caller-visible artifact"
-
-# The identical real run rejects the same workdir at the same isolation check.
-rc=0
-DELEGATION_GROK_HOME="$TMP/grok-home" \
-DELEGATION_GROK_BIN_STORE="$TMP/eval-store" \
-DELEGATION_GROK_BIN="$TMP/bin/grok" \
-GROK_FAKE_DISPATCH_LOG="$TMP/contaminated-run-dispatch.log" \
-PATH="$TMP/bin:$PATH" "$EVAL_ROOT/bin/delegation-grok" run \
-  --lane policy-annotation --effort high --backend grok-build --evaluation \
-  --evaluation-manifest "$TMP/grok-evaluation-manifest.json" \
+GROK_FAKE_DISPATCH_LOG="$TMP/contaminated-run-dispatch.log" run_grok run \
+  --lane policy-annotation --effort high --backend grok-build \
   --prompt-file "$TMP/prompt.txt" \
   --output "$TMP/results/policy-run-contaminated.txt" \
   --workdir "$TMP/work-contaminated" >/dev/null 2>&1 || rc=$?
@@ -803,47 +649,33 @@ PATH="$TMP/bin:$PATH" "$EVAL_ROOT/bin/delegation-grok" run \
   || fail "contaminated workdir reached provider dispatch"
 [ ! -e "$TMP/results/policy-run-contaminated.txt" ] &&
   [ ! -e "$TMP/results/policy-run-contaminated.txt.metrics.json" ] &&
-  [ ! -e "$TMP/results/policy-run-contaminated.txt.error.json" ] &&
-  [ ! -e "$TMP/results/policy-run-contaminated.txt.commit.json" ] \
+  [ ! -e "$TMP/results/policy-run-contaminated.txt.error.json" ] \
   || fail "contaminated real run created a caller-visible artifact"
 
-# --preflight-only is rejected for ordinary (non-evaluation) runs.
+# Removed qualification flags are unknown arguments, not silent no-ops.
+for removed in --evaluation --preflight-only; do
+  rc=0
+  run_grok run --lane builder "$removed" --prompt-file "$TMP/prompt.txt" \
+    --output "$TMP/results/removed-flag.txt" --workdir "$TMP/work" \
+    >/dev/null 2>&1 || rc=$?
+  [ "$rc" = 64 ] || fail "removed flag $removed returned $rc"
+  [ ! -e "$TMP/results/removed-flag.txt" ] || fail "removed flag $removed created output"
+done
 rc=0
-run_grok run --lane builder --allow-provisional --preflight-only \
-  --prompt-file "$TMP/prompt.txt" --output "$TMP/results/preflight-ordinary.txt" \
+run_grok run --lane builder --evaluation-manifest "$TMP/missing-manifest.json" \
+  --prompt-file "$TMP/prompt.txt" --output "$TMP/results/removed-flag.txt" \
   --workdir "$TMP/work" >/dev/null 2>&1 || rc=$?
-[ "$rc" = 64 ] || fail "--preflight-only without --evaluation returned $rc"
-[ ! -e "$TMP/results/preflight-ordinary.txt" ] || fail "rejected preflight created output"
+[ "$rc" = 64 ] || fail "removed flag --evaluation-manifest returned $rc"
 
-# Manifest validation failures stay failures before provider use.
+# An unsupported role fails closed before any runtime inspection.
 rc=0
-DELEGATION_GROK_HOME="$TMP/grok-home" \
-DELEGATION_GROK_BIN_STORE="$TMP/eval-store" \
-DELEGATION_GROK_BIN="$TMP/bin/grok" \
-GROK_FAKE_MODE=auth PATH="$TMP/bin:$PATH" "$EVAL_ROOT/bin/delegation-grok" run \
-  --lane policy-annotation --effort high --backend grok-build --evaluation \
-  --evaluation-manifest "$TMP/missing-manifest.json" --preflight-only \
-  --prompt-file "$TMP/prompt.txt" --output "$TMP/results/preflight-missing.txt" \
-  --workdir "$TMP/work" >/dev/null 2>&1 || rc=$?
-[ "$rc" = 78 ] || fail "preflight with missing manifest returned $rc"
-[ ! -e "$TMP/results/preflight-missing.txt" ] &&
-  [ ! -e "$TMP/results/preflight-missing.txt.error.json" ] \
-  || fail "manifest failure created artifacts"
-
-rc=0
-DELEGATION_GROK_HOME="$TMP/grok-home" \
-DELEGATION_GROK_BIN_STORE="$TMP/eval-store" DELEGATION_GROK_BIN="$TMP/bin/grok" \
-PATH="$TMP/bin:$PATH" "$EVAL_ROOT/bin/delegation-grok" run \
-  --lane policy-annotation --effort high --backend grok-build --evaluation \
-  --evaluation-manifest "$TMP/grok-evaluation-manifest.json" \
-  --prompt-file "$TMP/prompt.txt" --output "$TMP/results/grok-collision.txt" \
-  --metrics "$TMP/results/grok-collision.txt.commit.json" --workdir "$TMP/work" \
+run_grok run --lane judgement --prompt-file "$TMP/prompt.txt" \
+  --output "$TMP/results/unsupported-role.txt" --workdir "$TMP/work" \
   >/dev/null 2>&1 || rc=$?
-[ "$rc" = 64 ] || fail "metrics/commit collision returned $rc"
-[ ! -e "$TMP/results/grok-collision.txt" ] \
-  && [ ! -e "$TMP/results/grok-collision.txt.commit.json" ] \
-  || fail "metrics/commit collision published artifacts"
+[ "$rc" = 78 ] || fail "unsupported role returned $rc"
+[ ! -e "$TMP/results/unsupported-role.txt" ] || fail "unsupported role created output"
 
+# Publication is atomic: a failed move of any member leaves no published member.
 mkdir -p "$TMP/mv-fail"
 cat >"$TMP/mv-fail/mv" <<'EOF'
 #!/usr/bin/env bash
@@ -855,50 +687,34 @@ fi
 exec /bin/mv "$@"
 EOF
 chmod 755 "$TMP/mv-fail/mv"
-for phase in output metrics commit; do
+for phase in output metrics; do
   out="$TMP/results/grok-publish-$phase.txt"
   case "$phase" in
     output) target="$out" ;;
     metrics) target="$out.metrics.json" ;;
-    commit) target="$out.commit.json" ;;
   esac
   target="$(cd "$(dirname "$target")" && pwd -P)/$(basename "$target")"
   rc=0
-  FAIL_MV_TARGET="$target" DELEGATION_GROK_HOME="$TMP/grok-home" \
-  DELEGATION_GROK_BIN_STORE="$TMP/eval-store" DELEGATION_GROK_BIN="$TMP/bin/grok" \
-  PATH="$TMP/mv-fail:$TMP/bin:$PATH" "$EVAL_ROOT/bin/delegation-grok" run \
-    --lane policy-annotation --effort high --backend grok-build --evaluation \
-    --evaluation-manifest "$TMP/grok-evaluation-manifest.json" \
+  FAIL_MV_TARGET="$target" PATH="$TMP/mv-fail:$PATH" run_grok run \
+    --lane policy-annotation --effort high --backend grok-build \
     --prompt-file "$TMP/prompt.txt" --output "$out" --workdir "$TMP/work" \
     >/dev/null 2>&1 || rc=$?
   [ "$rc" = 70 ] || fail "$phase publication failure returned $rc"
-  [ ! -e "$out" ] && [ ! -e "$out.metrics.json" ] && [ ! -e "$out.commit.json" ] \
+  [ ! -e "$out" ] && [ ! -e "$out.metrics.json" ] \
     || fail "$phase publication failure left a published member"
 done
 
-rc=0
-DELEGATION_GROK_HOME="$TMP/grok-home" \
-DELEGATION_GROK_BIN_STORE="$TMP/eval-store" \
-DELEGATION_GROK_BIN="$TMP/bin/grok" \
-GROK_FAKE_MODE=content_model_missing PATH="$TMP/bin:$PATH" \
-  "$EVAL_ROOT/bin/delegation-grok" run \
-  --lane policy-annotation --effort high --backend grok-build --evaluation \
-  --evaluation-manifest "$TMP/grok-evaluation-manifest.json" \
+# A missing content-model field is tolerated; a surfaced mismatch fails closed.
+GROK_FAKE_MODE=content_model_missing run_grok run \
+  --lane policy-annotation --effort high --backend grok-build \
   --prompt-file "$TMP/prompt.txt" --output "$TMP/results/policy-identity.txt" \
-  --workdir "$TMP/work" >/dev/null 2>&1 || rc=$?
-[ "$rc" = 70 ] || fail "policy-annotation missing content identity returned $rc"
-jq -e '.phase == "identity" and .reason == "strict_identity_evaluation_void"' \
-  "$TMP/results/policy-identity.txt.error.json" >/dev/null \
-  || fail "policy-annotation missing identity was not VOID"
+  --workdir "$TMP/work"
+[ "$(cat "$TMP/results/policy-identity.txt")" = PONG ] \
+  || fail "policy-annotation without a surfaced content model failed"
 
 rc=0
-DELEGATION_GROK_HOME="$TMP/grok-home" \
-DELEGATION_GROK_BIN_STORE="$TMP/eval-store" \
-DELEGATION_GROK_BIN="$TMP/bin/grok" \
-GROK_FAKE_MODE=content_model_mismatch PATH="$TMP/bin:$PATH" \
-  "$EVAL_ROOT/bin/delegation-grok" run \
-  --lane policy-annotation --effort high --backend grok-build --evaluation \
-  --evaluation-manifest "$TMP/grok-evaluation-manifest.json" \
+GROK_FAKE_MODE=content_model_mismatch run_grok run \
+  --lane policy-annotation --effort high --backend grok-build \
   --prompt-file "$TMP/prompt.txt" --output "$TMP/results/policy-mismatch.txt" \
   --workdir "$TMP/work" >/dev/null 2>&1 || rc=$?
 [ "$rc" = 70 ] || fail "policy-annotation content identity mismatch returned $rc"
@@ -906,33 +722,6 @@ jq -e '.phase == "identity" and .reason == "provider_identity_mismatch"' \
   "$TMP/results/policy-mismatch.txt.error.json" >/dev/null \
   || fail "policy-annotation content identity mismatch diagnostic"
 
-# A receipt that cannot be merged fails closed: exit 70, no output, no metrics.
-# The shim refuses only the runner's receipt-merge jq invocation and delegates
-# every other jq call to the real binary.
-mkdir -p "$TMP/bin-receipt-fail"
-cat >"$TMP/bin-receipt-fail/jq" <<EOF
-#!/usr/bin/env bash
-case " \$* " in *evaluation_receipt*) exit 1 ;; esac
-exec "$(command -v jq)" "\$@"
-EOF
-chmod 755 "$TMP/bin-receipt-fail/jq"
-rc=0
-DELEGATION_GROK_HOME="$TMP/grok-home" \
-DELEGATION_GROK_BIN_STORE="$TMP/eval-store" \
-DELEGATION_GROK_BIN="$TMP/bin/grok" \
-PATH="$TMP/bin-receipt-fail:$TMP/bin:$PATH" \
-  "$EVAL_ROOT/bin/delegation-grok" run \
-  --lane policy-annotation --effort high --backend grok-build --evaluation \
-  --evaluation-manifest "$TMP/grok-evaluation-manifest.json" \
-  --prompt-file "$TMP/prompt.txt" --output "$TMP/results/policy-receipt-fail.txt" \
-  --workdir "$TMP/work" >/dev/null 2>&1 || rc=$?
-[ "$rc" = 70 ] || fail "receipt merge failure returned $rc"
-[ ! -e "$TMP/results/policy-receipt-fail.txt" ] || fail "receipt failure published output"
-[ ! -e "$TMP/results/policy-receipt-fail.txt.metrics.json" ] \
-  || fail "receipt failure published metrics"
-jq -e '.phase == "extract" and .reason == "receipt_merge_failed"' \
-  "$TMP/results/policy-receipt-fail.txt.error.json" >/dev/null \
-  || fail "receipt failure diagnostic mismatch"
 
 rc=0
 run_grok run --lane builder --allow-provisional --effort max --prompt-file "$TMP/prompt.txt" \
@@ -1046,7 +835,7 @@ jq -e '
   .runtime_cli_compatibility == "capability-probed" and
   .runtime_cli_source == "pinned" and
   .selected_backend == "grok-build" and
-  .provisional_lanes == ["builder","frontend-builder"]
+  .roles == ["builder","frontend-builder","policy-annotation"]
 ' "$TMP/check-pinned.json" >/dev/null || fail "private archive did not survive an ambient CLI update"
 [ "$(jq -r '.runtime_cli_path' "$TMP/check-pinned.json")" = "$TMP/store/current/grok" ] \
   || fail "check did not report the pinned binary path"

@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
-# Run the gated Grok 4.6 model through Grok Build CLI. Fails closed: only the
-# capability-compatible builder lanes, requested model, target usage participant,
-# effort, backend, and scoped workspace sandbox can dispatch. Strict content-model
-# identity is required only for evaluation and must be surfaced separately.
+# Run Grok 4.6 through Grok Build CLI. Fails closed: only the roles the adapter
+# supports, the requested model, target usage participant, effort, backend, and
+# scoped workspace sandbox can dispatch. A provider-surfaced content model that
+# differs from the requested one is a silent substitution and fails every run.
 set -euo pipefail
 umask 077
 
@@ -13,14 +13,14 @@ while [ -L "$SOURCE" ]; do
   [[ "$SOURCE" = /* ]] || SOURCE="$SOURCE_DIR/$SOURCE"
 done
 ROOT="$(cd "$(dirname "$SOURCE")/.." && pwd)"
-# RUNNER_NAME and PROFILE are consumed by the sourced shared library.
+# RUNNER_NAME is consumed by the sourced shared library.
 # shellcheck disable=SC2034
-RUNNER_NAME="delegation-grok" PROFILE="grok-build"
+RUNNER_NAME="delegation-grok"
 # shellcheck source=bin/lib/delegation-runner-common.sh
 . "$ROOT/bin/lib/delegation-runner-common.sh"
-ROUTING_FILE="${DELEGATION_GROK_ROUTING_FILE:-$ROOT/config/grok-4.6-routing.json}"
-CENTRAL_GATES="${DELEGATION_ROUTING_GATES_FILE:-$ROOT/config/routing-gates.json}"
 MODEL="${DELEGATION_REQUESTED_MODEL:-grok-4.6}"
+ADAPTER="grok-build"
+ROLES="builder frontend-builder policy-annotation"
 RUNTIME_MODEL="$MODEL"
 USAGE_MODEL=""
 [ "$MODEL" != grok-4.6 ] || USAGE_MODEL="grok-4.6-build"
@@ -87,19 +87,13 @@ Usage:
     [--effort <auto|high>] [--backend <auto|grok-build>] \
     --prompt-file <path> --output <path> --workdir <path> \
     [--metrics <path>] [--debug-dir <existing-private-directory>] \
-    [--oauth <serialized|shared>] \
-    [--allow-provisional] [--evaluation --evaluation-manifest <path>] \
-    [--preflight-only]
+    [--oauth <serialized|shared>]
 
 `pin` archives a capability-compatible CLI build into a private store so a
 vendor auto-update of the ambient CLI never disturbs the selected lane. The
 runner resolves its binary in this order: DELEGATION_GROK_BIN, the private
 archive, then `grok` on PATH. CLI version is recorded as provenance only.
---preflight-only is valid only with --evaluation and --evaluation-manifest: it
-traverses the same pre-provider validation path as the real evaluation run,
-prints a delegation_policy_annotation_preflight_receipt_v1 receipt on stdout,
-and exits zero before provider dispatch and before any caller-visible artifact
-exists.
+--allow-provisional is accepted as a deprecated no-op for one release.
 
 `--oauth shared` (or DELEGATION_GROK_OAUTH_MODE=shared) allows concurrent
 operational dispatches. OAuth state lives in a runner-owned persistent
@@ -107,64 +101,14 @@ generation under $DELEGATION_DATA_HOME/grok-shared-oauth. Concurrent Grok
 processes share that generation so the vendor auth lock can coordinate refresh,
 while a short kit lock protects generation adoption and atomic publication back
 to the ambient login. The default serialized mode holds the kit lock for the
-whole dispatch. Evaluation runs are always serialized.
+whole dispatch.
 
 Exit codes: 64 invalid input, 69 unavailable/authentication failure,
 70 dispatch/extract failure, 75 temporary/rate-limit failure,
-78 routing gate refusal.
+78 unsupported role or effort for this adapter.
 EOF
 }
 
-evaluation_manifest() {
-  local manifest="$1" prompt_file="$2" manifest_hash prompt_hash source_head contract schema runner_hash contract_hash schema_hash
-  [ -f "$manifest" ] && [ ! -L "$manifest" ] || die 78 "evaluation manifest is missing or symlinked"
-  manifest_hash="$(file_digest "$manifest")" || die 69 "sha256 tool is required for evaluation"
-  prompt_hash="$(file_digest "$prompt_file")" || die 69 "sha256 tool is required for evaluation"
-  source_head="$(git -C "$ROOT" rev-parse HEAD 2>/dev/null)" || die 78 "runner source checkout is unavailable"
-  contract="$(jq -r '.contract_path // empty' "$manifest" 2>/dev/null)"; schema="$(jq -r '.output_schema_path // empty' "$manifest" 2>/dev/null)"; case "$contract" in /*|*..*) die 78 "evaluation contract_path must be root-relative";; esac; case "$schema" in /*|*..*) die 78 "evaluation output_schema_path must be root-relative";; esac; contract="$ROOT/$contract"; schema="$ROOT/$schema"; runner_hash="$(file_digest "$SOURCE")" || die 69 "sha256 tool is required for evaluation"
-  [ -n "$contract" ] && [ -n "$schema" ] && [ -f "$contract" ] && [ ! -L "$contract" ] && [ -f "$schema" ] && [ ! -L "$schema" ] || die 78 "evaluation contract or schema is missing or symlinked"
-  git -C "$ROOT" diff --quiet && git -C "$ROOT" diff --cached --quiet && [ -z "$(git -C "$ROOT" ls-files --others --exclude-standard)" ] || die 78 "runner source checkout is dirty"
-  contract_hash="$(file_digest "$contract")" || die 69 "sha256 tool is required for evaluation"
-  schema_hash="$(file_digest "$schema")" || die 69 "sha256 tool is required for evaluation"
-  jq -e --arg prompt_sha256 "$prompt_hash" --arg contract_sha256 "$contract_hash" --arg schema_sha256 "$schema_hash" --arg runner_sha256 "$runner_hash" '
-    (keys | sort) == ["backend","contract_path","contract_sha256","effort","lane","max_output_chars","model","output_schema_path","output_schema_sha256","profile","prompt_sha256","runner_sha256","runner_source_commit","schema","timeout_seconds"] and
-    .schema == "delegation_policy_annotation_evaluation_v1" and .profile == "grok-build" and .lane == "policy-annotation" and .model == "grok-4.6" and .backend == "grok-build" and .effort == "high" and .prompt_sha256 == $prompt_sha256 and .contract_sha256 == $contract_sha256 and .output_schema_sha256 == $schema_sha256 and
-    .runner_sha256 == $runner_sha256 and ([.prompt_sha256,.contract_sha256,.output_schema_sha256,.runner_sha256] | all(test("^[0-9a-f]{64}$"))) and (.runner_source_commit | test("^[0-9a-f]{40}$")) and
-    (.timeout_seconds | type == "number" and floor == . and . >= 1 and . <= 600) and (.max_output_chars | type == "number" and floor == . and . >= 1 and . <= 65536)
-  ' "$manifest" >/dev/null 2>&1 || die 78 "evaluation manifest is malformed or does not bind this exact run"
-  git -C "$ROOT" merge-base --is-ancestor "$(jq -r '.runner_source_commit' "$manifest")" "$source_head" || die 78 "evaluation manifest source commit is not an ancestor of this runner"
-  jq -e --arg hash "$manifest_hash" '.profiles["grok-build"].lanes["policy-annotation"].evaluation_manifest_sha256 | type == "array" and index($hash) != null' "$CENTRAL_GATES" >/dev/null 2>&1 || die 78 "evaluation manifest is not allowlisted by the central gate"
-  jq -e --arg hash "$manifest_hash" '.lanes["policy-annotation"].backends["grok-build"].evaluation_manifest_sha256 | type == "array" and index($hash) != null' "$ROUTING_FILE" >/dev/null 2>&1 || die 78 "evaluation manifest is not allowlisted by the executable gate"
-  EVALUATION_TIMEOUT_SECONDS="$(jq -r '.timeout_seconds' "$manifest")"; EVALUATION_MAX_OUTPUT_CHARS="$(jq -r '.max_output_chars' "$manifest")"
-  # Bound values the run receipt republishes; recomputed locally, never caller input.
-  EVALUATION_MANIFEST_SHA256="$manifest_hash"
-  EVALUATION_PROMPT_SHA256="$prompt_hash"
-  EVALUATION_RUNNER_SOURCE_COMMIT="$source_head"
-  EVALUATION_RUNNER_SHA256="$runner_hash"
-  EVALUATION_CONTRACT_SHA256="$contract_hash"
-  EVALUATION_OUTPUT_SCHEMA_SHA256="$schema_hash"
-}
-
-# Success stdout for --preflight-only: exactly one JSON object, every value
-# recomputed by the validation path above, never taken from caller input.
-print_preflight_receipt() {
-  local lane="$1" effort="$2"
-  jq -n --arg profile "grok-build" --arg model "$MODEL" --arg backend "$BACKEND" \
-    --arg effort "$effort" --arg lane "$lane" \
-    --arg manifest_sha256 "$EVALUATION_MANIFEST_SHA256" \
-    --arg prompt_sha256 "$EVALUATION_PROMPT_SHA256" \
-    --arg source_commit "$EVALUATION_RUNNER_SOURCE_COMMIT" \
-    --arg runner_sha256 "$EVALUATION_RUNNER_SHA256" \
-    --arg contract_sha256 "$EVALUATION_CONTRACT_SHA256" \
-    --arg output_schema_sha256 "$EVALUATION_OUTPUT_SCHEMA_SHA256" \
-    '{schema_version:"delegation_policy_annotation_preflight_receipt_v1",
-      status:"READY_NO_PROVIDER_CALL",
-      profile:$profile,model:$model,backend:$backend,effort:$effort,lane:$lane,
-      evaluation_manifest_sha256:$manifest_sha256,prompt_sha256:$prompt_sha256,
-      runner_source_commit:$source_commit,runner_sha256:$runner_sha256,
-      contract_sha256:$contract_sha256,output_schema_sha256:$output_schema_sha256,
-      provider_dispatch_started:false,provider_attempts:0,post_observation_retries:0}'
-}
 
 pinned_bin_path() { printf '%s/current/grok' "$GROK_BIN_STORE"; }
 pinned_digest_path() { printf '%s/current/grok.sha256' "$GROK_BIN_STORE"; }
@@ -668,10 +612,6 @@ sandbox_attested_for_run() {
   return 1
 }
 
-validate_gate_graph() {
-  # Historical quality gates are informational; runtime checks below remain.
-  return 0
-}
 
 # Grok Build's sandbox denies these container runtime sockets in every profile,
 # built-in or custom, and resolves each endpoint before applying Seatbelt. Since
@@ -767,14 +707,11 @@ runtime_status() {
   GROK_REASON="ready"
 }
 
-gate_status() {
-  local lane="$1"
-  jq -r --arg lane "$lane" '.profiles["grok-build"].lanes[$lane].status // "disabled"' \
-    "$CENTRAL_GATES" 2>/dev/null || printf 'disabled\n'
-}
 
 is_allowed() {
-  case "$1" in builder|frontend-builder|policy-annotation) return 0 ;; *) return 1 ;; esac
+  local role="$1" candidate
+  for candidate in $ROLES; do [ "$candidate" != "$role" ] || return 0; done
+  return 1
 }
 
 default_effort() {
@@ -782,32 +719,30 @@ default_effort() {
 }
 
 print_check() {
-  local as_json="${1:-0}" available=false selected="none" lanes provisional
+  local as_json="${1:-0}" available=false selected="none" roles
   local oauth_mode="${DELEGATION_GROK_OAUTH_MODE:-serialized}"
   case "$oauth_mode" in serialized|shared) ;; *) die 64 "invalid OAuth mode: $oauth_mode" ;; esac
   have jq || die 69 "jq is required"
-  validate_gate_graph || die 78 "central and executable routing gates are missing, invalid, or inconsistent"
   OAUTH_MODE="$oauth_mode"
   runtime_status "$oauth_mode" && available=true || true
-  lanes="$(qualified_lanes)"
-  provisional="$(provisional_lanes)"
+  roles="$(printf '%s\n' $ROLES | jq -R . | jq -sc .)"
   [ "$available" = true ] && selected="$BACKEND"
   if [ "$as_json" = 1 ]; then
     jq -n --arg model "$MODEL" --arg runtime_model "$RUNTIME_MODEL" \
       --arg usage_model "$USAGE_MODEL" --arg selected "$selected" \
       --argjson available "$available" --arg reason "$GROK_REASON" \
-      --argjson efforts "$EFFORTS" --argjson lanes "$lanes" \
-      --argjson provisional "$provisional" --arg cli_version "$GROK_CLI_VERSION" \
+      --argjson efforts "$EFFORTS" --argjson roles "$roles" \
+      --arg adapter "$ADAPTER" --arg cli_version "$GROK_CLI_VERSION" \
       --arg cli_compatibility "$CLI_COMPATIBILITY" \
       --arg cli_source "$GROK_BIN_SOURCE" --arg cli_path "$GROK_BIN" \
       --arg sandbox "$SANDBOX_PROFILE" --argjson max_turns "$MAX_TURNS" \
       --argjson timeout_seconds "$TIMEOUT_SECONDS" --arg oauth_mode "$oauth_mode" \
-      '{model:$model,runtime_model:$runtime_model,usage_model:$usage_model,
+      '{model:$model,adapter:$adapter,runtime_model:$runtime_model,usage_model:$usage_model,
         runtime_cli_version:$cli_version,runtime_cli_compatibility:$cli_compatibility,
         runtime_cli_source:$cli_source,
         runtime_cli_path:(if $cli_path == "" then null else $cli_path end),
-        efforts:$efforts,selected_backend:$selected,qualified_lanes:$lanes,
-        provisional_lanes:$provisional,backends:{"grok-build":{
+        roles:$roles,efforts:$efforts,selected_backend:$selected,
+        backends:{"grok-build":{
           available:$available,reason:$reason,efforts:["high"],
           sandbox:$sandbox,permission_mode:"dontAsk",
           oauth_modes:["serialized","shared"],oauth_mode:$oauth_mode,
@@ -817,7 +752,7 @@ print_check() {
           max_turns:$max_turns,timeout_seconds:$timeout_seconds,
           isolated_home:true,plugins:false,mcp:false,terminal:false}}}'
   else
-    printf 'Grok 4.6: selected=%s qualified=%s provisional=%s\n' "$selected" "$lanes" "$provisional"
+    printf 'Grok 4.6: selected=%s roles=%s efforts=high\n' "$selected" "$(printf '%s' "$ROLES" | tr ' ' ',')"
     printf '  grok-build: %s (%s; model=%s; cli=%s from %s; effort=high; oauth=%s; sandbox=%s; max-turns=%s; timeout=%ss)\n' \
       "$available" "$GROK_REASON" "$RUNTIME_MODEL" "$GROK_CLI_VERSION" \
       "$GROK_BIN_SOURCE" "$oauth_mode" "$SANDBOX_PROFILE" "$MAX_TURNS" "$TIMEOUT_SECONDS"
@@ -926,8 +861,7 @@ preserve_debug() {
 }
 
 run_command() {
-  local lane="" effort="auto" backend="auto" prompt_file="" output="" workdir="" metrics="" debug_dir="" evaluation_manifest_path=""
-  local allow_provisional=0 evaluation=0 preflight_only=0
+  local lane="" effort="auto" backend="auto" prompt_file="" output="" workdir="" metrics="" debug_dir=""
   local oauth_mode="${DELEGATION_GROK_OAUTH_MODE:-serialized}"
   while [ "$#" -gt 0 ]; do
     case "$1" in
@@ -941,48 +875,32 @@ run_command() {
       --debug-dir) debug_dir="${2:-}"; shift 2 ;;
       --oauth) oauth_mode="${2:-}"; shift 2 ;;
       --allow-provisional) printf "%s\n" "--allow-provisional is deprecated and has no effect" >&2; shift ;;
-      --evaluation) evaluation=1; shift ;;
-      --evaluation-manifest) evaluation_manifest_path="${2:-}"; shift 2 ;;
-      --preflight-only) preflight_only=1; shift ;;
       -h|--help) usage; exit 0 ;;
       *) die 64 "unknown run argument: $1" ;;
     esac
   done
-  case "$lane" in builder|frontend-builder|policy-annotation) ;; *) die 64 "invalid lane: $lane" ;; esac
+  [ -n "$lane" ] || die 64 "--lane is required"
   case "$effort" in auto|high) ;; *) die 64 "invalid effort: $effort" ;; esac
   case "$backend" in auto|grok-build) ;; *) die 64 "invalid backend: $backend" ;; esac
   case "$oauth_mode" in serialized|shared) ;; *) die 64 "invalid OAuth mode: $oauth_mode" ;; esac
   OAUTH_MODE="$oauth_mode"
   [ -f "$prompt_file" ] || die 64 "prompt file missing: $prompt_file"
   [ -s "$prompt_file" ] || die 64 "prompt file must not be empty"
-  if [ "$evaluation" = 1 ]; then [ -n "$evaluation_manifest_path" ] || die 64 "--evaluation requires --evaluation-manifest"; else [ -z "$evaluation_manifest_path" ] || die 64 "--evaluation-manifest requires --evaluation"; fi
-  [ "$evaluation" = 0 ] || [ "$oauth_mode" = serialized ] \
-    || die 64 "evaluation runs require serialized OAuth mode"
-  [ "$preflight_only" = 0 ] || [ "$evaluation" = 1 ] || die 64 "--preflight-only requires --evaluation and --evaluation-manifest"
   [ -d "$workdir" ] || die 64 "workdir missing: $workdir"
   [ -z "$debug_dir" ] || [ -d "$debug_dir" ] || die 64 "debug directory missing: $debug_dir"
   [ -n "$output" ] || die 64 "--output is required"
   have jq || die 69 "jq is required"
-  [ -r "$ROUTING_FILE" ] || die 69 "routing file missing: $ROUTING_FILE"
-  jq -e . "$ROUTING_FILE" >/dev/null 2>&1 || die 69 "routing file is invalid JSON"
-  validate_gate_graph || die 78 "central and executable routing gates are missing, invalid, or inconsistent"
-  if [ "$evaluation" = 0 ]; then
-    is_allowed "$lane" "$allow_provisional" || die 78 "unsupported lane"
-  else
-    [ "$lane" = policy-annotation ] || die 78 "--evaluation permits policy-annotation candidate only"
-    [ "$(gate_status "$lane")" = candidate ] || die 78 "policy-annotation is not a candidate in the central gate"
-  fi
+  is_allowed "$lane" || die 78 "unsupported role for $ADAPTER: $lane"
   [ "$effort" != auto ] || effort="$(default_effort)"
   [ "$effort" = high ] || die 78 "lane '$lane' supports only effort 'high'"
   RUN_TMP="$(mktemp -d "${TMPDIR:-/tmp}/delegation-grok.XXXXXX")"
   cp -- "$prompt_file" "$RUN_TMP/prompt.txt" \
     || die 70 "could not snapshot prompt into runner-owned storage"
-  [ "$evaluation" = 0 ] || evaluation_manifest "$evaluation_manifest_path" "$RUN_TMP/prompt.txt"
   runtime_status "$oauth_mode" || die 69 "$GROK_REASON"
 
   workdir="$(cd "$workdir" && pwd -P)"
   metrics="${metrics:-$output.metrics.json}"
-  local output_parent metrics_parent output_name metrics_name diagnostic commit
+  local output_parent metrics_parent output_name metrics_name diagnostic
   output_parent="$(dirname "$output")"; metrics_parent="$(dirname "$metrics")"
   output_name="$(basename "$output")"; metrics_name="$(basename "$metrics")"
   [ -d "$output_parent" ] || die 64 "output parent directory must already exist: $output_parent"
@@ -991,19 +909,10 @@ run_command() {
   metrics="$(cd "$metrics_parent" && pwd -P)/$metrics_name"
   [ -z "$debug_dir" ] || debug_dir="$(cd "$debug_dir" && pwd -P)"
   diagnostic="$output.error.json"
-  commit="$output.commit.json"
   [ "$output" != "$metrics" ] || die 64 "output and metrics paths resolve to the same file"
-  if [ "$evaluation" = 1 ]; then
-    [ "$metrics" != "$commit" ] && [ "$diagnostic" != "$commit" ] \
-      || die 64 "metrics or diagnostic path collides with evaluation commit marker"
-  fi
   [ ! -e "$output" ] && [ ! -L "$output" ] || die 64 "output already exists or is a symlink"
   [ ! -e "$metrics" ] && [ ! -L "$metrics" ] || die 64 "metrics already exists or is a symlink"
   [ ! -e "$diagnostic" ] && [ ! -L "$diagnostic" ] || die 64 "diagnostic already exists or is a symlink"
-  if [ "$evaluation" = 1 ]; then
-    [ ! -e "$commit" ] && [ ! -L "$commit" ] \
-      || die 64 "evaluation commit marker already exists or is a symlink"
-  fi
   if [ "$lane" = policy-annotation ]; then
     case "$output" in "$workdir"/*) die 64 "policy-annotation output must be outside workdir" ;; esac
     case "$metrics" in "$workdir"/*) die 64 "policy-annotation metrics must be outside workdir" ;; esac
@@ -1013,9 +922,7 @@ run_command() {
 
   # Isolation attestation is workdir-bound: project configuration under the
   # workdir can enable surfaces the isolated home alone forbids. Prepare and
-  # inspect it here, before any receipt, so an evaluation preflight traverses
-  # exactly the same isolation path as the real dispatch, which reuses this
-  # prepared state below instead of repeating it.
+  # inspect it here; the dispatch below reuses this prepared state.
   local lock_rc=0 sync_rc=0 seed_rc=0
   if [ "$oauth_mode" = shared ]; then
     seed_shared_oauth || seed_rc=$?
@@ -1034,14 +941,6 @@ run_command() {
   fi
   inspect_isolation "$RUN_TMP/home" "$RUN_TMP/inspect.json" "$workdir" || die 69 "$GROK_REASON"
 
-  # Preflight ends here: every pre-provider check the real evaluation run makes
-  # has passed, and nothing caller-visible has been created. Exit before
-  # sandbox attestation and CLI invocation below.
-  if [ "$preflight_only" = 1 ]; then
-    print_preflight_receipt "$lane" "$effort" || die 70 "could not emit preflight receipt"
-    exit 0
-  fi
-
   local response result_tmp metrics_tmp stderr_file rc=0 started timer reason phase
   local sandbox_events sandbox_event_start=0 sandbox_events_run
   local DEBUG_PATH=""
@@ -1050,7 +949,6 @@ run_command() {
   timer="$(timeout_bin)" || die 69 "timeout or gtimeout is required"
   started="$(date +%s)"
   local execution_timeout="$TIMEOUT_SECONDS"
-  [ "$evaluation" = 0 ] || execution_timeout="$EVALUATION_TIMEOUT_SECONDS"
   local execution_tools='grep,read_file,search_replace,list_dir,todo_write'
   [ "$lane" != policy-annotation ] || execution_tools='grep,read_file,list_dir'
   local execution_sandbox="$SANDBOX_PROFILE"
@@ -1141,24 +1039,13 @@ run_command() {
       "$response" "$stderr_file" "$DEBUG_PATH"
     die 70 "Grok Build sandbox enforcement was not attested; sanitized diagnostic: $diagnostic"
   }
-  # A missing content-model field is tolerated for provisional operational runs,
-  # but a separately surfaced mismatch is a known silent substitution and fails
-  # every lane closed.
+  # A missing content-model field is tolerated, but a separately surfaced
+  # mismatch is a known silent substitution and fails every run closed.
   if jq -e '.model | type == "string" and length > 0' "$response" >/dev/null 2>&1 &&
      ! jq -e --arg runtime_model "$RUNTIME_MODEL" --argjson aliases "${DELEGATION_MODEL_ALIASES:-[]}" '.model as $m | $m == $runtime_model or ($aliases | index($m) != null)' "$response" >/dev/null 2>&1; then
     preserve_debug "$debug_dir" "$response" "$stderr_file"
     write_diagnostic "$diagnostic" "identity" "provider_identity_mismatch" 0 "$started" "$response" "$stderr_file" "$DEBUG_PATH"
     die 70 "Grok Build surfaced a different effective content model; sanitized diagnostic: $diagnostic"
-  fi
-  if [ "$evaluation" = 1 ]; then
-    # modelUsage records billing/usage participants, not which model authored
-    # the content. A strict identity evaluation is VOID unless the provider
-    # separately surfaces an effective content model matching this tuple.
-    jq -e '.model | type == "string" and length > 0' "$response" >/dev/null 2>&1 || {
-      preserve_debug "$debug_dir" "$response" "$stderr_file"
-      write_diagnostic "$diagnostic" "identity" "strict_identity_evaluation_void" 0 "$started" "$response" "$stderr_file" "$DEBUG_PATH"
-      die 70 "Grok Build did not surface an effective content model; strict identity evaluation is VOID; sanitized diagnostic: $diagnostic"
-    }
   fi
   if jq -e '.stopReason == "MaxTurns" or .stopReason == "max_turns"' "$response" >/dev/null 2>&1; then
     preserve_debug "$debug_dir" "$response" "$stderr_file"
@@ -1180,59 +1067,6 @@ run_command() {
         "$response" "$stderr_file" "$DEBUG_PATH"
       die 70 "Grok Build returned malformed, empty, or mismatched output; sanitized diagnostic: $diagnostic"
     }
-  if [ "$evaluation" = 1 ] && [ "$(wc -m <"$result_tmp" | tr -d ' ')" -gt "$EVALUATION_MAX_OUTPUT_CHARS" ]; then
-    preserve_debug "$debug_dir" "$response" "$stderr_file"
-    write_diagnostic "$diagnostic" "extract" "max_output_chars" 0 "$started" "$response" "$stderr_file" "$DEBUG_PATH"
-    die 70 "Grok Build exceeded the manifest output limit; sanitized diagnostic: $diagnostic"
-  fi
-  # A successful evaluation publishes its attempt receipt or publishes nothing.
-  # Every field is recomputed here from local state the manifest already bound;
-  # nothing is accepted from the caller.
-  if [ "$evaluation" = 1 ]; then
-    local raw_output_sha256=""
-    raw_output_sha256="$(file_digest "$result_tmp")" || raw_output_sha256=""
-    if [ -z "$raw_output_sha256" ] || [ -z "${EVALUATION_MANIFEST_SHA256:-}" ] ||
-       [ -z "${EVALUATION_PROMPT_SHA256:-}" ] || [ -z "${EVALUATION_RUNNER_SOURCE_COMMIT:-}" ] ||
-       [ -z "${EVALUATION_RUNNER_SHA256:-}" ]; then
-      preserve_debug "$debug_dir" "$response" "$stderr_file"
-      write_diagnostic "$diagnostic" "extract" "receipt_uncomputable" 0 "$started" "$response" "$stderr_file" "$DEBUG_PATH"
-      die 70 "Grok Build evaluation receipt could not be computed; sanitized diagnostic: $diagnostic"
-    fi
-    if ! jq --arg manifest_sha256 "$EVALUATION_MANIFEST_SHA256" \
-        --arg prompt_sha256 "$EVALUATION_PROMPT_SHA256" \
-        --arg source_commit "$EVALUATION_RUNNER_SOURCE_COMMIT" \
-        --arg runner_sha256 "$EVALUATION_RUNNER_SHA256" \
-        --arg raw_output_sha256 "$raw_output_sha256" \
-        '.evaluation_receipt = {
-          schema_version:"delegation_policy_annotation_attempt_receipt_v1",
-          evaluation_manifest_sha256:$manifest_sha256,
-          prompt_sha256:$prompt_sha256,
-          runner_source_commit:$source_commit,
-          runner_sha256:$runner_sha256,
-          raw_output_sha256:$raw_output_sha256,
-          provider_attempts:1,
-          post_observation_retries:0}' "$metrics_tmp" >"$RUN_TMP/metrics.receipt.json" ||
-       ! mv "$RUN_TMP/metrics.receipt.json" "$metrics_tmp"; then
-      rm -f -- "$RUN_TMP/metrics.receipt.json"
-      preserve_debug "$debug_dir" "$response" "$stderr_file"
-      write_diagnostic "$diagnostic" "extract" "receipt_merge_failed" 0 "$started" "$response" "$stderr_file" "$DEBUG_PATH"
-      die 70 "Grok Build evaluation receipt could not be merged; sanitized diagnostic: $diagnostic"
-    fi
-  fi
-  local commit_tmp="$RUN_TMP/publication.commit.json" metrics_sha256=""
-  if [ "$evaluation" = 1 ]; then
-    raw_output_sha256="$(file_digest "$result_tmp")" || raw_output_sha256=""
-    metrics_sha256="$(file_digest "$metrics_tmp")" || metrics_sha256=""
-    if [ -z "$raw_output_sha256" ] || [ -z "$metrics_sha256" ] ||
-       ! jq -n --arg raw_output_sha256 "$raw_output_sha256" \
-         --arg metrics_sha256 "$metrics_sha256" \
-         --arg manifest_sha256 "$EVALUATION_MANIFEST_SHA256" \
-         '{schema_version:"delegation_policy_annotation_publication_commit_v1",
-           raw_output_sha256:$raw_output_sha256,metrics_sha256:$metrics_sha256,
-           evaluation_manifest_sha256:$manifest_sha256}' >"$commit_tmp"; then
-      die 70 "could not stage evaluation publication commit"
-    fi
-  fi
   if ! mv "$result_tmp" "$output"; then
     rm -f -- "$output"
     die 70 "could not finalize output"
@@ -1241,15 +1075,11 @@ run_command() {
     rm -f -- "$output" "$metrics"
     die 70 "could not finalize metrics"
   fi
-  if [ "$evaluation" = 1 ] && ! mv "$commit_tmp" "$commit"; then
-    rm -f -- "$output" "$metrics" "$commit"
-    die 70 "could not finalize evaluation publication commit"
-  fi
 }
 
 # Archive a capability-compatible build into a private store. A vendor auto-update
 # replaces the ambient CLI and prunes its own download cache; the store is the
-# copy that survives, so an update never becomes a routing-gate edit.
+# copy that survives, so an update never changes which build the kit runs.
 pin_command() {
   local from="" force=0
   while [ "$#" -gt 0 ]; do
