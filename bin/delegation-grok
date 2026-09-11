@@ -19,7 +19,7 @@ RUNNER_NAME="delegation-grok"
 # shellcheck source=bin/lib/delegation-runner-common.sh
 . "$ROOT/bin/lib/delegation-runner-common.sh"
 MODEL="${DELEGATION_REQUESTED_MODEL:-grok-4.6}"
-ADAPTER="grok-build"
+ADAPTER="grok-build-cli"
 ROLES="builder frontend-builder policy-annotation"
 RUNTIME_MODEL="$MODEL"
 USAGE_MODEL=""

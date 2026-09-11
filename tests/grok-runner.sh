@@ -288,7 +288,7 @@ jq -e '
   .runtime_cli_compatibility == "capability-probed" and
   .runtime_cli_source == "path" and
   .selected_backend == "grok-build" and
-  .adapter == "grok-build" and
+  .adapter == "grok-build-cli" and
   .roles == ["builder","frontend-builder","policy-annotation"] and
   .efforts == ["high"] and
   .backends["grok-build"].sandbox == "delegation-kit" and

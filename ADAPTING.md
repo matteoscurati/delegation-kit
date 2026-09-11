@@ -2,8 +2,8 @@
 
 Edit the personal configuration described in
 [User configuration](docs/user-configuration.md), then run
-`delegation-config validate` and `delegation-config apply`. Do not edit historical
-routing or evaluation artifacts to make a new model executable.
+`delegation-config validate` and `delegation-config apply`. Nothing else in the
+kit has to change to make a new model executable.
 
 Choose the adapter, actual requested model, roles and supported parameters.
 For custom OpenAI-compatible endpoints supply `base_url` and optionally
@@ -22,6 +22,6 @@ compatible reviewer or `cross-family` for another declared family. `init
 an existing policy is an explicit edit to the personal file, which updates
 preserve. Required review never authorizes another call on its own.
 
-Evidence remains useful when choosing presets, but it is advisory. Historical
-artifacts retain their original interpretation. The lead checks the output,
-applies and tests patches, and reports model identity provenance accurately.
+Benchmarks are useful when choosing a preset, and nothing more: the routing
+policy in `model-routing.md` is advisory. The lead checks the output, applies
+and tests patches, and reports model identity provenance accurately.

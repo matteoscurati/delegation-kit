@@ -17,7 +17,7 @@ adapter can technically do, and what the lead still has to do afterwards.
 |---|---|---|---|---|---|
 | `claude-zai` | `delegation-glm` | Claude Code CLI against the Z.AI endpoint | `read-only` (clerk, scout, reviewer, policy-annotation) · `worktree-edit` (builder) | clerk, scout, builder, reviewer, policy-annotation | max |
 | `kimi-code-cli` | `delegation-kimi` | Kimi Code CLI in a macOS `sandbox-exec` profile | `read-only` (clerk, scout, policy-annotation) · `worktree-edit` (builder, frontend-builder) | clerk, scout, builder, frontend-builder, policy-annotation | max |
-| `grok-build` | `delegation-grok` | Grok Build CLI in its attested custom sandbox | `read-only` (policy-annotation) · `worktree-edit` (builder, frontend-builder) | builder, frontend-builder, policy-annotation | high |
+| `grok-build-cli` | `delegation-grok` | Grok Build CLI in its attested custom sandbox | `read-only` (policy-annotation) · `worktree-edit` (builder, frontend-builder) | builder, frontend-builder, policy-annotation | high |
 | `token-plan-openai` | `delegation-qwen` | one chat-completions request | `text-patch` | builder, clerk, scout, reviewer, senior, judgement, policy-annotation | minimal … max (default xhigh) |
 | `deepseek-api` | `delegation-deepseek` | one chat-completions request | `text-patch` | same as Qwen | minimal … max (default max) |
 | `openai-compatible` | `delegation-openai-compatible` | one chat-completions request, HTTPS or loopback | `text-patch` | same as Qwen | none … max |

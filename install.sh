@@ -110,6 +110,18 @@ echo "GLM bridge -> $BIN_HOME/delegation-glm"
 # Every `read` is guarded: unguarded, an EOF (Ctrl-D, or a piped installer) would
 # trip errexit and silently abandon the rest of the install — Kimi bridge,
 # profiles and all.
+# uninstall.sh keeps each key file as $DATA_HOME.<name>.env.bak. A later
+# install used to ask again and never look there, so a key could sit in the
+# backup for days while the runner reported it missing. Restore it first.
+restore_key_backup() { # $1=name (zai | qwen-token-plan | deepseek)
+  local target="$DATA_HOME/config/$1.env" backup="$DATA_HOME.$1.env.bak"
+  [ ! -f "$target" ] && [ -f "$backup" ] && [ ! -L "$backup" ] || return 0
+  ( umask 077; cp "$backup" "$target" ) && chmod 600 "$target" || return 0
+  echo "  + $1 key restored from $backup (mode 600)"
+}
+restore_key_backup zai
+restore_key_backup qwen-token-plan
+restore_key_backup deepseek
 ZAI_KEY_FILE="$DATA_HOME/config/zai.env"
 zai_store_key() { # $1=key
   ( umask 077; printf 'ZAI_API_KEY=%s\n' "$1" >"$ZAI_KEY_FILE" )

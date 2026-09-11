@@ -14,6 +14,18 @@ are not an instruction to use this provider.
 
 ## Verified snapshot
 
+The 0.25.1 patch was verified on **2026-09-11** on the same machine and
+ambient CLIs as 0.25.0 below: all 12 regression suites green in 43 seconds
+(the install-marker suite now also proves that a key file the uninstaller
+backed up is restored, mode 600, and that an existing key is never replaced),
+ShellCheck, ruff, the ten-check version gate, and a reinstall from the patch
+followed by static doctor at `56 OK, 0 WARN, 0 FAIL` with GLM reporting
+`claude-zai` available and `delegation-grok check` reporting adapter
+`grok-build-cli`. No model inference was executed for this patch; the live
+probes of the 0.25.0 pass stand.
+
+### 0.25.0 snapshot
+
 The 0.25.0 release-candidate gate was verified on **2026-09-11** on macOS
 26.5.1 with ambient Codex CLI `0.154.0` and ambient Claude Code `2.1.267`.
 The merge commit (`89fee24`) passed all 12 remaining regression suites in 43

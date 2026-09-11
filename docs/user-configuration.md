@@ -55,10 +55,9 @@ rejected. Remote endpoints require HTTPS; loopback HTTP is permitted. The
 custom adapter appends `/chat/completions`, uses one non-streaming text request,
 optional Bearer authentication, and never calls `/models`, tools or a retry.
 
-Gemini is excluded from current default presets by the owner's decision.
-The adapter and historical evidence remain available for compatibility, but
-no Gemini profile is offered by the current defaults. Existing personal
-configurations are preserved rather than silently rewritten.
+Gemini is excluded from the shipped presets by the owner's decision. The
+adapter stays installed and usable by adding a profile by hand. Existing
+personal configurations are preserved rather than silently rewritten.
 
 ## Adapter limits
 
@@ -88,8 +87,8 @@ delegation-run --profile local-model --lane builder \
   --prompt-file /tmp/task.txt --output /tmp/model-result.txt --workdir /path/to/repo
 ```
 
-The router's version 2 JSON separates `configuration_valid`,
-`technical_compatibility`, `capabilities` and historical `evidence`.
+The router's schema 3 JSON reports `configuration_valid`,
+`technical_compatibility` and `capabilities` per profile and role.
 `check`, `lane`, `profile`, `resolve` and `table` remain read-only commands.
 A selected row is validation only: `authorization_granted` remains false.
 
@@ -98,8 +97,7 @@ Requested and reported model identities are distinct. Missing identity is
 `requested-only`; a match or configured alias is `provider-reported`, never
 independent certification. An unconfigured mismatch fails. HTTP authentication,
 rate limiting, malformed output, truncation and timeout have separate diagnostic
-reasons; failure never dispatches a replacement. Legacy evaluation receipt
-formats and manifest-bound scientific checks remain specific to evaluation.
+reasons; failure never dispatches a replacement.
 
 ## Review
 
@@ -125,7 +123,7 @@ configuration directory as `migration-v1-backup` next to the personal config.
 The original model choices and supported parameters are imported, credential
 files remain in place, and the summary announces optional review. The backup is
 retained on repeated initialization/installations. The personal file and later
-policy changes are preserved. Historical evaluation artifacts are never rewritten.
+policy changes are preserved.
 
 `--allow-provisional` remains accepted as a deprecated no-op for one release.
 A legacy `routing-gates.json` that does not parse, or has no profiles, falls
