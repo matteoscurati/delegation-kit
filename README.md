@@ -51,9 +51,11 @@ machinery. `config/presets.json` holds the starting profiles, adapters own their
 roles and efforts, and `evaluation/` is a frozen archive of earlier
 qualification runs that no command reads.
 
-## Current release: 0.25.0
+## Current release: 0.25.1
 
-Version 0.25.0 removes the qualification machinery that 0.24.0 had demoted to
+Version 0.25.1 fixes the installer so a key file the uninstaller backed up is
+restored instead of asked for again, and cleans the last gate-era wording out
+of the configuration docs. Version 0.25.0 removed the qualification machinery that 0.24.0 had demoted to
 history: the central and executable routing gates, the executor contract, the
 evidence snapshot and Epoch importer, the schema compiler, and the runners'
 `--evaluation` and `--preflight-only` modes are gone, together with roughly

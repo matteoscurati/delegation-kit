@@ -44,6 +44,11 @@ chmod 700 "$TEST_TOOLS/claude"
 # recognize the retained archive.
 mkdir -p "$DATA/config" "$DATA/bin" "$DATA/grok-cli/current" "$GROK_TEST_HOME" "$TMP/bin"
 printf '%s\n' '{}' >"$GROK_TEST_HOME/auth.json"
+# A key file the uninstaller backed up next to the data home must come back
+# when the data home has none; an existing key file is never replaced.
+( umask 077; printf 'ZAI_API_KEY=restored-from-backup\n' >"$DATA.zai.env.bak" )
+( umask 077; printf 'DEEPSEEK_API_KEY=stale-backup\n' >"$DATA.deepseek.env.bak" )
+( umask 077; printf 'DEEPSEEK_API_KEY=current\n' >"$DATA/config/deepseek.env" )
 for retired_config in routing-gates.json grok-4.6-routing.json glm-5.3-flash-max-routing.json \
     kimi-k3-routing.json gemini-3.8-flash-routing.json qwen3.8-max-routing.json \
     deepseek-flash-routing.json external-executor-contract.json model-evidence.json; do
@@ -105,6 +110,13 @@ done
 [ "$(find "$DATA/config" -maxdepth 1 -name '*.json' | sort | xargs -n1 basename)" = external-patch-policy.json ] \
   || fail "install left unexpected JSON files in $DATA/config: $(ls "$DATA/config")"
 [ -x "$DATA/bin/delegation-deepseek" ] || fail 'install did not include the DeepSeek runner'
+[ "$(cat "$DATA/config/zai.env")" = 'ZAI_API_KEY=restored-from-backup' ] \
+  || fail 'install did not restore the Z.AI key from the uninstaller backup'
+[ "$(stat -f '%Lp' "$DATA/config/zai.env" 2>/dev/null || stat -c '%a' "$DATA/config/zai.env")" = 600 ] \
+  || fail 'restored Z.AI key file is not mode 600'
+[ "$(cat "$DATA/config/deepseek.env")" = 'DEEPSEEK_API_KEY=current' ] \
+  || fail 'install replaced an existing DeepSeek key with the backup'
+grep -Fq 'zai key restored from' "$TMP/install.log" || fail 'install did not report the restored key'
 # The runners source the shared library from the installed tree, so it must be
 # present and an installed runner must run through its PATH symlink.
 [ -f "$DATA/bin/lib/delegation-runner-common.sh" ] && [ -f "$DATA/bin/lib/delegation-chat-completions.sh" ] \
