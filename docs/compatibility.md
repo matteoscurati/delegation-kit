@@ -14,6 +14,37 @@ are not an instruction to use this provider.
 
 ## Verified snapshot
 
+The 0.25.0 release-candidate gate was verified on **2026-09-11** on macOS
+26.5.1 with ambient Codex CLI `0.154.0` and ambient Claude Code `2.1.267`.
+The merge commit (`89fee24`) passed all 12 remaining regression suites in 43
+seconds locally and on the macOS CI runner: the six runner suites without
+their evaluation cases, 112 patch-verifier checks, 18 install-marker checks
+(now seeding a 0.24.0-shaped data directory and asserting that every retired
+gate, contract, evidence file, and command is removed), the 11-check `route`
+suite, the 15-test `user-config` suite (including migration from a malformed
+legacy snapshot), ShellCheck at `-S warning` over 27 tracked shell files, ruff,
+the eight Node tests of the npm wrapper, and the ten-check version gate. A
+reinstall from the merge commit left `external-patch-policy.json` and the
+three key files as the only contents of the data configuration directory, and
+static doctor reported `55 OK, 0 WARN, 0 FAIL` with the new "Route discovery"
+section green and the three removed sections absent. `doctor.sh --ping`
+reported `58 OK, 0 WARN, 0 FAIL` with the Claude→Codex round-trip returning
+`PONG` (the ping was run twice by an operator mistake; the first pass
+reported `57 OK`, the difference being the Codex plugin probe). Two
+authorized `delegation-run` probes on the clerk role returned `PONG`:
+`luna-clerk` via `codex exec` in 7 seconds and `sonnet-clerk` via `claude -p`
+in 2 seconds, each with a version 2 `.result.json` receipt
+(`ready-for-integration`, review `not-required`, `automatic_review: false`,
+identity `requested-only` because neither native CLI reports a model). The
+Z.AI key was found missing from the data directory (left behind by the
+2026-09-01 uninstall backup, never restored by the installer) and restored by
+hand before the pass; no GLM, Gemini, Kimi, Grok, Qwen, or DeepSeek inference
+was executed. The user's personal configuration was pruned of six profiles
+naming models no longer served (`deepseek-v4-pro`, `gemini-3.7-flash-*`)
+before the probes; the kit itself never edits that file.
+
+### 0.24.0 snapshot (historical)
+
 The 0.24.0 release-candidate gate was verified on **2026-09-10** on macOS
 26.5.1 with ambient Codex CLI `0.153.4` and ambient Claude Code `2.1.263`.
 The merge commit passed all 15 regression suites in 54 seconds, including the
