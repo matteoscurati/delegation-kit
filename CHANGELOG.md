@@ -23,6 +23,8 @@ All notable changes to delegation-kit are documented here.
 
 
 
+## [0.25.0] — 2026-09-11
+
 The idea behind 0.24.0 was that which model runs is the user's call, not the
 kit's. That release made it true for the user and left the qualification
 machinery in place as history. This release removes it.
