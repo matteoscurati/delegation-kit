@@ -14,6 +14,16 @@ are not an instruction to use this provider.
 
 ## Verified snapshot
 
+The 0.25.2 patch was verified on **2026-09-13** on the same machine and
+ambient CLIs as 0.25.0 below: all 12 regression suites green (the `route`
+suite grows to 13 checks and asserts that every shipped preset row is
+technically compatible), ShellCheck, ruff, the ten-check version gate, a
+reinstall from the patch and static doctor at `56 OK, 0 WARN, 0 FAIL`. No
+model inference was executed for this patch; the live probes of the 0.25.0
+pass stand.
+
+### 0.25.1 snapshot
+
 The 0.25.1 patch was verified on **2026-09-11** on the same machine and
 ambient CLIs as 0.25.0 below: all 12 regression suites green in 43 seconds
 (the install-marker suite now also proves that a key file the uninstaller

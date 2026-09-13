@@ -51,9 +51,10 @@ machinery. `config/presets.json` holds the starting profiles, adapters own their
 roles and efforts, and `evaluation/` is a frozen archive of earlier
 qualification runs that no command reads.
 
-## Current release: 0.25.1
+## Current release: 0.25.2
 
-Version 0.25.1 fixes the installer so a key file the uninstaller backed up is
+Version 0.25.2 trims the `kimi-k3` preset to the roles its runner implements.
+Version 0.25.1 fixed the installer so a key file the uninstaller backed up is
 restored instead of asked for again, and cleans the last gate-era wording out
 of the configuration docs. Version 0.25.0 removed the qualification machinery that 0.24.0 had demoted to
 history: the central and executable routing gates, the executor contract, the
