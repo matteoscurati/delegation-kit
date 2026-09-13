@@ -2,6 +2,22 @@
 
 All notable changes to delegation-kit are documented here.
 
+## [0.25.2] — 2026-09-13
+
+### Changed
+
+- **The `kimi-k3` preset declares only the roles `delegation-kimi` runs**:
+  `clerk`, `scout`, `builder`, `frontend-builder`, `policy-annotation`. The
+  `senior`, `judgement`, and `reviewer` roles were inherited from the retired
+  routing gate, where they had never been enabled, and the runner has no
+  read-only implementation for them, so the router listed them as
+  unsupported. Owner decision; the `route` suite now asserts that every
+  shipped preset row is technically compatible. A personal configuration is
+  not edited by the kit: remove the three roles by hand if a migrated file
+  carries them.
+
+
+
 ## [0.25.1] — 2026-09-11
 
 ### Fixed

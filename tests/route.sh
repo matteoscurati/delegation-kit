@@ -16,9 +16,14 @@ ok() { pass=$((pass + 1)); }
 # resolve validates a technically compatible selection and reports capabilities, no evidence
 "$ROOT/bin/delegation-route" resolve --lane clerk --selected-profile deepseek-flash --json \
   | jq -e '.selection_validated and .selected.technical_compatibility and (.selected.capabilities | index("text-patch") != null) and (.selected | has("evidence") | not)' >/dev/null; ok
-# an unsupported role is refused (65) and listed under blocked
+# a role the profile does not declare is refused (65) and never offered
 if "$ROOT/bin/delegation-route" resolve --lane senior --selected-profile kimi-k3 --json >/dev/null 2>&1; then exit 1; fi; ok
-"$ROOT/bin/delegation-route" resolve --lane senior --json | jq -e 'all(.choices[]; .adapter != "kimi-code-cli") and any(.blocked[]; .profile == "kimi-k3")' >/dev/null; ok
+"$ROOT/bin/delegation-route" resolve --lane senior --json | jq -e 'all(.choices[]; .adapter != "kimi-code-cli") and all(.blocked[]; .profile != "kimi-k3")' >/dev/null; ok
+# a role the adapter cannot run is listed under blocked, not offered
+jq '.profiles["kimi-k3"].roles += ["senior"]' "$DELEGATION_CONFIG_FILE" >"$TMP/kimi-senior.json"
+DELEGATION_CONFIG_FILE="$TMP/kimi-senior.json" "$ROOT/bin/delegation-route" resolve --lane senior --json | jq -e 'all(.choices[]; .adapter != "kimi-code-cli") and any(.blocked[]; .profile == "kimi-k3" and .technical_compatibility == false)' >/dev/null; ok
+# every shipped preset row is technically compatible: the preset declares only what its adapter runs
+"$ROOT/bin/delegation-route" table --json | jq -e 'all(.profiles[]; .technical_compatibility)' >/dev/null; ok
 # review lanes: optional accepts the same family, cross-family excludes it
 "$ROOT/bin/delegation-route" resolve --lane routine-review --producer-profile terra-builder --selected-profile terra-reviewer --json | jq -e '.selection_validated and .review_policy == "optional"' >/dev/null; ok
 jq '.review_policy = "cross-family"' "$DELEGATION_CONFIG_FILE" >"$TMP/strict.json"

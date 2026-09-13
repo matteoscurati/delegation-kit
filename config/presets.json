@@ -214,10 +214,7 @@
         "scout",
         "builder",
         "frontend-builder",
-        "senior",
-        "judgement",
-        "policy-annotation",
-        "reviewer"
+        "policy-annotation"
       ],
       "parameters": {
         "effort": "max"
