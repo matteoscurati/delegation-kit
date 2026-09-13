@@ -18,6 +18,8 @@ All notable changes to delegation-kit are documented here.
 
 
 
+## [0.25.1] — 2026-09-11
+
 ### Fixed
 
 - **`install.sh` restores a key file the uninstaller backed up.**
