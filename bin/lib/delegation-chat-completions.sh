@@ -138,7 +138,6 @@ run_command() {
       --backend) backend="${2:-}"; shift 2 ;; --prompt-file) prompt_file="${2:-}"; shift 2 ;;
       --output) output="${2:-}"; shift 2 ;; --workdir) workdir="${2:-}"; shift 2 ;;
       --metrics) metrics="${2:-}"; shift 2 ;; --debug-dir) debug_dir="${2:-}"; shift 2 ;;
-      --allow-provisional) printf "%s\n" "--allow-provisional is deprecated and has no effect" >&2; shift ;;
       -h|--help) usage; exit 0 ;; *) die 64 "unknown run argument: $1" ;;
     esac
   done
@@ -215,9 +214,12 @@ run_command() {
     case "${!API_KEY_VAR}" in *$'\n'*|*$'\r'*|*'"'*|*'\'*) die 64 "invalid credential characters" ;; esac
     printf 'header = "Authorization: Bearer %s"\n' "${!API_KEY_VAR}" >>"$curl_config"
   fi
-  local max_time="${DELEGATION_TIMEOUT:-600}"
+  # No deadline unless the profile sets one (DELEGATION_TIMEOUT). The connect
+  # timeout is not a judgement on the task; it stops a dead socket hanging.
+  local -a deadline=()
+  [ -z "${DELEGATION_TIMEOUT:-}" ] || deadline=(--max-time "$DELEGATION_TIMEOUT")
   http_code="$(curl -q --config "$curl_config" -sS -o "$response" -w '%{http_code}' \
-    --connect-timeout 20 --max-time "$max_time" --data-binary "@$body" "$API_URL" 2>"$stderr_file")" || curl_rc=$?
+    --connect-timeout 20 ${deadline[@]+"${deadline[@]}"} --data-binary "@$body" "$API_URL" 2>"$stderr_file")" || curl_rc=$?
   if [ "$curl_rc" -ne 0 ]; then
     http_code=000; phase=dispatch; reason=transport_failure; final_rc=75
     # curl exit 28 is the --max-time deadline; report it distinctly so a bound

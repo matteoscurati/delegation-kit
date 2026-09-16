@@ -593,7 +593,7 @@ elif have delegation-grok; then
       .backends["grok-build"].mcp == false and
       .backends["grok-build"].terminal == false and
       .backends["grok-build"].max_turns == 40 and
-      .backends["grok-build"].timeout_seconds == 900
+      (.backends["grok-build"].timeout_seconds == null or (.backends["grok-build"].timeout_seconds | type) == "number")
     ' >/dev/null 2>&1; then
     ok "delegation-grok installed for grok-4.6/high with capability-probed runtime controls"
     grok_selected="$(printf '%s' "$grok_check" | jq -r '.selected_backend')"

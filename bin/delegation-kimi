@@ -28,7 +28,8 @@ NATIVE_MODEL="${DELEGATION_REQUESTED_MODEL:-kimi-code/k3}"
 NATIVE_EFFORT="max"
 EFFORTS='["max"]'
 ROLES="clerk scout builder frontend-builder policy-annotation"
-OPERATIONAL_TIMEOUT_SECONDS=900
+# Wall-clock limit for a dispatch, only when the profile sets one.
+OPERATIONAL_TIMEOUT_SECONDS="${DELEGATION_TIMEOUT:-}"
 HEARTBEAT_SECONDS="${DELEGATION_KIMI_HEARTBEAT_SECONDS:-30}"
 case "$HEARTBEAT_SECONDS" in ""|*[!0-9]*|0) HEARTBEAT_SECONDS=30 ;; esac
 CANCEL_GRACE_SECONDS="${DELEGATION_KIMI_CANCEL_GRACE_SECONDS:-10}"
@@ -288,9 +289,13 @@ sandbox_status() {
     || { NATIVE_REASON="native Kimi lanes require executable shlock at $KIMI_SHLOCK_BIN"; return 1; }
   if have gtimeout; then KIMI_TIMEOUT_BIN="$(command -v gtimeout)"
   elif have timeout; then KIMI_TIMEOUT_BIN="$(command -v timeout)"
-  else
-    NATIVE_REASON="native Kimi lanes require gtimeout or timeout"
-    return 1
+  else KIMI_TIMEOUT_BIN=""
+  fi
+  if [ -n "$OPERATIONAL_TIMEOUT_SECONDS" ]; then
+    [[ "$OPERATIONAL_TIMEOUT_SECONDS" =~ ^[1-9][0-9]*$ ]] \
+      || { NATIVE_REASON="DELEGATION_TIMEOUT must be a positive integer"; return 1; }
+    [ -n "$KIMI_TIMEOUT_BIN" ] \
+      || { NATIVE_REASON="a dispatch timeout requires gtimeout or timeout"; return 1; }
   fi
 }
 
@@ -1079,7 +1084,6 @@ run_command() {
       --output) output="${2:-}"; shift 2 ;;
       --workdir) workdir="${2:-}"; shift 2 ;;
       --metrics) metrics="${2:-}"; shift 2 ;;
-      --allow-provisional) printf "%s\n" "--allow-provisional is deprecated and has no effect" >&2; shift ;;
       --debug-dir) debug_dir="${2:-}"; shift 2 ;;
       -h|--help) usage; exit 0 ;;
       *) die 64 "unknown run argument: $1" ;;
@@ -1168,6 +1172,8 @@ run_command() {
   sandbox_status || die 69 "$NATIVE_REASON"
   sandbox_bin="$KIMI_SANDBOX_BIN"
   timeout_seconds="$OPERATIONAL_TIMEOUT_SECONDS"
+  local -a timer=()
+  [ -z "$timeout_seconds" ] || timer=("$KIMI_TIMEOUT_BIN" -k 10 "$timeout_seconds")
   local sandbox_profile write_scope scratch_rg
   local lock_rc=0 sync_rc=0 ambient_credential_hash=""
   if [ "$oauth_mode" = shared ]; then
@@ -1275,7 +1281,7 @@ run_command() {
       TMPDIR="$tmp/home-tmp" SHELL="/usr/bin/true" \
       LANG="${LANG:-C}" NO_COLOR=1 CI=1 \
       KIMI_DISABLE_TELEMETRY=1 KIMI_CODE_NO_AUTO_UPDATE=1 KIMI_DISABLE_CRON=1 \
-      "$KIMI_TIMEOUT_BIN" -k 10 "$timeout_seconds" \
+      ${timer[@]+"${timer[@]}"} \
       "$sandbox_bin" "${sandbox_defines[@]}" \
         -p "$sandbox_profile" "$NATIVE_BIN" \
         --prompt "$prompt" --model "$NATIVE_MODEL" \

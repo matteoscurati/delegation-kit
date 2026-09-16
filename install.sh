@@ -78,10 +78,19 @@ mkdir -p "$BIN_HOME" "$DATA_HOME/bin" "$DATA_HOME/bin/lib" "$DATA_HOME/config"
 # The runners resolve their own symlink back to $DATA_HOME/bin and source the
 # shared helpers from the sibling lib/ directory, so the library is installed
 # before any runner and is never linked onto PATH.
-cp "$KIT"/bin/lib/*.sh "$DATA_HOME/bin/lib/"
-cp "$KIT/bin/lib/delegation_config.py" "$DATA_HOME/bin/lib/"
+# A running dispatch keeps its runner script open, and bash reads a script as
+# it executes. Copying over the same inode would feed the new bytes to that
+# process mid-run; writing beside it and renaming leaves the old inode intact.
+install_file() { # $1=source $2=target
+  local tmp
+  tmp="$(mktemp "$2.XXXXXX")" || return 1
+  cp "$1" "$tmp" && chmod 644 "$tmp" && mv -f "$tmp" "$2"
+}
+for lib in "$KIT"/bin/lib/*.sh "$KIT/bin/lib/delegation_config.py"; do
+  install_file "$lib" "$DATA_HOME/bin/lib/$(basename "$lib")"
+done
 for command in delegation-config delegation-run delegation-openai-compatible; do
-  cp "$KIT/bin/$command" "$DATA_HOME/bin/$command"
+  install_file "$KIT/bin/$command" "$DATA_HOME/bin/$command"
   chmod 755 "$DATA_HOME/bin/$command"
   ln -sfn "$DATA_HOME/bin/$command" "$BIN_HOME/$command"
 done
@@ -100,7 +109,7 @@ for retired in delegation-schema delegation-evidence delegation-epoch delegation
   rm -f -- "$DATA_HOME/bin/$retired" "$BIN_HOME/$retired"
 done
 echo "Retired routing gates, executor contract, evidence, and schema commands removed from $DATA_HOME"
-cp "$KIT/bin/delegation-glm" "$DATA_HOME/bin/delegation-glm"
+install_file "$KIT/bin/delegation-glm" "$DATA_HOME/bin/delegation-glm"
 chmod 755 "$DATA_HOME/bin/delegation-glm"
 ln -sfn "$DATA_HOME/bin/delegation-glm" "$BIN_HOME/delegation-glm"
 echo "GLM bridge -> $BIN_HOME/delegation-glm"
@@ -168,7 +177,7 @@ if [ "$zai_ask" = 1 ]; then
     unset zai_key
   fi
 fi
-cp "$KIT/bin/delegation-kimi" "$DATA_HOME/bin/delegation-kimi"
+install_file "$KIT/bin/delegation-kimi" "$DATA_HOME/bin/delegation-kimi"
 chmod 755 "$DATA_HOME/bin/delegation-kimi"
 ln -sfn "$DATA_HOME/bin/delegation-kimi" "$BIN_HOME/delegation-kimi"
 echo "Kimi bridge -> $BIN_HOME/delegation-kimi"
@@ -188,7 +197,7 @@ else
 fi
 
 for runner in delegation-gemini delegation-qwen delegation-deepseek delegation-grok; do
-  cp "$KIT/bin/$runner" "$DATA_HOME/bin/$runner"
+  install_file "$KIT/bin/$runner" "$DATA_HOME/bin/$runner"
   chmod 755 "$DATA_HOME/bin/$runner"
   ln -sfn "$DATA_HOME/bin/$runner" "$BIN_HOME/$runner"
 done
@@ -277,7 +286,7 @@ if [ "$qwen_ask" = 1 ]; then
 fi
 
 # Read-only route discovery over the personal configuration.
-cp "$KIT/bin/delegation-route" "$DATA_HOME/bin/delegation-route"
+install_file "$KIT/bin/delegation-route" "$DATA_HOME/bin/delegation-route"
 chmod 755 "$DATA_HOME/bin/delegation-route"
 ln -sfn "$DATA_HOME/bin/delegation-route" "$BIN_HOME/delegation-route"
 echo "Route discovery -> $BIN_HOME/delegation-route (reads the personal configuration)"
@@ -285,7 +294,7 @@ echo "Route discovery -> $BIN_HOME/delegation-route (reads the personal configur
 # The read-only patch verifier for text-patch adapters, and the versioned
 # policy it enforces. The verifier validates and describes a patch; it never
 # applies one — the lead remains the only actor that applies and tests.
-cp "$KIT/bin/delegation-patch-verify" "$DATA_HOME/bin/delegation-patch-verify"
+install_file "$KIT/bin/delegation-patch-verify" "$DATA_HOME/bin/delegation-patch-verify"
 cp "$KIT/config/external-patch-policy.json" \
   "$DATA_HOME/config/external-patch-policy.json"
 chmod 755 "$DATA_HOME/bin/delegation-patch-verify"

@@ -38,6 +38,7 @@ case "${FAKE_AGY_CASE:-success}" in
    [[ " $* " = *" --mode plan "* ]] || exit 94
    [[ " $* " = *" --sandbox "* ]] || exit 95
    [[ " $* " != *" --dangerously-skip-permissions "* ]] || exit 96
+   [[ " $* " = *" --print-timeout ${FAKE_EXPECT_PRINT_TIMEOUT:-24h} "* ]] || { printf 'unexpected print-timeout in: %s\n' "$*" >&2; exit 98; }
    case "$HOME" in */delegation-gemini.*/home) ;; *) printf 'unsafe HOME: %s\n' "$HOME" >&2; exit 97 ;; esac
    jq -e '.permissions.allow == [] and
      (.permissions.deny | index("read_file(*)") != null) and
@@ -96,6 +97,13 @@ rc=0; PATH="$TMP/bin:$PATH" "$ROOT/bin/delegation-gemini" run --lane scout --pro
 # Removed qualification flags are unknown arguments; unsupported roles fail closed.
 rc=0; PATH="$TMP/bin:$PATH" "$ROOT/bin/delegation-gemini" run --lane scout --evaluation --prompt-file "$TMP/prompt" --output "$TMP/results/removed-flag.out" --workdir "$TMP/work" >/dev/null 2>&1 || rc=$?
 [ "$rc" = 64 ] || fail "removed --evaluation flag returned $rc"
+rc=0; PATH="$TMP/bin:$PATH" "$ROOT/bin/delegation-gemini" run --lane scout --allow-provisional --prompt-file "$TMP/prompt" --output "$TMP/results/removed-flag2.out" --workdir "$TMP/work" >/dev/null 2>&1 || rc=$?
+[ "$rc" = 64 ] || fail "removed --allow-provisional flag returned $rc"
+# The profile timeout reaches agy as --print-timeout <n>s; without one, 24h.
+rc=0; FAKE_EXPECT_PRINT_TIMEOUT=90s DELEGATION_TIMEOUT=90 PATH="$TMP/bin:$PATH" TMPDIR="$TMP/runtime" "$ROOT/bin/delegation-gemini" run --lane scout --prompt-file "$TMP/prompt" --output "$TMP/results/timeout.out" --workdir "$TMP/work" >/dev/null 2>&1 || rc=$?
+[ "$rc" = 0 ] || fail "run with a profile timeout returned $rc"
+rc=0; DELEGATION_TIMEOUT=abc PATH="$TMP/bin:$PATH" "$ROOT/bin/delegation-gemini" run --lane scout --prompt-file "$TMP/prompt" --output "$TMP/results/bad-timeout.out" --workdir "$TMP/work" >/dev/null 2>&1 || rc=$?
+[ "$rc" = 64 ] || fail "invalid timeout returned $rc"
 rc=0; PATH="$TMP/bin:$PATH" "$ROOT/bin/delegation-gemini" run --lane policy-annotation --prompt-file "$TMP/prompt" --output "$TMP/results/unsupported-role.out" --workdir "$TMP/work" >/dev/null 2>&1 || rc=$?
 [ "$rc" = 78 ] || fail "unsupported role returned $rc"
 [ ! -e "$TMP/results/unsupported-role.out" ] || fail "unsupported role created output"

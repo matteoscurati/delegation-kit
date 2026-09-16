@@ -65,11 +65,25 @@ personal configurations are preserved rather than silently rewritten.
 |---|---|---|
 | `deepseek-api`, `token-plan-openai` | effort, max_tokens, timeout | Prompt only; text patch |
 | `openai-compatible` | max_tokens, timeout | Prompt only; text patch |
-| `agy` | effort: medium/high | Isolated prompt-only native runtime |
-| `kimi-code-cli` | effort: max | Existing per-role sandbox; no senior/reviewer/judgement implementation |
-| `claude-zai` | effort: max | Existing per-role native sandbox |
-| `grok-build-cli` | effort: high | Existing builder sandbox |
-| `codex`, `claude-code` | effort supported by the adapter | Native CLI; common entry is read-only/prompt-only |
+| `agy` | effort: medium/high, timeout | Isolated prompt-only native runtime |
+| `kimi-code-cli` | effort: max, timeout | Existing per-role sandbox; no senior/reviewer/judgement implementation |
+| `claude-zai` | effort: max, timeout | Existing per-role native sandbox |
+| `grok-build-cli` | effort: high, timeout | Existing builder sandbox |
+| `codex`, `claude-code` | effort supported by the adapter, timeout | Native CLI; common entry is read-only/prompt-only |
+
+## Timeouts
+
+A dispatch has no time limit unless the profile sets `timeout` (seconds, at
+most 86400). The kit does not decide how long a delegated task may take: a run
+that hangs waits until you interrupt it, and Kimi and Grok hold their OAuth
+lock for as long as it runs. When `timeout` is set it bounds the whole run on
+every adapter: the process is killed after the deadline plus a ten-second
+grace, no output or metrics are published, the diagnostic names `timeout`,
+and the exit code is 75. The chat-completions adapters pass it to curl as the
+request deadline (`deadline_exceeded`); Gemini passes it to `agy` as
+`--print-timeout`, which otherwise receives 24h. Two guards stay regardless:
+a 20-second connect timeout on HTTP adapters, and the ten-second probes that
+`check` runs against a CLI. Neither judges the task.
 
 Roles never grant capabilities. Custom `builder` means a textual patch, not
 permission to edit. Native credential storage and restrictions remain in place;
@@ -125,7 +139,7 @@ files remain in place, and the summary announces optional review. The backup is
 retained on repeated initialization/installations. The personal file and later
 policy changes are preserved.
 
-`--allow-provisional` remains accepted as a deprecated no-op for one release.
+`--allow-provisional` was removed in 0.26.0; passing it is an unknown argument.
 A legacy `routing-gates.json` that does not parse, or has no profiles, falls
 back to the shipped preset; the snapshot is kept either way. The installer
 removes the retired gate, contract, and evidence files from the data directory.

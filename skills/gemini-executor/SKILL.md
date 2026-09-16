@@ -20,9 +20,10 @@ No benchmark or kit qualification is required to choose a profile.
 
 Dispatch the chosen profile once using `delegation-run --profile PROFILE
 --lane LANE --prompt-file FILE --output FILE --workdir DIR`. Output and receipt
-paths must be new and outside the worktree. `--allow-provisional` is deprecated
-and unnecessary. A provider's `check --json` reports the adapter's roles,
-efforts, and runtime availability; its technical restrictions still apply.
+paths must be new and outside the worktree. A provider's `check --json`
+reports the adapter's roles, efforts, and runtime availability; its technical
+restrictions still apply. A run has no time limit unless the profile sets
+`timeout`.
 
 Review follows the configuration: `optional` by default, `required` for any
 compatible reviewer, `cross-family` for a different declared family. Required

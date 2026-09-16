@@ -521,7 +521,7 @@ run_kimi run --lane scout --prompt-file "$TMP/prompt" \
 mkdir -p "$TMP/debug-public"
 chmod 755 "$TMP/debug-public"
 rc=0
-run_kimi run --lane scout --allow-provisional --prompt-file "$TMP/prompt" \
+run_kimi run --lane scout --prompt-file "$TMP/prompt" \
   --output "$TMP/results/debug-public.txt" --workdir "$TMP/work" \
   --debug-dir "$TMP/debug-public" >/dev/null 2>&1 || rc=$?
 [ "$rc" = 64 ] || fail "non-private debug directory returned $rc"
@@ -529,7 +529,7 @@ run_kimi run --lane scout --allow-provisional --prompt-file "$TMP/prompt" \
 mkdir -p "$TMP/work/debug-private"
 chmod 700 "$TMP/work/debug-private"
 rc=0
-run_kimi run --lane builder --allow-provisional --prompt-file "$TMP/prompt" \
+run_kimi run --lane builder --prompt-file "$TMP/prompt" \
   --output "$TMP/results/debug-in-worktree.txt" --workdir "$TMP/work" \
   --debug-dir "$TMP/work/debug-private" >/dev/null 2>&1 || rc=$?
 [ "$rc" = 64 ] || fail "builder accepted debug directory inside worktree"
@@ -562,9 +562,16 @@ for phase in output metrics; do
 done
 
 
+# A timeout applies only when the profile sets one; without it the sandbox is
+# launched directly and no deadline is recorded.
+rm -f -- "$TMP/last-timeout-seconds"
+run_kimi run --lane scout --prompt-file "$TMP/prompt" \
+  --output "$TMP/results/no-timeout.txt" --workdir "$TMP/work" >/dev/null 2>&1 \
+  || fail "run without a timeout failed"
+[ ! -e "$TMP/last-timeout-seconds" ] || fail "a run without a profile timeout used the timeout wrapper"
 printf '%s\n' 'TIMEOUT_OPERATIONAL' >"$TMP/operational-timeout-prompt"
 rc=0
-run_kimi run --lane scout --allow-provisional \
+DELEGATION_TIMEOUT=7 run_kimi run --lane scout \
   --prompt-file "$TMP/operational-timeout-prompt" \
   --output "$TMP/results/operational-timeout.txt" --workdir "$TMP/work" \
   >/dev/null 2>&1 || rc=$?
@@ -574,6 +581,15 @@ jq -e '
   .vendor_exit_code == 124 and .phase == "dispatch"
 ' "$TMP/results/operational-timeout.txt.error.json" >/dev/null \
   || fail "operational timeout diagnostic mismatch"
+[ "$(cat "$TMP/last-timeout-seconds")" = 7 ] || fail "profile timeout was not passed to the timeout wrapper"
+rc=0
+DELEGATION_TIMEOUT=abc run_kimi run --lane scout --prompt-file "$TMP/prompt" \
+  --output "$TMP/results/bad-timeout.txt" --workdir "$TMP/work" >/dev/null 2>&1 || rc=$?
+[ "$rc" = 69 ] || fail "invalid timeout returned $rc"
+rc=0
+run_kimi run --lane scout --allow-provisional --prompt-file "$TMP/prompt" \
+  --output "$TMP/results/removed-flag.txt" --workdir "$TMP/work" >/dev/null 2>&1 || rc=$?
+[ "$rc" = 64 ] || fail "removed --allow-provisional returned $rc"
 
 for failure_case in \
   'AUTH_FAILURE|69|authentication_unavailable' \
@@ -588,12 +604,12 @@ do
   printf '%s\n' "$marker" >"$TMP/$failure_name-prompt"
   rc=0
   if [ "$marker" = AUTH_FAILURE ]; then
-    run_kimi run --lane scout --allow-provisional \
+    run_kimi run --lane scout \
       --prompt-file "$TMP/$failure_name-prompt" \
       --output "$TMP/results/$failure_name.txt" --workdir "$TMP/work" \
       --debug-dir "$TMP/debug" >/dev/null 2>&1 || rc=$?
   else
-    run_kimi run --lane scout --allow-provisional \
+    run_kimi run --lane scout \
       --prompt-file "$TMP/$failure_name-prompt" \
       --output "$TMP/results/$failure_name.txt" --workdir "$TMP/work" \
       >/dev/null 2>&1 || rc=$?
@@ -627,7 +643,7 @@ grep -Fq '[REDACTED]' "$AUTH_DEBUG_PATH/stderr" \
 
 printf '%s\n' 'EVENT_TEXT_FAILURE' >"$TMP/event-text-failure-prompt"
 rc=0
-run_kimi run --lane scout --allow-provisional \
+run_kimi run --lane scout \
   --prompt-file "$TMP/event-text-failure-prompt" \
   --output "$TMP/results/event-text-failure.txt" --workdir "$TMP/work" \
   >/dev/null 2>&1 || rc=$?
@@ -638,7 +654,7 @@ jq -e '.reason == "dispatch_unclassified"' \
 
 printf '%s\n' 'AUTH_AND_BROKEN_OAUTH' >"$TMP/auth-broken-oauth-prompt"
 rc=0
-run_kimi run --lane scout --allow-provisional \
+run_kimi run --lane scout \
   --prompt-file "$TMP/auth-broken-oauth-prompt" \
   --output "$TMP/results/auth-broken-oauth.txt" --workdir "$TMP/work" \
   >/dev/null 2>&1 || rc=$?
@@ -648,7 +664,7 @@ jq -e '
 ' "$TMP/results/auth-broken-oauth.txt.error.json" >/dev/null \
   || fail "secondary OAuth sync status was not retained"
 
-run_kimi run --lane scout --allow-provisional --prompt-file "$TMP/prompt" \
+run_kimi run --lane scout --prompt-file "$TMP/prompt" \
   --output "$TMP/results/scout.txt" --workdir "$TMP/work"
 [ "$(cat "$TMP/results/scout.txt")" = PONG ] || fail "scout output mismatch"
 jq -e '
@@ -662,14 +678,14 @@ jq -e '
 ' "$TMP/results/scout.txt.metrics.json" >/dev/null || fail "scout metrics mismatch"
 
 printf '%s\n' 'USE_GREP' >"$TMP/grep-prompt"
-run_kimi run --lane scout --allow-provisional --prompt-file "$TMP/grep-prompt" \
+run_kimi run --lane scout --prompt-file "$TMP/grep-prompt" \
   --output "$TMP/results/grep.txt" --workdir "$TMP/work"
 [ "$(cat "$TMP/results/grep.txt")" = PONG ] \
   || fail "scout Grep run did not complete through pinned rg"
 
 printf '%s\n' 'HEARTBEAT_WAIT' >"$TMP/heartbeat-prompt"
 DELEGATION_KIMI_HEARTBEAT_SECONDS=1 \
-  run_kimi run --lane scout --allow-provisional \
+  run_kimi run --lane scout \
   --prompt-file "$TMP/heartbeat-prompt" \
   --output "$TMP/results/heartbeat.txt" --workdir "$TMP/work" \
   2>"$TMP/results/heartbeat.log"
@@ -682,7 +698,7 @@ grep -Eq '^delegation-kimi: heartbeat duration=[0-9]+s events=[0-9]+ last_tool=G
 # must copy the validated result back atomically so the next invocation starts
 # from the new token instead of forcing another login.
 printf '%s\n' 'ROTATE_OAUTH' >"$TMP/rotate-oauth-prompt"
-run_kimi run --lane scout --allow-provisional \
+run_kimi run --lane scout \
   --prompt-file "$TMP/rotate-oauth-prompt" \
   --output "$TMP/results/rotate-oauth.txt" --workdir "$TMP/work"
 jq -e '
@@ -698,7 +714,7 @@ jq -e '
 printf '%s\n' 'INTERRUPT_ROTATE_OAUTH' >"$TMP/interrupt-oauth-prompt"
 grep -Fq 'trap handle_cancel INT TERM' "$ROOT/bin/delegation-kimi" \
   || fail "runner does not register the shared INT/TERM cancellation handler"
-start_kimi_background run --lane scout --allow-provisional \
+start_kimi_background run --lane scout \
   --prompt-file "$TMP/interrupt-oauth-prompt" \
   --output "$TMP/results/interrupt-oauth.txt" --workdir "$TMP/work"
 interrupt_runner_pid="$KIMI_BACKGROUND_PID"
@@ -725,7 +741,7 @@ jq -e '
   || fail "OAuth lock survived caller cancellation"
 
 printf '%s\n' 'INTERRUPT_STUBBORN' >"$TMP/interrupt-stubborn-prompt"
-start_kimi_background run --lane scout --allow-provisional \
+start_kimi_background run --lane scout \
   --prompt-file "$TMP/interrupt-stubborn-prompt" \
   --output "$TMP/results/interrupt-stubborn.txt" --workdir "$TMP/work"
 stubborn_runner_pid="$KIMI_BACKGROUND_PID"
@@ -745,18 +761,18 @@ wait "$stubborn_runner_pid" || rc=$?
   || fail "stubborn Kimi child survived runner cancellation"
 
 printf '%s\n' 'REQUIRE_INTERRUPT_OAUTH' >"$TMP/require-interrupt-oauth-prompt"
-run_kimi run --lane scout --allow-provisional \
+run_kimi run --lane scout \
   --prompt-file "$TMP/require-interrupt-oauth-prompt" \
   --output "$TMP/results/require-interrupt-oauth.txt" --workdir "$TMP/work"
 [ "$(cat "$TMP/results/require-interrupt-oauth.txt")" = PONG ] \
   || fail "post-interrupt run did not reuse refreshed OAuth"
 
-run_kimi run --lane scout --allow-provisional \
+run_kimi run --lane scout \
   --prompt-file "$TMP/rotate-oauth-prompt" \
   --output "$TMP/results/rotate-oauth-again.txt" --workdir "$TMP/work"
 
 printf '%s\n' 'REQUIRE_ROTATED_OAUTH' >"$TMP/require-rotated-oauth-prompt"
-run_kimi run --lane scout --allow-provisional \
+run_kimi run --lane scout \
   --prompt-file "$TMP/require-rotated-oauth-prompt" \
   --output "$TMP/results/require-rotated-oauth.txt" --workdir "$TMP/work"
 [ "$(cat "$TMP/results/require-rotated-oauth.txt")" = PONG ] \
@@ -767,7 +783,7 @@ run_kimi run --lane scout --allow-provisional \
 # externally replaced credential.
 printf '%s\n' 'CONCURRENT_LOGIN' >"$TMP/concurrent-login-prompt"
 rc=0
-run_kimi run --lane scout --allow-provisional \
+run_kimi run --lane scout \
   --prompt-file "$TMP/concurrent-login-prompt" \
   --output "$TMP/results/concurrent-login.txt" --workdir "$TMP/work" \
   >/dev/null 2>&1 || rc=$?
@@ -784,7 +800,7 @@ jq -e '
 cp "$TMP/kimi-home/credentials/kimi-code.json" "$TMP/oauth-before-corruption.json"
 printf '%s\n' 'CORRUPT_OAUTH' >"$TMP/corrupt-oauth-prompt"
 rc=0
-run_kimi run --lane scout --allow-provisional \
+run_kimi run --lane scout \
   --prompt-file "$TMP/corrupt-oauth-prompt" \
   --output "$TMP/results/corrupt-oauth.txt" --workdir "$TMP/work" \
   >/dev/null 2>&1 || rc=$?
@@ -801,7 +817,7 @@ cmp -s "$TMP/oauth-before-corruption.json" "$TMP/kimi-home/credentials/kimi-code
 # accepting it would merely postpone the next forced login by a few minutes.
 printf '%s\n' 'ACCESS_ONLY_OAUTH' >"$TMP/access-only-oauth-prompt"
 rc=0
-run_kimi run --lane scout --allow-provisional \
+run_kimi run --lane scout \
   --prompt-file "$TMP/access-only-oauth-prompt" \
   --output "$TMP/results/access-only-oauth.txt" --workdir "$TMP/work" \
   >/dev/null 2>&1 || rc=$?
@@ -812,7 +828,7 @@ cmp -s "$TMP/oauth-before-corruption.json" "$TMP/kimi-home/credentials/kimi-code
 # Active refresh owners fail temporarily instead of racing token rotation.
 printf '%s\n' "$$" >"$TMP/kimi-home/.delegation-kit-oauth.lock"
 rc=0
-run_kimi run --lane scout --allow-provisional --prompt-file "$TMP/prompt" \
+run_kimi run --lane scout --prompt-file "$TMP/prompt" \
   --output "$TMP/results/active-lock.txt" --workdir "$TMP/work" \
   >/dev/null 2>&1 || rc=$?
 [ "$rc" = 75 ] || fail "active OAuth lock returned $rc"
@@ -820,7 +836,7 @@ rm -f -- "$TMP/kimi-home/.delegation-kit-oauth.lock"
 
 # A lock whose owner no longer exists is recovered automatically.
 printf '%s\n' '2147483647' >"$TMP/kimi-home/.delegation-kit-oauth.lock"
-run_kimi run --lane scout --allow-provisional --prompt-file "$TMP/prompt" \
+run_kimi run --lane scout --prompt-file "$TMP/prompt" \
   --output "$TMP/results/stale-lock.txt" --workdir "$TMP/work"
 [ ! -e "$TMP/kimi-home/.delegation-kit-oauth.lock" ] &&
   [ ! -L "$TMP/kimi-home/.delegation-kit-oauth.lock" ] \
@@ -830,7 +846,7 @@ run_kimi run --lane scout --allow-provisional --prompt-file "$TMP/prompt" \
 SHARED_ROOT="$TMP/runtime/kimi-shared-oauth"
 
 # Solo success: shared metrics, sandbox carve-out, marker bookkeeping.
-run_kimi run --lane scout --allow-provisional --oauth shared \
+run_kimi run --lane scout --oauth shared \
   --prompt-file "$TMP/prompt" \
   --output "$TMP/results/shared-solo.txt" --workdir "$TMP/work"
 [ "$(cat "$TMP/results/shared-solo.txt")" = PONG ] || fail "shared solo output mismatch"
@@ -858,11 +874,11 @@ case "$SHARED_GEN_1" in gen-*) ;; *) fail "shared marker generation malformed" ;
 rm -f -- "$TMP/peer-a-started" "$TMP/peer-b-started"
 printf '%s\n' 'WAIT_FOR_PEER_A' >"$TMP/peer-a-prompt"
 printf '%s\n' 'WAIT_FOR_PEER_B' >"$TMP/peer-b-prompt"
-start_kimi_background_named shared-peer-a run --lane scout --allow-provisional \
+start_kimi_background_named shared-peer-a run --lane scout \
   --oauth shared --prompt-file "$TMP/peer-a-prompt" \
   --output "$TMP/results/shared-peer-a.txt" --workdir "$TMP/work"
 peer_a_pid="$KIMI_BACKGROUND_PID"
-start_kimi_background_named shared-peer-b run --lane scout --allow-provisional \
+start_kimi_background_named shared-peer-b run --lane scout \
   --oauth shared --prompt-file "$TMP/peer-b-prompt" \
   --output "$TMP/results/shared-peer-b.txt" --workdir "$TMP/work"
 peer_b_pid="$KIMI_BACKGROUND_PID"
@@ -878,7 +894,7 @@ wait "$peer_b_pid" || rc=$?
 rm -f -- "$TMP/peer-a-started" "$TMP/peer-b-started"
 
 # A rotation inside the shared generation publishes back to the ambient home.
-run_kimi run --lane scout --allow-provisional --oauth shared \
+run_kimi run --lane scout --oauth shared \
   --prompt-file "$TMP/rotate-oauth-prompt" \
   --output "$TMP/results/shared-rotate.txt" --workdir "$TMP/work"
 jq -e '
@@ -887,7 +903,7 @@ jq -e '
   || fail "shared rotation was not published to the ambient credential"
 [ "$(file_mode "$TMP/kimi-home/credentials/kimi-code.json")" = 600 ] \
   || fail "shared-published ambient credential mode is not 600"
-run_kimi run --lane scout --allow-provisional --oauth shared \
+run_kimi run --lane scout --oauth shared \
   --prompt-file "$TMP/require-rotated-oauth-prompt" \
   --output "$TMP/results/shared-require-rotated.txt" --workdir "$TMP/work"
 [ "$(cat "$TMP/results/shared-require-rotated.txt")" = PONG ] \
@@ -897,7 +913,7 @@ run_kimi run --lane scout --allow-provisional --oauth shared \
 # seed abandons the superseded generation.
 SHARED_GEN_BEFORE_CONFLICT="$(jq -r '.generation' "$SHARED_ROOT/sync-marker.json")"
 rc=0
-run_kimi run --lane scout --allow-provisional --oauth shared \
+run_kimi run --lane scout --oauth shared \
   --prompt-file "$TMP/concurrent-login-prompt" \
   --output "$TMP/results/shared-concurrent-login.txt" --workdir "$TMP/work" \
   >/dev/null 2>&1 || rc=$?
@@ -912,7 +928,7 @@ jq -e '
   .access_token == "external-access" and .refresh_token == "external-refresh"
 ' "$TMP/kimi-home/credentials/kimi-code.json" >/dev/null \
   || fail "shared publish overwrote a concurrent external login"
-run_kimi run --lane scout --allow-provisional --oauth shared \
+run_kimi run --lane scout --oauth shared \
   --prompt-file "$TMP/prompt" \
   --output "$TMP/results/shared-after-conflict.txt" --workdir "$TMP/work"
 [ "$(jq -r '.generation' "$SHARED_ROOT/sync-marker.json")" != "$SHARED_GEN_BEFORE_CONFLICT" ] \
@@ -922,7 +938,7 @@ run_kimi run --lane scout --allow-provisional --oauth shared \
 # the ambient credential, and the next seed reseeds a valid generation.
 cp "$TMP/kimi-home/credentials/kimi-code.json" "$TMP/shared-oauth-before-corruption.json"
 rc=0
-run_kimi run --lane scout --allow-provisional --oauth shared \
+run_kimi run --lane scout --oauth shared \
   --prompt-file "$TMP/corrupt-oauth-prompt" \
   --output "$TMP/results/shared-corrupt.txt" --workdir "$TMP/work" \
   >/dev/null 2>&1 || rc=$?
@@ -933,7 +949,7 @@ jq -e '
   || fail "shared corrupt OAuth diagnostic mismatch"
 cmp -s "$TMP/shared-oauth-before-corruption.json" "$TMP/kimi-home/credentials/kimi-code.json" \
   || fail "shared corrupt OAuth state replaced the ambient credential"
-run_kimi run --lane scout --allow-provisional --oauth shared \
+run_kimi run --lane scout --oauth shared \
   --prompt-file "$TMP/prompt" \
   --output "$TMP/results/shared-heal.txt" --workdir "$TMP/work"
 [ "$(cat "$TMP/results/shared-heal.txt")" = PONG ] \
@@ -942,7 +958,7 @@ run_kimi run --lane scout --allow-provisional --oauth shared \
 # A busy kit lock at seed time with a zero wait budget fails fast.
 printf '%s\n' "$$" >"$TMP/kimi-home/.delegation-kit-oauth.lock"
 rc=0
-DELEGATION_KIMI_OAUTH_WAIT_SECONDS=0 run_kimi run --lane scout --allow-provisional \
+DELEGATION_KIMI_OAUTH_WAIT_SECONDS=0 run_kimi run --lane scout \
   --oauth shared --prompt-file "$TMP/prompt" \
   --output "$TMP/results/shared-lock-busy.txt" --workdir "$TMP/work" \
   >/dev/null 2>&1 || rc=$?
@@ -950,7 +966,7 @@ DELEGATION_KIMI_OAUTH_WAIT_SECONDS=0 run_kimi run --lane scout --allow-provision
 rm -f -- "$TMP/kimi-home/.delegation-kit-oauth.lock"
 
 rc=0
-run_kimi run --lane scout --allow-provisional --oauth bogus \
+run_kimi run --lane scout --oauth bogus \
   --prompt-file "$TMP/prompt" \
   --output "$TMP/results/shared-bogus.txt" --workdir "$TMP/work" \
   >/dev/null 2>&1 || rc=$?
@@ -961,7 +977,7 @@ run_kimi run --lane scout --allow-provisional --oauth bogus \
 printf '%s\n' 'HOLD_KIT_LOCK_ROTATE' >"$TMP/hold-lock-prompt"
 SHARED_MARKER_BEFORE_DEFER="$(sha256 "$SHARED_ROOT/sync-marker.json")"
 cp "$TMP/kimi-home/credentials/kimi-code.json" "$TMP/ambient-before-defer.json"
-DELEGATION_KIMI_OAUTH_WAIT_SECONDS=0 run_kimi run --lane scout --allow-provisional \
+DELEGATION_KIMI_OAUTH_WAIT_SECONDS=0 run_kimi run --lane scout \
   --oauth shared --prompt-file "$TMP/hold-lock-prompt" \
   --output "$TMP/results/shared-deferred.txt" --workdir "$TMP/work"
 [ "$(cat "$TMP/results/shared-deferred.txt")" = PONG ] \
@@ -977,7 +993,7 @@ jq -e '
   || fail "deferred rotation is missing from the shared generation"
 rm -f -- "$TMP/kimi-home/.delegation-kit-oauth.lock"
 printf '%s\n' 'REQUIRE_DEFERRED_OAUTH' >"$TMP/require-deferred-prompt"
-run_kimi run --lane scout --allow-provisional --oauth shared \
+run_kimi run --lane scout --oauth shared \
   --prompt-file "$TMP/require-deferred-prompt" \
   --output "$TMP/results/shared-catchup.txt" --workdir "$TMP/work"
 [ "$(cat "$TMP/results/shared-catchup.txt")" = PONG ] \
@@ -988,7 +1004,7 @@ jq -e '
   || fail "catch-up shared run did not publish the deferred rotation"
 
 printf '%s\n' 'WRITE_BUILDER' >"$TMP/builder-prompt"
-run_kimi run --lane builder --allow-provisional --prompt-file "$TMP/builder-prompt" \
+run_kimi run --lane builder --prompt-file "$TMP/builder-prompt" \
   --output "$TMP/results/builder.txt" --workdir "$TMP/work"
 [ "$(cat "$TMP/work/value.txt")" = after ] || fail "builder did not edit workdir"
 jq -e '.lane == "builder" and .write_scope == "workdir"' \
@@ -998,7 +1014,7 @@ grep -q 'param "WORKDIR"' "$TMP/sandbox.profile" \
 
 # A different user-installed CLI version is accepted when the behavioral
 # capability probes still pass; the observed version remains provenance.
-KIMI_FAKE_VERSION=user-build-b run_kimi run --lane scout --allow-provisional \
+KIMI_FAKE_VERSION=user-build-b run_kimi run --lane scout \
   --prompt-file "$TMP/prompt" --output "$TMP/results/alternate-version.txt" \
   --workdir "$TMP/work"
 jq -e '.runtime_cli_version == "user-build-b"' \
@@ -1007,7 +1023,7 @@ jq -e '.runtime_cli_version == "user-build-b"' \
 
 # Ambient user preference may be high; the runner must attest and use max from
 # its isolated config instead of treating the ambient default as qualification.
-KIMI_FAKE_DEFAULT_EFFORT=high run_kimi run --lane scout --allow-provisional \
+KIMI_FAKE_DEFAULT_EFFORT=high run_kimi run --lane scout \
   --prompt-file "$TMP/prompt" --output "$TMP/results/ambient-high.txt" \
   --workdir "$TMP/work"
 jq -e '.effort == "max"' "$TMP/results/ambient-high.txt.metrics.json" >/dev/null \
@@ -1015,14 +1031,14 @@ jq -e '.effort == "max"' "$TMP/results/ambient-high.txt.metrics.json" >/dev/null
 
 rc=0
 KIMI_FAKE_DEFAULT_EFFORT=high KIMI_FAKE_IGNORE_ISOLATED_EFFORT=1 \
-  run_kimi run --lane scout --allow-provisional \
+  run_kimi run --lane scout \
   --prompt-file "$TMP/prompt" --output "$TMP/results/effort.txt" \
   --workdir "$TMP/work" >/dev/null 2>&1 || rc=$?
 [ "$rc" = 69 ] || fail "isolated default-effort mismatch returned $rc"
 
 printf '%s\n' existing >"$TMP/results/existing.txt"
 rc=0
-run_kimi run --lane scout --allow-provisional --prompt-file "$TMP/prompt" \
+run_kimi run --lane scout --prompt-file "$TMP/prompt" \
   --output "$TMP/results/existing.txt" --workdir "$TMP/work" \
   >/dev/null 2>&1 || rc=$?
 [ "$rc" = 64 ] || fail "existing output was accepted"
@@ -1030,7 +1046,7 @@ run_kimi run --lane scout --allow-provisional --prompt-file "$TMP/prompt" \
   || fail "existing output was modified"
 
 rc=0
-run_kimi run --lane builder --allow-provisional --prompt-file "$TMP/prompt" \
+run_kimi run --lane builder --prompt-file "$TMP/prompt" \
   --output "$TMP/results/home.txt" --workdir "$TMP/ambient-home" \
   >/dev/null 2>&1 || rc=$?
 [ "$rc" = 64 ] || fail "user-home workdir was accepted"

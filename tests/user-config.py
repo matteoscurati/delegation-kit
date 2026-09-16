@@ -352,9 +352,10 @@ class ConfigTests(unittest.TestCase):
         tools = self.base / "tools"
         tools.mkdir()
         script = """#!/usr/bin/env python3
-import json, os, pathlib, sys
+import json, os, pathlib, sys, time
 args = sys.argv[1:]
 pathlib.Path(os.environ['DK_CAPTURE']).write_text(json.dumps(args))
+time.sleep(float(os.environ.get('DK_SLEEP', '0')))
 if '--output-last-message' in args:
     pathlib.Path(args[args.index('--output-last-message')+1]).write_text('native result')
     print(json.dumps({'model': os.environ.get('DK_REPORTED', 'unbenchmarked-native')}))
@@ -398,6 +399,20 @@ else:
                 self.assertFalse((self.base / "answer").exists())
                 (self.base / "answer.error.json").unlink()
                 self.env.pop("DK_REPORTED")
+                # A profile timeout bounds the native CLI; without one the
+                # dispatcher waits as long as the CLI takes.
+                self.config["profiles"]["new-model"]["parameters"]["timeout"] = 1
+                self.save()
+                self.env["DK_SLEEP"] = "3"
+                self.run_profile(rc=75)
+                self.assertFalse((self.base / "answer").exists())
+                self.assertEqual(
+                    json.loads((self.base / "answer.error.json").read_text())["reason"],
+                    "timeout",
+                )
+                (self.base / "answer.error.json").unlink()
+                self.env.pop("DK_SLEEP")
+                del self.config["profiles"]["new-model"]["parameters"]["timeout"]
         self.assertEqual(Handler.requests, [])
 
     def test_existing_http_adapter_receives_new_model(self):

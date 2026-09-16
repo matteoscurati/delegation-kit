@@ -14,6 +14,20 @@ are not an instruction to use this provider.
 
 ## Verified snapshot
 
+The 0.26.0 release was verified on **2026-09-16** on the same machine and
+ambient CLIs as 0.25.0 below: all 12 regression suites green (new cases prove
+that no runner applies a deadline without a profile `timeout`, that the
+parameter reaches every adapter, that an invalid value is refused, that the
+native `codex`/`claude-code` dispatch is killed and reported with reason
+`timeout` and exit 75, and that `--allow-provisional` is an unknown argument),
+ShellCheck at `-S warning`, ruff, the eight Node tests, the ten-check version
+gate, a reinstall from the release commit and static doctor at `56 OK, 0 WARN,
+0 FAIL` with `delegation-grok check` reporting `timeout_seconds: null`. No
+model inference was executed for this release; the live probes of the 0.25.0
+pass stand.
+
+### 0.25.2 snapshot
+
 The 0.25.2 patch was verified on **2026-09-13** on the same machine and
 ambient CLIs as 0.25.0 below: all 12 regression suites green (the `route`
 suite grows to 13 checks and asserts that every shipped preset row is
