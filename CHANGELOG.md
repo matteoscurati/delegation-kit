@@ -21,6 +21,14 @@ All notable changes to delegation-kit are documented here.
 - `DELEGATION_GROK_TIMEOUT_SECONDS` is gone; `delegation-grok check` reports
   `timeout_seconds` as the configured value or `null`.
 
+### Fixed
+
+- **`install.sh` replaces command files by rename, never in place.** Bash
+  reads a script as it executes it; copying a new runner over the inode of
+  one that is mid-dispatch could feed it the new bytes. The installer now
+  writes beside the file and renames, so a running dispatch keeps its own
+  copy until it exits.
+
 ### Removed
 
 - `--allow-provisional`, the no-op kept for one release in 0.25.0. Passing it
