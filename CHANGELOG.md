@@ -2,6 +2,14 @@
 
 All notable changes to delegation-kit are documented here.
 
+## [0.26.1] — 2026-09-16
+
+### Fixed
+
+- `docs/compatibility.md`: the 0.26.0 snapshot stated a doctor count of 56;
+  the observed count was 55 OK, 0 WARN, 0 FAIL, because a concurrent user
+  dispatch held the Grok OAuth lock during the pass. Documentation only.
+
 ## [0.26.0] — 2026-09-16
 
 ### Changed

@@ -51,9 +51,9 @@ machinery. `config/presets.json` holds the starting profiles, adapters own their
 roles and efforts, and `evaluation/` is a frozen archive of earlier
 qualification runs that no command reads.
 
-## Current release: 0.26.0
+## Current release: 0.26.1
 
-Version 0.26.0 removes every dispatch timeout the kit imposed on its own: a run
+Version 0.26.1 corrects the 0.26.0 compatibility snapshot. Version 0.26.0 removes every dispatch timeout the kit imposed on its own: a run
 has no time limit unless the profile sets `timeout`, which now bounds the whole
 run on every adapter, native CLIs included. The `--allow-provisional` no-op is
 gone. Version 0.25.2 trimmed the `kimi-k3` preset to the roles its runner
