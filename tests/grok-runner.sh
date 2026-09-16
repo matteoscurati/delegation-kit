@@ -124,6 +124,7 @@ case "${GROK_FAKE_MODE:-success}" in
     printf 'error: could not apply the %s sandbox profile; see the warning above for the cause. Refusing to start with its protections missing.\n' "'delegation-kit'" >&2
     exit 1 ;;
   timeout) sleep 3; exit 0 ;;
+  slow) sleep 2 ;;
 esac
 mkdir -p "$FAKE_GROK_HOME"
 case "$prompt_text" in
@@ -299,7 +300,7 @@ jq -e '
   .backends["grok-build"].grok_home_mode == "isolated-copy" and
   .backends["grok-build"].credential_state_shared == false and
   .backends["grok-build"].max_turns == 40 and
-  .backends["grok-build"].timeout_seconds == 900 and
+  .backends["grok-build"].timeout_seconds == null and
   .backends["grok-build"].isolated_home == true and
   .backends["grok-build"].plugins == false and
   .backends["grok-build"].mcp == false
@@ -351,7 +352,7 @@ run_grok run --lane builder --prompt-file "$TMP/prompt.txt" \
   --output "$TMP/results/refused.txt" --workdir "$TMP/work" >/dev/null 2>&1 || rc=$?
 [ "$rc" = 0 ] || fail "run without deprecated flag returned $rc"
 
-run_grok run --lane builder --allow-provisional --prompt-file "$TMP/prompt.txt" \
+run_grok run --lane builder --prompt-file "$TMP/prompt.txt" \
   --output "$TMP/results/builder.txt" --workdir "$TMP/work"
 [ "$(cat "$TMP/results/builder.txt")" = PONG ] || fail "text extraction mismatch"
 ! grep -q SECRET_THOUGHT "$TMP/results/builder.txt" || fail "thought leaked into output"
@@ -369,7 +370,7 @@ jq -e '
   .lane == "builder" and .tokens.reasoning == 7 and
   .provider_cost_usd == 0.02 and .sandbox == "delegation-kit" and
   .permission_mode == "dontAsk" and .max_turns == 40 and
-  .timeout_seconds == 900 and .isolated_home == true
+  .timeout_seconds == null and .isolated_home == true
 ' "$TMP/results/builder.txt.metrics.json" >/dev/null || fail "metrics mismatch"
 [ ! -e "$TMP/results/builder.txt.commit.json" ] \
   || fail "builder run wrote a commit marker"
@@ -383,13 +384,13 @@ jq -e '.oauth_mode == "serialized" and .oauth_sync == "ok"' \
 # publishes a rotated credential back to the ambient Grok home.
 printf '%s\n' 'ROTATE_OAUTH' >"$TMP/rotate-oauth-prompt.txt"
 printf '%s\n' 'REQUIRE_ROTATED_OAUTH' >"$TMP/require-rotated-oauth-prompt.txt"
-run_grok run --lane builder --allow-provisional \
+run_grok run --lane builder \
   --prompt-file "$TMP/rotate-oauth-prompt.txt" \
   --output "$TMP/results/serialized-rotate.txt" --workdir "$TMP/work"
 jq -e '.[].key == "rotated-access" and .[].refresh_token == "rotated-refresh"' \
   "$TMP/grok-home/auth.json" >/dev/null \
   || fail "serialized OAuth rotation was not published"
-run_grok run --lane builder --allow-provisional \
+run_grok run --lane builder \
   --prompt-file "$TMP/require-rotated-oauth-prompt.txt" \
   --output "$TMP/results/serialized-require-rotated.txt" --workdir "$TMP/work"
 [ "$(cat "$TMP/results/serialized-require-rotated.txt")" = PONG ] \
@@ -403,12 +404,12 @@ printf '%s\n' 'WAIT_FOR_PEER_A' >"$TMP/peer-a-prompt.txt"
 printf '%s\n' 'WAIT_FOR_PEER_B' >"$TMP/peer-b-prompt.txt"
 mkdir -p "$TMP/peer-sync"
 GROK_FAKE_SYNC_DIR="$TMP/peer-sync" start_grok_background_named shared-peer-a \
-  run --lane builder --allow-provisional --oauth shared \
+  run --lane builder --oauth shared \
   --prompt-file "$TMP/peer-a-prompt.txt" \
   --output "$TMP/results/shared-peer-a.txt" --workdir "$TMP/work"
 peer_a_pid="$GROK_BACKGROUND_PID"
 GROK_FAKE_SYNC_DIR="$TMP/peer-sync" start_grok_background_named shared-peer-b \
-  run --lane builder --allow-provisional --oauth shared \
+  run --lane builder --oauth shared \
   --prompt-file "$TMP/peer-b-prompt.txt" \
   --output "$TMP/results/shared-peer-b.txt" --workdir "$TMP/work"
 peer_b_pid="$GROK_BACKGROUND_PID"
@@ -434,12 +435,12 @@ SHARED_GROK_ROOT="$TMP/runtime/grok-shared-oauth"
 mkdir -p "$TMP/peer-negative"
 GROK_FAKE_MODE=sandbox_missing GROK_FAKE_SYNC_DIR="$TMP/peer-negative" \
   start_grok_background_named shared-negative-a \
-  run --lane builder --allow-provisional --oauth shared \
+  run --lane builder --oauth shared \
   --prompt-file "$TMP/peer-a-prompt.txt" \
   --output "$TMP/results/shared-negative-a.txt" --workdir "$TMP/work"
 negative_a_pid="$GROK_BACKGROUND_PID"
 GROK_FAKE_SYNC_DIR="$TMP/peer-negative" start_grok_background_named shared-negative-b \
-  run --lane builder --allow-provisional --oauth shared \
+  run --lane builder --oauth shared \
   --prompt-file "$TMP/peer-b-prompt.txt" \
   --output "$TMP/results/shared-negative-b.txt" --workdir "$TMP/work"
 negative_b_pid="$GROK_BACKGROUND_PID"
@@ -453,12 +454,12 @@ jq -e '.reason == "sandbox_not_enforced"' \
 
 rc=0
 GROK_FAKE_MODE=sandbox_no_workspace run_grok run --lane builder \
-  --allow-provisional --oauth shared --prompt-file "$TMP/prompt.txt" \
+  --oauth shared --prompt-file "$TMP/prompt.txt" \
   --output "$TMP/results/shared-no-workspace.txt" --workdir "$TMP/work" \
   >/dev/null 2>&1 || rc=$?
 [ "$rc" = 70 ] || fail "workspace-less sandbox event returned $rc"
 GROK_FAKE_MODE=sandbox_malformed_then_unterminated run_grok run \
-  --lane builder --allow-provisional --oauth shared \
+  --lane builder --oauth shared \
   --prompt-file "$TMP/prompt.txt" \
   --output "$TMP/results/shared-malformed-events.txt" --workdir "$TMP/work"
 [ "$(cat "$TMP/results/shared-malformed-events.txt")" = PONG ] \
@@ -477,7 +478,7 @@ printf '%s\n' 'hooks = ["stale-hook"]' \
 jq '.policy_version = "obsolete-policy"' "$SHARED_GROK_ROOT/sync-marker.json" \
   >"$TMP/obsolete-marker.json"
 mv "$TMP/obsolete-marker.json" "$SHARED_GROK_ROOT/sync-marker.json"
-run_grok run --lane builder --allow-provisional --oauth shared \
+run_grok run --lane builder --oauth shared \
   --prompt-file "$TMP/prompt.txt" \
   --output "$TMP/results/shared-config-reconcile.txt" --workdir "$TMP/work"
 shared_generation_2="$(jq -r '.generation' "$SHARED_GROK_ROOT/sync-marker.json")"
@@ -488,7 +489,7 @@ shared_generation_2="$(jq -r '.generation' "$SHARED_GROK_ROOT/sync-marker.json")
 jq '.policy_version = "obsolete-again"' "$SHARED_GROK_ROOT/sync-marker.json" \
   >"$TMP/obsolete-marker-again.json"
 mv "$TMP/obsolete-marker-again.json" "$SHARED_GROK_ROOT/sync-marker.json"
-run_grok run --lane builder --allow-provisional --oauth shared \
+run_grok run --lane builder --oauth shared \
   --prompt-file "$TMP/prompt.txt" \
   --output "$TMP/results/shared-generation-prune.txt" --workdir "$TMP/work"
 [ "$(find "$SHARED_GROK_ROOT" -mindepth 1 -maxdepth 1 -type d -name 'gen-*' | wc -l | tr -d ' ')" -le 2 ] \
@@ -496,13 +497,13 @@ run_grok run --lane builder --allow-provisional --oauth shared \
 
 # Refresh inside the shared generation is published atomically and consumed by
 # the following run rather than being deleted with a per-run HOME.
-run_grok run --lane builder --allow-provisional --oauth shared \
+run_grok run --lane builder --oauth shared \
   --prompt-file "$TMP/rotate-oauth-prompt.txt" \
   --output "$TMP/results/shared-rotate.txt" --workdir "$TMP/work"
 jq -e '.[].key == "rotated-access" and .[].refresh_token == "rotated-refresh"' \
   "$TMP/grok-home/auth.json" >/dev/null \
   || fail "shared OAuth rotation was not published"
-run_grok run --lane builder --allow-provisional --oauth shared \
+run_grok run --lane builder --oauth shared \
   --prompt-file "$TMP/require-rotated-oauth-prompt.txt" \
   --output "$TMP/results/shared-require-rotated.txt" --workdir "$TMP/work"
 
@@ -511,7 +512,7 @@ run_grok run --lane builder --allow-provisional --oauth shared \
 printf '%s\n' 'CONCURRENT_LOGIN' >"$TMP/concurrent-login-prompt.txt"
 rc=0
 GROK_FAKE_AMBIENT_AUTH="$TMP/grok-home/auth.json" run_grok run \
-  --lane builder --allow-provisional --oauth shared \
+  --lane builder --oauth shared \
   --prompt-file "$TMP/concurrent-login-prompt.txt" \
   --output "$TMP/results/shared-concurrent-login.txt" --workdir "$TMP/work" \
   >/dev/null 2>&1 || rc=$?
@@ -525,7 +526,7 @@ jq -e '.[].key == "external-access" and .[].refresh_token == "external-refresh"'
   "$TMP/grok-home/auth.json" >/dev/null \
   || fail "shared publish overwrote external login"
 printf '%s\n' 'REQUIRE_EXTERNAL_OAUTH' >"$TMP/require-external-oauth-prompt.txt"
-run_grok run --lane builder --allow-provisional --oauth shared \
+run_grok run --lane builder --oauth shared \
   --prompt-file "$TMP/require-external-oauth-prompt.txt" \
   --output "$TMP/results/shared-after-conflict.txt" --workdir "$TMP/work"
 
@@ -534,7 +535,7 @@ run_grok run --lane builder --allow-provisional --oauth shared \
 printf '%s\n' 'CORRUPT_OAUTH' >"$TMP/corrupt-oauth-prompt.txt"
 cp "$TMP/grok-home/auth.json" "$TMP/oauth-before-corruption.json"
 rc=0
-run_grok run --lane builder --allow-provisional --oauth shared \
+run_grok run --lane builder --oauth shared \
   --prompt-file "$TMP/corrupt-oauth-prompt.txt" \
   --output "$TMP/results/shared-corrupt.txt" --workdir "$TMP/work" \
   >/dev/null 2>&1 || rc=$?
@@ -543,7 +544,7 @@ run_grok run --lane builder --allow-provisional --oauth shared \
   || fail "shared malformed OAuth published output"
 cmp -s "$TMP/oauth-before-corruption.json" "$TMP/grok-home/auth.json" \
   || fail "shared malformed OAuth replaced ambient login"
-run_grok run --lane builder --allow-provisional --oauth shared \
+run_grok run --lane builder --oauth shared \
   --prompt-file "$TMP/require-external-oauth-prompt.txt" \
   --output "$TMP/results/shared-heal.txt" --workdir "$TMP/work"
 [ "$(cat "$TMP/results/shared-heal.txt")" = PONG ] \
@@ -555,7 +556,7 @@ printf '%s\n' 'HOLD_LOCK_ROTATE' >"$TMP/hold-lock-rotate-prompt.txt"
 rc=0
 GROK_FAKE_KIT_LOCK="$TMP/grok-home/.delegation-kit-oauth.lock" \
   DELEGATION_GROK_OAUTH_WAIT_SECONDS=0 run_grok run \
-  --lane builder --allow-provisional --oauth shared \
+  --lane builder --oauth shared \
   --prompt-file "$TMP/hold-lock-rotate-prompt.txt" \
   --output "$TMP/results/shared-deferred.txt" --workdir "$TMP/work" \
   >/dev/null 2>&1 || rc=$?
@@ -567,7 +568,7 @@ jq -e '.phase == "oauth-sync" and .reason == "oauth_publish_deferred"' \
   || fail "deferred shared OAuth published a successful output"
 rm -f -- "$TMP/grok-home/.delegation-kit-oauth.lock"
 printf '%s\n' 'REQUIRE_DEFERRED_OAUTH' >"$TMP/require-deferred-oauth-prompt.txt"
-run_grok run --lane builder --allow-provisional --oauth shared \
+run_grok run --lane builder --oauth shared \
   --prompt-file "$TMP/require-deferred-oauth-prompt.txt" \
   --output "$TMP/results/shared-deferred-catchup.txt" --workdir "$TMP/work"
 jq -e '.[].key == "deferred-access" and .[].refresh_token == "deferred-refresh"' \
@@ -575,12 +576,12 @@ jq -e '.[].key == "deferred-access" and .[].refresh_token == "deferred-refresh"'
   || fail "next shared run did not publish deferred OAuth rotation"
 
 rc=0
-run_grok run --lane builder --allow-provisional --oauth bogus \
+run_grok run --lane builder --oauth bogus \
   --prompt-file "$TMP/prompt.txt" --output "$TMP/results/oauth-bogus.txt" \
   --workdir "$TMP/work" >/dev/null 2>&1 || rc=$?
 [ "$rc" = 64 ] || fail "invalid OAuth mode returned $rc"
 
-GROK_FAKE_MODE=multi_usage run_grok run --lane builder --allow-provisional \
+GROK_FAKE_MODE=multi_usage run_grok run --lane builder \
   --prompt-file "$TMP/prompt.txt" --output "$TMP/results/multi-usage.txt" \
   --workdir "$TMP/work"
 jq -e '
@@ -591,7 +592,7 @@ jq -e '
 ' "$TMP/results/multi-usage.txt.metrics.json" >/dev/null \
   || fail "multi-participant usage was not preserved and summed"
 
-GROK_FAKE_MODE=content_model_missing run_grok run --lane builder --allow-provisional \
+GROK_FAKE_MODE=content_model_missing run_grok run --lane builder \
   --prompt-file "$TMP/prompt.txt" --output "$TMP/results/no-content-model.txt" \
   --workdir "$TMP/work"
 jq -e '
@@ -601,7 +602,7 @@ jq -e '
   || fail "operational run conflated usage participation with content identity"
 
 rc=0
-GROK_FAKE_MODE=content_model_mismatch run_grok run --lane builder --allow-provisional \
+GROK_FAKE_MODE=content_model_mismatch run_grok run --lane builder \
   --prompt-file "$TMP/prompt.txt" --output "$TMP/results/operational-mismatch.txt" \
   --workdir "$TMP/work" >/dev/null 2>&1 || rc=$?
 [ "$rc" = 70 ] || fail "operational content identity mismatch returned $rc"
@@ -611,7 +612,7 @@ jq -e '.phase == "identity" and .reason == "provider_identity_mismatch"' \
   "$TMP/results/operational-mismatch.txt.error.json" >/dev/null \
   || fail "operational content identity mismatch diagnostic"
 
-run_grok run --lane frontend-builder --allow-provisional --prompt-file "$TMP/prompt.txt" \
+run_grok run --lane frontend-builder --prompt-file "$TMP/prompt.txt" \
   --output "$TMP/results/frontend.txt" --workdir "$TMP/work"
 [ "$(cat "$TMP/results/frontend.txt")" = PONG ] || fail "frontend lane failed"
 
@@ -653,7 +654,7 @@ GROK_FAKE_DISPATCH_LOG="$TMP/contaminated-run-dispatch.log" run_grok run \
   || fail "contaminated real run created a caller-visible artifact"
 
 # Removed qualification flags are unknown arguments, not silent no-ops.
-for removed in --evaluation --preflight-only; do
+for removed in --evaluation --preflight-only --allow-provisional; do
   rc=0
   run_grok run --lane builder "$removed" --prompt-file "$TMP/prompt.txt" \
     --output "$TMP/results/removed-flag.txt" --workdir "$TMP/work" \
@@ -724,12 +725,12 @@ jq -e '.phase == "identity" and .reason == "provider_identity_mismatch"' \
 
 
 rc=0
-run_grok run --lane builder --allow-provisional --effort max --prompt-file "$TMP/prompt.txt" \
+run_grok run --lane builder --effort max --prompt-file "$TMP/prompt.txt" \
   --output "$TMP/results/effort.txt" --workdir "$TMP/work" >/dev/null 2>&1 || rc=$?
 [ "$rc" = 64 ] || fail "invalid effort returned $rc"
 
 GROK_FAKE_VERSION=user-build-b run_grok run \
-  --lane builder --allow-provisional --prompt-file "$TMP/prompt.txt" \
+  --lane builder --prompt-file "$TMP/prompt.txt" \
   --output "$TMP/results/alternate-version.txt" --workdir "$TMP/work"
 jq -e '
   .runtime_cli_version == "user-build-b" and
@@ -740,7 +741,7 @@ jq -e '
 for mode in sandbox_missing sandbox_unenforced max_turns cancelled unexpected_stop malformed; do
   rc=0
   GROK_FAKE_MODE="$mode" run_grok run \
-    --lane builder --allow-provisional --prompt-file "$TMP/prompt.txt" \
+    --lane builder --prompt-file "$TMP/prompt.txt" \
     --output "$TMP/results/$mode.txt" --workdir "$TMP/work" >/dev/null 2>&1 || rc=$?
   [ "$rc" = 70 ] || fail "$mode returned $rc"
   [ ! -e "$TMP/results/$mode.txt" ] || fail "$mode published output"
@@ -762,7 +763,7 @@ jq -e --arg endpoint "$TMP/sockets/docker.sock" '
 rc=0
 : >"$TMP/dispatch-symlink.log"
 GROK_FAKE_DISPATCH_LOG="$TMP/dispatch-symlink.log" run_grok run \
-  --lane builder --allow-provisional --prompt-file "$TMP/prompt.txt" \
+  --lane builder --prompt-file "$TMP/prompt.txt" \
   --output "$TMP/results/symlinked-socket.txt" --workdir "$TMP/work" >/dev/null 2>&1 || rc=$?
 [ "$rc" = 69 ] || fail "symlinked runtime socket run returned $rc"
 [ ! -s "$TMP/dispatch-symlink.log" ] || fail "symlinked runtime socket run still dispatched"
@@ -773,7 +774,7 @@ rm -f -- "$TMP/sockets/docker.sock"
 # cause instead of a generic dispatch failure, and the raw stderr stays private.
 rc=0
 GROK_FAKE_MODE=sandbox_refused run_grok run \
-  --lane builder --allow-provisional --prompt-file "$TMP/prompt.txt" \
+  --lane builder --prompt-file "$TMP/prompt.txt" \
   --output "$TMP/results/sandbox-refused.txt" --workdir "$TMP/work" >/dev/null 2>&1 || rc=$?
 [ "$rc" = 69 ] || fail "sandbox profile refusal returned $rc"
 jq -e '.phase == "dispatch" and .reason == "sandbox_profile_refused"' \
@@ -783,7 +784,7 @@ jq -e '.phase == "dispatch" and .reason == "sandbox_profile_refused"' \
 
 rc=0
 GROK_FAKE_MODE=auth run_grok run \
-  --lane builder --allow-provisional --prompt-file "$TMP/prompt.txt" \
+  --lane builder --prompt-file "$TMP/prompt.txt" \
   --output "$TMP/results/auth.txt" --workdir "$TMP/work" >/dev/null 2>&1 || rc=$?
 [ "$rc" = 69 ] || fail "auth failure returned $rc"
 ! grep -q 'raw secret' "$TMP/results/auth.txt.error.json" || fail "raw auth stderr leaked"
@@ -791,21 +792,31 @@ GROK_FAKE_MODE=auth run_grok run \
 
 rc=0
 GROK_FAKE_MODE=rate run_grok run \
-  --lane builder --allow-provisional --prompt-file "$TMP/prompt.txt" \
+  --lane builder --prompt-file "$TMP/prompt.txt" \
   --output "$TMP/results/rate.txt" --workdir "$TMP/work" >/dev/null 2>&1 || rc=$?
 [ "$rc" = 75 ] || fail "rate failure returned $rc"
 
 rc=0
-DELEGATION_GROK_TIMEOUT_SECONDS=1 GROK_FAKE_MODE=timeout run_grok run \
-  --lane builder --allow-provisional --prompt-file "$TMP/prompt.txt" \
+DELEGATION_TIMEOUT=1 GROK_FAKE_MODE=timeout run_grok run \
+  --lane builder --prompt-file "$TMP/prompt.txt" \
   --output "$TMP/results/timeout.txt" --workdir "$TMP/work" >/dev/null 2>&1 || rc=$?
 [ "$rc" = 75 ] || fail "timeout returned $rc"
 jq -e '.reason == "timeout"' "$TMP/results/timeout.txt.error.json" >/dev/null \
   || fail "timeout diagnostic mismatch"
+# Without a profile timeout a slow dispatch completes.
+GROK_FAKE_MODE=slow run_grok run --lane builder --prompt-file "$TMP/prompt.txt" \
+  --output "$TMP/results/no-timeout.txt" --workdir "$TMP/work" >/dev/null 2>&1 \
+  || fail "slow dispatch without a profile timeout did not complete"
+DELEGATION_TIMEOUT=30 run_grok check --json | jq -e '.backends["grok-build"].timeout_seconds == 30' >/dev/null \
+  || fail "check did not report the profile timeout"
+rc=0
+DELEGATION_TIMEOUT=abc run_grok run --lane builder --prompt-file "$TMP/prompt.txt" \
+  --output "$TMP/results/bad-timeout.txt" --workdir "$TMP/work" >/dev/null 2>&1 || rc=$?
+[ "$rc" = 69 ] || fail "invalid timeout returned $rc"
 
 rc=0
 GROK_FAKE_MODE=auth run_grok run \
-  --lane builder --allow-provisional --prompt-file "$TMP/prompt.txt" \
+  --lane builder --prompt-file "$TMP/prompt.txt" \
   --output "$TMP/results/debug.txt" --workdir "$TMP/work" \
   --debug-dir "$TMP/debug" >/dev/null 2>&1 || rc=$?
 [ "$rc" = 69 ] || fail "debug auth failure returned $rc"
@@ -840,7 +851,7 @@ jq -e '
 [ "$(jq -r '.runtime_cli_path' "$TMP/check-pinned.json")" = "$TMP/store/current/grok" ] \
   || fail "check did not report the pinned binary path"
 
-run_grok_updated run --lane builder --allow-provisional --prompt-file "$TMP/prompt.txt" \
+run_grok_updated run --lane builder --prompt-file "$TMP/prompt.txt" \
   --output "$TMP/results/pinned.txt" --workdir "$TMP/work"
 [ "$(cat "$TMP/results/pinned.txt")" = PONG ] || fail "pinned dispatch failed"
 jq -e '.runtime_cli_version == "user-build-a" and .runtime_cli_source == "pinned"' \
@@ -850,7 +861,7 @@ jq -e '.runtime_cli_version == "user-build-a" and .runtime_cli_source == "pinned
 chmod 600 "$TMP/store/current/grok.sha256"
 printf '%s  grok\n' deadbeef >"$TMP/store/current/grok.sha256"
 rc=0
-run_grok_updated run --lane builder --allow-provisional --prompt-file "$TMP/prompt.txt" \
+run_grok_updated run --lane builder --prompt-file "$TMP/prompt.txt" \
   --output "$TMP/results/tampered.txt" --workdir "$TMP/work" >/dev/null 2>&1 || rc=$?
 [ "$rc" = 69 ] || fail "digest mismatch returned $rc"
 [ ! -e "$TMP/results/tampered.txt" ] || fail "digest mismatch published output"
@@ -863,7 +874,7 @@ jq -e '
 run_grok pin --from "$TMP/bin/grok" --force >/dev/null
 
 # An explicit compatible override outranks the store regardless of version.
-DELEGATION_GROK_BIN="$TMP/bin-updated/grok" run_grok run --lane builder --allow-provisional \
+DELEGATION_GROK_BIN="$TMP/bin-updated/grok" run_grok run --lane builder \
   --prompt-file "$TMP/prompt.txt" --output "$TMP/results/override.txt" \
   --workdir "$TMP/work"
 jq -e '.runtime_cli_version == "user-build-b" and .runtime_cli_source == "override"' \
@@ -927,7 +938,7 @@ rm -rf "$TMP/store"
 rc=0
 DELEGATION_GROK_HOME="$TMP/grok-home" DELEGATION_GROK_BIN_STORE="$TMP/store" \
   PATH="$TMP/nogrok:/usr/bin:/bin" "$ROOT/bin/delegation-grok" run --lane builder \
-  --allow-provisional --prompt-file "$TMP/prompt.txt" \
+  --prompt-file "$TMP/prompt.txt" \
   --output "$TMP/results/missing.txt" --workdir "$TMP/work" \
   >/dev/null 2>"$TMP/missing.err" || rc=$?
 [ "$rc" = 69 ] || fail "missing CLI returned $rc"

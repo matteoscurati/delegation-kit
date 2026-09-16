@@ -32,8 +32,6 @@ Usage:
     --prompt-file <path> --output <path> --workdir <path> \
     [--metrics <path>] [--debug-dir <path>]
 
---allow-provisional is accepted as a deprecated no-op for one release.
-
 Exit codes: 64 invalid input, 69 unavailable/authentication failure,
 70 dispatch/extract failure, 75 temporary/rate-limit failure,
 78 unsupported role or effort for this adapter.
@@ -173,7 +171,7 @@ run_command() {
     case "$1" in
       --lane) lane="${2:-}"; shift 2 ;; --effort) effort="${2:-}"; shift 2 ;; --backend) backend="${2:-}"; shift 2 ;;
       --prompt-file) prompt_file="${2:-}"; shift 2 ;; --output) output="${2:-}"; shift 2 ;; --workdir) workdir="${2:-}"; shift 2 ;;
-      --metrics) metrics="${2:-}"; shift 2 ;; --debug-dir) debug_dir="${2:-}"; shift 2 ;; --allow-provisional) printf "%s\n" "--allow-provisional is deprecated and has no effect" >&2; shift ;;
+      --metrics) metrics="${2:-}"; shift 2 ;; --debug-dir) debug_dir="${2:-}"; shift 2 ;;
       -h|--help) usage; return 0 ;; *) die 64 "unknown run argument: $1" ;;
     esac
   done
@@ -206,13 +204,20 @@ provided material and return a complete textual answer.
 
 $user_prompt"
   local tmp stdout_file stderr_file started rc=0 phase="" reason="" final_rc=0 cli_exit=null permission=plan
+  # agy requires a print-mode deadline; without a profile timeout the runner
+  # passes 24h so the CLI's own 5-minute default does not decide for the user.
+  local print_timeout=24h
+  if [ -n "${DELEGATION_TIMEOUT:-}" ]; then
+    [[ "$DELEGATION_TIMEOUT" =~ ^[1-9][0-9]*$ ]] || die 64 "DELEGATION_TIMEOUT must be a positive integer"
+    print_timeout="${DELEGATION_TIMEOUT}s"
+  fi
   tmp="$(mktemp -d "${TMPDIR:-/tmp}/delegation-gemini.XXXXXX")"; RUN_TMP="$tmp"; trap cleanup_run EXIT
   mkdir -p "$tmp/workspace"
   chmod 700 "$tmp/workspace"
   prepare_isolated_home "$tmp/home" || die 69 "cannot create isolated Antigravity home with macOS Keychain access"
   stdout_file="$tmp/stdout"; stderr_file="$tmp/stderr"; : >"$stdout_file"; : >"$stderr_file"
   RUN_OUTPUT_TMP="$(mktemp "$(dirname "$output")/.$(basename "$output").XXXXXX")"; RUN_METRICS_TMP="$(mktemp "$(dirname "$metrics")/.$(basename "$metrics").XXXXXX")"; started="$(date +%s)"
-  (cd "$tmp/workspace" && agy_env HOME="$tmp/home" agy -p "$dispatch_prompt" --model "$runtime_model" --effort "$effort" --mode "$permission" --sandbox --print-timeout 5m) >"$stdout_file" 2>"$stderr_file" || rc=$?
+  (cd "$tmp/workspace" && agy_env HOME="$tmp/home" agy -p "$dispatch_prompt" --model "$runtime_model" --effort "$effort" --mode "$permission" --sandbox --print-timeout "$print_timeout") >"$stdout_file" 2>"$stderr_file" || rc=$?
   if [ "$rc" -ne 0 ]; then phase=dispatch; read -r reason final_rc <<<"$(classify_failure "$stderr_file")"; cli_exit="$rc"
   elif grep -Eqi 'no output produced|permission.+auto-denied|tool required the .+ permission' "$stderr_file"; then phase=dispatch; reason=tool_permission_denied; final_rc=70; cli_exit=0
   elif [ ! -s "$stdout_file" ] || ! grep -q '[^[:space:]]' "$stdout_file"; then phase=extract; reason=empty_output; final_rc=70

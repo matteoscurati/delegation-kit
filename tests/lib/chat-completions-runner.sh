@@ -27,7 +27,8 @@ while [ "$#" -gt 0 ]; do
   case "$1" in
     -o) output="${2:-}"; shift 2 ;;
     --data-binary) request="${2#@}"; shift 2 ;;
-    --config|-w|--connect-timeout|--max-time) shift 2 ;;
+    --max-time) [ -z "${FAKE_PROVIDER_MAXTIME_CAPTURE:-}" ] || printf '%s\n' "$2" >"$FAKE_PROVIDER_MAXTIME_CAPTURE"; shift 2 ;;
+    --config|-w|--connect-timeout) shift 2 ;;
     -sS) shift ;;
     *) shift ;;
   esac
@@ -142,14 +143,21 @@ if [ "$EXPECT_THINKING" = true ]; then
 fi
 [ ! -e "$TMP/results/builder.out.commit.json" ] || fail 'builder run wrote commit marker'
 
-# --allow-provisional is a deprecated no-op that only warns.
-rc=0
+# No request deadline unless the profile sets one; DELEGATION_TIMEOUT becomes
+# curl --max-time verbatim.
+rm -f "$TMP/results/maxtime"
 PATH="$TMP/bin:$PATH" TMPDIR="$TMP/runtime" FAKE_PROVIDER_CASE=success \
-  "$RUNNER" run --lane builder --allow-provisional \
-  --prompt-file "$TMP/prompt" --output "$TMP/results/builder-deprecated.out" \
-  --workdir "$TMP/work" >/dev/null 2>"$TMP/results/builder-deprecated.stderr" || rc=$?
-[ "$rc" = 0 ] || fail "deprecated flag returned $rc"
-grep -q 'deprecated' "$TMP/results/builder-deprecated.stderr" || fail 'deprecated flag did not warn'
+  FAKE_PROVIDER_MAXTIME_CAPTURE="$TMP/results/maxtime" \
+  "$RUNNER" run --lane builder --prompt-file "$TMP/prompt" \
+  --output "$TMP/results/no-deadline.out" --workdir "$TMP/work" >/dev/null 2>&1 \
+  || fail 'run without a timeout failed'
+[ ! -e "$TMP/results/maxtime" ] || fail 'a run without a profile timeout passed --max-time'
+PATH="$TMP/bin:$PATH" TMPDIR="$TMP/runtime" FAKE_PROVIDER_CASE=success \
+  FAKE_PROVIDER_MAXTIME_CAPTURE="$TMP/results/maxtime" DELEGATION_TIMEOUT=42 \
+  "$RUNNER" run --lane builder --prompt-file "$TMP/prompt" \
+  --output "$TMP/results/deadline.out" --workdir "$TMP/work" >/dev/null 2>&1 \
+  || fail 'run with a timeout failed'
+[ "$(cat "$TMP/results/maxtime")" = 42 ] || fail 'profile timeout was not passed as --max-time'
 
 # The caller chooses the effort; any tier the provider exposes is accepted.
 rc=0
@@ -162,7 +170,7 @@ PATH="$TMP/bin:$PATH" TMPDIR="$TMP/runtime" FAKE_PROVIDER_CASE=success \
 json "$TMP/results/builder-effort.request.json" '.reasoning_effort == "high"'
 
 # Removed qualification flags are unknown arguments, never silent no-ops.
-for removed in --evaluation --preflight-only; do
+for removed in --evaluation --preflight-only --allow-provisional; do
   rc=0
   PATH="$TMP/bin:$PATH" "$RUNNER" run --lane builder "$removed" \
     --prompt-file "$TMP/prompt" --output "$TMP/results/removed-flag.out" \

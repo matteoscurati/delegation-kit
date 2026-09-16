@@ -114,10 +114,21 @@ Failures write a sanitized `<output>.error.json` (phase, reason, sizes, exit
 codes) and publish no output or metrics. Raw provider responses are preserved
 only under an explicit `--debug-dir`, mode 700.
 
-## Flags retired in 0.25.0
+## Timeouts
 
-`--evaluation`, `--evaluation-manifest`, and `--preflight-only` no longer
-exist; passing them is an unknown argument (exit 64). `--allow-provisional` is
-accepted as a deprecated no-op for one more release and only prints a warning.
-The frozen artifacts under `evaluation/` are an archive and are not read by any
-command.
+No runner imposes a time limit of its own. `delegation-run` exports the
+profile's `timeout` (seconds) as `DELEGATION_TIMEOUT`, and only then does a
+runner bound the run: Kimi, Grok, and GLM wrap the CLI in `timeout -k 10`,
+the chat-completions core passes it as curl `--max-time`, Gemini passes it as
+`agy --print-timeout` (24h when unset), and the native `codex`/`claude-code`
+dispatch uses a subprocess deadline. A run that hits the deadline publishes
+nothing, writes a diagnostic with reason `timeout` (`deadline_exceeded` on the
+HTTP adapters, `operational_timeout` on Kimi), and exits 75. `check --json`
+on Grok reports `timeout_seconds` as the configured value or `null`.
+
+## Flags retired
+
+`--evaluation`, `--evaluation-manifest`, and `--preflight-only` (0.25.0) and
+`--allow-provisional` (0.26.0) no longer exist; passing them is an unknown
+argument (exit 64). The frozen artifacts under `evaluation/` are an archive
+and are not read by any command.

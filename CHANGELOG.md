@@ -2,6 +2,31 @@
 
 All notable changes to delegation-kit are documented here.
 
+## [0.26.0] — 2026-09-16
+
+### Changed
+
+- **No dispatch timeout unless the profile sets one.** The kit no longer
+  decides how long a delegated task may take: the fixed 900-second limits of
+  `delegation-kimi` and `delegation-grok`, the 600-second default request
+  deadline of the chat-completions adapters, and Gemini's inherited 5-minute
+  `agy` default are gone (Gemini receives 24h). The profile parameter
+  `timeout` is now accepted for every adapter and, when set, bounds the whole
+  run everywhere with the same outcome: killed after the deadline plus a
+  ten-second grace, nothing published, diagnostic reason `timeout`, exit 75.
+  The native `codex` and `claude-code` dispatch in `delegation-run`, which had
+  no deadline at all, honours it too. A 20-second connect timeout on HTTP
+  adapters and the ten-second CLI probes of `check` remain; neither judges
+  the task.
+- `DELEGATION_GROK_TIMEOUT_SECONDS` is gone; `delegation-grok check` reports
+  `timeout_seconds` as the configured value or `null`.
+
+### Removed
+
+- `--allow-provisional`, the no-op kept for one release in 0.25.0. Passing it
+  is now an unknown argument (exit 64) on every runner and on
+  `delegation-run`.
+
 ## [0.25.2] — 2026-09-13
 
 ### Changed

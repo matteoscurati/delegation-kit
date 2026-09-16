@@ -29,7 +29,8 @@ EFFORTS='["high"]'
 CLI_COMPATIBILITY="capability-probed"
 SANDBOX_PROFILE="delegation-kit"
 MAX_TURNS=40
-TIMEOUT_SECONDS="${DELEGATION_GROK_TIMEOUT_SECONDS:-900}"
+# Wall-clock limit for a dispatch, only when the profile sets one.
+TIMEOUT_SECONDS="${DELEGATION_TIMEOUT:-}"
 SOURCE_GROK_HOME="${DELEGATION_GROK_HOME:-${HOME:?HOME is required}/.grok}"
 DATA_HOME="${DELEGATION_DATA_HOME:-${XDG_DATA_HOME:-$HOME/.local/share}/delegation-kit}"
 GROK_BIN_STORE="${DELEGATION_GROK_BIN_STORE:-$DATA_HOME/grok-cli}"
@@ -93,7 +94,6 @@ Usage:
 vendor auto-update of the ambient CLI never disturbs the selected lane. The
 runner resolves its binary in this order: DELEGATION_GROK_BIN, the private
 archive, then `grok` on PATH. CLI version is recorded as provenance only.
---allow-provisional is accepted as a deprecated no-op for one release.
 
 `--oauth shared` (or DELEGATION_GROK_OAUTH_MODE=shared) allows concurrent
 operational dispatches. OAuth state lives in a runner-owned persistent
@@ -640,9 +640,11 @@ runtime_status() {
   local oauth_mode="${1:-serialized}"
   GROK_REASON=""
   have jq || { GROK_REASON="jq is required"; return 1; }
-  timeout_bin >/dev/null || { GROK_REASON="timeout or gtimeout is required"; return 1; }
-  [[ "$TIMEOUT_SECONDS" =~ ^[1-9][0-9]*$ ]] \
-    || { GROK_REASON="DELEGATION_GROK_TIMEOUT_SECONDS must be a positive integer"; return 1; }
+  if [ -n "$TIMEOUT_SECONDS" ]; then
+    [[ "$TIMEOUT_SECONDS" =~ ^[1-9][0-9]*$ ]] \
+      || { GROK_REASON="DELEGATION_TIMEOUT must be a positive integer"; return 1; }
+    timeout_bin >/dev/null || { GROK_REASON="a dispatch timeout requires timeout or gtimeout"; return 1; }
+  fi
   local models status_tmp lock_rc=0 sync_rc=0 seed_rc=0 symlinked_socket
   status_tmp="$(mktemp -d "${TMPDIR:-/tmp}/delegation-grok-status.XXXXXX")"
   resolve_grok_bin "$status_tmp/probe" || { rm -rf -- "$status_tmp"; return 1; }
@@ -736,7 +738,7 @@ print_check() {
       --arg cli_compatibility "$CLI_COMPATIBILITY" \
       --arg cli_source "$GROK_BIN_SOURCE" --arg cli_path "$GROK_BIN" \
       --arg sandbox "$SANDBOX_PROFILE" --argjson max_turns "$MAX_TURNS" \
-      --argjson timeout_seconds "$TIMEOUT_SECONDS" --arg oauth_mode "$oauth_mode" \
+      --argjson timeout_seconds "${TIMEOUT_SECONDS:-null}" --arg oauth_mode "$oauth_mode" \
       '{model:$model,adapter:$adapter,runtime_model:$runtime_model,usage_model:$usage_model,
         runtime_cli_version:$cli_version,runtime_cli_compatibility:$cli_compatibility,
         runtime_cli_source:$cli_source,
@@ -753,9 +755,9 @@ print_check() {
           isolated_home:true,plugins:false,mcp:false,terminal:false}}}'
   else
     printf 'Grok 4.6: selected=%s roles=%s efforts=high\n' "$selected" "$(printf '%s' "$ROLES" | tr ' ' ',')"
-    printf '  grok-build: %s (%s; model=%s; cli=%s from %s; effort=high; oauth=%s; sandbox=%s; max-turns=%s; timeout=%ss)\n' \
+    printf '  grok-build: %s (%s; model=%s; cli=%s from %s; effort=high; oauth=%s; sandbox=%s; max-turns=%s; timeout=%s)\n' \
       "$available" "$GROK_REASON" "$RUNTIME_MODEL" "$GROK_CLI_VERSION" \
-      "$GROK_BIN_SOURCE" "$oauth_mode" "$SANDBOX_PROFILE" "$MAX_TURNS" "$TIMEOUT_SECONDS"
+      "$GROK_BIN_SOURCE" "$oauth_mode" "$SANDBOX_PROFILE" "$MAX_TURNS" "${TIMEOUT_SECONDS:-none}"
   fi
 }
 
@@ -821,7 +823,7 @@ extract_result() {
     --arg cli_source "$GROK_BIN_SOURCE" \
     --arg sandbox "$sandbox" --arg oauth_mode "$OAUTH_MODE" \
     --arg oauth_sync "$OAUTH_SYNC_STATUS" \
-    --argjson max_turns "$MAX_TURNS" --argjson timeout_seconds "$timeout_seconds" \
+    --argjson max_turns "$MAX_TURNS" --argjson timeout_seconds "${timeout_seconds:-null}" \
     "$response" >"$metrics"
 }
 
@@ -874,7 +876,6 @@ run_command() {
       --metrics) metrics="${2:-}"; shift 2 ;;
       --debug-dir) debug_dir="${2:-}"; shift 2 ;;
       --oauth) oauth_mode="${2:-}"; shift 2 ;;
-      --allow-provisional) printf "%s\n" "--allow-provisional is deprecated and has no effect" >&2; shift ;;
       -h|--help) usage; exit 0 ;;
       *) die 64 "unknown run argument: $1" ;;
     esac
@@ -946,9 +947,12 @@ run_command() {
   local DEBUG_PATH=""
   response="$RUN_TMP/response.json"; result_tmp="$RUN_TMP/result.txt"
   metrics_tmp="$RUN_TMP/metrics.json"; stderr_file="$RUN_TMP/stderr.txt"
-  timer="$(timeout_bin)" || die 69 "timeout or gtimeout is required"
   started="$(date +%s)"
   local execution_timeout="$TIMEOUT_SECONDS"
+  local -a timer=()
+  if [ -n "$execution_timeout" ]; then
+    timer=("$(timeout_bin)" -k 10 "$execution_timeout") || die 69 "timeout or gtimeout is required"
+  fi
   local execution_tools='grep,read_file,search_replace,list_dir,todo_write'
   [ "$lane" != policy-annotation ] || execution_tools='grep,read_file,list_dir'
   local execution_sandbox="$SANDBOX_PROFILE"
@@ -984,7 +988,7 @@ run_command() {
     --deny "Edit($ACTIVE_GROK_HOME/auth.json)" \
     --deny "Edit($ACTIVE_GROK_HOME/sandbox-events.jsonl)")
   (cd "$workdir" && HOME="$RUN_TMP/home" GROK_HOME="$ACTIVE_GROK_HOME" \
-    "$timer" -k 10 "$execution_timeout" "${grok_command[@]}") \
+    ${timer[@]+"${timer[@]}"} "${grok_command[@]}") \
     >"$response" 2>"$stderr_file" || rc=$?
   if [ "$oauth_mode" = shared ]; then publish_shared_oauth || sync_rc=$?
   else sync_serialized_oauth || sync_rc=$?

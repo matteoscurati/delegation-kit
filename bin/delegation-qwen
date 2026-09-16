@@ -46,7 +46,6 @@ Usage:
 
 Dispatch requires an explicit user request. This text-only adapter returns a
 patch for the lead to apply and verify; it cannot edit a worktree.
---allow-provisional is accepted as a deprecated no-op for one release.
 
 Exit codes: 64 invalid input, 69 unavailable/authentication failure,
 70 dispatch/extract failure, 75 temporary/rate-limit failure, 78 unsupported

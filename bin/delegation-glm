@@ -377,7 +377,6 @@ run_command() {
       --metrics) metrics="${2:-}"; shift 2 ;;
       --max-cost-usd) max_cost="${2:-}"; shift 2 ;;
       --debug-dir) debug_dir="${2:-}"; shift 2 ;;
-      --allow-provisional) printf "%s\n" "--allow-provisional is deprecated and has no effect" >&2; shift ;;
       -h|--help) usage; exit 0 ;;
       *) die 64 "unknown run argument: $1" ;;
     esac
@@ -440,6 +439,15 @@ run_command() {
   local permission="plan"
   [ "$lane" != builder ] || permission="acceptEdits"
   mkdir -p "$tmp/claude-config" "$tmp/home"
+  # Wall-clock limit only when the profile sets one (DELEGATION_TIMEOUT).
+  local -a timer=()
+  if [ -n "${DELEGATION_TIMEOUT:-}" ]; then
+    [[ "$DELEGATION_TIMEOUT" =~ ^[1-9][0-9]*$ ]] || die 64 "DELEGATION_TIMEOUT must be a positive integer"
+    if have gtimeout; then timer=("$(command -v gtimeout)" -k 10 "$DELEGATION_TIMEOUT")
+    elif have timeout; then timer=("$(command -v timeout)" -k 10 "$DELEGATION_TIMEOUT")
+    else die 69 "a dispatch timeout requires gtimeout or timeout"
+    fi
+  fi
   # Claude has no --cwd flag. Enter the delegated worktree explicitly so it
   # cannot inspect or edit the delegation-kit source checkout by accident.
   (
@@ -453,6 +461,7 @@ run_command() {
       ANTHROPIC_DEFAULT_OPUS_MODEL="$MODEL" \
       CLAUDE_CONFIG_DIR="$tmp/claude-config" \
       CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1 API_TIMEOUT_MS=3000000 \
+      ${timer[@]+"${timer[@]}"} \
       "$CLAUDE_BIN" -p "$(<"$prompt_file")" --model opus --effort "$effort" \
       --permission-mode "$permission" --setting-sources '' --strict-mcp-config \
       --output-format stream-json --verbose --no-session-persistence \
@@ -470,6 +479,7 @@ run_command() {
     reason="process_exit"
     final_rc=70
     cli_exit="$rc"
+    if [ "$rc" -eq 124 ] || [ "$rc" -eq 137 ]; then reason="timeout"; final_rc=75; fi
   fi
 
   if [ "$final_rc" -ne 0 ]; then

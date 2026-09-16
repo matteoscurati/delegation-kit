@@ -210,21 +210,9 @@ assert_json "$TEST_TMP/results/success.out.metrics.json" \
    .provider_cost_usd == 0.01'
 [ ! -e "$TEST_TMP/results/success.out.error.json" ] || fail "success wrote an error diagnostic"
 
-# --allow-provisional is a deprecated no-op: accepted, warned about, ignored.
-PATH="$TEST_TMP/bin:$PATH" TMPDIR="$TEST_TMP/runtime" \
-  ZAI_API_KEY="fixture-key" FAKE_CLAUDE_CASE=success \
-  "$ROOT/bin/delegation-glm" run \
-    --lane scout --effort auto --backend auto --allow-provisional \
-    --prompt-file "$TEST_TMP/prompt" \
-    --output "$TEST_TMP/results/deprecated-flag.out" --workdir "$TEST_TMP/work" \
-    2>"$TEST_TMP/results/deprecated-flag.stderr"
-[ "$(cat "$TEST_TMP/results/deprecated-flag.out")" = PONG ] \
-  || fail "dispatch with the deprecated flag failed"
-grep -q 'deprecated' "$TEST_TMP/results/deprecated-flag.stderr" \
-  || fail "the deprecated flag was not reported"
-
-# --evaluation and its companions are gone: unknown arguments fail closed (64).
-for removed in --evaluation --preflight-only "--evaluation-manifest x"; do
+# --evaluation, its companions, and --allow-provisional are gone: unknown
+# arguments fail closed (64).
+for removed in --evaluation --preflight-only "--evaluation-manifest x" --allow-provisional; do
   rc=0
   # shellcheck disable=SC2086
   PATH="$TEST_TMP/bin:$PATH" ZAI_API_KEY="fixture-key" FAKE_CLAUDE_CASE=success \

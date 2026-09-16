@@ -27,13 +27,10 @@ p.add_argument("--prompt-file", required=True)
 p.add_argument("--output", required=True)
 p.add_argument("--workdir", required=True)
 p.add_argument("--metrics")
-p.add_argument("--allow-provisional", action="store_true")
 p.add_argument("--reviewer-profile")
 p.add_argument("--review-authorized", action="store_true")
 a = p.parse_args()
 os.umask(0o077)
-if a.allow_provisional:
-    print("--allow-provisional is deprecated and has no effect", file=sys.stderr)
 try:
     c = load()
     profile = c["profiles"][a.profile]
@@ -200,14 +197,29 @@ try:
                     "--settings",
                     '{"disableAllHooks":true}',
                 ]
-            proc = subprocess.run(
-                command,
-                input=prompt.read_text(),
-                text=True,
-                capture_output=True,
-                cwd=tmp,
-                env=env,
-            )
+            # No timeout unless the profile sets one: the kit does not decide
+            # how long a delegated task may take. When it is set, the run is
+            # killed and reported like every other runner's timeout (75).
+            try:
+                proc = subprocess.run(
+                    command,
+                    input=prompt.read_text(),
+                    text=True,
+                    capture_output=True,
+                    cwd=tmp,
+                    env=env,
+                    timeout=params.get("timeout"),
+                )
+            except subprocess.TimeoutExpired:
+                atomic(
+                    str(output) + ".error.json",
+                    {
+                        "schema_version": 2,
+                        "reason": "timeout",
+                        "timeout_seconds": params["timeout"],
+                    },
+                )
+                sys.exit(75)
             rc = proc.returncode
             reported = None
             if rc == 0:

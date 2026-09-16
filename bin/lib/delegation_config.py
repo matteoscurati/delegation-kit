@@ -42,29 +42,39 @@ ADAPTERS = {
     "kimi-code-cli": (
         "kimi",
         {"clerk", "scout", "builder", "frontend-builder", "policy-annotation"},
-        {"effort"},
+        {"effort", "timeout"},
         {"sandboxed-worktree"},
     ),
     "claude-zai": (
         "glm",
         {"clerk", "scout", "builder", "reviewer", "policy-annotation"},
-        {"effort"},
+        {"effort", "timeout"},
         {"native-tool-policy"},
     ),
     "grok-build-cli": (
         "grok",
         {"builder", "frontend-builder", "policy-annotation"},
-        {"effort"},
+        {"effort", "timeout"},
         {"sandboxed-worktree"},
     ),
     "agy": (
         "gemini",
         {"scout", "builder", "frontend-builder", "reviewer", "judgement"},
-        {"effort"},
+        {"effort", "timeout"},
         {"read-only", "text-patch"},
     ),
-    "codex": (None, TEXT_ROLES | REVIEW_ROLES, {"effort"}, {"native-profile"}),
-    "claude-code": (None, TEXT_ROLES | REVIEW_ROLES, {"effort"}, {"native-profile"}),
+    "codex": (
+        None,
+        TEXT_ROLES | REVIEW_ROLES,
+        {"effort", "timeout"},
+        {"native-profile"},
+    ),
+    "claude-code": (
+        None,
+        TEXT_ROLES | REVIEW_ROLES,
+        {"effort", "timeout"},
+        {"native-profile"},
+    ),
 }
 EFFORTS = {
     "kimi-code-cli": {"max"},
