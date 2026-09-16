@@ -21,10 +21,12 @@ parameter reaches every adapter, that an invalid value is refused, that the
 native `codex`/`claude-code` dispatch is killed and reported with reason
 `timeout` and exit 75, and that `--allow-provisional` is an unknown argument),
 ShellCheck at `-S warning`, ruff, the eight Node tests, the ten-check version
-gate, a reinstall from the release commit and static doctor at `56 OK, 0 WARN,
-0 FAIL` with `delegation-grok check` reporting `timeout_seconds: null`. No
-model inference was executed for this release; the live probes of the 0.25.0
-pass stand.
+gate, a reinstall from the release commit and static doctor at `55 OK, 0 WARN,
+0 FAIL` (the Grok runtime line was absent because a concurrent user dispatch
+from another session held the Grok OAuth lock during both passes; the tagged
+page first stated 56, corrected here) with `delegation-grok check` reporting
+`timeout_seconds: null`. No model inference was executed for this release; the
+live probes of the 0.25.0 pass stand.
 
 ### 0.25.2 snapshot
 
