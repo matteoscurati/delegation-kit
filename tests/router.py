@@ -4,12 +4,15 @@ Real loopback HTTP only; no provider accounts."""
 
 import json
 import os
+import socket
 import subprocess
 import sys
 import tempfile
 import threading
 import time
 import unittest
+import urllib.error
+import urllib.request
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
@@ -36,11 +39,25 @@ class Provider(BaseHTTPRequestHandler):
     def log_message(self, *args):
         pass
 
+    stream_lines = None
+    reply_headers = {}
+
     def do_POST(self):
         body = json.loads(self.rfile.read(int(self.headers["Content-Length"])))
         type(self).requests.append((self.path, body, self.headers.get("Authorization")))
+        if body.get("stream") and type(self).stream_lines is not None:
+            self.send_response(200)
+            self.send_header("Content-Type", "text/event-stream")
+            self.end_headers()
+            for line in type(self).stream_lines:
+                self.wfile.write(line)
+                self.wfile.flush()
+                time.sleep(0.01)
+            return
         self.send_response(type(self).status)
         self.send_header("Content-Type", "application/json")
+        for key, value in type(self).reply_headers.items():
+            self.send_header(key, value)
         self.end_headers()
         self.wfile.write(json.dumps(type(self).reply).encode())
 
@@ -283,7 +300,9 @@ class ConfigTests(unittest.TestCase):
         validate(c)
 
 
-class CliTests(unittest.TestCase):
+class Fixture(unittest.TestCase):
+    """A schema-2 config with three priced HTTP profiles over the fake provider."""
+
     @classmethod
     def setUpClass(cls):
         cls.server = ThreadingHTTPServer(("127.0.0.1", 0), Provider)
@@ -350,6 +369,8 @@ class CliTests(unittest.TestCase):
         Provider.requests = []
         Provider.reply = {"choices": [{"message": {"content": "ok"}}]}
         Provider.status = 200
+        Provider.stream_lines = None
+        Provider.reply_headers = {}
         (self.base / "prompt").write_text("Rename a variable in one file. " * 40)
 
     def save(self):
@@ -365,6 +386,8 @@ class CliTests(unittest.TestCase):
         self.assertEqual(result.returncode, rc, result.stdout + result.stderr)
         return result
 
+
+class CliTests(Fixture):
     def test_check_reports_pool_and_never_calls_a_provider(self):
         out = json.loads(self.run_cli("check", "--json").stdout)
         self.assertTrue(out["enabled"] and out["valid"] and out["read_only"])
@@ -541,6 +564,338 @@ class CliTests(unittest.TestCase):
         self.save()
         self.run_cli("check", rc=65)
         self.assertEqual(Provider.requests, [])
+
+
+class ServerTests(Fixture):
+    """`serve` on a free loopback port, exercised over real HTTP."""
+
+    def setUp(self):
+        super().setUp()
+        with socket.socket() as probe:
+            probe.bind(("127.0.0.1", 0))
+            self.port = probe.getsockname()[1]
+        self.config["router"]["listen"] = "127.0.0.1:%d" % self.port
+        self.save()
+        self.start()
+
+    def start(self):
+        self.proc = subprocess.Popen(
+            [str(ROOT / "bin/delegation-router"), "serve"],
+            env=self.env,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+        )
+        self.addCleanup(self.stop)
+        for _ in range(200):
+            try:
+                self.get("/v1/health")
+                return
+            except (urllib.error.URLError, ConnectionError):
+                time.sleep(0.05)
+        self.fail("server did not start")
+
+    def stop(self):
+        if self.proc.poll() is None:
+            self.proc.terminate()
+            try:
+                self.proc.wait(timeout=5)
+            except subprocess.TimeoutExpired:
+                self.proc.kill()
+        self.stdout, self.stderr = self.proc.communicate()
+
+    def restart(self):
+        self.stop()
+        self.start()
+
+    def url(self, path):
+        return "http://127.0.0.1:%d%s" % (self.port, path)
+
+    def get(self, path):
+        with urllib.request.urlopen(self.url(path), timeout=5) as response:
+            return json.loads(response.read()), dict(response.headers)
+
+    def post(self, body, headers=None, raw=False):
+        request = urllib.request.Request(
+            self.url("/v1/chat/completions"),
+            data=json.dumps(body).encode(),
+            headers={"Content-Type": "application/json", **(headers or {})},
+            method="POST",
+        )
+        try:
+            with urllib.request.urlopen(request, timeout=10) as response:
+                data = response.read()
+                return (
+                    response.status,
+                    data if raw else json.loads(data),
+                    dict(response.headers),
+                )
+        except urllib.error.HTTPError as error:
+            return error.code, json.loads(error.read()), dict(error.headers)
+
+    @staticmethod
+    def chat(model, text="hi", **extra):
+        return {
+            "model": model,
+            "messages": [{"role": "user", "content": text}],
+            **extra,
+        }
+
+    def test_health_and_models_without_provider_calls(self):
+        health, _ = self.get("/v1/health")
+        self.assertEqual(health["status"], "ok")
+        models, _ = self.get("/v1/models")
+        self.assertEqual(
+            [m["id"] for m in models["data"]], ["small", "mid", "frontier", "auto"]
+        )
+        self.assertEqual(Provider.requests, [])
+
+    def test_auto_decides_forwards_with_the_chosen_key_and_discloses(self):
+        Provider.reply = {
+            "choices": [
+                {
+                    "message": {
+                        "content": '{"difficulty": 1, "tags": ["code"], "reason": "rename"}'
+                    }
+                }
+            ],
+            "usage": {"prompt_tokens": 300, "completion_tokens": 20},
+        }
+        prompt = "Rename a variable in one file. " * 40
+        status, data, headers = self.post(
+            self.chat("auto", prompt, router={"ignored": True})
+        )
+        self.assertEqual(status, 200, data)
+        self.assertEqual(data["router"]["chosen"]["profile"], "small")
+        self.assertEqual(headers["X-Router-Profile"], "small")
+        self.assertEqual(headers["X-Router-Model"], "small-model")
+        self.assertTrue(headers["X-Router-Decider"].startswith("llm/small-model+"))
+        self.assertEqual(headers["X-Router-Undecidable"], "0")
+        self.assertEqual(headers["X-Router-Mode"], "route")
+        self.assertEqual(data["router"]["usage"]["prompt_tokens"], 300)
+        self.assertAlmostEqual(data["router"]["cost_usd"], (300 * 0.2 + 20 * 1.2) / 1e6)
+        self.assertFalse(data["router"]["mismatch"])
+        self.assertEqual(data["choices"][0]["message"]["content"][0], "{")
+        decision, forward = Provider.requests
+        self.assertEqual(decision[2], "Bearer sk-canary-small")
+        self.assertEqual(forward[2], "Bearer sk-canary-small")
+        self.assertEqual(forward[1]["model"], "small-model")
+        self.assertEqual(forward[1]["messages"][0]["content"], prompt)
+        self.assertNotIn("router", forward[1])
+        self.assertFalse(forward[1]["stream"])
+        self.assertNotIn("sk-canary", json.dumps([data, headers]))
+
+    def test_explicit_profile_skips_the_decider(self):
+        status, data, headers = self.post(self.chat("frontier"))
+        self.assertEqual(status, 200, data)
+        self.assertEqual(headers["X-Router-Profile"], "frontier")
+        self.assertEqual(headers["X-Router-Mode"], "explicit")
+        self.assertEqual(data["router"]["decider"]["id"], "none")
+        self.assertEqual(len(Provider.requests), 1)
+        self.assertIsNone(Provider.requests[0][2])  # frontier declares no credential
+
+    def test_reported_model_mismatch_is_disclosed_not_fatal(self):
+        Provider.reply = {
+            "model": "other-model",
+            "choices": [{"message": {"content": "ok"}}],
+        }
+        status, data, headers = self.post(self.chat("frontier"))
+        self.assertEqual(status, 200)
+        self.assertTrue(data["router"]["mismatch"])
+        self.assertEqual(data["router"]["provider_reported_model"], "other-model")
+        self.assertEqual(headers["X-Router-Model-Mismatch"], "1")
+
+    def test_refusals_never_reach_a_provider(self):
+        for name, body, headers, status, code in [
+            ("unknown model", self.chat("nope"), {}, 404, "unknown-model"),
+            (
+                "browser origin",
+                self.chat("auto"),
+                {"Origin": "http://127.0.0.1:9"},
+                403,
+                "browser-denied",
+            ),
+            (
+                "cost ceiling",
+                self.chat("auto"),
+                {"X-Router-Max-Cost-USD": "0.0000001"},
+                400,
+                "cost-ceiling",
+            ),
+            (
+                "bad ceiling",
+                self.chat("auto"),
+                {"X-Router-Max-Cost-USD": "lots"},
+                400,
+                "invalid-cost-ceiling",
+            ),
+            ("not json", None, {}, 400, "invalid-json"),
+        ]:
+            with self.subTest(name):
+                Provider.requests = []
+                if body is None:
+                    request = urllib.request.Request(
+                        self.url("/v1/chat/completions"), data=b"{nope", method="POST"
+                    )
+                    with self.assertRaises(urllib.error.HTTPError) as caught:
+                        urllib.request.urlopen(request, timeout=5)
+                    with caught.exception as error:
+                        got, data = error.code, json.loads(error.read())
+                else:
+                    got, data, _ = self.post(body, headers)
+                self.assertEqual((got, data["error"]["code"]), (status, code))
+                self.assertEqual(Provider.requests, [])
+
+    def test_cost_ceiling_reports_estimate_and_ceiling(self):
+        status, data, _ = self.post(
+            self.chat("auto"), {"X-Router-Max-Cost-USD": "0.0000001"}
+        )
+        self.assertEqual(status, 400)
+        self.assertEqual(data["error"]["ceiling_usd"], 1e-7)
+        self.assertGreater(data["error"]["estimated_usd"], 1e-7)
+
+    def test_provider_errors_are_mapped_and_redacted(self):
+        for name, status, reply, headers, expect_status, code, retryable in [
+            (
+                "key rejected",
+                401,
+                {"error": {"message": "bad key sk-canary-small"}},
+                {},
+                401,
+                "provider-key-rejected",
+                False,
+            ),
+            (
+                "rate limited",
+                429,
+                {"error": {"message": "slow down"}},
+                {"Retry-After": "7"},
+                429,
+                "provider-rate-limited",
+                True,
+            ),
+            ("outage", 503, {"error": "down"}, {}, 502, "provider-unavailable", True),
+            (
+                "bad request",
+                400,
+                {"error": {"message": "unsupported with sk-canary-small inside"}},
+                {},
+                400,
+                "provider-rejected-request",
+                False,
+            ),
+        ]:
+            with self.subTest(name):
+                Provider.status, Provider.reply, Provider.reply_headers = (
+                    status,
+                    reply,
+                    headers,
+                )
+                got, data, out_headers = self.post(self.chat("frontier"))
+                self.assertEqual(
+                    (got, data["error"]["code"], data["error"]["retryable"]),
+                    (expect_status, code, retryable),
+                )
+                self.assertEqual(data["error"]["profile"], "frontier")
+                self.assertEqual(out_headers["X-Router-Error"], code)
+                self.assertNotIn("sk-canary", json.dumps(data))
+                if headers:
+                    self.assertEqual(out_headers["Retry-After"], "7")
+                if name == "bad request":
+                    self.assertIn("[redacted]", data["error"]["message"])
+
+    def test_missing_credential_fails_before_dispatch(self):
+        self.env.pop("MID_KEY")
+        self.restart()
+        status, data, _ = self.post(self.chat("mid"))
+        self.assertEqual(
+            (status, data["error"]["code"], data["error"]["profile"]),
+            (401, "provider-key-missing", "mid"),
+        )
+        self.assertEqual(Provider.requests, [])
+
+    def test_stream_passthrough_ends_with_router_chunk_then_done(self):
+        Provider.stream_lines = [
+            b'data: {"id":"x","object":"chat.completion.chunk","model":"frontier-model","choices":[{"delta":{"content":"Hel"}}]}\n\n',
+            b": keep-alive\n\n",
+            b'data: {"id":"x","object":"chat.completion.chunk","choices":[{"delta":{"content":"lo"}}]}\n\n',
+            b'data: {"id":"x","object":"chat.completion.chunk","choices":[],"usage":{"prompt_tokens":10,"completion_tokens":2}}\n\n',
+            b"data: [DONE]\n\n",
+        ]
+        status, raw, headers = self.post(self.chat("frontier", stream=True), raw=True)
+        self.assertEqual(status, 200)
+        self.assertEqual(headers["Content-Type"], "text/event-stream")
+        self.assertEqual(headers["X-Router-Profile"], "frontier")
+        text = raw.decode()
+        self.assertIn('"content":"Hel"', text)
+        self.assertIn(": keep-alive", text)
+        events = [line for line in text.split("\n") if line.startswith("data:")]
+        self.assertEqual(events[-1], "data: [DONE]")
+        final = json.loads(events[-2][5:])
+        self.assertEqual(final["choices"], [])
+        self.assertEqual(final["router"]["usage"]["completion_tokens"], 2)
+        self.assertAlmostEqual(final["router"]["cost_usd"], (10 * 10 + 2 * 50) / 1e6)
+        self.assertEqual(final["router"]["upstream_status"], 200)
+        self.assertNotIn("error", final)
+        forward = Provider.requests[-1][1]
+        self.assertEqual(forward["stream_options"], {"include_usage": True})
+        self.assertTrue(forward["stream"])
+
+    def test_broken_streams_end_with_a_router_chunk_naming_the_failure(self):
+        first = b'data: {"id":"x","object":"chat.completion.chunk","choices":[{"delta":{"content":"Hel"}}]}\n\n'
+        for name, lines, code in [
+            (
+                "cut mid-line",
+                [first, b'data: {"id":"x","object":"chat.completion.chu'],
+                "stream-interrupted",
+            ),
+            ("closed without [DONE]", [first], "stream-interrupted"),
+            (
+                "oversized event",
+                [first, b'data: {"pad":"' + b"x" * 70000 + b'"}\n\n'],
+                "stream-limit",
+            ),
+        ]:
+            with self.subTest(name):
+                Provider.stream_lines = lines
+                status, raw, _ = self.post(self.chat("frontier", stream=True), raw=True)
+                self.assertEqual(status, 200)
+                text = raw.decode()
+                self.assertIn('"content":"Hel"', text)
+                self.assertNotIn("xxxxxxxx", text)
+                events = [line for line in text.split("\n") if line.startswith("data:")]
+                self.assertEqual(events[-1], "data: [DONE]")
+                final = json.loads(events[-2][5:])
+                self.assertEqual(final["router"]["upstream_status"], 502)
+                self.assertEqual(final["error"]["code"], code)
+
+    def test_receipts_record_decisions_without_prompt_text(self):
+        self.config["router"]["receipts"] = True
+        self.save()
+        self.restart()
+        secret = "SECRET PROMPT CONTENT 12345"
+        status, _, _ = self.post(self.chat("frontier", secret))
+        self.assertEqual(status, 200)
+        path = self.base / "data/router/receipts.jsonl"
+        self.assertEqual(path.stat().st_mode & 0o777, 0o600)
+        line = json.loads(path.read_text().splitlines()[-1])
+        self.assertEqual((line["profile"], line["status"]), ("frontier", 200))
+        self.assertNotIn(secret, path.read_text())
+        self.config["router"]["receipts"] = False
+        self.save()
+        self.restart()
+        self.post(self.chat("frontier", secret))
+        self.assertEqual(len(path.read_text().splitlines()), 1)
+
+    def test_server_prints_nothing_but_the_listening_line(self):
+        Provider.status, Provider.reply = 500, {"error": "down"}
+        self.post(self.chat("auto", "Rename a variable. " * 40))
+        self.post(self.chat("nope"))
+        self.stop()
+        self.assertIn("listening on http://127.0.0.1:%d" % self.port, self.stdout)
+        self.assertEqual(len(self.stdout.splitlines()), 1)
+        self.assertEqual(self.stderr, "")
+        self.assertNotIn("sk-canary", self.stdout)
 
 
 if __name__ == "__main__":

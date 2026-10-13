@@ -8,160 +8,29 @@ profile inside that pool for every request sent to it."""
 
 import argparse
 import json
+import re
 import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent / "lib"))
-from delegation_config import catalog, load, profile_meta  # noqa: E402
-from delegation_router import (  # noqa: E402
-    choose,
-    disclosure,
-    features,
-    normalize,
-    pool_meta,
-    prefilter,
-    pretags,
-    skip_reason,
-)
-from delegation_router_deciders import build  # noqa: E402
+from delegation_config import load  # noqa: E402
+from delegation_router_pipeline import check, route, router_block  # noqa: E402
 
-
-def router_block(c):
-    r = c.get("router")
-    if not r:
-        raise ValueError("router not configured")
-    return r
-
-
-def route(
-    c, body, decider_kind=None, input_mode=None, ceiling=None, mode=None, opener=None
-):
-    """Run the pipeline for one chat body. Returns (router object, choice, feats)."""
-    r = router_block(c)
-    cat = catalog()
-    pool = pool_meta(c, cat)
-    by_key = {m["profile"]: m for m in pool}
-    feats = features(body)
-    ceiling = r.get("max_cost_usd") if ceiling is None else ceiling
-    eligible, blocked = prefilter(pool, feats, ceiling, r["default"])
-    default_meta = by_key[r["default"]]
-    decider_cfg = r.get("decider", {"kind": "llm"})
-    kind = decider_kind or decider_cfg.get("kind", "llm")
-    mode = mode or r.get("mode", "route")
-    input_mode = input_mode or decider_cfg.get("input", "excerpt")
-    decider = build(
-        kind, c, decider_cfg, lambda k, p: profile_meta(k, p, cat), opener=opener
-    )
-    decider_meta = None
-    if kind == "llm":
-        key = decider_cfg.get("profile", r["default"])
-        decider_meta = by_key.get(key) or profile_meta(key, c["profiles"][key], cat)
-    skipped = skip_reason(eligible, default_meta, decider_meta, feats)
-    if skipped or kind == "none":
-        decision = {
-            "decider": {"id": decider.id, "version": decider.version},
-            "signals": [],
-            "latency_ms": 0,
-            "cost_usd": 0.0,
-        }
-        skipped = skipped if kind != "none" else None
-    else:
-        decision = decider.decide(body, feats, input_mode)
-    verdict = normalize(decision["signals"])
-    for tag, value in pretags(feats).items():
-        verdict["tags"][tag] = max(verdict["tags"][tag], value)
-    choice = choose(verdict, eligible, default_meta, feats)
-    out = disclosure(c, feats, verdict, choice, decision, blocked, skipped, mode)
-    if decision.get("reason"):
-        out["decider"]["reason"] = decision["reason"]
-    if mode == "shadow" and choice["profile"] != r["default"]:
-        out["shadow"] = dict(out["chosen"])
-        out["chosen"] = {
-            "profile": default_meta["profile"],
-            "model": default_meta["model"],
-            "tier": default_meta.get("tier"),
-            "reasoning_effort": None,
-        }
-        out["reasons"].append("shadow mode → default dispatched, choice recorded")
-        choice = dict(
-            choice,
-            profile=default_meta["profile"],
-            model=default_meta["model"],
-            tier=default_meta.get("tier"),
-            reasoning_effort=None,
-        )
-    return out, choice, feats
-
-
-def check(c):
-    r = c.get("router")
-    result = {
-        "schema_version": 1,
-        "read_only": True,
-        "automatic_dispatch": False,
-        "requires_user_direction": True,
-        "authorization_granted": False,
-        "valid": True,
-        "catalog_version": catalog()["catalog_version"],
-        "enabled": bool(r),
-    }
-    if not r:
-        result["summary"] = (
-            "router not configured; add a router block (schema_version 2) to enable it"
-        )
-        return result
-    pool = pool_meta(c)
-    warnings = []
-    for m in pool:
-        if m["tier"] is None:
-            warnings.append(m["profile"] + ": no tier declared; usable only as default")
-        if m["price"] is None:
-            warnings.append(
-                m["profile"] + ": no per-token price; ranked last within its tier"
-            )
-    decider = dict(r.get("decider", {"kind": "llm"}))
-    decider.setdefault("kind", "llm")
-    if decider["kind"] == "llm":
-        decider.setdefault("profile", r["default"])
-    decider.setdefault("input", "excerpt")
-    result.update(
-        listen=r.get("listen", "127.0.0.1:4141"),
-        mode=r.get("mode", "route"),
-        default=r["default"],
-        decider=decider,
-        max_cost_usd=r.get("max_cost_usd"),
-        receipts=r.get("receipts", False),
-        pool=[
-            {
-                key: m[key]
-                for key in (
-                    "profile",
-                    "model",
-                    "adapter",
-                    "tier",
-                    "code",
-                    "price",
-                    "context",
-                    "metadata_source",
-                )
-            }
-            for m in pool
-        ],
-        warnings=warnings,
-    )
-    return result
+LISTEN = re.compile(r"(localhost|127\.0\.0\.1|\[::1\]):[0-9]{1,5}")
 
 
 def main():
     p = argparse.ArgumentParser(prog="delegation-router")
     sub = p.add_subparsers(dest="command", required=True)
-    pc = sub.add_parser("check")
+    pc = sub.add_parser("check", help="validate the router block; no network")
     pc.add_argument("--json", action="store_true")
-    pd = sub.add_parser("decide")
+    pd = sub.add_parser("decide", help="recommend one profile; never dispatches it")
     pd.add_argument("--prompt-file", required=True)
     pd.add_argument("--decider", choices=["none", "llm"])
     pd.add_argument("--input", choices=["excerpt", "full"])
     pd.add_argument("--json", action="store_true")
+    ps = sub.add_parser("serve", help="OpenAI-compatible endpoint on loopback")
+    ps.add_argument("--listen", help="loopback host:port (default: router.listen)")
     a = p.parse_args()
     try:
         c = load()
@@ -169,31 +38,36 @@ def main():
             result = check(c)
             if a.json:
                 print(json.dumps(result, indent=2))
+            elif not result["enabled"]:
+                print("router: not configured")
             else:
-                if not result["enabled"]:
-                    print("router: not configured")
-                else:
-                    print(
-                        "router: %s default=%s decider=%s mode=%s"
-                        % (
-                            result["listen"],
-                            result["default"],
-                            result["decider"]["kind"],
-                            result["mode"],
-                        )
+                print(
+                    "router: %s default=%s decider=%s mode=%s"
+                    % (
+                        result["listen"],
+                        result["default"],
+                        result["decider"]["kind"],
+                        result["mode"],
                     )
-                    for m in result["pool"]:
-                        print(
-                            "  %s: %s/%s tier=%s"
-                            % (m["profile"], m["adapter"], m["model"], m["tier"])
-                        )
-                    for w in result["warnings"]:
-                        print("  ! " + w)
+                )
+                for m in result["pool"]:
+                    print(
+                        "  %s: %s/%s tier=%s"
+                        % (m["profile"], m["adapter"], m["model"], m["tier"])
+                    )
+                for w in result["warnings"]:
+                    print("  ! " + w)
             return 0
         router_block(c)
+        if a.command == "serve":
+            from delegation_router_server import serve
+
+            if a.listen and not LISTEN.fullmatch(a.listen):
+                raise ValueError("--listen must be a loopback host:port")
+            return serve(c, a.listen)
         text = Path(a.prompt_file).read_text()
         body = {"messages": [{"role": "user", "content": text}]}
-        out, _choice, _feats = route(
+        out, _choice, _feats, _blocked = route(
             c, body, decider_kind=a.decider, input_mode=a.input
         )
         if a.json:
