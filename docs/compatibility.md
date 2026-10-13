@@ -14,6 +14,31 @@ are not an instruction to use this provider.
 
 ## Verified snapshot
 
+The 0.27.0 release was verified on **2026-10-13** on macOS 26.5.1 with
+ambient Codex CLI `0.162.1` and ambient Claude Code `2.1.296`: all 13
+regression suites green in 43 seconds (the new `router` suite runs the 30
+tests of `tests/router.py` — the `tiered-v1` policy table, schema 2
+validation, `check`/`decide` and the loopback server against a fake provider:
+each profile receives only its own key and no canary key reaches any output,
+decider failures and prompt injection cannot steer the route, broken streams
+end with a router chunk naming the failure, receipts hold no prompt text, and
+the server writes nothing to stderr; the doctor and install-marker suites
+cover the "Model router" section, the installed command, catalog and prompt),
+ShellCheck at `-S warning`, ruff, the eight Node tests, the ten-check version
+gate, a reinstall from the release commit and static doctor at `55 OK, 0 WARN,
+0 FAIL` with the Grok runtime line present and the router reported as
+`not configured — optional`. One no-spend probe was run against the real
+DeepSeek and Qwen Token Plan endpoints with fake keys from a temporary
+schema 2 configuration: `check` resolved the pool, `decide --decider none`
+landed on the default as undecidable, `serve` listed the pool and `auto` on
+`/v1/models`, and a `model: auto` request came back `401
+provider-key-rejected` naming the default profile after the decider's own key
+was rejected, with no key in the response or in the single log line. No model
+inference was executed for this release; the live probes of the 0.25.0 pass
+stand.
+
+### 0.26.0 snapshot
+
 The 0.26.0 release was verified on **2026-09-16** on the same machine and
 ambient CLIs as 0.25.0 below: all 12 regression suites green (new cases prove
 that no runner applies a deadline without a profile `timeout`, that the
