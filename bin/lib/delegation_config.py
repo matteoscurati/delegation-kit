@@ -86,6 +86,25 @@ EFFORTS = {
     "codex": {"none", "minimal", "low", "medium", "high", "xhigh", "max"},
     "claude-code": {"low", "medium", "high", "xhigh", "max"},
 }
+# Routing metadata a profile may declare for itself. Everything else about an
+# adapter stays code-owned; these are user statements, like `family`.
+TIERS = ("small", "mid", "frontier")
+PROFILE_ROUTING_FIELDS = {"tier", "code", "price", "context", "json_mode"}
+# The router pool accepts the HTTP adapters only in this release; native CLI
+# profiles need a non-streaming bridge that arrives later.
+ROUTER_HTTP_ADAPTERS = {"openai-compatible", "deepseek-api", "token-plan-openai"}
+ROUTER_DECIDERS = {"none", "llm"}
+ROUTER_FIELDS = {
+    "listen",
+    "pool",
+    "default",
+    "decider",
+    "max_cost_usd",
+    "receipts",
+    "allow_origins",
+    "mode",
+}
+LOOPBACK_HOSTS = {"localhost", "127.0.0.1", "::1"}
 
 
 def config_path():
@@ -148,14 +167,126 @@ def preset(strict=False, source=None):
     }
 
 
+def _number(value):
+    return type(value) in (int, float) and value == value and value >= 0
+
+
+def validate_routing_fields(p):
+    """Optional per-profile routing declarations (schema 2)."""
+    if "tier" in p and p["tier"] not in TIERS:
+        raise ValueError("invalid tier (small|mid|frontier)")
+    if "code" in p and type(p["code"]) is not bool:
+        raise ValueError("invalid code flag")
+    if "json_mode" in p and type(p["json_mode"]) is not bool:
+        raise ValueError("invalid json_mode flag")
+    if "context" in p and (
+        type(p["context"]) is not int or not 1 <= p["context"] <= 100_000_000
+    ):
+        raise ValueError("invalid context")
+    if "price" in p:
+        price = p["price"]
+        if price is not None and (
+            not isinstance(price, dict)
+            or set(price) != {"in", "out"}
+            or not _number(price["in"])
+            or not _number(price["out"])
+            or price["in"] > 100_000
+            or price["out"] > 100_000
+        ):
+            raise ValueError("invalid price (USD per million tokens: {in, out})")
+
+
+def validate_router(c):
+    """The router block is a user-declared rule set: pool, default, decider."""
+    r = c.get("router")
+    if r is None:
+        return
+    if c["schema_version"] < 2:
+        raise ValueError("router requires schema_version 2")
+    if not isinstance(r, dict) or set(r) - ROUTER_FIELDS:
+        raise ValueError("unknown router field")
+    listen = r.get("listen", "127.0.0.1:4141")
+    if not isinstance(listen, str) or not re.fullmatch(
+        r"(localhost|127\.0\.0\.1|\[::1\]):[0-9]{1,5}", listen
+    ):
+        raise ValueError("router.listen must be a loopback host:port")
+    if not 1 <= int(listen.rsplit(":", 1)[1]) <= 65535:
+        raise ValueError("router.listen port out of range")
+    pool = r.get("pool")
+    if (
+        not isinstance(pool, list)
+        or not pool
+        or any(not isinstance(x, str) for x in pool)
+        or len(set(pool)) != len(pool)
+    ):
+        raise ValueError("router.pool must be a nonempty list of distinct profile ids")
+    for key in pool:
+        if key not in c["profiles"]:
+            raise ValueError("router.pool names an unknown profile: " + key)
+        if c["profiles"][key]["adapter"] not in ROUTER_HTTP_ADAPTERS:
+            raise ValueError(
+                "router.pool supports HTTP adapters only in this release: " + key
+            )
+    if r.get("default") not in pool:
+        raise ValueError("router.default must be one of router.pool")
+    decider = r.get("decider", {"kind": "llm"})
+    if not isinstance(decider, dict) or set(decider) - {
+        "kind",
+        "profile",
+        "input",
+        "timeout",
+    }:
+        raise ValueError("unknown router.decider field")
+    if decider.get("kind", "llm") not in ROUTER_DECIDERS:
+        raise ValueError("router.decider.kind not available in this release")
+    if decider.get("kind", "llm") == "llm":
+        profile = decider.get("profile", r["default"])
+        if profile not in c["profiles"]:
+            raise ValueError("router.decider.profile names an unknown profile")
+        if c["profiles"][profile]["adapter"] not in ROUTER_HTTP_ADAPTERS:
+            raise ValueError("router.decider.profile must use an HTTP adapter")
+    if decider.get("input", "excerpt") not in {"excerpt", "full"}:
+        raise ValueError("router.decider.input must be excerpt or full")
+    if "timeout" in decider and (
+        type(decider["timeout"]) is not int or not 1 <= decider["timeout"] <= 600
+    ):
+        raise ValueError("invalid router.decider.timeout")
+    if "max_cost_usd" in r and (
+        not _number(r["max_cost_usd"])
+        or r["max_cost_usd"] <= 0
+        or r["max_cost_usd"] > 1000
+    ):
+        raise ValueError("invalid router.max_cost_usd")
+    if "receipts" in r and type(r["receipts"]) is not bool:
+        raise ValueError("invalid router.receipts")
+    if r.get("mode", "route") not in {"route", "shadow"}:
+        raise ValueError("router.mode must be route or shadow")
+    origins = r.get("allow_origins", [])
+    if not isinstance(origins, list) or any(
+        not isinstance(o, str)
+        or urlsplit(o).scheme not in {"http", "https"}
+        or not urlsplit(o).hostname
+        or urlsplit(o).path
+        or urlsplit(o).query
+        or urlsplit(o).fragment
+        or (urlsplit(o).scheme == "http" and urlsplit(o).hostname not in LOOPBACK_HOSTS)
+        for o in origins
+    ):
+        raise ValueError("router.allow_origins must list exact https origins")
+
+
 def validate(c):
     if not isinstance(c, dict) or set(c) - {
         "schema_version",
         "review_policy",
         "profiles",
+        "router",
     }:
         raise ValueError("unknown configuration field")
-    if type(c.get("schema_version")) is not int or c.get("schema_version") != 1:
+    if type(c.get("schema_version")) is not int or c.get("schema_version") not in {
+        1,
+        2,
+    }:
         raise ValueError("unsupported config schema_version")
     if c.get("review_policy") not in {"optional", "required", "cross-family"}:
         raise ValueError("invalid review_policy")
@@ -173,10 +304,11 @@ def validate(c):
             "base_url",
             "credential_env",
             "aliases",
-        }:
+        } - (PROFILE_ROUTING_FIELDS if c["schema_version"] >= 2 else set()):
             raise ValueError(
                 "unknown profile field (credentials and capability overrides are forbidden)"
             )
+        validate_routing_fields(p)
         if p.get("adapter") not in ADAPTERS:
             raise ValueError("unsupported adapter")
         if (
@@ -248,7 +380,41 @@ def validate(c):
             "token-plan-openai",
         }:
             raise ValueError("this adapter uses native credential storage")
+    validate_router(c)
     return c
+
+
+def catalog():
+    """Code-owned routing metadata for known model identifiers."""
+    return read(ROOT / "config/catalog.json")
+
+
+def profile_meta(key, p, cat=None):
+    """Routing metadata for one profile: the profile's own declarations win,
+    the catalog fills the rest, unknown models stay without tier or price."""
+    cat = cat if cat is not None else catalog()
+    base = cat["models"].get(p["model"], {})
+    declared = PROFILE_ROUTING_FIELDS & set(p)
+    return {
+        "profile": key,
+        "model": p["model"],
+        "adapter": p["adapter"],
+        "family": p.get("family"),
+        "tier": p["tier"] if "tier" in p else base.get("tier"),
+        "code": p["code"] if "code" in p else base.get("code", False),
+        "price": p["price"] if "price" in p else base.get("price"),
+        "context": p["context"] if "context" in p else base.get("context"),
+        "json_mode": p["json_mode"]
+        if "json_mode" in p
+        else base.get("json_mode", False),
+        "effort": p.get("parameters", {}).get("effort"),
+        "metadata_source": (
+            "profile"
+            if declared
+            else ("catalog" if p["model"] in cat["models"] else "unknown")
+        ),
+        "catalog_version": cat["catalog_version"],
+    }
 
 
 def load():
