@@ -131,6 +131,15 @@ restore_key_backup() { # $1=name (zai | qwen-token-plan | deepseek)
 restore_key_backup zai
 restore_key_backup qwen-token-plan
 restore_key_backup deepseek
+# The router's opt-in receipts get the same treatment: uninstall.sh keeps them
+# as $DATA_HOME.router-receipts.jsonl.bak, and they come back when none exist.
+receipts_backup="$DATA_HOME.router-receipts.jsonl.bak"
+if [ ! -f "$DATA_HOME/router/receipts.jsonl" ] && [ -f "$receipts_backup" ] && [ ! -L "$receipts_backup" ]; then
+  mkdir -p "$DATA_HOME/router" && chmod 700 "$DATA_HOME/router" \
+    && ( umask 077; cp "$receipts_backup" "$DATA_HOME/router/receipts.jsonl" ) \
+    && chmod 600 "$DATA_HOME/router/receipts.jsonl" \
+    && echo "  + router receipts restored from $receipts_backup (mode 600)"
+fi
 ZAI_KEY_FILE="$DATA_HOME/config/zai.env"
 zai_store_key() { # $1=key
   ( umask 077; printf 'ZAI_API_KEY=%s\n' "$1" >"$ZAI_KEY_FILE" )

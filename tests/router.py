@@ -21,6 +21,7 @@ sys.path.insert(0, str(ROOT / "bin/lib"))
 from delegation_config import validate  # noqa: E402
 from delegation_router import (  # noqa: E402
     choose,
+    estimate_cost,
     excerpt,
     features,
     normalize,
@@ -205,11 +206,36 @@ class PolicyTests(unittest.TestCase):
 
     def test_skip_reason(self):
         self.assertEqual(skip_reason([MID], MID, SMALL, FEATS), "one eligible profile")
-        # the default is already the cheapest: a decision cannot save anything
-        self.assertEqual(skip_reason(POOL, SMALL, SMALL, FEATS), "nothing to save")
+        # a cheap default with stronger tiers above it: the decision buys capability
+        self.assertIsNone(skip_reason(POOL, SMALL, SMALL, FEATS))
+        # the default is the cheapest and nothing stronger is eligible
+        pricier_small = meta("small2", "small", 0.5, 2.0)
+        self.assertEqual(
+            skip_reason([SMALL, pricier_small], SMALL, SMALL, FEATS), "nothing to save"
+        )
         # output tokens count: even a short prompt saves on the answer
         self.assertIsNone(skip_reason(POOL, MID, SMALL, dict(FEATS, est_tokens=10)))
         self.assertIsNone(skip_reason(POOL, MID, SMALL, dict(FEATS, est_tokens=50000)))
+
+    def test_costs_tolerate_unknown_counts(self):
+        self.assertIsNone(estimate_cost(SMALL, None, 10))
+        self.assertIsNone(estimate_cost(SMALL, "300", 10))
+        self.assertIsNone(estimate_cost(meta("free", "small", None, None), 10, 10))
+        self.assertAlmostEqual(estimate_cost(SMALL, 1000, 100), 0.2e-3 + 0.12e-3)
+
+    def test_json_mode_rule_and_malformed_tools(self):
+        no_json = dict(MID, json_mode=False)
+        eligible, blocked = prefilter(
+            [SMALL, no_json], dict(FEATS, wants_json=True), None, "mid"
+        )
+        self.assertEqual([m["profile"] for m in eligible], ["small"])
+        self.assertEqual(blocked, [{"profile": "mid", "reason": "no JSON mode"}])
+        body = {
+            "messages": [{"role": "user", "content": "x"}],
+            "tools": [{"type": "function", "function": "run"}, "junk", {"name": "ok"}],
+        }
+        self.assertIn("tools: ok", excerpt(body))
+        self.assertTrue(features(body)["has_tools"])
 
 
 class ConfigTests(unittest.TestCase):
@@ -608,8 +634,10 @@ class ServerTests(Fixture):
         self.stop()
         self.start()
 
+    host = "127.0.0.1"
+
     def url(self, path):
-        return "http://127.0.0.1:%d%s" % (self.port, path)
+        return "http://%s:%d%s" % (self.host, self.port, path)
 
     def get(self, path):
         with urllib.request.urlopen(self.url(path), timeout=5) as response:
@@ -718,6 +746,13 @@ class ServerTests(Fixture):
             (
                 "cost ceiling",
                 self.chat("auto"),
+                {"X-Router-Max-Cost-USD": "0.0000001"},
+                400,
+                "cost-ceiling",
+            ),
+            (
+                "cost ceiling on a named profile",
+                self.chat("frontier"),
                 {"X-Router-Max-Cost-USD": "0.0000001"},
                 400,
                 "cost-ceiling",
@@ -870,6 +905,111 @@ class ServerTests(Fixture):
                 final = json.loads(events[-2][5:])
                 self.assertEqual(final["router"]["upstream_status"], 502)
                 self.assertEqual(final["error"]["code"], code)
+
+    def test_ipv6_loopback_listen(self):
+        self.stop()
+        self.config["router"]["listen"] = "[::1]:%d" % self.port
+        self.save()
+        self.host = "[::1]"
+        self.start()
+        health, _ = self.get("/v1/health")
+        self.assertEqual(health["status"], "ok")
+
+    def test_refusal_before_the_body_closes_the_connection(self):
+        request = (
+            "POST /v1/chat/completions HTTP/1.1\r\nHost: x\r\nOrigin: http://evil\r\n"
+            "Content-Type: application/json\r\nContent-Length: 2\r\n\r\n{}"
+        ).encode()
+        with socket.create_connection(("127.0.0.1", self.port), timeout=5) as sock:
+            sock.sendall(
+                request + request
+            )  # pipelined: the second must not be parsed from leftovers
+            raw = b""
+            while True:
+                piece = sock.recv(65536)
+                if not piece:
+                    break
+                raw += piece
+        text = raw.decode()
+        self.assertEqual(text.count("HTTP/1.1 "), 1)
+        self.assertIn("HTTP/1.1 403", text)
+        self.assertIn("connection: close", text.lower())
+        self.assertEqual(Provider.requests, [])
+
+    def test_allowed_origin_gets_cors_and_disclosure(self):
+        self.config["router"]["allow_origins"] = ["http://localhost:5173"]
+        self.save()
+        self.restart()
+        origin = {"Origin": "http://localhost:5173"}
+        request = urllib.request.Request(
+            self.url("/v1/chat/completions"), headers=origin, method="OPTIONS"
+        )
+        with urllib.request.urlopen(request, timeout=5) as response:
+            self.assertEqual(response.status, 204)
+            self.assertEqual(
+                response.headers["Access-Control-Allow-Origin"], "http://localhost:5173"
+            )
+            self.assertIn("POST", response.headers["Access-Control-Allow-Methods"])
+        status, data, headers = self.post(self.chat("frontier"), origin)
+        self.assertEqual(status, 200, data)
+        self.assertEqual(
+            headers["Access-Control-Allow-Origin"], "http://localhost:5173"
+        )
+        self.assertIn("X-Router-Profile", headers["Access-Control-Expose-Headers"])
+        status, data, _ = self.post(self.chat("frontier"), {"Origin": "http://other"})
+        self.assertEqual((status, data["error"]["code"]), (403, "browser-denied"))
+
+    def test_odd_provider_shapes_still_get_a_complete_answer(self):
+        # usage with nulls in the final stream chunk: cost unknown, stream whole
+        Provider.stream_lines = [
+            b'data: {"choices":[{"delta":{"content":"Hi"}}]}\n\n',
+            b'data: {"choices":[],"usage":{"prompt_tokens":null,"completion_tokens":"12"}}\n\n',
+            b"data: [DONE]\n\n",
+        ]
+        status, raw, _ = self.post(self.chat("frontier", stream=True), raw=True)
+        events = [line for line in raw.decode().split("\n") if line.startswith("data:")]
+        self.assertEqual(events[-1], "data: [DONE]")
+        final = json.loads(events[-2][5:])
+        self.assertIsNone(final["router"]["cost_usd"])
+        self.assertEqual(final["router"]["upstream_status"], 200)
+        # malformed tools from the caller: routed, forwarded, answered
+        Provider.stream_lines = None
+        Provider.reply = {
+            "choices": [{"message": {"content": '{"difficulty": 1, "tags": []}'}}],
+            "usage": {"prompt_tokens": "300"},
+        }
+        status, data, _ = self.post(
+            self.chat("auto", "Rename a variable. " * 40, tools=[{"function": "run"}])
+        )
+        self.assertEqual(status, 200, data)
+        # tools are a deterministic pre-tag that raises the floor to mid
+        self.assertEqual(data["router"]["chosen"]["profile"], "mid")
+        self.assertEqual(data["router"]["signals"]["tags"]["tools"], 1.0)
+
+    def test_profile_timeout_bounds_a_slow_non_stream_answer(self):
+        class Slow(Provider):
+            def do_POST(self):
+                time.sleep(2)
+                Provider.do_POST(self)
+
+        slow = ThreadingHTTPServer(("127.0.0.1", 0), Slow)
+        threading.Thread(target=slow.serve_forever, daemon=True).start()
+        self.addCleanup(slow.server_close)
+        self.addCleanup(slow.shutdown)
+        self.config["profiles"]["frontier"]["base_url"] = (
+            "http://127.0.0.1:%d/v1" % slow.server_address[1]
+        )
+        self.config["profiles"]["frontier"]["parameters"] = {"timeout": 1}
+        self.save()
+        self.restart()
+        started = time.monotonic()
+        status, data, headers = self.post(self.chat("frontier"))
+        self.assertLess(time.monotonic() - started, 1.9)
+        self.assertEqual(
+            (status, data["error"]["code"], data["error"]["retryable"]),
+            (504, "timeout", True),
+        )
+        self.assertEqual(headers["X-Router-Profile"], "frontier")
 
     def test_receipts_record_decisions_without_prompt_text(self):
         self.config["router"]["receipts"] = True

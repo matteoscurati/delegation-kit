@@ -66,8 +66,8 @@ router is off and `check` says so.
 | `default` | the pool profile used when the decision is undecidable; must be in the pool |
 | `decider` | `kind` `llm` (default) or `none`; for `llm`, `profile` is an HTTP profile called with its own key (default: the pool default), `input` is `excerpt` (default) or `full`, `timeout` seconds 1–600 (default 3) |
 | `max_cost_usd` | pre-dispatch ceiling on the estimated cost of one request; a request whose chosen profile exceeds it is refused, never downgraded |
-| `receipts` | when true, one JSONL line per request in `$DELEGATION_DATA_HOME/router/receipts.jsonl` (mode 600); decision, profile, usage, cost, latency — never prompt content |
-| `allow_origins` | browser origins allowed to call the server; empty by default, so a web page on localhost cannot spend your keys |
+| `receipts` | when true, one JSONL line per request in `$DELEGATION_DATA_HOME/router/receipts.jsonl` (mode 600); decision, profile, usage, cost, latency — never prompt content. `uninstall.sh` keeps the file as `$DELEGATION_DATA_HOME.router-receipts.jsonl.bak` and `install.sh` restores it, like the key files |
+| `allow_origins` | exact browser origins allowed to call the server (`https://app.example`, or `http://localhost:5173`); empty by default, so a web page cannot spend your keys. A listed origin gets the CORS preflight answered and `Access-Control-Allow-Origin` plus the exposed `X-Router-*` headers on every response; any other `Origin` is refused |
 | `mode` | `route` (default) or `shadow`: decide and disclose, but dispatch the default |
 
 Profiles may declare routing metadata — `tier` (`small`, `mid`, `frontier`),
@@ -94,8 +94,11 @@ profiles.
 2. **Prefilter**, deterministic: a pool profile is blocked when its adapter is
    not routable, it declares no tier (unless it is the default), its context
    is too small for the request, or its estimated cost is above the ceiling.
-   The decider is skipped when one profile or fewer is eligible, or when the
-   default is already the cheapest eligible profile (nothing to save).
+   A request that asks for JSON output (`response_format`) blocks profiles
+   declared without JSON mode. The decider is skipped when one profile or
+   fewer is eligible, or when a decision could change nothing: the default is
+   already the cheapest eligible profile *and* no eligible profile sits in a
+   higher tier.
 3. **Decider**: the `llm` decider sends an excerpt of the request — the head
    of the system prompt and the last user turn, trimmed, never images — to the
    decider profile inside a `DATA` block with the prompt in
@@ -121,8 +124,10 @@ profiles.
    the caller. The `router` object in the request body is dropped; `model` is
    rewritten to the profile's model; `stream_options.include_usage` is set
    when streaming. The profile's `timeout` bounds the whole exchange, as in
-   `delegation-run`; without it, only a 30-second idle limit between stream
-   chunks applies. No retry.
+   `delegation-run` (504 `timeout`, retryable); without it a non-stream
+   answer is waited for however long it takes, and a stream is cut only after
+   30 seconds without an event. Connecting is bounded at 20 seconds either
+   way. No retry.
 6. **Disclosure**: see below.
 
 `delegation-router decide --decider none` runs steps 1, 2 and 4 with no
@@ -212,7 +217,8 @@ curl -s 127.0.0.1:4141/v1/health
 
 Any OpenAI SDK works with `base_url="http://127.0.0.1:4141/v1"` and any API
 key (the router ignores it; each profile uses its own). Naming a pool profile
-as `model` forwards to it without a decider and still discloses.
+as `model` forwards to it without a decider and still discloses; the context
+and cost-ceiling rules apply to it too, only the tier rule does not.
 
 `doctor.sh` has a "Model router" section: absent is optional, configured is
 reported with its pool, default and decider, and `check` warnings are listed.

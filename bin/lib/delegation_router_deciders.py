@@ -6,6 +6,7 @@ A decider never raises. It returns
 and an empty signal list means "undecidable": the policy then uses the
 caller's declared default and says so."""
 
+import functools
 import hashlib
 import json
 import re
@@ -16,9 +17,11 @@ import urllib.request
 from delegation_config import ROOT
 from delegation_router import (
     DECISION_TOKENS,
+    count,
     credential_for,
     credential_required,
     endpoint_for,
+    estimate_cost,
     excerpt,
 )
 
@@ -26,6 +29,14 @@ PROMPT_FILE = ROOT / "config/router-prompt.v1.md"
 MAX_DECISION_OUTPUT_TOKENS = 60
 LLM_CONFIDENCE = 0.8
 JSON_OBJECT = re.compile(r"\{.*\}", re.S)
+
+
+@functools.lru_cache(maxsize=1)
+def prompt():
+    """The decider prompt, read once per process; its hash is part of the
+    decider version."""
+    text = PROMPT_FILE.read_text()
+    return text, hashlib.sha256(text.encode()).hexdigest()[:8]
 
 
 class NoneDecider:
@@ -56,12 +67,8 @@ class LlmDecider:
         self.timeout = timeout
         self.opener = opener or urllib.request.urlopen
         self.env = env
-        self.prompt = PROMPT_FILE.read_text()
-        self.version = (
-            profile["model"]
-            + "+"
-            + hashlib.sha256(self.prompt.encode()).hexdigest()[:8]
-        )
+        self.prompt, digest = prompt()
+        self.version = profile["model"] + "+" + digest
 
     def request_body(self, text):
         body = {
@@ -126,7 +133,7 @@ class LlmDecider:
                 )
             match = JSON_OBJECT.search(content)
             answer = json.loads(match.group(0)) if match else None
-            usage = data.get("usage") or {}
+            usage = data.get("usage") if isinstance(data.get("usage"), dict) else {}
         except (ValueError, KeyError, IndexError, TypeError, AttributeError):
             return fail("decider returned malformed output")
         if (
@@ -153,13 +160,11 @@ class LlmDecider:
             {"kind": "tags", "key": "tags", "tags": tags},
         ]
         result["reason"] = str(answer.get("reason", ""))[:200]
-        in_tokens = usage.get("prompt_tokens") or DECISION_TOKENS
-        out_tokens = usage.get("completion_tokens") or MAX_DECISION_OUTPUT_TOKENS
-        price = self.meta.get("price")
-        if price:
-            result["cost_usd"] = round(
-                in_tokens * price["in"] / 1e6 + out_tokens * price["out"] / 1e6, 8
-            )
+        in_tokens = count(usage.get("prompt_tokens")) or DECISION_TOKENS
+        out_tokens = count(usage.get("completion_tokens")) or MAX_DECISION_OUTPUT_TOKENS
+        cost = estimate_cost(self.meta, in_tokens, out_tokens)
+        if cost is not None:
+            result["cost_usd"] = round(cost, 8)
         result["usage"] = {"input": in_tokens, "output": out_tokens}
         result["latency_ms"] = int((time.monotonic() - started) * 1000)
         return result

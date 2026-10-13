@@ -89,7 +89,6 @@ def features(body):
         and response_format.get("type") in {"json_object", "json_schema"},
         "has_numbers": bool(re.search(r"\d", last_user)),
         "max_tokens": max_tokens,
-        "last_user_chars": len(last_user),
     }
 
 
@@ -119,12 +118,15 @@ def excerpt(body, mode="excerpt"):
             + " […] "
             + last_user[-LAST_USER_LIMIT // 4 :]
         )
-    tools = body.get("tools") or []
-    names = [
-        str(t.get("function", {}).get("name", t.get("name", "")))
-        for t in tools
-        if isinstance(t, dict)
-    ]
+    tools = body.get("tools") if isinstance(body.get("tools"), list) else []
+    names = []
+    for t in tools:
+        if not isinstance(t, dict):
+            continue
+        function = t.get("function")
+        name = function.get("name") if isinstance(function, dict) else t.get("name")
+        if isinstance(name, str):
+            names.append(name)
     meta = "turns: %d; system prompt: %s; tools: %s" % (
         len(messages),
         "yes" if system else "no",
@@ -146,10 +148,18 @@ def pool_meta(c, cat=None):
     return [profile_meta(key, c["profiles"][key], cat) for key in r["pool"]]
 
 
+def count(value):
+    """A token count as the provider or the caller sent it, or None."""
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return None
+    return int(value) if value >= 0 else None
+
+
 def estimate_cost(meta, in_tokens, out_tokens):
-    """USD, or None when the model has no per-token list price."""
+    """USD for one exchange, or None when the price or a count is unknown."""
     price = meta.get("price")
-    if not price:
+    in_tokens, out_tokens = count(in_tokens), count(out_tokens)
+    if not price or in_tokens is None or out_tokens is None:
         return None
     return in_tokens * price["in"] / 1e6 + out_tokens * price["out"] / 1e6
 
@@ -177,6 +187,8 @@ def prefilter(pool, feats, ceiling, default_key):
             > meta["context"]
         ):
             reason = "context too small"
+        elif feats.get("wants_json") and meta.get("json_mode") is False:
+            reason = "no JSON mode"
         else:
             cost = estimate_cost(
                 meta, feats["est_tokens"], feats["max_tokens"] or DEFAULT_OUTPUT_TOKENS
@@ -191,9 +203,14 @@ def prefilter(pool, feats, ceiling, default_key):
 
 
 def skip_reason(eligible, default_meta, decider_meta, feats):
-    """Why a model decider would be wasted on this request, or None."""
+    """Why a model decider would be wasted on this request, or None. A decision
+    can save money (a cheaper profile than the default) or buy capability (a
+    higher tier than the default); it is skipped only when it can do neither."""
     if len(eligible) <= 1:
         return "one eligible profile"
+    default_rank = TIER_RANK.get(default_meta.get("tier"), -1)
+    if any(TIER_RANK.get(m.get("tier"), -1) > default_rank for m in eligible):
+        return None
     out_tokens = feats["max_tokens"] or DEFAULT_OUTPUT_TOKENS
     cheapest = min(
         (

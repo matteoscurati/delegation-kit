@@ -49,6 +49,7 @@ printf '%s\n' '{}' >"$GROK_TEST_HOME/auth.json"
 ( umask 077; printf 'ZAI_API_KEY=restored-from-backup\n' >"$DATA.zai.env.bak" )
 ( umask 077; printf 'DEEPSEEK_API_KEY=stale-backup\n' >"$DATA.deepseek.env.bak" )
 ( umask 077; printf 'DEEPSEEK_API_KEY=current\n' >"$DATA/config/deepseek.env" )
+( umask 077; printf '{"ts":1,"profile":"restored"}\n' >"$DATA.router-receipts.jsonl.bak" )
 for retired_config in routing-gates.json grok-4.6-routing.json glm-5.3-flash-max-routing.json \
     kimi-k3-routing.json gemini-3.8-flash-routing.json qwen3.8-max-routing.json \
     deepseek-flash-routing.json external-executor-contract.json model-evidence.json; do
@@ -116,6 +117,10 @@ done
   || fail 'restored Z.AI key file is not mode 600'
 [ "$(cat "$DATA/config/deepseek.env")" = 'DEEPSEEK_API_KEY=current' ] \
   || fail 'install replaced an existing DeepSeek key with the backup'
+[ "$(cat "$DATA/router/receipts.jsonl")" = '{"ts":1,"profile":"restored"}' ] \
+  || fail 'install did not restore the router receipts from the uninstaller backup'
+[ "$(stat -f '%Lp' "$DATA/router/receipts.jsonl" 2>/dev/null || stat -c '%a' "$DATA/router/receipts.jsonl")" = 600 ] \
+  || fail 'restored router receipts are not mode 600'
 grep -Fq 'zai key restored from' "$TMP/install.log" || fail 'install did not report the restored key'
 # The runners source the shared library from the installed tree, so it must be
 # present and an installed runner must run through its PATH symlink.
@@ -305,6 +310,7 @@ ok
 # without touching the credentials/archives the uninstaller deliberately keeps.
 [ -f "$TMP/data2/config/external-patch-policy.json" ] \
   || fail 'the --claude-only install did not include the patch policy'
+mkdir -p "$TMP/data2/router" && printf '{"ts":2}\n' >"$TMP/data2/router/receipts.jsonl"
 env CLAUDE_HOME="$TMP/claude2" CODEX_HOME="$TMP/codex2" \
     DELEGATION_BIN_HOME="$TMP/bin2" DELEGATION_DATA_HOME="$TMP/data2" \
     "$ROOT/uninstall.sh" </dev/null >"$TMP/uninstall2.log" 2>&1 \
@@ -315,6 +321,8 @@ env CLAUDE_HOME="$TMP/claude2" CODEX_HOME="$TMP/codex2" \
   || fail 'uninstall left the installed patch policy behind'
 [ ! -e "$TMP/bin2/delegation-route" ] && [ ! -e "$TMP/bin2/delegation-router" ] \
   || fail 'uninstall left route discovery or the router on the bin path'
+[ "$(cat "$TMP/data2.router-receipts.jsonl.bak")" = '{"ts":2}' ] \
+  || fail 'uninstall did not preserve the router receipts beside the data home'
 ok
 
 doctor_section() { # runs doctor against $1 as DATA_HOME, prints its version block

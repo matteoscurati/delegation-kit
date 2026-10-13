@@ -39,16 +39,28 @@ All notable changes to delegation-kit are documented here.
 - **Refusals that never reach a provider**: unknown model (404), browser
   `Origin` not in `allow_origins` (403), estimated cost above
   `router.max_cost_usd` or the `X-Router-Max-Cost-USD` header (400
-  `cost-ceiling` with the estimate), invalid body, missing credential (401
-  `provider-key-missing`), more than 16 in flight (429 `busy`). Provider
+  `cost-ceiling` with the estimate — for a named pool profile as well as for
+  `auto`), invalid body, missing credential (401 `provider-key-missing`),
+  more than 16 in flight (429 `busy`). A refusal issued before the body was
+  read closes the connection, so a pooled client never parses the leftover
+  body as its next request. An `allow_origins` entry gets the CORS preflight
+  answered and the `X-Router-*` headers exposed; every other `Origin` is
+  refused. Provider
   failures keep their meaning and lose their payload: 401/403 →
   `provider-key-rejected`, 429 → `provider-rate-limited` with `Retry-After`,
   5xx → `provider-unavailable`, other 4xx → `provider-rejected-request` with
-  key-shaped tokens redacted. The server prints one listening line and
-  nothing else — not requests, not errors, never a credential.
+  key-shaped tokens redacted. Waiting follows the 0.26.0 rule: a non-stream
+  answer is never cut unless the profile sets `timeout` (then 504 `timeout`,
+  checked while the body is read, not after); a stream is cut after 30 s
+  without an event; connecting is bounded at 20 s. The server prints one
+  listening line and nothing else — not requests, not errors, never a
+  credential; a provider's odd response shape (null or string token counts,
+  a usage that is not an object) is tolerated, never a crash mid-stream.
 - **Opt-in receipts** (`router.receipts: true`): one JSONL line per request in
   `$DELEGATION_DATA_HOME/router/receipts.jsonl`, mode 600, with decision,
-  profile, usage, cost and latency and never prompt content.
+  profile, usage, cost and latency and never prompt content. `uninstall.sh`
+  keeps them as `$DELEGATION_DATA_HOME.router-receipts.jsonl.bak` and
+  `install.sh` restores them, the key-file treatment.
 - **`config/catalog.json`**, a dated snapshot of tier, code capability,
   USD-per-million prices, context and JSON-mode support for the models the
   presets name and the usual pool candidates. Schema 2 profiles may declare

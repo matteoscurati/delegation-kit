@@ -18,6 +18,8 @@ from urllib.parse import urlsplit
 
 from delegation_config import ROOT, catalog
 from delegation_router import (
+    DEFAULT_OUTPUT_TOKENS,
+    count,
     credential_for,
     credential_required,
     data_home,
@@ -30,8 +32,16 @@ from delegation_router_pipeline import explicit, route, router_block
 MAX_BODY = 4 * 1024 * 1024
 MAX_RESPONSE = 4 * 1024 * 1024
 MAX_EVENT = 64 * 1024
-IDLE_TIMEOUT = 30
+READ_SIZE = 64 * 1024
+CONNECT_TIMEOUT = 20
+IDLE_TIMEOUT = 30  # between stream events; a non-stream answer is never cut
 MAX_IN_FLIGHT = 16
+EXPOSED_HEADERS = (
+    "X-Router-Profile, X-Router-Model, X-Router-Tier, X-Router-Effort, "
+    "X-Router-Decider, X-Router-Policy, X-Router-Difficulty, X-Router-Confidence, "
+    "X-Router-Undecidable, X-Router-Latency-Ms, X-Router-Mode, "
+    "X-Router-Model-Mismatch, X-Router-Error, Retry-After"
+)
 KEY_SHAPED = re.compile(r"\b(?:sk-[A-Za-z0-9_-]{8,}|[A-Za-z0-9_-]{32,})\b")
 
 
@@ -106,7 +116,9 @@ def upstream_body(body, profile, choice, stream):
         out["max_tokens"] = params["max_tokens"]
     effort = choice.get("reasoning_effort") or params.get("effort")
     if profile["adapter"] == "deepseek-api":
-        out["thinking"] = {"type": "enabled"}
+        # The runner always enables thinking; here the caller may have said
+        # otherwise, and the caller's own request wins.
+        out.setdefault("thinking", {"type": "enabled"})
         if effort:
             out["reasoning_effort"] = effort
     elif profile["adapter"] == "token-plan-openai" and effort:
@@ -139,6 +151,8 @@ class RouterServer(ThreadingHTTPServer):
     allow_reuse_address = True
 
     def __init__(self, address, config, env=None):
+        if ":" in address[0]:
+            self.address_family = socket.AF_INET6
         super().__init__(address, Handler)
         self.config = config
         self.env = os.environ if env is None else env
@@ -167,18 +181,54 @@ class Handler(BaseHTTPRequestHandler):
 
     # ---- plumbing ------------------------------------------------------------
 
+    def setup(self):
+        super().setup()
+        self.body_consumed = False
+        self.headers_sent = False
+        # Set once a choice is made, so a failure after it still discloses it.
+        self.router_headers = ()
+
+    def allowed_origin(self):
+        origin = self.headers.get("Origin")
+        allowed = self.server.config["router"].get("allow_origins", [])
+        return origin if origin and origin in allowed else None
+
+    def cors_headers(self):
+        origin = self.allowed_origin()
+        if not origin:
+            return []
+        return [
+            ("Access-Control-Allow-Origin", origin),
+            ("Access-Control-Expose-Headers", EXPOSED_HEADERS),
+            ("Vary", "Origin"),
+        ]
+
+    def start_response(self, status, headers):
+        self.send_response(status)
+        for key, value in list(headers) + self.cors_headers():
+            self.send_header(key, value)
+        if self.close_connection:
+            self.send_header("Connection", "close")
+        self.end_headers()
+        self.headers_sent = True
+
     def send_json(self, status, payload, headers=()):
         data = json.dumps(payload).encode()
-        self.send_response(status)
-        self.send_header("Content-Type", "application/json")
-        self.send_header("Content-Length", str(len(data)))
-        self.send_header("Cache-Control", "no-store")
-        for key, value in headers:
-            self.send_header(key, value)
-        self.end_headers()
+        self.start_response(
+            status,
+            [
+                ("Content-Type", "application/json"),
+                ("Content-Length", str(len(data))),
+                ("Cache-Control", "no-store"),
+                *headers,
+            ],
+        )
         self.wfile.write(data)
 
     def fail(self, failure, headers=()):
+        if not self.body_consumed:
+            # Whatever is left of the request would be parsed as the next one.
+            self.close_connection = True
         error = {"code": failure.code, "retryable": failure.retryable}
         error.update({k: v for k, v in failure.extra.items() if v is not None})
         extra = list(headers) + [("X-Router-Error", failure.code)]
@@ -193,6 +243,7 @@ class Handler(BaseHTTPRequestHandler):
         if int(length) > MAX_BODY:
             raise RouterFailure(413, "size-limit")
         raw = self.rfile.read(int(length))
+        self.body_consumed = True
         try:
             body = json.loads(raw)
         except ValueError:
@@ -202,15 +253,33 @@ class Handler(BaseHTTPRequestHandler):
         return body
 
     def check_origin(self):
-        origin = self.headers.get("Origin")
-        if origin and origin not in self.server.config["router"].get(
-            "allow_origins", []
-        ):
+        if self.headers.get("Origin") and not self.allowed_origin():
             raise RouterFailure(403, "browser-denied")
+
+    # ---- OPTIONS (CORS preflight for an allow-listed origin) ------------------
+
+    def do_OPTIONS(self):
+        self.body_consumed = True  # a preflight carries no body
+        if not self.allowed_origin():
+            return self.fail(RouterFailure(403, "browser-denied"))
+        self.start_response(
+            204,
+            [
+                ("Access-Control-Allow-Methods", "GET, POST, OPTIONS"),
+                (
+                    "Access-Control-Allow-Headers",
+                    "Content-Type, Authorization, X-Router-Max-Cost-USD",
+                ),
+                ("Access-Control-Max-Age", "600"),
+                ("Content-Length", "0"),
+            ],
+        )
 
     # ---- GET -----------------------------------------------------------------
 
     def do_GET(self):
+        self.body_consumed = True  # a GET body, if any, is not read: close after
+        self.close_connection = True
         r = self.server.config["router"]
         if self.path == "/v1/health":
             self.send_json(
@@ -249,8 +318,6 @@ class Handler(BaseHTTPRequestHandler):
         if self.path != "/v1/chat/completions":
             return self.fail(RouterFailure(404, "not-found"))
         admitted = False
-        # Set once a choice is made, so a failure after it still discloses it.
-        self.router_headers = ()
         try:
             self.check_origin()
             body = self.read_body()
@@ -259,19 +326,22 @@ class Handler(BaseHTTPRequestHandler):
             admitted = True
             self.handle_chat(body)
         except RouterFailure as failure:
-            try:
-                self.fail(failure, self.router_headers)
-            except OSError:
-                pass
-        except (OSError, ValueError, KeyError, TypeError):
-            # Never log: a transport exception may carry request details.
-            try:
-                self.fail(RouterFailure(502, "router-unavailable"))
-            except OSError:
-                pass
+            self.respond_failure(failure, self.router_headers)
+        except Exception:  # noqa: BLE001 — never log: it may carry request details
+            self.respond_failure(RouterFailure(502, "router-unavailable"))
         finally:
             if admitted:
                 self.server.in_flight.release()
+
+    def respond_failure(self, failure, headers=()):
+        if self.headers_sent:
+            # A status line inside a body would corrupt the stream: just end it.
+            self.close_connection = True
+            return
+        try:
+            self.fail(failure, headers)
+        except OSError:
+            pass
 
     def handle_chat(self, body):
         c = self.server.config
@@ -291,7 +361,7 @@ class Handler(BaseHTTPRequestHandler):
                 c, body, ceiling=ceiling, env=self.server.env
             )
         elif isinstance(model, str) and model in r["pool"]:
-            out, choice, feats, blocked = explicit(c, model, body)
+            out, choice, feats, blocked = explicit(c, model, body, ceiling=ceiling)
         else:
             raise RouterFailure(404, "unknown-model")
         for item in blocked:
@@ -299,12 +369,16 @@ class Handler(BaseHTTPRequestHandler):
                 if item["reason"] == "estimated cost above ceiling":
                     meta = self.server.pool[choice["profile"]]
                     estimated = estimate_cost(
-                        meta, feats["est_tokens"], feats["max_tokens"] or 1024
+                        meta,
+                        feats["est_tokens"],
+                        feats["max_tokens"] or DEFAULT_OUTPUT_TOKENS,
                     )
                     raise RouterFailure(
                         400,
                         "cost-ceiling",
-                        estimated_usd=round(estimated, 6) if estimated else None,
+                        estimated_usd=round(estimated, 6)
+                        if estimated is not None
+                        else None,
                         ceiling_usd=ceiling,
                     )
                 raise RouterFailure(400, "no-usable-candidate", reason=item["reason"])
@@ -327,54 +401,96 @@ class Handler(BaseHTTPRequestHandler):
             http.client.HTTPSConnection
             if url.scheme == "https"
             else http.client.HTTPConnection
-        )(url.hostname, url.port, timeout=IDLE_TIMEOUT)
+        )(url.hostname, url.port, timeout=CONNECT_TIMEOUT)
         meta = self.server.pool[choice["profile"]]
         extra_headers = disclosure_headers(out)
         self.router_headers = extra_headers
         try:
             try:
+                connection.connect()
+                # The connect timeout has done its job; from here the only
+                # limits are the profile's deadline and, when streaming, the
+                # idle limit between events. A slow answer is not a failure.
+                # Keep the socket: http.client forgets it once a provider
+                # answers with Connection: close, while the response still
+                # reads from it.
+                sock = connection.sock
+                sock.settimeout(
+                    self.wait_limit(deadline, IDLE_TIMEOUT if stream else None)
+                )
                 connection.request(
                     "POST", url.path or "/", body=payload, headers=headers
                 )
                 response = connection.getresponse()
+            except socket.timeout:
+                raise RouterFailure(
+                    504 if deadline else 502,
+                    "timeout" if deadline else "provider-unavailable",
+                    True,
+                    profile=choice["profile"],
+                )
             except (OSError, http.client.HTTPException):
                 raise RouterFailure(
                     502, "provider-unavailable", True, profile=choice["profile"]
                 )
             if response.status != 200:
-                raw = response.read(MAX_RESPONSE)
+                raw = self.read_bounded(response, sock, deadline, out)
                 failure = map_upstream_error(response.status, raw, response.headers)
                 failure.extra["profile"] = choice["profile"]
-                raise RouterFailure(
-                    failure.status, failure.code, failure.retryable, **failure.extra
-                )
-            if stream:
-                self.relay_stream(
-                    response, out, meta, profile, extra_headers, started, deadline
-                )
-            else:
-                self.relay_json(
-                    response, out, meta, profile, extra_headers, started, deadline
-                )
+                raise failure
+            relay = self.relay_stream if stream else self.relay_json
+            relay(response, sock, out, meta, profile, extra_headers, started, deadline)
         finally:
             connection.close()
 
     # ---- relays --------------------------------------------------------------
 
-    def settle(self, out, meta, profile, usage, reported, started, status):
-        out["usage"] = usage
-        out["cost_usd"] = (
-            round(
-                estimate_cost(
-                    meta,
-                    usage.get("prompt_tokens", 0),
-                    usage.get("completion_tokens", 0),
-                ),
-                8,
-            )
-            if usage and meta.get("price")
-            else None
+    @staticmethod
+    def wait_limit(deadline, idle):
+        """Socket timeout for the next wait: the smaller of the idle limit and
+        what is left of the profile's deadline; None when neither applies."""
+        remaining = (
+            None if deadline is None else max(deadline - time.monotonic(), 0.001)
         )
+        if idle is None:
+            return remaining
+        return idle if remaining is None else min(idle, remaining)
+
+    def read_bounded(self, response, sock, deadline, out):
+        """Read a whole non-stream body within the size cap and the deadline."""
+        chunks, size = [], 0
+        while True:
+            if deadline is not None and time.monotonic() > deadline:
+                raise RouterFailure(
+                    504, "timeout", True, profile=out["chosen"]["profile"]
+                )
+            sock.settimeout(self.wait_limit(deadline, None))
+            try:
+                piece = response.read(READ_SIZE)
+            except socket.timeout:
+                raise RouterFailure(
+                    504, "timeout", True, profile=out["chosen"]["profile"]
+                )
+            except (OSError, http.client.HTTPException):
+                raise RouterFailure(
+                    502, "upstream-interrupted", True, profile=out["chosen"]["profile"]
+                )
+            if not piece:
+                return b"".join(chunks)
+            size += len(piece)
+            if size > MAX_RESPONSE:
+                raise RouterFailure(
+                    502, "upstream-too-large", profile=out["chosen"]["profile"]
+                )
+            chunks.append(piece)
+
+    def settle(self, out, meta, profile, usage, reported, started, status):
+        usage = {k: count(v) for k, v in usage.items()} if usage else {}
+        out["usage"] = usage
+        cost = estimate_cost(
+            meta, usage.get("prompt_tokens"), usage.get("completion_tokens")
+        )
+        out["cost_usd"] = None if cost is None else round(cost, 8)
         out["provider_reported_model"] = reported
         out["mismatch"] = bool(
             reported
@@ -386,14 +502,10 @@ class Handler(BaseHTTPRequestHandler):
         self.write_receipt(out)
         return out
 
-    def relay_json(self, response, out, meta, profile, headers, started, deadline):
-        raw = response.read(MAX_RESPONSE + 1)
-        if len(raw) > MAX_RESPONSE:
-            raise RouterFailure(
-                502, "upstream-too-large", profile=out["chosen"]["profile"]
-            )
-        if deadline and time.monotonic() > deadline:
-            raise RouterFailure(504, "timeout", True, profile=out["chosen"]["profile"])
+    def relay_json(
+        self, response, sock, out, meta, profile, headers, started, deadline
+    ):
+        raw = self.read_bounded(response, sock, deadline, out)
         try:
             data = json.loads(raw)
             if not isinstance(data, dict):
@@ -411,14 +523,18 @@ class Handler(BaseHTTPRequestHandler):
             extra.append(("X-Router-Model-Mismatch", "1"))
         self.send_json(200, data, extra)
 
-    def relay_stream(self, response, out, meta, profile, headers, started, deadline):
-        self.send_response(200)
-        self.send_header("Content-Type", "text/event-stream")
-        self.send_header("Cache-Control", "no-store")
-        self.send_header("Transfer-Encoding", "chunked")
-        for key, value in headers:
-            self.send_header(key, value)
-        self.end_headers()
+    def relay_stream(
+        self, response, sock, out, meta, profile, headers, started, deadline
+    ):
+        self.start_response(
+            200,
+            [
+                ("Content-Type", "text/event-stream"),
+                ("Cache-Control", "no-store"),
+                ("Transfer-Encoding", "chunked"),
+                *headers,
+            ],
+        )
         usage = {}
         reported = None
         done = False
@@ -429,9 +545,14 @@ class Handler(BaseHTTPRequestHandler):
                 failure = "timeout"
                 break
             try:
+                sock.settimeout(self.wait_limit(deadline, IDLE_TIMEOUT))
                 line = response.readline(MAX_EVENT + 1)
             except socket.timeout:
-                failure = "stream-idle"
+                failure = (
+                    "timeout"
+                    if deadline and time.monotonic() > deadline
+                    else "stream-idle"
+                )
                 break
             except (OSError, http.client.HTTPException):
                 failure = "stream-interrupted"

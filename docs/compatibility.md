@@ -16,14 +16,18 @@ are not an instruction to use this provider.
 
 The 0.27.0 release was verified on **2026-10-13** on macOS 26.5.1 with
 ambient Codex CLI `0.162.1` and ambient Claude Code `2.1.296`: all 13
-regression suites green in 43 seconds (the new `router` suite runs the 30
+regression suites green in 42 seconds (the new `router` suite runs the 37
 tests of `tests/router.py` — the `tiered-v1` policy table, schema 2
 validation, `check`/`decide` and the loopback server against a fake provider:
 each profile receives only its own key and no canary key reaches any output,
 decider failures and prompt injection cannot steer the route, broken streams
-end with a router chunk naming the failure, receipts hold no prompt text, and
-the server writes nothing to stderr; the doctor and install-marker suites
-cover the "Model router" section, the installed command, catalog and prompt),
+end with a router chunk naming the failure, a profile `timeout` cuts a slow
+non-stream answer as 504 within the deadline, odd provider shapes never
+corrupt a stream, a refusal before the body closes the connection, an
+allow-listed origin gets CORS, `[::1]` binds, receipts hold no prompt text
+and survive `uninstall.sh`, and the server writes nothing to stderr; the
+doctor and install-marker suites cover the "Model router" section, the
+installed command, catalog, prompt and receipts backup),
 ShellCheck at `-S warning`, ruff, the eight Node tests, the ten-check version
 gate, a reinstall from the release commit and static doctor at `55 OK, 0 WARN,
 0 FAIL` with the Grok runtime line present and the router reported as

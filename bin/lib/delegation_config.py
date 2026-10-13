@@ -1,5 +1,6 @@
 """User configuration and technical adapter registry; never imports project config."""
 
+import functools
 import json
 import os
 import re
@@ -196,6 +197,9 @@ def validate_routing_fields(p):
             raise ValueError("invalid price (USD per million tokens: {in, out})")
 
 
+LISTEN_PATTERN = re.compile(r"(localhost|127\.0\.0\.1|\[::1\]):[0-9]{1,5}")
+
+
 def validate_router(c):
     """The router block is a user-declared rule set: pool, default, decider."""
     r = c.get("router")
@@ -206,9 +210,7 @@ def validate_router(c):
     if not isinstance(r, dict) or set(r) - ROUTER_FIELDS:
         raise ValueError("unknown router field")
     listen = r.get("listen", "127.0.0.1:4141")
-    if not isinstance(listen, str) or not re.fullmatch(
-        r"(localhost|127\.0\.0\.1|\[::1\]):[0-9]{1,5}", listen
-    ):
+    if not isinstance(listen, str) or not LISTEN_PATTERN.fullmatch(listen):
         raise ValueError("router.listen must be a loopback host:port")
     if not 1 <= int(listen.rsplit(":", 1)[1]) <= 65535:
         raise ValueError("router.listen port out of range")
@@ -384,8 +386,10 @@ def validate(c):
     return c
 
 
+@functools.lru_cache(maxsize=1)
 def catalog():
-    """Code-owned routing metadata for known model identifiers."""
+    """Code-owned routing metadata for known model identifiers. Immutable for
+    the life of a process, so read once."""
     return read(ROOT / "config/catalog.json")
 
 

@@ -50,9 +50,15 @@ rm -f "$BIN_HOME/delegation-config" "$BIN_HOME/delegation-run" "$BIN_HOME/delega
   "$BIN_HOME/delegation-schema" "$BIN_HOME/delegation-evidence" "$BIN_HOME/delegation-epoch" \
   "$BIN_HOME/delegation-executor-contract"
 # Everything else under $DATA_HOME is a byte-for-byte copy of a repo file that
-# re-running install.sh restores; the keys and archived runtime binaries are the
-# unrecoverable things here. Back them up rather than destroy them, matching the
-# *.delegation-kit.bak convention below.
+# re-running install.sh restores; the keys, the router's receipts and the
+# archived runtime binaries are the unrecoverable things here. Back them up
+# rather than destroy them, matching the *.delegation-kit.bak convention below.
+receipts_backup=""
+if [ -f "$DATA_HOME/router/receipts.jsonl" ]; then
+  receipts_backup="$DATA_HOME.router-receipts.jsonl.bak"
+  ( umask 077; cp "$DATA_HOME/router/receipts.jsonl" "$receipts_backup" )
+  chmod 600 "$receipts_backup"
+fi
 zai_key_backup=""
 qwen_key_backup=""
 deepseek_key_backup=""
@@ -95,6 +101,8 @@ echo "  - removed schema compiler, optional GLM/Gemini/Kimi/Qwen/DeepSeek/Grok b
   || echo "  - Qwen Token Plan API key preserved at $qwen_key_backup (mode 600) — delete it yourself when done"
 [ -z "$deepseek_key_backup" ] \
   || echo "  - DeepSeek API key preserved at $deepseek_key_backup (mode 600) — delete it yourself when done"
+[ -z "$receipts_backup" ] \
+  || echo "  - router receipts preserved at $receipts_backup (mode 600) — delete them yourself when done"
 echo
 echo "Done. config.toml was never auto-edited, so nothing to revert there."
 echo "Backups (*.delegation-kit.bak) left in place; delete when satisfied."

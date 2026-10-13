@@ -96,14 +96,18 @@ def route(
     return out, choice, feats, blocked
 
 
-def explicit(c, profile_key, body):
-    """A request that names a pool profile itself: no decider, full disclosure."""
+def explicit(c, profile_key, body, ceiling=None):
+    """A request that names a pool profile itself: no decider, full disclosure.
+    The context and cost rules still apply; only the tier rule does not, since
+    nothing is being chosen."""
     r = router_block(c)
     if profile_key not in r["pool"]:
         raise KeyError(profile_key)
     cat = catalog()
     meta = profile_meta(profile_key, c["profiles"][profile_key], cat)
     feats = features(body)
+    ceiling = r.get("max_cost_usd") if ceiling is None else ceiling
+    _eligible, blocked = prefilter([meta], feats, ceiling, profile_key)
     choice = {
         "profile": meta["profile"],
         "model": meta["model"],
@@ -114,9 +118,9 @@ def explicit(c, profile_key, body):
     }
     verdict = normalize([])
     decision = {"decider": {"id": "none", "version": "explicit"}, "signals": []}
-    out = disclosure(c, feats, verdict, choice, decision, [], None, "explicit")
+    out = disclosure(c, feats, verdict, choice, decision, blocked, None, "explicit")
     out["undecidable"] = False
-    return out, choice, feats, []
+    return out, choice, feats, blocked
 
 
 def check(c):
