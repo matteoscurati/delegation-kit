@@ -8,7 +8,9 @@ of the actual result are the only checks. The starting profiles ship in
 ## Configure
 
 `delegation-config init` creates schema version 1 at
-`${XDG_CONFIG_HOME:-$HOME/.config}/delegation-kit/config.json`. Set
+`${XDG_CONFIG_HOME:-$HOME/.config}/delegation-kit/config.json`; schema
+version 2 adds the optional [router block](router.md) and is accepted by every
+command. Set
 `DELEGATION_CONFIG_FILE` to use a different file. Project-local configuration
 is never discovered automatically. An existing configuration is preserved.
 
@@ -129,6 +131,16 @@ a compatible reviewer it stays pending as well. Optional results are
 `delegation-config init --preset strict` selects cross-family policy for a new
 configuration. For an existing configuration explicitly change `review_policy`
 and run `apply`; `init` never overrides later user decisions.
+
+## Router
+
+A `router` block, valid only with `"schema_version": 2`, declares a pool of
+HTTP profiles, a default and a decider for `delegation-router`. Schema 2
+profiles may also declare routing metadata — `tier`, `code`, `price`,
+`context`, `json_mode` — which otherwise comes from the shipped
+`config/catalog.json`. Without the block the router is off; nothing else in
+the kit reads it. See [the router page](router.md) for the fields, the policy
+and what each response discloses.
 
 ## Migration
 

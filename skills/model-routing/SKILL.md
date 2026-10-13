@@ -18,6 +18,11 @@ Profiles come from `${XDG_CONFIG_HOME:-$HOME/.config}/delegation-kit/config.json
 or `DELEGATION_CONFIG_FILE`, never automatically from the project repository.
 No benchmark or kit qualification is required to choose a profile.
 
+When the configuration declares a `router` block, `delegation-router decide
+--prompt-file FILE --json` returns one recommended pool profile with its
+signals and reasons. It is discovery, not dispatch: show the recommendation
+and run it only through the same explicit `delegation-run` request below.
+
 Dispatch the chosen profile once using `delegation-run --profile PROFILE
 --lane LANE --prompt-file FILE --output FILE --workdir DIR`. Output and receipt
 paths must be new and outside the worktree. A provider's `check --json`

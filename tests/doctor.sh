@@ -120,8 +120,9 @@ ln -sfn "$CONTRACT_DATA/bin/delegation-patch-verify" \
 # The personal-configuration commands resolve their library and the shipped
 # presets relative to their own install root, exactly as install.sh lays them out.
 mkdir -p "$CONTRACT_DATA/bin/lib"
-cp "$ROOT"/bin/lib/*.sh "$ROOT/bin/lib/delegation_config.py" "$CONTRACT_DATA/bin/lib/"
-for command in delegation-config delegation-run delegation-openai-compatible delegation-route; do
+cp "$ROOT"/bin/lib/*.sh "$ROOT"/bin/lib/delegation_*.py "$CONTRACT_DATA/bin/lib/"
+cp "$ROOT/config/router-prompt.v1.md" "$CONTRACT_DATA/config/"
+for command in delegation-config delegation-run delegation-openai-compatible delegation-route delegation-router; do
   cp "$ROOT/bin/$command" "$CONTRACT_DATA/bin/$command"
   chmod 755 "$CONTRACT_DATA/bin/$command"
   ln -sfn "$CONTRACT_DATA/bin/$command" "$CONTRACT_BIN/$command"
@@ -140,6 +141,38 @@ grep -Fq '[ OK ] route discovery reads the personal configuration' "$TMP/contrac
 }
 grep -Fq 'it never dispatches and grants nothing' "$TMP/contract-doctor.log" || {
   printf 'doctor did not restate the discovery boundary\n' >&2
+  exit 1
+}
+# The router is optional: the preset declares none, and doctor says so without
+# failing. A configured router is reported with its pool, default and decider.
+grep -Fq '[ .. ] router not configured' "$TMP/contract-doctor.log" || {
+  sed 's/^/    /' "$TMP/contract-doctor.log" >&2
+  printf 'doctor did not report the absent router as optional\n' >&2
+  exit 1
+}
+jq '{schema_version: 2, review_policy: "optional", profiles: .profiles,
+     router: {pool: ["deepseek-flash", "qwen3.8-max"], default: "deepseek-flash", decider: {kind: "none"}}}' \
+  "$ROOT/config/presets.json" >"$TMP/router-config.json"
+if env PATH="$CONTRACT_BIN:$TEST_TOOLS:$PATH" CLAUDE_HOME="$TMP/claude" \
+    CODEX_HOME="$TMP/codex" DELEGATION_DATA_HOME="$CONTRACT_DATA" \
+    DELEGATION_CONFIG_FILE="$TMP/router-config.json" \
+    "$ROOT/doctor.sh" >"$TMP/router-doctor.log" 2>&1; then
+  :
+else
+  :
+fi
+grep -Fq '[ OK ] router configured: 2-profile pool, default deepseek-flash, decider none, listen 127.0.0.1:4141, mode route' "$TMP/router-doctor.log" || {
+  sed 's/^/    /' "$TMP/router-doctor.log" >&2
+  printf 'doctor did not report the configured router\n' >&2
+  exit 1
+}
+grep -Fq 'never retries or widens the pool' "$TMP/router-doctor.log" || {
+  printf 'doctor did not restate the router boundary\n' >&2
+  exit 1
+}
+grep -Fq '[WARN] router: qwen3.8-max: no per-token price' "$TMP/router-doctor.log" || {
+  sed 's/^/    /' "$TMP/router-doctor.log" >&2
+  printf 'doctor did not surface the router check warnings\n' >&2
   exit 1
 }
 # The personal configuration is validated (the preset applies when no file

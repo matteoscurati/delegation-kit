@@ -107,7 +107,7 @@ for retired_command in delegation-schema delegation-evidence delegation-epoch de
   [ ! -e "$DATA/bin/$retired_command" ] && [ ! -e "$TMP/bin/$retired_command" ] && [ ! -L "$TMP/bin/$retired_command" ] \
     || fail "upgrade retained the retired command $retired_command"
 done
-[ "$(find "$DATA/config" -maxdepth 1 -name '*.json' | sort | xargs -n1 basename)" = external-patch-policy.json ] \
+[ "$(find "$DATA/config" -maxdepth 1 -name '*.json' | sort | xargs -n1 basename | tr '\n' ' ')" = 'catalog.json external-patch-policy.json ' ] \
   || fail "install left unexpected JSON files in $DATA/config: $(ls "$DATA/config")"
 [ -x "$DATA/bin/delegation-deepseek" ] || fail 'install did not include the DeepSeek runner'
 [ "$(cat "$DATA/config/zai.env")" = 'ZAI_API_KEY=restored-from-backup' ] \
@@ -128,11 +128,20 @@ jq -e '.model == "deepseek-flash" and .adapter == "deepseek-api" and (.roles | i
   || fail 'the installed DeepSeek runner reported the wrong model or adapter contract'
 # The personal-configuration commands ship with the kit and the installer
 # initializes the configuration file (isolated here via DELEGATION_CONFIG_FILE).
-for command in delegation-config delegation-run delegation-openai-compatible; do
+for command in delegation-config delegation-run delegation-openai-compatible delegation-route delegation-router; do
   [ -L "$TMP/bin/$command" ] && [ -x "$DATA/bin/$command" ] \
     || fail "install did not link $command onto the bin path"
 done
 [ -f "$DATA/bin/lib/delegation_config.py" ] || fail 'install did not include delegation_config.py'
+[ -f "$DATA/bin/lib/delegation_router_server.py" ] || fail 'install did not include the router library'
+[ -f "$DATA/config/catalog.json" ] && [ -f "$DATA/config/router-prompt.v1.md" ] \
+  || fail 'install did not include the model catalog and the decider prompt'
+# The installed router resolves its catalog from its own install root and
+# reports the preset as router-less without touching any provider.
+env PATH="$TMP/bin:$PATH" "$TMP/bin/delegation-router" check --json >"$TMP/router-check.json" 2>"$TMP/router-check.err" \
+  || { sed 's/^/    /' "$TMP/router-check.err" >&2; fail 'the installed router could not run check'; }
+jq -e '.enabled == false and .read_only == true and (.catalog_version | length) > 0' "$TMP/router-check.json" >/dev/null \
+  || fail 'the installed router did not report the preset as router-less'
 [ -f "$DELEGATION_CONFIG_FILE" ] || fail 'install did not initialize the personal configuration'
 jq -e '.schema_version == 1 and .review_policy == "optional" and (.profiles | length) > 0' "$DELEGATION_CONFIG_FILE" >/dev/null \
   || fail 'the initialized personal configuration is not the optional-review preset'
@@ -287,7 +296,7 @@ grep -Fxq 'personal profile edit' "$TMP/claude2/agents/opus-reviewer.md" \
   || fail 'repeat install overwrote an edited profile'
 [ "$(jq -r '.review_policy' "$DELEGATION_CONFIG_FILE")" = required ] \
   || fail 'repeat install overwrote personal review policy'
-for command in delegation-config delegation-run delegation-openai-compatible; do
+for command in delegation-config delegation-run delegation-openai-compatible delegation-route delegation-router; do
   [ -x "$TMP/bin2/$command" ] || fail "missing new command $command"
 done
 ok
@@ -304,8 +313,8 @@ env CLAUDE_HOME="$TMP/claude2" CODEX_HOME="$TMP/codex2" \
   || fail 'uninstall left the patch verifier on the bin path'
 [ ! -e "$TMP/data2/config/external-patch-policy.json" ] \
   || fail 'uninstall left the installed patch policy behind'
-[ ! -e "$TMP/bin2/delegation-route" ] \
-  || fail 'uninstall left the router on the bin path'
+[ ! -e "$TMP/bin2/delegation-route" ] && [ ! -e "$TMP/bin2/delegation-router" ] \
+  || fail 'uninstall left route discovery or the router on the bin path'
 ok
 
 doctor_section() { # runs doctor against $1 as DATA_HOME, prints its version block

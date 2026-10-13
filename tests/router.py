@@ -798,6 +798,8 @@ class ServerTests(Fixture):
                 )
                 self.assertEqual(data["error"]["profile"], "frontier")
                 self.assertEqual(out_headers["X-Router-Error"], code)
+                self.assertEqual(out_headers["X-Router-Profile"], "frontier")
+                self.assertEqual(out_headers["Server"], "delegation-router")
                 self.assertNotIn("sk-canary", json.dumps(data))
                 if headers:
                     self.assertEqual(out_headers["Retry-After"], "7")

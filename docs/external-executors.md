@@ -94,10 +94,16 @@ reported:
 
 A response that names a *different* model is a silent substitution and fails
 every run with exit 70 (`provider_identity_mismatch`), unless the name was
-declared in the profile's `model_aliases`. A provider report is not independent
+declared in the profile's `aliases`. A provider report is not independent
 certification of anything, and `requested-only` is not a defect: several
 transports never surface a content model. For Grok, `usage_model`
 (`grok-4.6-build`) is the billing participant, not the content identity.
+
+[`delegation-router serve`](router.md) applies the same comparison to every
+response it relays, but discloses a mismatch instead of failing: the caller
+sees `mismatch: true`, `provider_reported_model` and
+`X-Router-Model-Mismatch: 1` on a response that is otherwise delivered,
+because in a gateway the caller is there to judge it.
 
 ## Exit codes
 

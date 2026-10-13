@@ -86,7 +86,7 @@ install_file() { # $1=source $2=target
   tmp="$(mktemp "$2.XXXXXX")" || return 1
   cp "$1" "$tmp" && chmod 644 "$tmp" && mv -f "$tmp" "$2"
 }
-for lib in "$KIT"/bin/lib/*.sh "$KIT/bin/lib/delegation_config.py"; do
+for lib in "$KIT"/bin/lib/*.sh "$KIT"/bin/lib/delegation_*.py; do
   install_file "$lib" "$DATA_HOME/bin/lib/$(basename "$lib")"
 done
 for command in delegation-config delegation-run delegation-openai-compatible; do
@@ -290,6 +290,16 @@ install_file "$KIT/bin/delegation-route" "$DATA_HOME/bin/delegation-route"
 chmod 755 "$DATA_HOME/bin/delegation-route"
 ln -sfn "$DATA_HOME/bin/delegation-route" "$BIN_HOME/delegation-route"
 echo "Route discovery -> $BIN_HOME/delegation-route (reads the personal configuration)"
+
+# The local model router: check and decide are read-only; serve is the user's
+# explicit choice to let it pick inside the pool they declared. The catalog and
+# the decider prompt are code-owned data it reads from its install root.
+install_file "$KIT/bin/delegation-router" "$DATA_HOME/bin/delegation-router"
+chmod 755 "$DATA_HOME/bin/delegation-router"
+ln -sfn "$DATA_HOME/bin/delegation-router" "$BIN_HOME/delegation-router"
+install_file "$KIT/config/catalog.json" "$DATA_HOME/config/catalog.json"
+install_file "$KIT/config/router-prompt.v1.md" "$DATA_HOME/config/router-prompt.v1.md"
+echo "Model router -> $BIN_HOME/delegation-router (off until the personal configuration declares a router block; loopback only)"
 
 # The read-only patch verifier for text-patch adapters, and the versioned
 # policy it enforces. The verifier validates and describes a patch; it never

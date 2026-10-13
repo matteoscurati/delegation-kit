@@ -36,10 +36,13 @@ KEY_SHAPED = re.compile(r"\b(?:sk-[A-Za-z0-9_-]{8,}|[A-Za-z0-9_-]{32,})\b")
 
 
 def kit_version():
-    try:
-        return json.loads((ROOT / "package.json").read_text())["version"]
-    except (OSError, ValueError, KeyError):
-        return "unknown"
+    """The installed marker when running from an install root, else the checkout."""
+    for name in ("installed-version.json", "package.json"):
+        try:
+            return json.loads((ROOT / name).read_text())["version"]
+        except (OSError, ValueError, KeyError, TypeError):
+            continue
+    return "unknown"
 
 
 def redact(text):
@@ -159,6 +162,9 @@ class Handler(BaseHTTPRequestHandler):
     def log_message(self, *args):
         pass
 
+    def version_string(self):
+        return self.server_version
+
     # ---- plumbing ------------------------------------------------------------
 
     def send_json(self, status, payload, headers=()):
@@ -243,6 +249,8 @@ class Handler(BaseHTTPRequestHandler):
         if self.path != "/v1/chat/completions":
             return self.fail(RouterFailure(404, "not-found"))
         admitted = False
+        # Set once a choice is made, so a failure after it still discloses it.
+        self.router_headers = ()
         try:
             self.check_origin()
             body = self.read_body()
@@ -252,7 +260,7 @@ class Handler(BaseHTTPRequestHandler):
             self.handle_chat(body)
         except RouterFailure as failure:
             try:
-                self.fail(failure)
+                self.fail(failure, self.router_headers)
             except OSError:
                 pass
         except (OSError, ValueError, KeyError, TypeError):
@@ -322,6 +330,7 @@ class Handler(BaseHTTPRequestHandler):
         )(url.hostname, url.port, timeout=IDLE_TIMEOUT)
         meta = self.server.pool[choice["profile"]]
         extra_headers = disclosure_headers(out)
+        self.router_headers = extra_headers
         try:
             try:
                 connection.request(

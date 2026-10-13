@@ -2,6 +2,82 @@
 
 All notable changes to delegation-kit are documented here.
 
+## [0.27.0] — 2026-10-13
+
+### Added
+
+- **`delegation-router`, a local model router.** A `router` block in the
+  personal configuration — which now accepts `"schema_version": 2`; schema 1
+  files stay valid — declares a pool of HTTP profiles (`openai-compatible`,
+  `deepseek-api`, `token-plan-openai`), a default and a decider. Three
+  commands: `check` resolves the block without network; `decide --prompt-file`
+  recommends one pool profile and never dispatches it; `serve` is an
+  OpenAI-compatible `/v1/chat/completions` on loopback only (`listen` refuses
+  any other host). A request with `"model": "auto"` goes through a
+  deterministic prefilter (adapter, tier, context, cost ceiling), the `llm`
+  decider (one chat completion to the decider profile with its own key,
+  `temperature 0`, the request excerpt inside a `DATA` block, one JSON object
+  back: difficulty 0–4 and tags `code`/`math`/`rare`; `long` and `tools` are
+  set deterministically) and the `tiered-v1` policy (confidence floor 0.55;
+  frontier for difficulty ≥ 3 or `long`; small for difficulty < 1.5 with no
+  raising tag; `code` narrows to code-capable profiles and never raises the
+  tier; cheapest eligible profile in the tier; empty tiers escalate, never
+  descend). Anything outside the decider's schema, an HTTP error, a timeout
+  or a missing key is *undecidable*: the default is used and the warning is
+  disclosed; no retry. A pool profile named directly is forwarded without a
+  decider. `decider.kind: none` is the rules-only baseline;
+  `mode: shadow` decides and discloses but dispatches the default.
+- **Disclosure in every response**: `X-Router-Profile`, `-Model`, `-Tier`,
+  `-Effort`, `-Decider`, `-Policy`, `-Difficulty`, `-Confidence`,
+  `-Undecidable`, `-Latency-Ms`, `-Mode` headers and a `router` object next to
+  `choices` with signals, the choice, the reasons, blocked profiles, usage,
+  cost, the provider-reported model and `mismatch` (disclosed, not fatal, with
+  `X-Router-Model-Mismatch: 1`). Streaming is a chunked SSE passthrough that
+  ends with a `choices: []` chunk carrying `router` — and the failure code
+  when the upstream stream was cut, closed before `[DONE]`, idle over 30 s or
+  sent an event over 64 KiB — before `data: [DONE]`.
+- **Refusals that never reach a provider**: unknown model (404), browser
+  `Origin` not in `allow_origins` (403), estimated cost above
+  `router.max_cost_usd` or the `X-Router-Max-Cost-USD` header (400
+  `cost-ceiling` with the estimate), invalid body, missing credential (401
+  `provider-key-missing`), more than 16 in flight (429 `busy`). Provider
+  failures keep their meaning and lose their payload: 401/403 →
+  `provider-key-rejected`, 429 → `provider-rate-limited` with `Retry-After`,
+  5xx → `provider-unavailable`, other 4xx → `provider-rejected-request` with
+  key-shaped tokens redacted. The server prints one listening line and
+  nothing else — not requests, not errors, never a credential.
+- **Opt-in receipts** (`router.receipts: true`): one JSONL line per request in
+  `$DELEGATION_DATA_HOME/router/receipts.jsonl`, mode 600, with decision,
+  profile, usage, cost and latency and never prompt content.
+- **`config/catalog.json`**, a dated snapshot of tier, code capability,
+  USD-per-million prices, context and JSON-mode support for the models the
+  presets name and the usual pool candidates. Schema 2 profiles may declare
+  `tier`, `code`, `price`, `context` and `json_mode` themselves; the
+  declaration wins and `check` reports `metadata_source`. `config/router-
+  prompt.v1.md` is the decider prompt; the decider version is the model plus
+  the prompt's hash.
+- `delegation-route check` reports `router.enabled`, the pool, the default and
+  the decider kind. `doctor.sh` gains a "Model router" section: absent is
+  optional, configured is reported with its pool, default and decider, and
+  `check` warnings (no tier, no price) are listed. The installer links
+  `delegation-router` and ships the catalog and the prompt beside the policy
+  file; the uninstaller removes the command.
+- `tests/router.py` (through `tests/router.sh`): policy table, schema 2
+  validation, the CLI and the server against a fake provider — each profile
+  receives only its own key, no canary key appears in any output, decider
+  failures and prompt injection cannot steer the route, broken streams end
+  with a router chunk naming the failure, receipts hold no prompt text, and
+  the server writes nothing to stderr.
+
+### Changed
+
+- The user-directed guard, `skills/model-routing`, the README and the
+  configuration docs describe the router as a user-declared rule set: the
+  user chose the pool, the default and the decider; `serve` and `model: auto`
+  are the user's choice; the router selects only inside that pool, discloses
+  the chosen model, and never retries, falls back or widens the pool;
+  `decide` recommends and does not dispatch.
+
 ## [0.26.1] — 2026-09-16
 
 ### Fixed

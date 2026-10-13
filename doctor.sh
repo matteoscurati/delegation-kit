@@ -415,6 +415,30 @@ else
   warn "delegation-route not installed — re-run ./install.sh"
 fi
 
+hdr "Model router"
+if ! have jq; then
+  warn "jq not on PATH — the router configuration cannot be validated"
+elif have delegation-router; then
+  router_check="$(delegation-router check --json 2>/dev/null || true)"
+  if [ -z "$router_check" ]; then
+    bad "delegation-router check failed — run delegation-config validate"
+  elif printf '%s' "$router_check" | jq -e '.enabled == false' >/dev/null 2>&1; then
+    info "router not configured — optional; a router block (schema_version 2) enables it, see docs/router.md"
+  elif printf '%s' "$router_check" | jq -e '.valid == true and .read_only == true and .automatic_dispatch == false' >/dev/null 2>&1; then
+    ok "router configured: $(printf '%s' "$router_check" | jq -r '"\(.pool | length)-profile pool, default \(.default), decider \(.decider.kind), listen \(.listen), mode \(.mode)"')"
+    info "serve binds loopback only, chooses inside the pool, discloses the model in every response, never retries or widens the pool"
+    while IFS= read -r line; do
+      [ -n "$line" ] && warn "router: $line"
+    done <<EOF
+$(printf '%s' "$router_check" | jq -r '.warnings[]?')
+EOF
+  else
+    bad "router configuration invalid — run delegation-router check"
+  fi
+else
+  warn "delegation-router not installed — re-run ./install.sh"
+fi
+
 # ---- external patch policy and its read-only verifier ----
 # Static only: the installed policy is checked for shape and fail-closed
 # defaults. No patch is parsed, no worktree is touched, and no provider is
