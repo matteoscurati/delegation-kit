@@ -9,11 +9,10 @@
 .kilo/
 .hermes/
 
-# Private and one-off evaluation scratch stays outside the published,
-# qualification-owned evaluation/ tree.
+# Private and one-off evaluation scratch stays outside the frozen evaluation/ archive.
 eval/
 
-# Running the Python advisory importer locally must not dirty the worktree.
+# Python bytecode from the commands and the test suites.
 __pycache__/
 *.py[cod]
 

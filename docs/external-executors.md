@@ -131,10 +131,3 @@ dispatch uses a subprocess deadline. A run that hits the deadline publishes
 nothing, writes a diagnostic with reason `timeout` (`deadline_exceeded` on the
 HTTP adapters, `operational_timeout` on Kimi), and exits 75. `check --json`
 on Grok reports `timeout_seconds` as the configured value or `null`.
-
-## Flags retired
-
-`--evaluation`, `--evaluation-manifest`, and `--preflight-only` (0.25.0) and
-`--allow-provisional` (0.26.0) no longer exist; passing them is an unknown
-argument (exit 64). The frozen artifacts under `evaluation/` are an archive
-and are not read by any command.

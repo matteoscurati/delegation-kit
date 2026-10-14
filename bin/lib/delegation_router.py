@@ -332,6 +332,10 @@ def _effort(verdict, tier):
     return None
 
 
+def _usd(cost):
+    return "unpriced" if cost == math.inf else "$%.4f" % cost
+
+
 def _cheapest(candidates, feats):
     return sorted(candidates, key=lambda m: rank_cost(m, feats))[0]
 
@@ -390,6 +394,15 @@ def choose(verdict, eligible, default_meta, feats, cuts=CUTS):
     if not candidates:
         return default("no eligible profile at or above the needed tier → default")
     chosen = _cheapest(candidates, feats)
+    reasons.append(
+        "candidates: "
+        + ", ".join(
+            "%s %s" % (m["profile"], _usd(rank_cost(m, feats)))
+            for m in sorted(candidates, key=lambda m: rank_cost(m, feats))
+        )
+        + " → "
+        + chosen["profile"]
+    )
     return {
         "profile": chosen["profile"],
         "model": chosen["model"],

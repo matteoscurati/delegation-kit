@@ -4,7 +4,6 @@ import functools
 import json
 import os
 import re
-import shutil
 import tempfile
 from pathlib import Path
 from urllib.parse import urlsplit
@@ -150,33 +149,12 @@ def read(path):
     )
 
 
-def preset(strict=False, source=None):
-    """The shipped preset (config/presets.json), or the profiles imported from a
-    legacy routing-gates.json snapshot when migrating a pre-0.24 install."""
-    profiles = None
-    if source is not None:
-        # A legacy snapshot that does not parse or lacks the expected shape
-        # falls back to the shipped preset instead of failing the install.
-        try:
-            old = read(source)
-            profiles = {
-                key: {
-                    "adapter": p["harness"],
-                    "model": p["model"],
-                    "family": old.get("model_families", {}).get(p["model"]),
-                    "roles": list(p["lanes"]),
-                    "parameters": {"effort": p["effort"]},
-                }
-                for key, p in old["profiles"].items()
-            }
-        except (ValueError, KeyError, TypeError, AttributeError, OSError):
-            profiles = None
-    if not profiles:
-        profiles = read(ROOT / "config/presets.json")["profiles"]
+def preset(strict=False):
+    """The shipped preset (config/presets.json) as a fresh personal configuration."""
     return {
         "schema_version": 1,
         "review_policy": "cross-family" if strict else "optional",
-        "profiles": profiles,
+        "profiles": read(ROOT / "config/presets.json")["profiles"],
     }
 
 
@@ -517,28 +495,13 @@ def initialize(strict=False):
             "file": str(path),
             "review_policy": load()["review_policy"],
         }
-    data = Path(
-        os.environ.get(
-            "DELEGATION_DATA_HOME", str(Path.home() / ".local/share/delegation-kit")
-        )
-    )
-    source = data / "config/routing-gates.json"
-    backup = None
-    if source.exists():
-        backup = path.parent / "migration-v1-backup"
-        backup.parent.mkdir(parents=True, exist_ok=True)
-        if not backup.exists():
-            shutil.copytree(data / "config", backup)
-            backup.chmod(0o700)
-        source = backup / "routing-gates.json"
-    c = validate(preset(strict, source if source.exists() else None))
+    c = validate(preset(strict))
     atomic(path, c)
     return {
         "preserved": False,
         "file": str(path),
-        "backup": str(backup) if backup else None,
         "review_policy": c["review_policy"],
-        "summary": "Review is optional by default; evidence no longer blocks execution. Existing technical restrictions remain.",
+        "summary": "Review is optional by default. Existing technical restrictions remain.",
     }
 
 

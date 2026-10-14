@@ -38,10 +38,9 @@ esac
 EOF
 chmod 700 "$TEST_TOOLS/claude"
 
-# Seed an upgrade-shaped install: the routing gates, executor contract,
-# evidence snapshot, and retired commands a 0.24.0 install left behind, plus a
-# digest-valid Grok archive. The installer must remove every retired file and
-# recognize the retained archive.
+# Seed an upgrade-shaped install: key-file backups the uninstaller leaves
+# beside the data home, and a digest-valid Grok archive the installer must
+# recognize and retain.
 mkdir -p "$DATA/config" "$DATA/bin" "$DATA/grok-cli/current" "$GROK_TEST_HOME" "$TMP/bin"
 printf '%s\n' '{}' >"$GROK_TEST_HOME/auth.json"
 # A key file the uninstaller backed up next to the data home must come back
@@ -50,16 +49,6 @@ printf '%s\n' '{}' >"$GROK_TEST_HOME/auth.json"
 ( umask 077; printf 'DEEPSEEK_API_KEY=stale-backup\n' >"$DATA.deepseek.env.bak" )
 ( umask 077; printf 'DEEPSEEK_API_KEY=current\n' >"$DATA/config/deepseek.env" )
 ( umask 077; printf '{"ts":1,"profile":"restored"}\n' >"$DATA.router-receipts.jsonl.bak" )
-for retired_config in routing-gates.json grok-4.6-routing.json glm-5.3-flash-max-routing.json \
-    kimi-k3-routing.json gemini-3.8-flash-routing.json qwen3.8-max-routing.json \
-    deepseek-flash-routing.json external-executor-contract.json model-evidence.json; do
-  printf '%s\n' '{}' >"$DATA/config/$retired_config"
-done
-for retired_command in delegation-schema delegation-evidence delegation-epoch delegation-executor-contract; do
-  printf '#!/bin/sh\nexit 0\n' >"$DATA/bin/$retired_command"
-  chmod 755 "$DATA/bin/$retired_command"
-  ln -sfn "$DATA/bin/$retired_command" "$TMP/bin/$retired_command"
-done
 cat >"$DATA/grok-cli/current/grok" <<'EOF'
 #!/usr/bin/env bash
 case "${1:-}" in
@@ -82,13 +71,9 @@ else
 fi
 printf '%s  grok\n' "$archive_sha" >"$DATA/grok-cli/current/grok.sha256"
 
-# Seed one retired profile and stale copies of the reviewer profiles. The
-# installer must remove the retired name and overwrite both reviewers.
+# Seed stale copies of the reviewer profiles: the installer must overwrite both.
 mkdir -p "$TMP/claude/agents" "$TMP/codex/agents"
-printf '%s\n' stale >"$TMP/claude/agents/sonnet-builder.md"
 printf '%s\n' stale >"$TMP/claude/agents/opus-reviewer.md"
-printf '%s\n' stale >"$TMP/codex/agents/terra-scout.toml"
-printf '%s\n' stale >"$TMP/codex/terra-scout.config.toml"
 printf '%s\n' stale >"$TMP/codex/agents/terra-reviewer.toml"
 printf '%s\n' stale >"$TMP/codex/terra-reviewer.config.toml"
 
@@ -99,15 +84,6 @@ env CLAUDE_HOME="$TMP/claude" CODEX_HOME="$TMP/codex" \
     "$ROOT/install.sh" </dev/null >"$TMP/install.log" 2>&1 \
   || { sed 's/^/    /' "$TMP/install.log" >&2; fail 'install.sh exited non-zero'; }
 
-for retired_config in routing-gates.json grok-4.6-routing.json glm-5.3-flash-max-routing.json \
-    kimi-k3-routing.json gemini-3.8-flash-routing.json qwen3.8-max-routing.json \
-    deepseek-flash-routing.json external-executor-contract.json model-evidence.json; do
-  [ ! -e "$DATA/config/$retired_config" ] || fail "upgrade retained the retired $retired_config"
-done
-for retired_command in delegation-schema delegation-evidence delegation-epoch delegation-executor-contract; do
-  [ ! -e "$DATA/bin/$retired_command" ] && [ ! -e "$TMP/bin/$retired_command" ] && [ ! -L "$TMP/bin/$retired_command" ] \
-    || fail "upgrade retained the retired command $retired_command"
-done
 [ "$(find "$DATA/config" -maxdepth 1 -name '*.json' | sort | xargs -n1 basename | tr '\n' ' ')" = 'catalog.json external-patch-policy.json ' ] \
   || fail "install left unexpected JSON files in $DATA/config: $(ls "$DATA/config")"
 [ -x "$DATA/bin/delegation-deepseek" ] || fail 'install did not include the DeepSeek runner'
@@ -202,8 +178,6 @@ ok
   && grep -Fxq 'effort: max' "$TMP/claude/agents/fable-judge.md" \
   && grep -Fxq 'tools: Read, Grep, Glob' "$TMP/claude/agents/fable-judge.md" \
   || fail 'install did not include fable-judge at max'
-[ ! -e "$TMP/claude/agents/sonnet-builder.md" ] \
-  || fail 'upgrade retained the retired Sonnet builder profile'
 [ -f "$TMP/claude/agents/opus-reviewer.md" ] \
   && grep -Fxq 'effort: max' "$TMP/claude/agents/opus-reviewer.md" \
   && grep -Fxq 'tools: Read, Grep, Glob' "$TMP/claude/agents/opus-reviewer.md" \
@@ -215,8 +189,6 @@ ok
   && grep -Fxq 'tools: Read, Grep, Glob' "$TMP/claude/agents/sonnet-reviewer.md" \
   && grep -Fq 'configured review policy' "$TMP/claude/agents/sonnet-reviewer.md" \
   || fail 'install did not refresh the Sonnet tool-read-only cross-family reviewer'
-[ ! -e "$TMP/codex/agents/terra-scout.toml" ] && [ ! -e "$TMP/codex/terra-scout.config.toml" ] \
-  || fail 'upgrade retained the retired Terra scout profile'
 [ -f "$TMP/codex/agents/terra-builder.toml" ] && [ -f "$TMP/codex/terra-builder.config.toml" ] \
   || fail 'install did not retain Terra builder profiles'
 [ -f "$TMP/codex/agents/terra-reviewer.toml" ] && [ -f "$TMP/codex/terra-reviewer.config.toml" ] \

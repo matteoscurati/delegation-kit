@@ -142,16 +142,22 @@ profiles may also declare routing metadata — `tier`, `code`, `price`,
 the kit reads it. See [the router page](router.md) for the fields, the policy
 and what each response discloses.
 
-## Migration
+## Adding a model
 
-Before the installer replaces distributed configuration it snapshots the old
-configuration directory as `migration-v1-backup` next to the personal config.
-The original model choices and supported parameters are imported, credential
-files remain in place, and the summary announces optional review. The backup is
-retained on repeated initialization/installations. The personal file and later
-policy changes are preserved.
+Add a profile to the personal file, then `delegation-config validate` and
+`delegation-config apply`. Nothing else in the kit has to change: choose the
+adapter, the exact model identifier the endpoint accepts, the roles and the
+parameters the adapter supports; for a custom OpenAI-compatible endpoint add
+`base_url` and, if it needs a key, `credential_env` with the *name* of the
+variable. The adapter owns capabilities — a `builder` role on a text adapter
+yields a patch, never write access — and unsupported parameters are errors.
+Declare `tier`, `price`, `code`, `context` or `json_mode` (schema 2) when the
+router should rank the profile on your numbers rather than the catalog's.
 
-`--allow-provisional` was removed in 0.26.0; passing it is an unknown argument.
-A legacy `routing-gates.json` that does not parse, or has no profiles, falls
-back to the shipped preset; the snapshot is kept either way. The installer
-removes the retired gate, contract, and evidence files from the data directory.
+## Upgrading
+
+The installer never overwrites the personal file; new keys are optional and
+every command reads schema 1 and 2 alike. Installs older than 0.25, which
+kept their profiles in `routing-gates.json`, were migrated by 0.25 and 0.26;
+that migration is gone, so bring such an install through 0.26 first or
+recreate the profiles by hand from the shipped preset.

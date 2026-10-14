@@ -1,17 +1,14 @@
 {
   "name": "delegation-kit",
   "version": "0.27.0",
-  "description": "User-directed model delegation for Claude Code and Codex with personal model configuration, technical adapter controls and optional review.",
+  "description": "A decision model picks which of your models answers each request: a local OpenAI-compatible router over your own keys and subscriptions, plus explicit delegation for Claude Code and Codex.",
   "keywords": [
+    "model-router",
+    "llm-router",
     "claude-code",
     "codex",
-    "ai-agents",
+    "openai-compatible",
     "delegation",
-    "multi-agent",
-    "model-routing",
-    "llm-orchestration",
-    "governance",
-    "subagents",
     "developer-tools"
   ],
   "homepage": "https://github.com/matteoscurati/delegation-kit",

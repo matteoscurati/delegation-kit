@@ -121,12 +121,42 @@ All notable changes to delegation-kit are documented here.
 
 ### Changed
 
+- **The README leads with the idea**: a decision model picks which of your
+  models answers each request, and how — measure, one typed question, the
+  ladder, cheapest in the rung, disclosure — including why Opus 5.5 is
+  chosen over GPT-6 Astra when both are `frontier` (price) and which levers
+  change that (`tier`, `price`, pool, default, ceiling). The plugin,
+  marketplace and npm descriptions say the same. Every decision's `reasons`
+  now list the candidates of the chosen rung with their estimated cost
+  (`candidates: opus-5-5 $0.0120, astra $0.0310 → opus-5-5`), so `decide
+  --json` and the `router` object answer the question per request.
 - The user-directed guard, `skills/model-routing`, the README and the
   configuration docs describe the router as a user-declared rule set: the
   user chose the pool, the default and the decider; `serve` and `model: auto`
   are the user's choice; the router selects only inside that pool, discloses
   the chosen model, and never retries, falls back or widens the pool;
   `decide` recommends and does not dispatch.
+- `doctor.sh` names its executor sections by adapter (`GLM executor
+  (claude-zai)`, `DeepSeek executor (deepseek-api)`, …) instead of by a
+  model that the presets may change; `uninstall.sh` reports what it removes
+  in current terms.
+
+### Removed
+
+- **The pre-0.24 migration.** `delegation-config init` no longer imports
+  `routing-gates.json` into a `migration-v1-backup`, the installer no longer
+  sweeps the gate, contract, evidence and schema files and commands that
+  0.24 left behind, and the installer and doctor no longer remove or check
+  the profiles retired in 0.17 (`sonnet-builder`, `terra-scout`). An install
+  older than 0.25 goes through 0.26 first or recreates its profiles from the
+  preset. The tests that seeded those shapes are gone with the code.
+- `model-routing.md` (an advisory page that governed nothing) and
+  `ADAPTING.md` (folded into `docs/user-configuration.md` as *Adding a
+  model*); the installer no longer co-locates the page beside the
+  `model-routing` skill, and doctor no longer looks for it. The historical
+  snapshots 0.16–0.26 and the *Flags retired* section leave
+  `docs/compatibility.md` and `docs/external-executors.md`; this changelog
+  and git history keep them.
 
 ## [0.26.1] — 2026-09-16
 

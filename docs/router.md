@@ -152,8 +152,30 @@ chat-completions endpoint. Gemini and OpenAI do, and enter as
 6. **Disclosure**: see below.
 
 `delegation-router decide --decider none` runs steps 1, 2 and 4 with no
-network and always lands on the default: that is the baseline the evaluation
-harness of a later release will measure deciders against.
+network and always lands on the default: that is the baseline `eval`
+measures deciders against.
+
+### Why this model and not that one
+
+The rule is Sage's: *the cheapest model that will get it right*. The decider
+answers how much capability the request needs; the policy turns that into
+the lowest rung of a three-rung ladder (`small`, `mid`, `frontier`) and the
+specialties that narrow it; inside the rung the cheapest eligible profile
+wins, for this request's estimated tokens. So with Opus 5.5 and GPT-6 Astra
+both declared `frontier`, a hard request goes to Opus while Opus is eligible,
+because Opus is the cheaper frontier model — Astra is chosen only when Opus
+is blocked (context, cost ceiling, JSON mode) or when you put Astra alone on
+the top rung and Opus on `mid`. The levers are the ones you declare: `tier`
+and `price` on each profile, the pool, the default, the ceiling. Every
+decision carries its `reasons`, including the candidates of the chosen rung
+with their estimated cost, so `decide --json` and the `router` object answer
+the question for each request.
+
+Three deliberate departures from the Sage recipe: the recipe names one
+model per rung, the kit ranks the rung by price so a pool can hold several;
+the kit adds a confidence floor (below 0.55 the default is used); and
+`math`, `rare` and `tools` raise an easy request to `mid`, where the recipe
+only sends `code` to a code model and `long` to the frontier.
 
 ## Deciders
 

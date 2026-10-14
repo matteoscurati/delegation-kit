@@ -68,8 +68,8 @@ os.replace(temporary, manifest)
 PYMANAGED
 }
 
-# Snapshot legacy configuration before updating any distributed files. User
-# configuration lives separately and an existing v1 file is never overwritten.
+# The personal configuration is created from the shipped preset only when
+# absent; an existing file is never overwritten.
 "$KIT/bin/delegation-config" init
 
 # Shared optional external-model bridges. Installing a command does not make its
@@ -98,17 +98,6 @@ done
 
 chmod 644 "$DATA_HOME"/bin/lib/*.sh
 echo "Shared runner library -> $DATA_HOME/bin/lib (sourced by the external runners; not on PATH)"
-# Routing gates, executor contract, evidence snapshot, and the schema compiler
-# shipped until 0.24.0. The personal configuration replaced them; remove the
-# installed copies and the commands that read them.
-rm -f -- "$DATA_HOME"/config/*-routing.json \
-  "$DATA_HOME/config/routing-gates.json" \
-  "$DATA_HOME/config/external-executor-contract.json" \
-  "$DATA_HOME/config/model-evidence.json"
-for retired in delegation-schema delegation-evidence delegation-epoch delegation-executor-contract; do
-  rm -f -- "$DATA_HOME/bin/$retired" "$BIN_HOME/$retired"
-done
-echo "Retired routing gates, executor contract, evidence, and schema commands removed from $DATA_HOME"
 install_file "$KIT/bin/delegation-glm" "$DATA_HOME/bin/delegation-glm"
 chmod 755 "$DATA_HOME/bin/delegation-glm"
 ln -sfn "$DATA_HOME/bin/delegation-glm" "$BIN_HOME/delegation-glm"
@@ -337,9 +326,6 @@ fi
 if [ "$do_claude" = 1 ]; then
   echo "Claude Code -> $CLAUDE_HOME"
   mkdir -p "$CLAUDE_HOME/agents" "$CLAUDE_HOME/skills"
-  # Remove the profile retired by the 2026-08-17 owner routing decision. A plain
-  # glob copy cannot remove a stale name left by an older installation.
-  rm -f "$CLAUDE_HOME/agents/sonnet-builder.md"
   for profile in "$KIT"/agents/*.md; do copy_managed "$profile" "$CLAUDE_HOME/agents/$(basename "$profile")"; done
   echo "  + 6 subagent profiles -> $CLAUDE_HOME/agents/"
   # register the user-direction guard first — it is the linchpin, so a missing
@@ -348,8 +334,7 @@ if [ "$do_claude" = 1 ]; then
   # previous orchestration policy) during the upgrade.
   append_guarded "$CLAUDE_HOME/CLAUDE.md" "@$KIT/claude/CLAUDE.delegation.md"
   cp -R "$KIT/skills/model-routing" "$CLAUDE_HOME/skills/"
-  cp "$KIT/model-routing.md" "$CLAUDE_HOME/skills/model-routing/"   # co-locate the advisory policy so the skill's pointer resolves
-  echo "  + model-routing skill (+ advisory policy) -> $CLAUDE_HOME/skills/model-routing/"
+  echo "  + model-routing skill -> $CLAUDE_HOME/skills/model-routing/"
   cp -R "$KIT/skills/orchestrate" "$CLAUDE_HOME/skills/"
   echo "  + orchestrate skill -> $CLAUDE_HOME/skills/orchestrate/"
   cp -R "$KIT/skills/glm-executor" "$CLAUDE_HOME/skills/"
@@ -359,17 +344,16 @@ if [ "$do_claude" = 1 ]; then
   cp -R "$KIT/skills/gemini-executor" "$CLAUDE_HOME/skills/"
   echo "  + optional Gemini executor skill -> $CLAUDE_HOME/skills/gemini-executor/"
   cp -R "$KIT/skills/deepseek-executor" "$CLAUDE_HOME/skills/"
-  echo "  + provisional DeepSeek builder skill -> $CLAUDE_HOME/skills/deepseek-executor/"
+  echo "  + DeepSeek executor skill -> $CLAUDE_HOME/skills/deepseek-executor/"
   cp -R "$KIT/skills/qwen-executor" "$CLAUDE_HOME/skills/"
-  echo "  + provisional Qwen builder skill -> $CLAUDE_HOME/skills/qwen-executor/"
+  echo "  + Qwen executor skill -> $CLAUDE_HOME/skills/qwen-executor/"
   cp -R "$KIT/skills/grok-executor" "$CLAUDE_HOME/skills/"
-  echo "  + provisional Grok builder skill -> $CLAUDE_HOME/skills/grok-executor/"
+  echo "  + Grok executor skill -> $CLAUDE_HOME/skills/grok-executor/"
 fi
 
 if [ "$do_codex" = 1 ]; then
   echo "Codex -> $CODEX_HOME"
   mkdir -p "$CODEX_HOME/agents" "$CODEX_HOME/skills"
-  rm -f "$CODEX_HOME/agents/terra-scout.toml" "$CODEX_HOME/terra-scout.config.toml"
   for profile in "$KIT"/codex/agents/*.toml; do copy_managed "$profile" "$CODEX_HOME/agents/$(basename "$profile")"; done
   echo "  + 5 native subagent profiles -> $CODEX_HOME/agents/"
   for profile in "$KIT"/codex/profiles/*.config.toml; do copy_managed "$profile" "$CODEX_HOME/$(basename "$profile")"; done
@@ -381,11 +365,11 @@ if [ "$do_codex" = 1 ]; then
   cp -R "$KIT/skills/gemini-executor" "$CODEX_HOME/skills/"
   echo "  + optional Gemini executor skill -> $CODEX_HOME/skills/gemini-executor/"
   cp -R "$KIT/skills/deepseek-executor" "$CODEX_HOME/skills/"
-  echo "  + provisional DeepSeek builder skill -> $CODEX_HOME/skills/deepseek-executor/"
+  echo "  + DeepSeek executor skill -> $CODEX_HOME/skills/deepseek-executor/"
   cp -R "$KIT/skills/qwen-executor" "$CODEX_HOME/skills/"
-  echo "  + provisional Qwen builder skill -> $CODEX_HOME/skills/qwen-executor/"
+  echo "  + Qwen executor skill -> $CODEX_HOME/skills/qwen-executor/"
   cp -R "$KIT/skills/grok-executor" "$CODEX_HOME/skills/"
-  echo "  + provisional Grok builder skill -> $CODEX_HOME/skills/grok-executor/"
+  echo "  + Grok executor skill -> $CODEX_HOME/skills/grok-executor/"
   append_guarded "$CODEX_HOME/AGENTS.md" "$(cat "$KIT/codex/AGENTS.md")"
   echo
   echo "  Codex config is NOT auto-edited. Review and merge into $CODEX_HOME/config.toml:"
@@ -430,4 +414,4 @@ echo "Installed version marker -> $VERSION_FILE (${kit_version:-unknown}$([ "$ki
 echo
 echo "Done. Restart Claude Code / open a new Codex session to pick up the changes."
 echo "Verify the bridge is wired:  $KIT/doctor.sh   (add --ping for a live round-trip)"
-echo "Adapt the models to your own tiers: see $KIT/ADAPTING.md"
+echo "Declare your own models, tiers and router pool: see $KIT/docs/user-configuration.md and $KIT/docs/router.md"

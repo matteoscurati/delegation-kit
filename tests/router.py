@@ -239,6 +239,20 @@ class PolicyTests(unittest.TestCase):
         self.assertIsNone(skip_reason(POOL, MID, SMALL, dict(FEATS, est_tokens=10)))
         self.assertIsNone(skip_reason(POOL, MID, SMALL, dict(FEATS, est_tokens=50000)))
 
+    def test_reasons_name_the_candidates_with_their_cost(self):
+        choice = choose(verdict(difficulty=1.0), POOL, MID, FEATS)
+        self.assertIn("candidates: frontier $0.0562 → frontier", choice["reasons"])
+        choice = choose(verdict(difficulty=0.1, code=1.0), POOL, MID, FEATS)
+        self.assertIn(
+            "candidates: small $0.0013, mid $0.0133, frontier $0.0562 → small",
+            choice["reasons"],
+        )
+        free = meta("free", "small", None, None)
+        choice = choose(verdict(difficulty=0.1), [free, SMALL], MID, FEATS)
+        self.assertIn(
+            "candidates: small $0.0013, free unpriced → small", choice["reasons"]
+        )
+
     def test_costs_tolerate_unknown_counts(self):
         self.assertIsNone(estimate_cost(SMALL, None, 10))
         self.assertIsNone(estimate_cost(SMALL, "300", 10))

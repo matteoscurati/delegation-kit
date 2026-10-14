@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
 """Behavior tests: real loopback HTTP, isolated config, no provider accounts."""
 
-import hashlib
 import json
 import os
 from pathlib import Path
@@ -279,49 +278,16 @@ class ConfigTests(unittest.TestCase):
             review_state("cross-family", a, None, True), "pending-reviewer"
         )
 
-    def test_migration_idempotent_and_preserves_edits(self):
+    def test_init_preserves_an_existing_configuration_and_its_edits(self):
         (self.base / "config.json").unlink()
-        legacy = self.base / "data/config"
-        legacy.mkdir(parents=True)
-        # A pre-0.24 install shipped its profiles as routing gates; the kit no
-        # longer carries that file, so the fixture is the minimal legacy shape.
-        (legacy / "routing-gates.json").write_text(
-            json.dumps(
-                {
-                    "schema_version": 1,
-                    "model_families": {"gpt-5.6-luna": "openai"},
-                    "profiles": {
-                        "legacy-clerk": {
-                            "model": "gpt-5.6-luna",
-                            "harness": "codex",
-                            "effort": "max",
-                            "lanes": {"clerk": {"status": "qualified"}},
-                        }
-                    },
-                }
-            )
-        )
-        (legacy / "key.env").write_text("SECRET=kept")
-        (legacy / "key.env").chmod(0o600)
         result = json.loads(self.command("delegation-config", "init").stdout)
-        self.assertEqual(result["review_policy"], "optional")
-        backup = Path(result["backup"])
-        digest = hashlib.sha256(
-            (backup / "routing-gates.json").read_bytes()
-        ).hexdigest()
-        migrated = json.loads((self.base / "config.json").read_text())
         self.assertEqual(
-            migrated["profiles"]["legacy-clerk"],
-            {
-                "adapter": "codex",
-                "model": "gpt-5.6-luna",
-                "family": "openai",
-                "roles": ["clerk"],
-                "parameters": {"effort": "max"},
-            },
+            (result["preserved"], result["review_policy"]), (False, "optional")
         )
-        migrated["review_policy"] = "required"
-        (self.base / "config.json").write_text(json.dumps(migrated))
+        created = json.loads((self.base / "config.json").read_text())
+        self.assertIn("luna-clerk", created["profiles"])
+        created["review_policy"] = "required"
+        (self.base / "config.json").write_text(json.dumps(created))
         self.command("delegation-config", "apply")
         target = self.base / "managed/codex/luna-clerk.toml"
         target.write_text("user edit")
@@ -332,21 +298,6 @@ class ConfigTests(unittest.TestCase):
             json.loads((self.base / "config.json").read_text())["review_policy"],
             "required",
         )
-        self.assertEqual(
-            hashlib.sha256((backup / "routing-gates.json").read_bytes()).hexdigest(),
-            digest,
-        )
-        self.assertEqual((backup / "key.env").read_text(), "SECRET=kept")
-
-    def test_migration_from_malformed_legacy_snapshot_uses_preset(self):
-        (self.base / "config.json").unlink()
-        legacy = self.base / "data/config"
-        legacy.mkdir(parents=True)
-        (legacy / "routing-gates.json").write_text("{}")
-        result = json.loads(self.command("delegation-config", "init").stdout)
-        self.assertIsNotNone(result["backup"])
-        migrated = json.loads((self.base / "config.json").read_text())
-        self.assertIn("luna-clerk", migrated["profiles"])
 
     def test_native_cli_forwarding_with_fake_executables(self):
         tools = self.base / "tools"
