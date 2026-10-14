@@ -8,8 +8,8 @@ All notable changes to delegation-kit are documented here.
 
 - **`delegation-router`, a local model router.** A `router` block in the
   personal configuration — which now accepts `"schema_version": 2`; schema 1
-  files stay valid — declares a pool of HTTP profiles (`openai-compatible`,
-  `deepseek-api`, `token-plan-openai`), a default and a decider. Three
+  files stay valid — declares a pool of profiles on any adapter, a default
+  and a decider. Three
   commands: `check` resolves the block without network; `decide --prompt-file`
   recommends one pool profile and never dispatches it; `serve` is an
   OpenAI-compatible `/v1/chat/completions` on loopback only (`listen` refuses
@@ -27,6 +27,44 @@ All notable changes to delegation-kit are documented here.
   disclosed; no retry. A pool profile named directly is forwarded without a
   decider. `decider.kind: none` is the rules-only baseline;
   `mode: shadow` decides and discloses but dispatches the default.
+- **Native profiles in the pool.** A profile on `codex`, `claude-code`,
+  `claude-zai`, `kimi-code-cli`, `grok-build-cli` or `agy` is answered
+  through `delegation-run`: the conversation becomes a prompt file (one user
+  turn verbatim, otherwise a role-labelled transcript), the dispatcher runs
+  the profile on its first read-only role in an empty temporary workdir, and
+  the answer file comes back as one chat completion with the dispatcher's
+  receipt under `router.delegation_run`. The profile's `timeout`, identity
+  check, OAuth locks and sandboxes stay with the dispatcher; its exit codes
+  are mapped (`timeout` → 504, a lock → 429, identity mismatch → 502
+  `provider-identity-mismatch`, missing credentials → 401). No tools, images
+  or JSON mode on a native profile — the prefilter keeps it out of such
+  requests — and a stream request receives the whole answer as one event.
+  This is how Claude models join the pool.
+- **Four more deciders**, all asking the router's question in their own
+  wire format and reporting the same signals: `sage` (Levanto Sage
+  `/decide/batch`: a 0–4 scale and a tags question, reasoning off,
+  `SAGE_API_KEY`), `jev` (TypeSafe System One API: a 5-level score, a noul
+  for "needs a frontier model", nouls for code and rare, `TYPESAFE_API_KEY`;
+  a request carrying numbers is never routed below mid), `dipylon` (your own
+  `/decide`: one yesno; a selective-use verdict other than `retain` halves
+  the confidence), `classifier` (a local `POST {"text"}` endpoint; reads
+  `difficulty`/`prompt_complexity_score`, `p_needs_strong`, `tags`,
+  `task_type_1`). `decider.url`, `credential_env`, `model` and `price`
+  override the defaults; each decider is called with its own credential and
+  prices its decision; `check` shows the service and the variable without
+  touching either. Jev through OpenRouter is not wired: that shape was not
+  verified.
+- **`delegation-router eval --items F --decider K [--output DIR]`**, an
+  offline measure of one decider on a golden set the user assembled (JSONL:
+  prompt, paraphrases, recorded `outcomes` per pool profile, optional
+  oracle). It asks the decider once per prompt and paraphrase and never
+  dispatches a pool profile. Reports accuracy, cost, optimal-selection ratio,
+  robustness across paraphrases, undecidable rate, latency p50/p95, the
+  rules-only baseline, a deferral curve over the frontier cut, and
+  `gate.json` against an advisory bar (accuracy ≥ baseline − 2 pp, cost ≤
+  0.8× baseline, optimal ≥ 0.40, robustness ≥ 0.85, p95 ≤ 300 ms — 1.2 s
+  Dipylon, 1.5 s `llm` — undecidable ≤ 15 %, decision cost ≤ 10 % of the
+  saving).
 - **Disclosure in every response**: `X-Router-Profile`, `-Model`, `-Tier`,
   `-Effort`, `-Decider`, `-Policy`, `-Difficulty`, `-Confidence`,
   `-Undecidable`, `-Latency-Ms`, `-Mode` headers and a `router` object next to

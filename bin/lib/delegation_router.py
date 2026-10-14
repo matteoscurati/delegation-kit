@@ -9,6 +9,7 @@ import re
 from pathlib import Path
 
 from delegation_config import (
+    ADAPTERS,
     ROUTER_HTTP_ADAPTERS,
     catalog,
     profile_meta,
@@ -24,6 +25,9 @@ DECISION_TOKENS = 450
 TIER_RANK = {"small": 0, "mid": 1, "frontier": 2}
 CONFIDENCE_FLOOR = 0.55
 TAG_THRESHOLD = 0.6
+# The policy's cut points on the 0..1 difficulty scale and on p_needs_strong.
+# The evaluation harness sweeps them; serve uses these.
+CUTS = {"frontier": 0.75, "small": 0.375, "p_strong": 0.7}
 EXCERPT_LIMIT = 4000
 LAST_USER_LIMIT = 2048
 SYSTEM_HEAD_LIMIT = 1000
@@ -177,8 +181,12 @@ def prefilter(pool, feats, ceiling, default_key):
     eligible, blocked = [], []
     for meta in pool:
         reason = None
-        if meta["adapter"] not in ROUTER_HTTP_ADAPTERS:
+        if meta["adapter"] not in ADAPTERS:
             reason = "adapter not routable"
+        elif meta["adapter"] not in ROUTER_HTTP_ADAPTERS and (
+            feats["has_tools"] or feats["has_images"] or feats.get("wants_json")
+        ):
+            reason = "native profile: no tools, images or JSON mode"
         elif meta["tier"] is None and meta["profile"] != default_key:
             reason = "no tier declared"
         elif (
@@ -264,8 +272,12 @@ def normalize(signals):
                 if t in tags:
                     tags[t] = max(tags[t], float(p))
         elif kind == "yesno":
-            p_strong = max(p_strong or 0.0, float(s.get("p", 0.0)))
-            confidences.append(abs(float(s.get("p", 0.5)) - 0.5) * 2)
+            p = float(s.get("p", 0.0))
+            p_strong = max(p_strong or 0.0, p)
+            confidence = s.get("confidence")
+            confidences.append(
+                abs(p - 0.5) * 2 if confidence is None else float(confidence)
+            )
         elif kind == "score":
             levels = s.get("levels") or []
             if len(levels) > 1 and s.get("value") is not None:
@@ -290,7 +302,7 @@ def pretags(feats):
     }
 
 
-def _needed_tier(verdict):
+def _needed_tier(verdict, cuts=CUTS):
     """The weakest tier the verdict allows. `code` never raises the tier: it
     narrows the candidates to code-capable profiles instead. math, rare and
     tools raise an easy request to mid; long always needs the frontier."""
@@ -299,12 +311,12 @@ def _needed_tier(verdict):
     tags = verdict["tags"]
     raising = max(tags[t] for t in ("math", "rare", "tools"))
     if (
-        (d is not None and d >= 0.75)
-        or (p is not None and p >= 0.7)
+        (d is not None and d >= cuts["frontier"])
+        or (p is not None and p >= cuts["p_strong"])
         or tags["long"] >= TAG_THRESHOLD
     ):
         return "frontier"
-    if d is not None and d < 0.375 and raising < TAG_THRESHOLD:
+    if d is not None and d < cuts["small"] and raising < TAG_THRESHOLD:
         return "small"
     if d is None and p is not None and p < 0.3 and raising < TAG_THRESHOLD:
         return "small"
@@ -324,7 +336,7 @@ def _cheapest(candidates, feats):
     return sorted(candidates, key=lambda m: rank_cost(m, feats))[0]
 
 
-def choose(verdict, eligible, default_meta, feats):
+def choose(verdict, eligible, default_meta, feats, cuts=CUTS):
     """tiered-v1: the policy that turns a verdict into one profile. Pure."""
     reasons = []
 
@@ -347,7 +359,7 @@ def choose(verdict, eligible, default_meta, feats):
             % (verdict["confidence"], CONFIDENCE_FLOOR)
         )
     tags = verdict["tags"]
-    needed = _needed_tier(verdict)
+    needed = _needed_tier(verdict, cuts)
     if verdict["difficulty"] is not None:
         reasons.append("difficulty %.2f" % verdict["difficulty"])
     if verdict["p_needs_strong"] is not None:
@@ -385,6 +397,32 @@ def choose(verdict, eligible, default_meta, feats):
         "reasoning_effort": _effort(verdict, chosen.get("tier")),
         "reasons": reasons,
         "undecidable": False,
+    }
+
+
+def native_lane(profile):
+    """The role a native profile is dispatched on from the gateway: the first
+    read-only role it declares and its adapter supports, a build role only
+    when nothing else is declared, None when no role is usable."""
+    from delegation_router_bridge import LANE_PREFERENCE
+
+    supported = ADAPTERS[profile["adapter"]][1]
+    for lane in LANE_PREFERENCE:
+        if lane in profile.get("roles", []) and lane in supported:
+            return lane
+    return None
+
+
+def verdict_from_signals(signals):
+    """The verdict a disclosure describes, for re-choosing without a decider."""
+    scale = signals.get("scale") or [0, 4]
+    d = signals.get("difficulty")
+    return {
+        "difficulty": None if d is None else (d - scale[0]) / (scale[1] - scale[0]),
+        "p_needs_strong": signals.get("p_needs_strong"),
+        "tags": {t: float((signals.get("tags") or {}).get(t, 0.0)) for t in TAGS},
+        "confidence": float(signals.get("confidence") or 0.0),
+        "undecidable": d is None and signals.get("p_needs_strong") is None,
     }
 
 

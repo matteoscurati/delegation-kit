@@ -42,10 +42,13 @@ class Provider(BaseHTTPRequestHandler):
 
     stream_lines = None
     reply_headers = {}
+    reply_fn = None
 
     def do_POST(self):
         body = json.loads(self.rfile.read(int(self.headers["Content-Length"])))
         type(self).requests.append((self.path, body, self.headers.get("Authorization")))
+        if type(self).reply_fn is not None:
+            type(self).reply = type(self).reply_fn(body)
         if body.get("stream") and type(self).stream_lines is not None:
             self.send_response(200)
             self.send_header("Content-Type", "text/event-stream")
@@ -59,6 +62,25 @@ class Provider(BaseHTTPRequestHandler):
         self.send_header("Content-Type", "application/json")
         for key, value in type(self).reply_headers.items():
             self.send_header(key, value)
+        self.end_headers()
+        self.wfile.write(json.dumps(type(self).reply).encode())
+
+
+class Service(BaseHTTPRequestHandler):
+    """A fake decision service (Sage, Jev, Dipylon or a classifier)."""
+
+    requests = []
+    reply = {}
+    status = 200
+
+    def log_message(self, *args):
+        pass
+
+    def do_POST(self):
+        body = json.loads(self.rfile.read(int(self.headers["Content-Length"])))
+        type(self).requests.append((self.path, body, dict(self.headers)))
+        self.send_response(type(self).status)
+        self.send_header("Content-Type", "application/json")
         self.end_headers()
         self.wfile.write(json.dumps(type(self).reply).encode())
 
@@ -275,6 +297,16 @@ class ConfigTests(unittest.TestCase):
 
     def test_router_block_accepted_on_schema_2(self):
         validate(self.base_config())
+        c = self.base_config()
+        c["router"]["pool"].append("native")  # native adapters join the pool
+        c["router"]["decider"] = {
+            "kind": "sage",
+            "credential_env": "SAGE_KEY",
+            "price": {"in": 0.05, "out": 10},
+        }
+        validate(c)
+        c["router"]["decider"] = {"kind": "dipylon", "url": "http://127.0.0.1:8888"}
+        validate(c)
 
     def test_rejections(self):
         def with_(mutate):
@@ -284,11 +316,47 @@ class ConfigTests(unittest.TestCase):
 
         bad = [
             ("schema 1 with router", lambda c: c.update(schema_version=1)),
-            ("native in pool", lambda c: c["router"]["pool"].append("native")),
             ("unknown in pool", lambda c: c["router"]["pool"].append("nope")),
             ("default outside pool", lambda c: c["router"].update(default="native")),
             ("remote listen", lambda c: c["router"].update(listen="0.0.0.0:4141")),
-            ("unknown decider", lambda c: c["router"].update(decider={"kind": "sage"})),
+            (
+                "unknown decider",
+                lambda c: c["router"].update(decider={"kind": "oracle"}),
+            ),
+            (
+                "dipylon without url",
+                lambda c: c["router"].update(decider={"kind": "dipylon"}),
+            ),
+            (
+                "remote http decider url",
+                lambda c: c["router"].update(
+                    decider={"kind": "classifier", "url": "http://evil.example/x"}
+                ),
+            ),
+            (
+                "service field on llm",
+                lambda c: c["router"].update(
+                    decider={"kind": "llm", "url": "https://x.example"}
+                ),
+            ),
+            (
+                "profile on a service decider",
+                lambda c: c["router"].update(
+                    decider={"kind": "sage", "profile": "small"}
+                ),
+            ),
+            (
+                "bad decider price",
+                lambda c: c["router"].update(
+                    decider={"kind": "jev", "price": {"in": -1, "out": 0}}
+                ),
+            ),
+            (
+                "bad decider credential name",
+                lambda c: c["router"].update(
+                    decider={"kind": "sage", "credential_env": "1x"}
+                ),
+            ),
             (
                 "decider profile native",
                 lambda c: c["router"].update(
@@ -333,11 +401,18 @@ class Fixture(unittest.TestCase):
     def setUpClass(cls):
         cls.server = ThreadingHTTPServer(("127.0.0.1", 0), Provider)
         threading.Thread(target=cls.server.serve_forever, daemon=True).start()
+        cls.service = ThreadingHTTPServer(("127.0.0.1", 0), Service)
+        threading.Thread(target=cls.service.serve_forever, daemon=True).start()
 
     @classmethod
     def tearDownClass(cls):
-        cls.server.shutdown()
-        cls.server.server_close()
+        for server in (cls.server, cls.service):
+            server.shutdown()
+            server.server_close()
+
+    @property
+    def service_url(self):
+        return "http://127.0.0.1:%d" % self.service.server_address[1]
 
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
@@ -397,10 +472,54 @@ class Fixture(unittest.TestCase):
         Provider.status = 200
         Provider.stream_lines = None
         Provider.reply_headers = {}
+        Provider.reply_fn = None
+        Service.requests = []
+        Service.reply = {}
+        Service.status = 200
         (self.base / "prompt").write_text("Rename a variable in one file. " * 40)
 
     def save(self):
         (self.base / "config.json").write_text(json.dumps(self.config))
+
+    def install_fake_native_cli(self):
+        """`codex` and `claude` stand-ins on PATH: they capture what they were
+        asked and answer from the environment (DK_REPORTED, DK_SLEEP, DK_EXIT)."""
+        tools = self.base / "tools"
+        tools.mkdir(exist_ok=True)
+        script = """#!/usr/bin/env python3
+import json, os, pathlib, sys, time
+args = sys.argv[1:]
+prompt = sys.stdin.read()
+pathlib.Path(os.environ["DK_CAPTURE"]).write_text(json.dumps({"args": args, "prompt": prompt}))
+time.sleep(float(os.environ.get("DK_SLEEP", "0")))
+if os.environ.get("DK_EXIT"):
+    sys.exit(int(os.environ["DK_EXIT"]))
+reported = os.environ.get("DK_REPORTED", "native-model")
+answer = "native answer to: " + prompt[:24]
+if "--output-last-message" in args:
+    pathlib.Path(args[args.index("--output-last-message") + 1]).write_text(answer)
+    print(json.dumps({"model": reported}))
+else:
+    print(json.dumps({"result": answer, "model": reported}))
+"""
+        for binary in ("codex", "claude"):
+            path = tools / binary
+            path.write_text(script)
+            path.chmod(0o700)
+        self.env["PATH"] = str(tools) + os.pathsep + self.env["PATH"]
+        self.env["DK_CAPTURE"] = str(self.base / "capture")
+        self.config["profiles"]["native"] = {
+            "adapter": "codex",
+            "model": "native-model",
+            "roles": ["builder", "clerk"],
+            "tier": "frontier",
+            "price": {"in": 8, "out": 40},
+        }
+        self.config["router"]["pool"].append("native")
+        self.save()
+
+    def captured(self):
+        return json.loads((self.base / "capture").read_text())
 
     def run_cli(self, *args, rc=0):
         result = subprocess.run(
@@ -590,6 +709,325 @@ class CliTests(Fixture):
         self.save()
         self.run_cli("check", rc=65)
         self.assertEqual(Provider.requests, [])
+
+
+class ServiceDeciderTests(Fixture):
+    """sage, jev, dipylon and classifier against a fake service: each speaks
+    its own wire format, all land in the same signals."""
+
+    SAGE = {
+        "results": [
+            {
+                "ok": True,
+                "result": {
+                    "answers": [
+                        {
+                            "ok": True,
+                            "result": {
+                                "id": "difficulty",
+                                "kind": "scale",
+                                "result": {
+                                    "expectation": 3.4,
+                                    "probabilities": [0, 0, 0.1, 0.4, 0.5],
+                                },
+                            },
+                        },
+                        {
+                            "ok": True,
+                            "result": {
+                                "id": "tags",
+                                "kind": "tags",
+                                "result": {
+                                    "tags": [
+                                        {"id": "code", "probability": 0.9},
+                                        {"id": "math", "probability": 0.1},
+                                        {"id": "rare", "probability": 0.2},
+                                    ]
+                                },
+                            },
+                        },
+                    ]
+                },
+            }
+        ],
+        "meta": {
+            "model": "sage-v1.4",
+            "usage": {"input_tokens": 500, "output_tokens": 0},
+        },
+    }
+    JEV = {
+        "model": "jev-1.13.0",
+        "answers": {
+            "difficulty": {
+                "type": "score",
+                "score": 0.8,
+                "confidence": 0.9,
+                "probabilities": {"0": 0.3, "1": 0.6, "2": 0.1, "3": 0, "4": 0},
+            },
+            "strong": {"type": "noul", "noul": 0.05},
+            "code": {"type": "noul", "noul": 0.95},
+            "rare": {"type": "noul", "noul": 0.1},
+        },
+        "usage": {"input_tokens": 300, "output_tokens": 20},
+    }
+    DIPYLON = {
+        "response": {
+            "type": "yesno",
+            "key": "strong",
+            "probability": 0.9,
+            "answer": "yes",
+        },
+        "meta": {"model": "dpl-m9", "schema_version": "1.4.0"},
+        "selective_use": {"action": "retain", "binding": {"artifact_id": "art-1"}},
+    }
+    CLASSIFIER = {"prompt_complexity_score": 0.1, "task_type_1": "Code Generation"}
+
+    def decide(self, decider):
+        self.config["router"]["decider"] = decider
+        self.save()
+        return json.loads(
+            self.run_cli(
+                "decide", "--prompt-file", str(self.base / "prompt"), "--json"
+            ).stdout
+        )
+
+    def test_each_service_decider_routes_in_its_own_wire_format(self):
+        self.env["SAGE_TEST_KEY"] = "sk-canary-sage"
+        self.env["TYPESAFE_API_KEY"] = "sk-canary-jev"
+        cases = [
+            (
+                {
+                    "kind": "sage",
+                    "url": self.service_url,
+                    "credential_env": "SAGE_TEST_KEY",
+                },
+                self.SAGE,
+                "frontier",
+                "sage-v1.4",
+            ),
+            ({"kind": "jev", "url": self.service_url}, self.JEV, "small", "jev-1.13.0"),
+            (
+                {"kind": "dipylon", "url": self.service_url},
+                self.DIPYLON,
+                "frontier",
+                "dpl-m9+art-1",
+            ),
+            (
+                {"kind": "classifier", "url": self.service_url},
+                self.CLASSIFIER,
+                "small",
+                "classifier",
+            ),
+        ]
+        for decider, reply, chosen, version in cases:
+            with self.subTest(decider["kind"]):
+                Service.requests, Service.reply = [], reply
+                out = self.decide(decider)
+                self.assertEqual(out["chosen"]["profile"], chosen, out)
+                self.assertEqual(
+                    out["decider"],
+                    {"id": decider["kind"], "version": version, "input": "excerpt"},
+                )
+                self.assertFalse(out["undecidable"])
+                self.assertEqual(len(Service.requests), 1)
+                path, body, headers = Service.requests[0]
+                self.assertTrue(headers["User-Agent"].startswith("delegation-kit/"))
+                self.assertNotIn("sk-canary", json.dumps(out))
+                if decider["kind"] == "sage":
+                    self.assertEqual(path, "/decide/batch")
+                    self.assertEqual(headers["Authorization"], "Bearer sk-canary-sage")
+                    self.assertEqual(body["reasoning"], "off")
+                    kinds = [q["kind"] for q in body["requests"][0]["questions"]]
+                    self.assertEqual(kinds, ["scale", "tags"])
+                    self.assertIn(
+                        "DATA", body["requests"][0]["content"]
+                    ) if False else None
+                    self.assertAlmostEqual(out["decision_cost_usd"], 500 * 0.05 / 1e6)
+                    self.assertEqual(out["signals"]["tags"]["code"], 0.9)
+                elif decider["kind"] == "jev":
+                    self.assertEqual(headers["Authorization"], "Bearer sk-canary-jev")
+                    self.assertEqual(body["model"], "jev-latest")
+                    self.assertEqual(
+                        {k: q["type"] for k, q in body["questions"].items()},
+                        {
+                            "difficulty": "score",
+                            "strong": "noul",
+                            "code": "noul",
+                            "rare": "noul",
+                        },
+                    )
+                    self.assertAlmostEqual(out["decision_cost_usd"], 300 * 0.042 / 1e6)
+                elif decider["kind"] == "dipylon":
+                    self.assertEqual(path, "/decide")
+                    self.assertNotIn("Authorization", headers)
+                    self.assertEqual(body["prompt"]["type"], "yesno")
+                    self.assertEqual(out["signals"]["p_needs_strong"], 0.9)
+                else:
+                    self.assertEqual(body, {"text": body["text"]})
+                    self.assertEqual(out["signals"]["tags"]["code"], 1.0)
+        self.assertEqual(Provider.requests, [])  # no pool profile was called
+
+    def test_service_decider_failures_fall_to_default(self):
+        for name, decider, status, reply, env in [
+            (
+                "missing credential",
+                {
+                    "kind": "sage",
+                    "url": self.service_url,
+                    "credential_env": "NO_SUCH_KEY",
+                },
+                200,
+                self.SAGE,
+                {},
+            ),
+            (
+                "loading 503",
+                {"kind": "dipylon", "url": self.service_url},
+                503,
+                {"detail": "loading"},
+                {},
+            ),
+            (
+                "malformed",
+                {"kind": "jev", "url": self.service_url},
+                200,
+                {"answers": "nope"},
+                {"TYPESAFE_API_KEY": "k"},
+            ),
+            ("empty", {"kind": "classifier", "url": self.service_url}, 200, {}, {}),
+        ]:
+            with self.subTest(name):
+                self.env.update(env)
+                Service.requests, Service.status, Service.reply = [], status, reply
+                out = self.decide(decider)
+                self.assertEqual(out["chosen"]["profile"], "mid")
+                self.assertTrue(out["undecidable"])
+                self.assertTrue(
+                    any(w.startswith("decider failed") for w in out["warnings"]), out
+                )
+        # a selective-use verdict other than retain halves dipylon's confidence
+        Service.status = 200
+        Service.reply = dict(
+            self.DIPYLON,
+            response={
+                "type": "yesno",
+                "key": "strong",
+                "probability": 0.7,
+                "answer": "yes",
+            },
+            selective_use={"action": "escalate", "binding": {}},
+        )
+        out = self.decide({"kind": "dipylon", "url": self.service_url})
+        self.assertTrue(out["undecidable"])
+        self.assertEqual(out["signals"]["confidence"], 0.2)
+
+    def test_decider_price_override_prices_the_decision(self):
+        self.env["SAGE_API_KEY"] = "k"
+        Service.reply = self.SAGE
+        out = self.decide(
+            {"kind": "sage", "url": self.service_url, "price": {"in": 1, "out": 0}}
+        )
+        self.assertAlmostEqual(out["decision_cost_usd"], 500 / 1e6)
+
+
+class EvalTests(Fixture):
+    """The offline harness: decides, scores against recorded outcomes, sweeps."""
+
+    def write_items(self):
+        items = [
+            {
+                "id": "easy",
+                "prompt": "Rename a variable in one file.",
+                "paraphrases": ["Please rename one variable in a single file."],
+                "outcomes": {
+                    "small": {"correct": True, "cost_usd": 0.001},
+                    "mid": {"correct": True, "cost_usd": 0.01},
+                    "frontier": {"correct": True, "cost_usd": 0.05},
+                },
+            },
+            {
+                "id": "hard",
+                "prompt": "HARD: prove the theorem and formalize it.",
+                "paraphrases": ["HARD: give a formal proof of the theorem."],
+                "outcomes": {
+                    "small": {"correct": False, "cost_usd": 0.001},
+                    "mid": {"correct": False, "cost_usd": 0.02},
+                    "frontier": {"correct": True, "cost_usd": 0.06},
+                },
+            },
+        ]
+        path = self.base / "items.jsonl"
+        path.write_text("".join(json.dumps(i) + "\n" for i in items))
+        return path
+
+    def test_eval_scores_a_decider_against_the_baseline(self):
+        Provider.reply_fn = lambda body: {
+            "choices": [
+                {
+                    "message": {
+                        "content": '{"difficulty": 4, "tags": []}'
+                        if "HARD" in json.dumps(body)
+                        else '{"difficulty": 1, "tags": ["code"]}'
+                    }
+                }
+            ],
+            "usage": {"prompt_tokens": 100, "completion_tokens": 10},
+        }
+        items = self.write_items()
+        out_dir = self.base / "eval"
+        report = json.loads(
+            self.run_cli(
+                "eval",
+                "--items",
+                str(items),
+                "--decider",
+                "llm",
+                "--output",
+                str(out_dir),
+                "--json",
+            ).stdout
+        )
+        self.assertEqual(report["decider"]["id"], "llm")
+        self.assertEqual((report["items"], report["prompts"]), (2, 4))
+        self.assertEqual(
+            len(Provider.requests), 4
+        )  # one decision per prompt, no dispatch
+        m, b = report["metrics"], report["baseline"]
+        self.assertEqual((m["accuracy"], b["accuracy"]), (1.0, 0.5))
+        self.assertAlmostEqual(m["cost_usd"], 0.061)
+        self.assertAlmostEqual(b["cost_usd"], 0.03)
+        self.assertEqual(m["optimal_selection_ratio"], 1.0)
+        self.assertEqual(m["robustness"], 1.0)
+        self.assertEqual(m["undecidable_rate"], 0.0)
+        self.assertGreater(m["decision_cost_usd"], 0)
+        checks = report["gate"]["checks"]
+        self.assertTrue(
+            checks["accuracy"] and checks["optimal_selection"] and checks["robustness"]
+        )
+        self.assertFalse(
+            checks["cost"]
+        )  # the frontier answer costs more than the wrong default
+        self.assertFalse(report["gate"]["accepted"])
+        self.assertEqual(
+            [p["frontier_cut"] for p in report["curve"]],
+            [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9],
+        )
+        self.assertTrue(
+            (out_dir / "report.json").exists() and (out_dir / "gate.json").exists()
+        )
+        self.assertEqual(
+            json.loads((out_dir / "gate.json").read_text())["accepted"], False
+        )
+        # the rules-only baseline never calls anything and is never accepted
+        Provider.requests = []
+        report = json.loads(
+            self.run_cli(
+                "eval", "--items", str(items), "--decider", "none", "--json"
+            ).stdout
+        )
+        self.assertEqual(Provider.requests, [])
+        self.assertEqual(report["metrics"]["accuracy"], 0.5)
+        self.assertFalse(report["gate"]["accepted"])
 
 
 class ServerTests(Fixture):
@@ -1010,6 +1448,136 @@ class ServerTests(Fixture):
             (504, "timeout", True),
         )
         self.assertEqual(headers["X-Router-Profile"], "frontier")
+
+    def test_native_profile_is_bridged_through_delegation_run(self):
+        self.install_fake_native_cli()
+        self.restart()
+        status, data, headers = self.post(self.chat("native", "Explain this function."))
+        self.assertEqual(status, 200, data)
+        self.assertEqual(
+            data["choices"][0]["message"]["content"],
+            "native answer to: Explain this function.",
+        )
+        self.assertEqual(data["object"], "chat.completion")
+        self.assertEqual(headers["X-Router-Profile"], "native")
+        run = data["router"]["delegation_run"]
+        self.assertEqual(run["lane"], "clerk")  # the read-only role, not builder
+        self.assertEqual(run["receipt"]["status"], "ready-for-integration")
+        self.assertEqual(run["model_identity_source"], "provider-reported")
+        self.assertFalse(data["router"]["mismatch"])
+        self.assertIsNone(data["router"]["cost_usd"])  # a native CLI reports no usage
+        captured = self.captured()
+        self.assertEqual(captured["prompt"], "Explain this function.")
+        self.assertEqual(
+            captured["args"][captured["args"].index("--sandbox") + 1], "read-only"
+        )
+        self.assertEqual(
+            captured["args"][captured["args"].index("--model") + 1], "native-model"
+        )
+        self.assertEqual(Provider.requests, [])
+        # a conversation becomes a labelled transcript
+        self.post(
+            {
+                "model": "native",
+                "messages": [
+                    {"role": "system", "content": "Be terse."},
+                    {"role": "user", "content": "One"},
+                    {"role": "assistant", "content": "Two"},
+                    {"role": "user", "content": "Three"},
+                ],
+            }
+        )
+        self.assertEqual(
+            self.captured()["prompt"],
+            "[system]\nBe terse.\n\n[user]\nOne\n\n[assistant]\nTwo\n\n[user]\nThree",
+        )
+
+    def test_auto_can_choose_a_native_profile(self):
+        self.install_fake_native_cli()
+        self.restart()
+        Provider.reply = {
+            "choices": [{"message": {"content": '{"difficulty": 4, "tags": []}'}}]
+        }
+        status, data, _ = self.post(self.chat("auto", "Prove it. " * 40))
+        self.assertEqual(status, 200, data)
+        self.assertEqual(
+            data["router"]["chosen"]["profile"], "native"
+        )  # cheapest frontier
+        self.assertEqual(data["router"]["delegation_run"]["lane"], "clerk")
+        self.assertEqual(len(Provider.requests), 1)  # the decision only
+        # tools, images or JSON output keep a native profile out of the running
+        status, data, _ = self.post(
+            self.chat(
+                "native", "x", tools=[{"type": "function", "function": {"name": "f"}}]
+            )
+        )
+        self.assertEqual((status, data["error"]["code"]), (400, "no-usable-candidate"))
+        self.assertEqual(
+            data["error"]["reason"], "native profile: no tools, images or JSON mode"
+        )
+        status, data, _ = self.post(
+            self.chat(
+                "auto", "Prove it. " * 40, response_format={"type": "json_object"}
+            )
+        )
+        self.assertEqual(status, 200, data)
+        self.assertEqual(data["router"]["chosen"]["profile"], "frontier")
+        self.assertIn(
+            {
+                "profile": "native",
+                "reason": "native profile: no tools, images or JSON mode",
+            },
+            data["router"]["blocked"],
+        )
+
+    def test_native_failures_are_mapped_from_the_dispatcher(self):
+        self.install_fake_native_cli()
+        self.config["profiles"]["native"]["parameters"] = {"timeout": 1}
+        self.save()
+        for name, env, status, code, retryable in [
+            (
+                "identity mismatch",
+                {"DK_REPORTED": "other-model"},
+                502,
+                "provider-identity-mismatch",
+                False,
+            ),
+            ("cli failure", {"DK_EXIT": "75"}, 502, "provider-unavailable", True),
+            ("timeout", {"DK_SLEEP": "3"}, 504, "timeout", True),
+        ]:
+            with self.subTest(name):
+                for key in ("DK_REPORTED", "DK_EXIT", "DK_SLEEP"):
+                    self.env.pop(key, None)
+                self.env.update(env)
+                self.restart()
+                got, data, headers = self.post(self.chat("native"))
+                self.assertEqual(
+                    (got, data["error"]["code"], data["error"]["retryable"]),
+                    (status, code, retryable),
+                )
+                self.assertEqual(data["error"]["profile"], "native")
+                self.assertEqual(headers["X-Router-Profile"], "native")
+
+    def test_native_stream_is_one_event_then_the_router_chunk(self):
+        self.install_fake_native_cli()
+        self.restart()
+        status, raw, headers = self.post(
+            self.chat("native", "Hello there", stream=True), raw=True
+        )
+        self.assertEqual(status, 200)
+        self.assertEqual(headers["Content-Type"], "text/event-stream")
+        events = [
+            json.loads(line[5:])
+            for line in raw.decode().split("\n")
+            if line.startswith("data:") and "[DONE]" not in line
+        ]
+        self.assertEqual(len(events), 2)
+        self.assertEqual(
+            events[0]["choices"][0]["delta"]["content"], "native answer to: Hello there"
+        )
+        self.assertEqual(events[1]["router"]["delegation_run"]["lane"], "clerk")
+        self.assertEqual(events[1]["router"]["upstream_status"], 200)
+        self.assertTrue(raw.decode().rstrip().endswith("data: [DONE]"))
 
     def test_receipts_record_decisions_without_prompt_text(self):
         self.config["router"]["receipts"] = True

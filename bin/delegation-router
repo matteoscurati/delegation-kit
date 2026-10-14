@@ -4,7 +4,9 @@
 The user declares a pool of profiles, a default and a decider. `check` and
 `decide` are read-only discovery: `decide` recommends one profile and never
 dispatches it. `serve` is the user's explicit choice to let the router pick a
-profile inside that pool for every request sent to it."""
+profile inside that pool for every request sent to it. `eval` measures a
+decider offline against recorded outcomes; it calls the decider, never a
+pool profile."""
 
 import argparse
 import json
@@ -12,7 +14,7 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent / "lib"))
-from delegation_config import LISTEN_PATTERN, load  # noqa: E402
+from delegation_config import LISTEN_PATTERN, ROUTER_DECIDERS, load  # noqa: E402
 from delegation_router_pipeline import check, route, router_block  # noqa: E402
 
 def main():
@@ -22,11 +24,19 @@ def main():
     pc.add_argument("--json", action="store_true")
     pd = sub.add_parser("decide", help="recommend one profile; never dispatches it")
     pd.add_argument("--prompt-file", required=True)
-    pd.add_argument("--decider", choices=["none", "llm"])
+    pd.add_argument("--decider", choices=sorted(ROUTER_DECIDERS))
     pd.add_argument("--input", choices=["excerpt", "full"])
     pd.add_argument("--json", action="store_true")
     ps = sub.add_parser("serve", help="OpenAI-compatible endpoint on loopback")
     ps.add_argument("--listen", help="loopback host:port (default: router.listen)")
+    pe = sub.add_parser(
+        "eval", help="measure a decider offline on a golden set; never dispatches"
+    )
+    pe.add_argument("--items", required=True, help="JSONL golden set")
+    pe.add_argument("--decider", choices=sorted(ROUTER_DECIDERS))
+    pe.add_argument("--input", choices=["excerpt", "full"])
+    pe.add_argument("--output", help="directory for report.json and gate.json")
+    pe.add_argument("--json", action="store_true")
     a = p.parse_args()
     try:
         c = load()
@@ -61,6 +71,43 @@ def main():
             if a.listen and not LISTEN_PATTERN.fullmatch(a.listen):
                 raise ValueError("--listen must be a loopback host:port")
             return serve(c, a.listen)
+        if a.command == "eval":
+            from delegation_router_eval import evaluate, read_items
+
+            kind = a.decider or c["router"].get("decider", {}).get("kind", "llm")
+            report = evaluate(c, read_items(a.items), kind, a.input)
+            if a.output:
+                out_dir = Path(a.output)
+                out_dir.mkdir(parents=True, exist_ok=True)
+                (out_dir / "report.json").write_text(json.dumps(report, indent=2) + "\n")
+                (out_dir / "gate.json").write_text(
+                    json.dumps(report["gate"], indent=2) + "\n"
+                )
+            if a.json:
+                print(json.dumps(report, indent=2))
+            else:
+                m, b = report["metrics"], report["baseline"]
+                print(
+                    "%s/%s on %d items (%d prompts): accuracy %s vs baseline %s; cost $%.4f vs $%.4f; optimal %s; robustness %s; p95 %s ms; undecidable %.0f%% → %s"
+                    % (
+                        report["decider"]["id"],
+                        report["decider"]["version"],
+                        report["items"],
+                        report["prompts"],
+                        _pct(m["accuracy"]),
+                        _pct(b["accuracy"]),
+                        m["cost_usd"],
+                        b["cost_usd"],
+                        _pct(m["optimal_selection_ratio"]),
+                        _pct(m["robustness"]),
+                        m["latency_ms"]["p95"],
+                        100 * m["undecidable_rate"],
+                        "accepted" if report["gate"]["accepted"] else "not accepted",
+                    )
+                )
+                for name, ok in report["gate"]["checks"].items():
+                    print("  %s %s" % ("ok " if ok else "NO ", name))
+            return 0
         text = Path(a.prompt_file).read_text()
         body = {"messages": [{"role": "user", "content": text}]}
         out, _choice, _feats, _blocked = route(
@@ -80,10 +127,16 @@ def main():
             )
             for reason in out["reasons"]:
                 print("  " + reason)
+            for warning in out["warnings"]:
+                print("  ! " + warning)
         return 0
     except (OSError, ValueError, KeyError, TypeError) as error:
         print("delegation-router: " + str(error), file=sys.stderr)
         return 65
+
+
+def _pct(value):
+    return "n/a" if value is None else "%.0f%%" % (100 * value)
 
 
 if __name__ == "__main__":

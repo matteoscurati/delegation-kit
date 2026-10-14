@@ -43,12 +43,16 @@ send the supplied prompt and return text or a patch; assigning a builder role
 cannot grant worktree access. No automatic provider substitution or retry.
 
 [`delegation-router`](docs/router.md) is a local model router: declare a pool
-of HTTP profiles, a default and a decider in the personal configuration, run
+of profiles, a default and a decider in the personal configuration, run
 `delegation-router serve` on loopback, and send `"model": "auto"` to it from
 any OpenAI-compatible client. The router picks one profile inside that pool
-per request, forwards with that profile's own key, and names the profile and
-model in every response. It never retries, falls back, or widens the pool;
-`delegation-router decide` recommends without dispatching.
+per request — HTTP profiles with their own key, native profiles through
+`delegation-run` — and names the profile and model in every response. The
+decider is one of your cheap profiles, Levanto Sage, TypeSafe Jev, a Dipylon
+or a local classifier; `delegation-router eval` measures it against the
+rules-only baseline on a golden set of yours. The router never retries,
+falls back, or widens the pool; `delegation-router decide` recommends without
+dispatching.
 
 Metrics distinguish requested model identity from provider-reported identity.
 An absent identity is usable as `requested-only`; an incompatible response model
@@ -66,11 +70,13 @@ Version 0.27.0 adds `delegation-router`, a local model router: a `router`
 block in a schema 2 personal configuration declares a pool of HTTP profiles,
 a default and a decider; `check` and `decide` are read-only; `serve` is an
 OpenAI-compatible endpoint on loopback that, for `"model": "auto"`, runs a
-deterministic prefilter, an LLM decider (difficulty 0–4 plus tags) and the
-`tiered-v1` policy, forwards with the chosen profile's own key, streams
-through, and discloses the choice in headers and a `router` object. A cost
-ceiling, opt-in receipts without prompt content, a browser-origin refusal and
-a shipped model catalog come with it. Version 0.26.x removed every dispatch
+deterministic prefilter, a decider (one of your cheap profiles, Sage, Jev,
+Dipylon or a local classifier: difficulty 0–4 plus tags) and the `tiered-v1`
+policy, forwards — HTTP profiles with their own key, native profiles through
+`delegation-run` — streams through, and discloses the choice in headers and
+a `router` object. A cost ceiling, opt-in receipts without prompt content, a
+browser-origin refusal, a shipped model catalog and an offline `eval` of the
+decider against the rules-only baseline come with it. Version 0.26.x removed every dispatch
 timeout the kit imposed on its own and the `--allow-provisional` no-op;
 0.25.x removed the qualification machinery (gates, contract, evidence) in
 favour of `config/presets.json` and read-only `delegation-route` discovery.

@@ -3,11 +3,18 @@
 route() never dispatches the chosen profile; it only decides and discloses.
 The server dispatches after route() when the user runs `serve`."""
 
-from delegation_config import catalog, profile_meta
+from delegation_config import (
+    ROUTER_HTTP_ADAPTERS,
+    SERVICE_DECIDERS,
+    catalog,
+    profile_meta,
+)
 from delegation_router import (
+    CUTS,
     choose,
     disclosure,
     features,
+    native_lane,
     normalize,
     pool_meta,
     prefilter,
@@ -33,6 +40,7 @@ def route(
     mode=None,
     opener=None,
     env=None,
+    cuts=None,
 ):
     """Run the pipeline. Returns (router object, choice, feats, blocked)."""
     r = router_block(c)
@@ -59,6 +67,8 @@ def route(
     if kind == "llm":
         key = decider_cfg.get("profile", r["default"])
         decider_meta = by_key.get(key) or profile_meta(key, c["profiles"][key], cat)
+    elif kind != "none":
+        decider_meta = {"price": decider.price}
     skipped = skip_reason(eligible, default_meta, decider_meta, feats)
     if skipped or kind == "none":
         decision = {
@@ -73,7 +83,7 @@ def route(
     verdict = normalize(decision["signals"])
     for tag, value in pretags(feats).items():
         verdict["tags"][tag] = max(verdict["tags"][tag], value)
-    choice = choose(verdict, eligible, default_meta, feats)
+    choice = choose(verdict, eligible, default_meta, feats, cuts or CUTS)
     out = disclosure(c, feats, verdict, choice, decision, blocked, skipped, mode)
     if decision.get("reason"):
         out["decider"]["reason"] = decision["reason"]
@@ -149,10 +159,29 @@ def check(c):
             warnings.append(
                 m["profile"] + ": no per-token price; ranked last within its tier"
             )
+        if m["adapter"] not in ROUTER_HTTP_ADAPTERS:
+            lane = native_lane(c["profiles"][m["profile"]])
+            if lane is None:
+                warnings.append(m["profile"] + ": native profile with no routable role")
+            else:
+                m["lane"] = lane
+                warnings.append(
+                    m["profile"]
+                    + ": native profile, bridged through delegation-run on the %s role; "
+                    "no tools, images or JSON mode, one event when streaming" % lane
+                )
     decider = dict(r.get("decider", {"kind": "llm"}))
     decider.setdefault("kind", "llm")
     if decider["kind"] == "llm":
         decider.setdefault("profile", r["default"])
+    elif decider["kind"] in SERVICE_DECIDERS:
+        from delegation_router_deciders import SERVICE_DEFAULTS
+
+        defaults = SERVICE_DEFAULTS[decider["kind"]]
+        for key in ("url", "credential_env", "model", "price"):
+            if key in defaults and key not in decider:
+                decider[key] = defaults[key]
+        decider.setdefault("timeout", defaults["timeout"])
     decider.setdefault("input", "excerpt")
     result.update(
         listen=r.get("listen", "127.0.0.1:4141"),
@@ -173,7 +202,9 @@ def check(c):
                     "price",
                     "context",
                     "metadata_source",
+                    "lane",
                 )
+                if key in m
             }
             for m in pool
         ],

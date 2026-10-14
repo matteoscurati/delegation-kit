@@ -135,7 +135,7 @@ and run `apply`; `init` never overrides later user decisions.
 ## Router
 
 A `router` block, valid only with `"schema_version": 2`, declares a pool of
-HTTP profiles, a default and a decider for `delegation-router`. Schema 2
+profiles (HTTP or native), a default and a decider for `delegation-router`. Schema 2
 profiles may also declare routing metadata — `tier`, `code`, `price`,
 `context`, `json_mode` — which otherwise comes from the shipped
 `config/catalog.json`. Without the block the router is off; nothing else in

@@ -13,10 +13,11 @@ import signal
 import socket
 import threading
 import time
+import uuid
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import urlsplit
 
-from delegation_config import ROOT, catalog
+from delegation_config import ROUTER_HTTP_ADAPTERS, catalog, kit_version
 from delegation_router import (
     DEFAULT_OUTPUT_TOKENS,
     count,
@@ -25,8 +26,10 @@ from delegation_router import (
     data_home,
     endpoint_for,
     estimate_cost,
+    native_lane,
     pool_meta,
 )
+from delegation_router_bridge import BridgeFailure, dispatch
 from delegation_router_pipeline import explicit, route, router_block
 
 MAX_BODY = 4 * 1024 * 1024
@@ -43,16 +46,6 @@ EXPOSED_HEADERS = (
     "X-Router-Model-Mismatch, X-Router-Error, Retry-After"
 )
 KEY_SHAPED = re.compile(r"\b(?:sk-[A-Za-z0-9_-]{8,}|[A-Za-z0-9_-]{32,})\b")
-
-
-def kit_version():
-    """The installed marker when running from an install root, else the checkout."""
-    for name in ("installed-version.json", "package.json"):
-        try:
-            return json.loads((ROOT / name).read_text())["version"]
-        except (OSError, ValueError, KeyError, TypeError):
-            continue
-    return "unknown"
 
 
 def redact(text):
@@ -383,10 +376,17 @@ class Handler(BaseHTTPRequestHandler):
                     )
                 raise RouterFailure(400, "no-usable-candidate", reason=item["reason"])
         profile = c["profiles"][choice["profile"]]
+        stream = bool(body.get("stream"))
+        meta = self.server.pool[choice["profile"]]
+        extra_headers = disclosure_headers(out)
+        self.router_headers = extra_headers
+        if profile["adapter"] not in ROUTER_HTTP_ADAPTERS:
+            return self.relay_native(
+                body, out, meta, profile, choice, extra_headers, started, stream
+            )
         token = credential_for(profile, self.server.env)
         if credential_required(profile) and not token:
             raise RouterFailure(401, "provider-key-missing", profile=choice["profile"])
-        stream = bool(body.get("stream"))
         payload = json.dumps(upstream_body(body, profile, choice, stream)).encode()
         headers = {
             "Content-Type": "application/json",
@@ -402,9 +402,6 @@ class Handler(BaseHTTPRequestHandler):
             if url.scheme == "https"
             else http.client.HTTPConnection
         )(url.hostname, url.port, timeout=CONNECT_TIMEOUT)
-        meta = self.server.pool[choice["profile"]]
-        extra_headers = disclosure_headers(out)
-        self.router_headers = extra_headers
         try:
             try:
                 connection.connect()
@@ -442,6 +439,123 @@ class Handler(BaseHTTPRequestHandler):
             relay(response, sock, out, meta, profile, extra_headers, started, deadline)
         finally:
             connection.close()
+
+    # ---- native profiles: one delegation-run per request ------------------------
+
+    def relay_native(self, body, out, meta, profile, choice, headers, started, stream):
+        """A native adapter answers through the kit's dispatcher. Non-stream by
+        nature: a stream request gets the whole answer as one event."""
+        key = choice["profile"]
+        lane = native_lane(profile)
+        if lane is None:
+            raise RouterFailure(
+                400, "no-usable-candidate", profile=key, reason="no routable role"
+            )
+        out["delegation_run"] = {"lane": lane}
+        if stream:
+            self.start_response(
+                200,
+                [
+                    ("Content-Type", "text/event-stream"),
+                    ("Cache-Control", "no-store"),
+                    ("Transfer-Encoding", "chunked"),
+                    *headers,
+                ],
+            )
+        try:
+            answer = dispatch(key, body, lane, self.server.env)
+        except BridgeFailure as failure:
+            out["delegation_run"].update(
+                {k: v for k, v in failure.extra.items() if v is not None}
+            )
+            if not stream:
+                raise RouterFailure(
+                    failure.status,
+                    failure.code,
+                    failure.retryable,
+                    profile=key,
+                    **{k: v for k, v in failure.extra.items() if v is not None},
+                )
+            self.settle(out, meta, profile, {}, None, started, 502)
+            self.end_stream(out, profile, failure.code, failure.retryable)
+            return
+        self.settle(
+            out, meta, profile, answer["usage"], answer["reported"], started, 200
+        )
+        if answer["cost_usd"] is not None:
+            out["cost_usd"] = answer["cost_usd"]
+        out["delegation_run"].update(
+            {
+                "exit_code": 0,
+                "duration_ms": answer["duration_ms"],
+                "model_identity_source": answer["identity_source"],
+                "receipt": answer["receipt"],
+            }
+        )
+        completion_id = "chatcmpl-router-" + uuid.uuid4().hex[:12]
+        if stream:
+            chunk = {
+                "id": completion_id,
+                "object": "chat.completion.chunk",
+                "created": int(time.time()),
+                "model": profile["model"],
+                "choices": [
+                    {
+                        "index": 0,
+                        "delta": {"role": "assistant", "content": answer["content"]},
+                        "finish_reason": "stop",
+                    }
+                ],
+            }
+            try:
+                self.write_chunk(b"data: " + json.dumps(chunk).encode() + b"\n\n")
+            except OSError:
+                return
+            self.end_stream(out, profile, None, False)
+            return
+        completion = {
+            "id": completion_id,
+            "object": "chat.completion",
+            "created": int(time.time()),
+            "model": profile["model"],
+            "choices": [
+                {
+                    "index": 0,
+                    "message": {"role": "assistant", "content": answer["content"]},
+                    "finish_reason": "stop",
+                }
+            ],
+            "router": out,
+        }
+        if out.get("usage"):
+            completion["usage"] = {
+                "prompt_tokens": out["usage"].get("prompt_tokens") or 0,
+                "completion_tokens": out["usage"].get("completion_tokens") or 0,
+            }
+        extra = list(headers)
+        if out["mismatch"]:
+            extra.append(("X-Router-Model-Mismatch", "1"))
+        self.send_json(200, completion, extra)
+
+    def end_stream(self, out, profile, failure, retryable):
+        """The closing router chunk, [DONE] and the chunked terminator."""
+        final = {
+            "id": "chatcmpl-router",
+            "object": "chat.completion.chunk",
+            "created": int(time.time()),
+            "model": profile["model"],
+            "choices": [],
+            "router": out,
+        }
+        if failure:
+            final["error"] = {"code": failure, "retryable": retryable}
+        try:
+            self.write_chunk(b"data: " + json.dumps(final).encode() + b"\n\n")
+            self.write_chunk(b"data: [DONE]\n\n")
+            self.wfile.write(b"0\r\n\r\n")
+            self.wfile.flush()
+        except OSError:
+            pass
 
     # ---- relays --------------------------------------------------------------
 
@@ -590,25 +704,12 @@ class Handler(BaseHTTPRequestHandler):
                 return
         status = 200 if done else 502
         self.settle(out, meta, profile, usage, reported, started, status)
-        final = {
-            "id": "chatcmpl-router",
-            "object": "chat.completion.chunk",
-            "created": int(time.time()),
-            "model": profile["model"],
-            "choices": [],
-            "router": out,
-        }
-        if failure:
-            final["error"] = {"code": failure, "retryable": failure != "stream-limit"}
-        try:
-            if last.strip():
+        if last.strip():
+            try:
                 self.write_chunk(b"\n")
-            self.write_chunk(b"data: " + json.dumps(final).encode() + b"\n\n")
-            self.write_chunk(b"data: [DONE]\n\n")
-            self.wfile.write(b"0\r\n\r\n")
-            self.wfile.flush()
-        except OSError:
-            pass
+            except OSError:
+                return
+        self.end_stream(out, profile, failure, failure != "stream-limit")
 
     def write_chunk(self, data):
         self.wfile.write(("%x\r\n" % len(data)).encode() + data + b"\r\n")

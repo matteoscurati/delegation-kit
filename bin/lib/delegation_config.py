@@ -94,7 +94,19 @@ PROFILE_ROUTING_FIELDS = {"tier", "code", "price", "context", "json_mode"}
 # The router pool accepts the HTTP adapters only in this release; native CLI
 # profiles need a non-streaming bridge that arrives later.
 ROUTER_HTTP_ADAPTERS = {"openai-compatible", "deepseek-api", "token-plan-openai"}
-ROUTER_DECIDERS = {"none", "llm"}
+ROUTER_DECIDERS = {"none", "llm", "sage", "jev", "dipylon", "classifier"}
+DECIDER_FIELDS = {
+    "kind",
+    "profile",
+    "input",
+    "timeout",
+    "url",
+    "credential_env",
+    "model",
+    "price",
+}
+# Deciders that call a service of their own rather than one of the profiles.
+SERVICE_DECIDERS = {"sage", "jev", "dipylon", "classifier"}
 ROUTER_FIELDS = {
     "listen",
     "pool",
@@ -172,6 +184,31 @@ def _number(value):
     return type(value) in (int, float) and value == value and value >= 0
 
 
+def _price_ok(price):
+    return price is None or (
+        isinstance(price, dict)
+        and set(price) == {"in", "out"}
+        and _number(price["in"])
+        and _number(price["out"])
+        and price["in"] <= 100_000
+        and price["out"] <= 100_000
+    )
+
+
+def _endpoint_ok(value):
+    """HTTPS anywhere, HTTP on loopback only, no inline credentials."""
+    if not isinstance(value, str) or any(ord(ch) < 33 for ch in value):
+        return False
+    url = urlsplit(value)
+    if url.port is not None and not 1 <= url.port <= 65535:
+        return False
+    if not url.hostname or url.username or url.password or url.query or url.fragment:
+        return False
+    return url.scheme == "https" or (
+        url.scheme == "http" and url.hostname in LOOPBACK_HOSTS
+    )
+
+
 def validate_routing_fields(p):
     """Optional per-profile routing declarations (schema 2)."""
     if "tier" in p and p["tier"] not in TIERS:
@@ -184,17 +221,8 @@ def validate_routing_fields(p):
         type(p["context"]) is not int or not 1 <= p["context"] <= 100_000_000
     ):
         raise ValueError("invalid context")
-    if "price" in p:
-        price = p["price"]
-        if price is not None and (
-            not isinstance(price, dict)
-            or set(price) != {"in", "out"}
-            or not _number(price["in"])
-            or not _number(price["out"])
-            or price["in"] > 100_000
-            or price["out"] > 100_000
-        ):
-            raise ValueError("invalid price (USD per million tokens: {in, out})")
+    if "price" in p and not _price_ok(p["price"]):
+        raise ValueError("invalid price (USD per million tokens: {in, out})")
 
 
 LISTEN_PATTERN = re.compile(r"(localhost|127\.0\.0\.1|\[::1\]):[0-9]{1,5}")
@@ -225,28 +253,44 @@ def validate_router(c):
     for key in pool:
         if key not in c["profiles"]:
             raise ValueError("router.pool names an unknown profile: " + key)
-        if c["profiles"][key]["adapter"] not in ROUTER_HTTP_ADAPTERS:
-            raise ValueError(
-                "router.pool supports HTTP adapters only in this release: " + key
-            )
     if r.get("default") not in pool:
         raise ValueError("router.default must be one of router.pool")
     decider = r.get("decider", {"kind": "llm"})
-    if not isinstance(decider, dict) or set(decider) - {
-        "kind",
-        "profile",
-        "input",
-        "timeout",
-    }:
+    if not isinstance(decider, dict) or set(decider) - DECIDER_FIELDS:
         raise ValueError("unknown router.decider field")
-    if decider.get("kind", "llm") not in ROUTER_DECIDERS:
+    kind = decider.get("kind", "llm")
+    if kind not in ROUTER_DECIDERS:
         raise ValueError("router.decider.kind not available in this release")
-    if decider.get("kind", "llm") == "llm":
+    if kind == "llm":
         profile = decider.get("profile", r["default"])
         if profile not in c["profiles"]:
             raise ValueError("router.decider.profile names an unknown profile")
         if c["profiles"][profile]["adapter"] not in ROUTER_HTTP_ADAPTERS:
             raise ValueError("router.decider.profile must use an HTTP adapter")
+    elif "profile" in decider:
+        raise ValueError("router.decider.profile applies to the llm decider only")
+    if kind in SERVICE_DECIDERS:
+        if "url" in decider and not _endpoint_ok(decider["url"]):
+            raise ValueError("router.decider.url must be HTTPS or loopback HTTP")
+        if kind in {"dipylon", "classifier"} and "url" not in decider:
+            raise ValueError("router.decider.url is required for " + kind)
+    elif set(decider) & {"url", "credential_env", "model", "price"}:
+        raise ValueError(
+            "router.decider url/credential_env/model/price need a service decider"
+        )
+    if "credential_env" in decider and (
+        not isinstance(decider["credential_env"], str)
+        or not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", decider["credential_env"])
+    ):
+        raise ValueError("invalid router.decider.credential_env")
+    if "model" in decider and (
+        not isinstance(decider["model"], str)
+        or not decider["model"]
+        or any(ord(x) < 33 for x in decider["model"])
+    ):
+        raise ValueError("invalid router.decider.model")
+    if "price" in decider and not _price_ok(decider["price"]):
+        raise ValueError("invalid router.decider.price")
     if decider.get("input", "excerpt") not in {"excerpt", "full"}:
         raise ValueError("router.decider.input must be excerpt or full")
     if "timeout" in decider and (
@@ -386,6 +430,16 @@ def validate(c):
     return c
 
 
+def kit_version():
+    """The installed marker when running from an install root, else the checkout."""
+    for name in ("installed-version.json", "package.json"):
+        try:
+            return json.loads((ROOT / name).read_text())["version"]
+        except (OSError, ValueError, KeyError, TypeError):
+            continue
+    return "unknown"
+
+
 @functools.lru_cache(maxsize=1)
 def catalog():
     """Code-owned routing metadata for known model identifiers. Immutable for
@@ -408,9 +462,7 @@ def profile_meta(key, p, cat=None):
         "code": p["code"] if "code" in p else base.get("code", False),
         "price": p["price"] if "price" in p else base.get("price"),
         "context": p["context"] if "context" in p else base.get("context"),
-        "json_mode": p["json_mode"]
-        if "json_mode" in p
-        else base.get("json_mode", False),
+        "json_mode": p["json_mode"] if "json_mode" in p else base.get("json_mode"),
         "effort": p.get("parameters", {}).get("effort"),
         "metadata_source": (
             "profile"

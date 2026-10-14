@@ -62,9 +62,9 @@ router is off and `check` says so.
 | field | meaning |
 |---|---|
 | `listen` | loopback `host:port` only (`127.0.0.1`, `localhost`, `[::1]`); default `127.0.0.1:4141` |
-| `pool` | profile ids the router may choose from; HTTP adapters only (`openai-compatible`, `deepseek-api`, `token-plan-openai`) |
+| `pool` | profile ids the router may choose from: any adapter. HTTP profiles (`openai-compatible`, `deepseek-api`, `token-plan-openai`) are called directly; native profiles (`codex`, `claude-code`, `claude-zai`, `kimi-code-cli`, `grok-build-cli`, `agy`) are bridged through `delegation-run`, see below |
 | `default` | the pool profile used when the decision is undecidable; must be in the pool |
-| `decider` | `kind` `llm` (default) or `none`; for `llm`, `profile` is an HTTP profile called with its own key (default: the pool default), `input` is `excerpt` (default) or `full`, `timeout` seconds 1–600 (default 3) |
+| `decider` | `kind`: `llm` (default), `none`, `sage`, `jev`, `dipylon` or `classifier`. For `llm`, `profile` is an HTTP profile called with its own key (default: the pool default). For the service deciders, `url` (HTTPS, or loopback HTTP; required for `dipylon` and `classifier`), `credential_env` (the variable holding that service's key), `model` (Jev only) and `price` (`{in, out}` per million tokens, to price the decision) override the defaults listed under *Deciders*. `input` is `excerpt` (default) or `full`; `timeout` seconds 1–600 |
 | `max_cost_usd` | pre-dispatch ceiling on the estimated cost of one request; a request whose chosen profile exceeds it is refused, never downgraded |
 | `receipts` | when true, one JSONL line per request in `$DELEGATION_DATA_HOME/router/receipts.jsonl` (mode 600); decision, profile, usage, cost, latency — never prompt content. `uninstall.sh` keeps the file as `$DELEGATION_DATA_HOME.router-receipts.jsonl.bak` and `install.sh` restores it, like the key files |
 | `allow_origins` | exact browser origins allowed to call the server (`https://app.example`, or `http://localhost:5173`); empty by default, so a web page cannot spend your keys. A listed origin gets the CORS preflight answered and `Access-Control-Allow-Origin` plus the exposed `X-Router-*` headers on every response; any other `Origin` is refused |
@@ -80,12 +80,32 @@ ranked last within its tier. The catalog's numbers are a dated snapshot
 (`catalog_version`), not a price list you should trust blindly: declare the
 price on the profile when it matters.
 
-Claude models are not in the pool in this release: Anthropic has no
-chat-completions endpoint, and the native `claude-code` adapter is not an
-HTTP adapter. The same holds for the other native adapters (`codex`,
-`claude-zai`, `kimi-code-cli`, `grok-build-cli`, `agy`). Gemini and OpenAI
-expose chat-completions endpoints and enter the pool as `openai-compatible`
-profiles.
+### Native profiles in the pool
+
+A profile on a native adapter has no chat-completions endpoint, so the
+router answers through the kit's own dispatcher: the conversation is written
+to a prompt file (a single user turn verbatim; otherwise a `[system]` /
+`[user]` / `[assistant]` transcript), `delegation-run --profile <id> --lane
+<role>` runs it in an empty temporary workdir, and the answer file comes back
+as one chat completion. The role is the first read-only one the profile
+declares and its adapter supports (`clerk`, `scout`, `reviewer`, `judgement`,
+`senior`, `policy-annotation`, the review roles), a build role only when
+nothing else is declared; `check` and the `router.delegation_run.lane` field
+say which. Everything the dispatcher enforces stays in force: the profile's
+`timeout`, the identity check (a mismatch is exit 70 there, so here it is
+`502 provider-identity-mismatch` rather than a disclosed delivery), OAuth
+locks (a second concurrent Kimi or Grok request is `429
+provider-rate-limited`), sandboxes. The dispatcher's receipt (`review_policy`,
+`review_status`, `status`) is relayed under `router.delegation_run`.
+
+Limits that follow from the transport: no tools, images or JSON output mode
+(the prefilter keeps native profiles out of such requests); a stream request
+gets the whole answer as one event followed by the router chunk; a native
+CLI reports no usage, so `cost_usd` is `null` unless its runner metrics carry
+a provider cost. This is how Claude models enter the pool — through the
+`claude-code` or `claude-zai` adapter — since Anthropic exposes no
+chat-completions endpoint. Gemini and OpenAI do, and enter as
+`openai-compatible` profiles.
 
 ## How a request is routed
 
@@ -104,11 +124,12 @@ profiles.
    decider profile inside a `DATA` block with the prompt in
    [`config/router-prompt.v1.md`](../config/router-prompt.v1.md), and reads
    one JSON object back: `difficulty` 0–4 and tags `code`, `math`, `rare`.
-   `long` (≥ 20k tokens) and `tools` are set deterministically. Anything
-   outside that schema, an HTTP error, a timeout, or a missing key makes the
-   decision *undecidable*: the default is used, the warning is disclosed, no
-   retry happens. Text inside the request cannot steer the route: the decider
-   never sees it as instructions and cannot name a model.
+   The service deciders ask the same question in their own vocabulary (see
+   *Deciders*). `long` (≥ 20k tokens) and `tools` are set deterministically.
+   Anything outside the schema, an HTTP error, a timeout, or a missing key
+   makes the decision *undecidable*: the default is used, the warning is
+   disclosed, no retry happens. Text inside the request cannot steer the
+   route: the decider never sees it as instructions and cannot name a model.
 4. **Policy `tiered-v1`**: no usable signal or confidence below 0.55 →
    default. Difficulty ≥ 3 (0.75 of the scale), `long`, or a `p_needs_strong`
    ≥ 0.7 → frontier tier; difficulty < 1.5 without `math`, `rare` or `tools`
@@ -133,6 +154,58 @@ profiles.
 `delegation-router decide --decider none` runs steps 1, 2 and 4 with no
 network and always lands on the default: that is the baseline the evaluation
 harness of a later release will measure deciders against.
+
+## Deciders
+
+Every decider answers the same question — how much capability does this
+request need, and does it involve code, math or rare knowledge — and reports
+it as signals the policy reads: a 0–4 difficulty (expectation, distribution,
+confidence), a "needs a strong model" probability, tag probabilities. The
+excerpt is all any of them sees. Each is called with its own credential,
+never a profile's, and prices its decision from `price`.
+
+| kind | service | default `url` | default `credential_env` | asks | default `price` |
+|---|---|---|---|---|---|
+| `llm` | one of your HTTP profiles | — | the profile's | difficulty 0–4 + tags, one JSON object | the profile's |
+| `sage` | Levanto Sage, `POST /decide/batch` | `https://sage.levanto.ai` | `SAGE_API_KEY` | a `scale` 0–4 and a `tags` question in one batch, reasoning off; confidence is the mass of the distribution in the tier band the expectation lands in | $0.05 in / $10 out per M |
+| `jev` | TypeSafe Jev (System One API) | `https://api.typesafe.ai/v1/systemone` | `TYPESAFE_API_KEY` | a 5-level `score`, a `noul` for "needs a frontier model", `noul`s for code and rare; `model` default `jev-latest`. Jev is weak on numbers, so a request that carries any is never routed below mid | $0.042 in per M |
+| `dipylon` | your own Dipylon service, `POST /decide` | required | none | one `yesno`, "does this need a strong model?"; a selective-use verdict other than `retain` halves the confidence; a 503 (model loading) is undecidable | none |
+| `classifier` | any local classifier behind `POST {"text"}` | required | none | reads `difficulty` (0..1) or NVIDIA's `prompt_complexity_score`, `p_needs_strong`, `tags`, `confidence`, and `task_type_1` naming code | none |
+| `none` | — | — | — | nothing: always the default; the baseline `eval` measures against | — |
+
+The Sage and Jev URLs can point at a proxy of your own; the request shape is
+the service's. Jev through OpenRouter is not wired in this release: its
+`/api/alpha/decisions` shape was not verified. Reaching any of these is the
+user's choice, made in the configuration; `check` shows which service and
+which variable without touching either.
+
+## Measuring a decider
+
+```sh
+delegation-router eval --items ~/work/evals/router/items.jsonl --decider sage --output ~/work/evals/router/sage
+```
+
+The golden set lives outside the repository. Each JSONL line is one item:
+
+```json
+{"id": "easy-rename", "prompt": "Rename …", "paraphrases": ["Please rename …"],
+ "outcomes": {"flash": {"correct": true, "cost_usd": 0.0011}, "qwen": {"correct": true, "cost_usd": 0.0093},
+              "sol": {"correct": true, "cost_usd": 0.041}},
+ "oracle": {"cheapest_correct": "flash"}}
+```
+
+`outcomes` is what each pool profile did on that prompt when *you* ran it:
+whether the answer was right and what it cost. The harness never dispatches
+a pool profile; it asks the decider once per prompt and paraphrase and looks
+the chosen profile up. It reports accuracy, cost (outcomes plus decisions),
+optimal-selection ratio, robustness (same tier on prompt and paraphrases),
+undecidable rate, decision latency p50/p95, the same for the rules-only
+baseline, and a deferral curve (the frontier cut swept 0.1–0.9 without new
+decider calls). `gate.json` says whether the decider clears the bar —
+accuracy ≥ baseline − 2 pp, cost ≤ 0.8× baseline, optimal selection ≥ 0.40,
+robustness ≥ 0.85, p95 ≤ 300 ms (1.2 s for Dipylon, 1.5 s for `llm`),
+undecidable ≤ 15 %, decision cost ≤ 10 % of the saving. The bar is advisory:
+nothing in `serve` reads it.
 
 ## What a response carries
 
@@ -226,7 +299,6 @@ reported with its pool, default and decider, and `check` warnings are listed.
 ## Out of scope, on purpose
 
 No public instance, no access tokens, no multi-tenant limits. No automatic
-retry or fallback. No decision cache. Native profiles in the pool, the
-`sage`, `jev`, `dipylon` and classifier deciders, and the offline evaluation
-harness with a deferral curve are planned for later releases; `mode:
-"shadow"` exists now so a decider can be observed before it is trusted.
+retry or fallback. No decision cache. No importer for a particular
+evaluation corpus: the golden-set format is the contract. `mode: "shadow"`
+exists so a decider can be observed before it is trusted.
