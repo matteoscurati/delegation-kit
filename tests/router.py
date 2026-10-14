@@ -42,6 +42,9 @@ class LoopbackServer(ThreadingHTTPServer):
         self.server_name = self.server_address[0]
         self.server_port = self.server_address[1]
 
+    def handle_error(self, request, client_address):
+        pass  # a client that gave up mid-reply is expected in the timeout tests
+
 
 class Provider(BaseHTTPRequestHandler):
     """A fake chat-completions provider that records every request."""
@@ -705,6 +708,8 @@ class CliTests(Fixture):
 
     def test_decider_timeout_is_bounded(self):
         class Slow(Provider):
+            requests = []  # its late write must not land in the next test's record
+
             def do_POST(self):
                 time.sleep(3)
                 Provider.do_POST(self)
@@ -1453,6 +1458,8 @@ class ServerTests(Fixture):
 
     def test_profile_timeout_bounds_a_slow_non_stream_answer(self):
         class Slow(Provider):
+            requests = []  # its late write must not land in the next test's record
+
             def do_POST(self):
                 time.sleep(2)
                 Provider.do_POST(self)
