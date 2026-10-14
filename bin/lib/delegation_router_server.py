@@ -11,6 +11,7 @@ import os
 import re
 import signal
 import socket
+import socketserver
 import threading
 import time
 import uuid
@@ -154,6 +155,14 @@ class RouterServer(ThreadingHTTPServer):
         self.started = time.time()
         self.catalog = catalog()
         self.pool = {m["profile"]: m for m in pool_meta(config, self.catalog)}
+
+    def server_bind(self):
+        # http.server resolves the bound address back to a name on every bind
+        # (socket.getfqdn): a reverse-DNS lookup that stalls for seconds on a
+        # host with a slow resolver. A loopback server has no use for a name.
+        socketserver.TCPServer.server_bind(self)
+        self.server_name = self.server_address[0]
+        self.server_port = self.server_address[1]
 
     def handle_error(self, request, client_address):
         # socketserver would print a traceback to stderr; this server never

@@ -14,6 +14,7 @@ import unittest
 import urllib.error
 import urllib.request
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from socketserver import TCPServer
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -28,6 +29,18 @@ from delegation_router import (  # noqa: E402
     prefilter,
     skip_reason,
 )
+
+
+class LoopbackServer(ThreadingHTTPServer):
+    """ThreadingHTTPServer without the reverse-DNS lookup http.server does on
+    bind: that lookup stalls for seconds per server on a CI runner."""
+
+    daemon_threads = True
+
+    def server_bind(self):
+        TCPServer.server_bind(self)
+        self.server_name = self.server_address[0]
+        self.server_port = self.server_address[1]
 
 
 class Provider(BaseHTTPRequestHandler):
@@ -413,9 +426,9 @@ class Fixture(unittest.TestCase):
 
     @classmethod
     def setUpClass(cls):
-        cls.server = ThreadingHTTPServer(("127.0.0.1", 0), Provider)
+        cls.server = LoopbackServer(("127.0.0.1", 0), Provider)
         threading.Thread(target=cls.server.serve_forever, daemon=True).start()
-        cls.service = ThreadingHTTPServer(("127.0.0.1", 0), Service)
+        cls.service = LoopbackServer(("127.0.0.1", 0), Service)
         threading.Thread(target=cls.service.serve_forever, daemon=True).start()
 
     @classmethod
@@ -696,7 +709,7 @@ class CliTests(Fixture):
                 time.sleep(3)
                 Provider.do_POST(self)
 
-        slow = ThreadingHTTPServer(("127.0.0.1", 0), Slow)
+        slow = LoopbackServer(("127.0.0.1", 0), Slow)
         threading.Thread(target=slow.serve_forever, daemon=True).start()
         self.addCleanup(slow.server_close)
         self.addCleanup(slow.shutdown)
@@ -1444,7 +1457,7 @@ class ServerTests(Fixture):
                 time.sleep(2)
                 Provider.do_POST(self)
 
-        slow = ThreadingHTTPServer(("127.0.0.1", 0), Slow)
+        slow = LoopbackServer(("127.0.0.1", 0), Slow)
         threading.Thread(target=slow.serve_forever, daemon=True).start()
         self.addCleanup(slow.server_close)
         self.addCleanup(slow.shutdown)

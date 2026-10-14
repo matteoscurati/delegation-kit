@@ -11,10 +11,23 @@ import threading
 import time
 import unittest
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from socketserver import TCPServer
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "bin/lib"))
 from delegation_config import review_state  # noqa: E402
+
+
+class LoopbackServer(ThreadingHTTPServer):
+    """ThreadingHTTPServer without the reverse-DNS lookup http.server does on
+    bind: that lookup stalls for seconds per server on a CI runner."""
+
+    daemon_threads = True
+
+    def server_bind(self):
+        TCPServer.server_bind(self)
+        self.server_name = self.server_address[0]
+        self.server_port = self.server_address[1]
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -50,7 +63,7 @@ class Handler(BaseHTTPRequestHandler):
 class ConfigTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        cls.server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+        cls.server = LoopbackServer(("127.0.0.1", 0), Handler)
         cls.thread = threading.Thread(target=cls.server.serve_forever, daemon=True)
         cls.thread.start()
 

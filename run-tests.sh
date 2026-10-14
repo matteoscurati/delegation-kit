@@ -38,7 +38,12 @@ else
   pids=""
   for t in "${suites[@]}"; do
     b="$(basename "$t" .sh)"
-    ( bash "$t" >"$LOGS/$b.log" 2>&1; printf '%s\n' "$?" >"$LOGS/$b.rc" ) &
+    # Each suite announces its own completion with its elapsed time, so a run
+    # that is killed by a CI timeout still shows which suites never finished.
+    ( s0="$(date +%s)"; bash "$t" >"$LOGS/$b.log" 2>&1; rc=$?
+      printf '%s\n' "$rc" >"$LOGS/$b.rc"
+      printf '%s\n' "$(( $(date +%s) - s0 ))" >"$LOGS/$b.secs"
+      printf '  done %-34s %4ss rc=%s\n' "$b" "$(( $(date +%s) - s0 ))" "$rc" ) &
     pids="$pids $!"
   done
   # bash 3.2 on macOS has no `wait -n`; waiting on each pid is portable and the
@@ -52,10 +57,11 @@ failed=""
 for t in "${suites[@]}"; do
   b="$(basename "$t" .sh)"
   r="$(cat "$LOGS/$b.rc" 2>/dev/null || echo 1)"
+  secs="$(cat "$LOGS/$b.secs" 2>/dev/null || echo '?')"
   if [ "$r" = 0 ]; then
-    printf '  ok   %-34s %s\n' "$b" "$(tail -1 "$LOGS/$b.log" 2>/dev/null)"
+    printf '  ok   %-34s %4ss  %s\n' "$b" "$secs" "$(tail -1 "$LOGS/$b.log" 2>/dev/null)"
   else
-    printf '  FAIL %-34s rc=%s\n' "$b" "$r"
+    printf '  FAIL %-34s %4ss  rc=%s\n' "$b" "$secs" "$r"
     failed="$failed $b"
     rc=1
   fi
