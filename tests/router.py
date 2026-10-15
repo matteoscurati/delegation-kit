@@ -243,9 +243,7 @@ class PolicyTests(unittest.TestCase):
             "max_tokens": 10,
         }
         feats = features(body)
-        self.assertTrue(
-            feats["has_images"] and feats["has_tools"] and feats["has_numbers"]
-        )
+        self.assertTrue(feats["has_images"] and feats["has_tools"])
         self.assertEqual(feats["max_tokens"], 10)
         text = excerpt(body)
         self.assertIn("fix bug 42", text)
@@ -297,6 +295,20 @@ class PolicyTests(unittest.TestCase):
         self.assertIn(
             "candidates: small $0.0013, free unpriced → small", choice["reasons"]
         )
+
+    def test_numbers_mean_arithmetic_not_any_digit(self):
+        for text, expected in [
+            ("what is 17 % of 2,340 €", True),
+            ("split $120 three ways", True),
+            ("3 * 4 + 2^10", True),
+            ("a 0.75 probability", True),
+            ("SELECT ... LIMIT 1 then UPDATE", False),
+            ("port 8080 on line 42 of utils.py", False),
+            ("rename foo to bar in 2 files", False),
+        ]:
+            with self.subTest(text):
+                feats = features({"messages": [{"role": "user", "content": text}]})
+                self.assertEqual(feats["has_numbers"], expected)
 
     def test_costs_tolerate_unknown_counts(self):
         self.assertIsNone(estimate_cost(SMALL, None, 10))
@@ -1114,7 +1126,14 @@ class ServiceDeciderTests(Fixture):
                                 "kind": "scale",
                                 "result": {
                                     "expectation": 3.4,
-                                    "probabilities": [0, 0, 0.1, 0.4, 0.5],
+                                    "probabilities": [
+                                        {"level": 0, "probability": 0},
+                                        {"level": 1, "probability": 0},
+                                        {"level": 2, "probability": 0.1},
+                                        {"level": 3, "probability": 0.4},
+                                        {"level": 4, "probability": 0.5},
+                                    ],
+                                    "confidence": 0.58,
                                 },
                             },
                         },

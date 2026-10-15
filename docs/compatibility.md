@@ -49,9 +49,18 @@ was rejected, with no key in the response or in the single log line. One
 authorized `delegation-router catalog refresh` ran against the Artificial
 Analysis API with the user's key (700 rows; 24 of 25 catalog models matched
 by slug or alias, Haiku 4.5 absent from the board) and the same call with
-`--shipped` wrote the catalog this release carries. No model
-inference was executed for this release; the live probes of the 0.25.0 pass
-stand.
+`--shipped` wrote the catalog this release carries. Two decision services
+were probed live through `delegation-router decide`, with the user's keys
+read from the environment in a subshell and never printed: Levanto Sage
+(`levanto-sage-v1.4`; three prompts, 0.8–2.0 s, $0.00003 per decision and
+$0.0012 when its reasoning fired on the hard one; the first attempt exposed
+that Sage lists `{level, probability}` objects, which the parser now reads)
+and TypeSafe Jev (`jev-1.13.0`; two prompts, ~250 ms, ~$0.00002 per
+decision). Both rated a rename as difficulty 0.7 with `code` ≈ 0.84–1.0 and
+a race-condition design question as 1.6–1.7 with "needs a frontier model"
+≈ 0.01–0.09; Sage tagged the latter `rare` 0.98, Jev's digit heuristic
+tagged `LIMIT 1` as math until the heuristic was made arithmetic-shaped.
+No pool model was dispatched; the live probes of the 0.25.0 pass stand.
 
 ## Host-specific boundaries
 

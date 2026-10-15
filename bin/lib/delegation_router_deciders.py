@@ -377,20 +377,29 @@ class SageDecider(ServiceDecider):
             None,
         )
         if scale and scale["expectation"] is not None:
-            probabilities = [float(p) for p in scale["probabilities"]]
-            signals.append(
-                {
-                    "kind": "scale",
-                    "key": "difficulty",
-                    "expectation": float(scale["expectation"]),
-                    "confidence": band_mass(float(scale["expectation"]), probabilities),
-                    "range": [0, 4],
-                    "distribution": [
-                        {"level": level, "p": p}
-                        for level, p in enumerate(probabilities)
-                    ],
-                }
-            )
+            # Sage lists `{level, probability}` objects; plain numbers in
+            # level order are read the same way.
+            levels = {}
+            for position, item in enumerate(scale["probabilities"]):
+                if isinstance(item, dict):
+                    levels[int(item["level"])] = float(item["probability"])
+                else:
+                    levels[position] = float(item)
+            probabilities = [levels.get(level, 0.0) for level in range(5)]
+            signal = {
+                "kind": "scale",
+                "key": "difficulty",
+                "expectation": float(scale["expectation"]),
+                "confidence": band_mass(float(scale["expectation"]), probabilities),
+                "range": [0, 4],
+                "distribution": [
+                    {"level": level, "p": p} for level, p in enumerate(probabilities)
+                ],
+            }
+            if scale.get("confidence") is not None:
+                # Sage's own figure, disclosed; the policy reads the band mass.
+                signal["source_confidence"] = float(scale["confidence"])
+            signals.append(signal)
         tags = next(
             (
                 d

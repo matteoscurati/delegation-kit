@@ -20,6 +20,14 @@ POLICY_ID = "tiered-v1"
 POLICY_VERSION = "2026-10-13"
 ROUTER_VERSION = "1"
 TAGS = ("code", "math", "long", "rare", "tools")
+# Numbers that look like something to compute with — an operator, a percent,
+# a currency, a decimal — rather than a port, a line number or `LIMIT 1`.
+NUMERIC = re.compile(
+    r"\d[\d,.]*\s*[%×x*/+\-^=]\s*\d"  # 17 % of 2,340 · 3 * 4 · 2^10
+    r"|[€$£¥]\s?\d"  # a currency amount
+    r"|\d\s?%"  # a percentage
+    r"|\b\d+\.\d+\b"  # a decimal
+)
 LONG_TOKENS = 20000
 DEFAULT_OUTPUT_TOKENS = 1024
 DECISION_TOKENS = 450
@@ -96,7 +104,7 @@ def features(body):
         "has_images": images,
         "wants_json": isinstance(response_format, dict)
         and response_format.get("type") in {"json_object", "json_schema"},
-        "has_numbers": bool(re.search(r"\d", last_user)),
+        "has_numbers": bool(NUMERIC.search(last_user)),
         "max_tokens": max_tokens,
     }
 
