@@ -116,3 +116,18 @@ two in agreement when a runner changes. No command reads `evaluation/`.
 Frozen evaluation artifacts under `evaluation/*-qualification-v*/` are historical
 records. Do not rewrite them when a model, pin, or runner changes — supersede
 them instead.
+
+## Layout
+
+`bin/lib` has one Python module per domain, all standard library:
+`delegation_config` (the personal configuration and its validation),
+`delegation_credentials` (where a profile's key and endpoint come from),
+`delegation_catalog` (the catalog in effect, the band rule, profile
+metadata, the Artificial Analysis refresh), `delegation_router_policy`
+(features, prefilter, signals, `tiered-v1`, disclosure) and the router's
+`_pipeline`, `_deciders`, `_bridge`, `_server` and `_eval`. The shell
+runners share `delegation-runner-common.sh` and
+`delegation-chat-completions.sh`. The router suite is the package
+`tests/router/` (fakes and the configured-kit fixture in `fakes.py`, one
+module per area), run by `tests/router.sh`; every other suite is one shell
+file under `tests/`, and `run-tests.sh` runs them all in parallel.
