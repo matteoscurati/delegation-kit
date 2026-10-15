@@ -141,8 +141,13 @@ def dispatch(profile_key, body, lane, env):
         tokens = (
             metrics.get("tokens") if isinstance(metrics.get("tokens"), dict) else {}
         )
+        # Counts are relayed unless the runner says it has none
+        # (`usage_reported: false`, Kimi) or they are all zero: no runner
+        # writes `usage_reported: true`, it is the absence of a denial.
         usage = {}
-        if metrics.get("usage_reported") and tokens:
+        if metrics.get("usage_reported", True) and any(
+            _count(tokens.get(k)) for k in ("input", "output")
+        ):
             usage = {
                 "prompt_tokens": tokens.get("input"),
                 "completion_tokens": tokens.get("output"),
@@ -165,6 +170,13 @@ def dispatch(profile_key, body, lane, env):
         }
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
+
+
+def _count(value):
+    """A positive token count, else 0."""
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return 0
+    return int(value) if value > 0 else 0
 
 
 def _read_json(path):

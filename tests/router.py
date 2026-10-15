@@ -109,11 +109,14 @@ class Service(BaseHTTPRequestHandler):
         self.wfile.write(json.dumps(type(self).reply).encode())
 
 
-def meta(profile, tier, price_in, price_out, code=True, context=128000):
+def meta(profile, tier, price_in, price_out, code=True, context=128000, effort=None):
+    # An adapter the server forwards `reasoning_effort` to, so the policy's
+    # effort column is observable.
     return {
         "profile": profile,
         "model": profile + "-model",
-        "adapter": "openai-compatible",
+        "adapter": "deepseek-api",
+        "effort": effort,
         "tier": tier,
         "code": code,
         "price": {"in": price_in, "out": price_out} if price_in is not None else None,
@@ -168,6 +171,20 @@ class PolicyTests(unittest.TestCase):
                 self.assertEqual(choice["tier"], tier)
                 self.assertEqual(choice["reasoning_effort"], effort)
                 self.assertFalse(choice["undecidable"])
+
+    def test_effort_is_a_floor_and_only_where_it_is_forwarded(self):
+        # `high` never lowers a declared xhigh/max on the hardest requests
+        declared_max = meta("ds", "frontier", 1.0, 5.0, effort="max")
+        choice = choose(verdict(1.0), [declared_max], declared_max, FEATS)
+        self.assertIsNone(choice["reasoning_effort"])
+        declared_medium = meta("ds", "frontier", 1.0, 5.0, effort="medium")
+        choice = choose(verdict(1.0), [declared_medium], declared_medium, FEATS)
+        self.assertEqual(choice["reasoning_effort"], "high")
+        # no effort is disclosed for an adapter that never receives one
+        plain = dict(SMALL, adapter="openai-compatible")
+        choice = choose(verdict(0.0), [plain], plain, FEATS)
+        self.assertEqual(choice["profile"], "small")
+        self.assertIsNone(choice["reasoning_effort"])
 
     def test_undecidable_and_low_confidence_fall_to_default(self):
         for v in (verdict(None), verdict(0.0, confidence=0.3)):
@@ -252,6 +269,10 @@ class PolicyTests(unittest.TestCase):
 
     def test_skip_reason(self):
         self.assertEqual(skip_reason([MID], MID, SMALL, FEATS), "one eligible profile")
+        self.assertEqual(skip_reason([], MID, SMALL, FEATS), "no eligible profile")
+        # one eligible profile that is not the default still needs the
+        # decision: skipping it would land on the (blocked) default
+        self.assertIsNone(skip_reason([SMALL], MID, SMALL, FEATS))
         # a cheap default with stronger tiers above it: the decision buys capability
         self.assertIsNone(skip_reason(POOL, SMALL, SMALL, FEATS))
         # the default is the cheapest and nothing stronger is eligible
@@ -834,6 +855,31 @@ class CliTests(Fixture):
         self.assertIn("AA_API_KEY", result.stderr)
         self.assertEqual(Provider.requests, [])
 
+    def test_decider_override_of_a_service_without_a_url_is_an_error(self):
+        result = self.run_cli(
+            "decide",
+            "--decider",
+            "dipylon",
+            "--prompt-file",
+            str(self.base / "prompt"),
+            rc=65,
+        )
+        self.assertIn("router.decider.url is required for dipylon", result.stderr)
+        self.assertNotIn("Traceback", result.stderr)
+
+    def test_serve_listen_port_range_is_checked(self):
+        result = self.run_cli("serve", "--listen", "127.0.0.1:65536", rc=65)
+        self.assertIn("--listen port out of range", result.stderr)
+
+    def test_a_malformed_local_catalog_is_ignored(self):
+        local = self.base / "data/config/catalog.local.json"
+        local.parent.mkdir(parents=True)
+        local.write_text(
+            json.dumps({"catalog_version": "2099-01-01", "models": {"x": None}})
+        )
+        out = json.loads(self.run_cli("check", "--json").stdout)
+        self.assertEqual(out["catalog_source"], "shipped")
+
     def test_missing_router_or_config_fails_closed(self):
         del self.config["router"]
         self.save()
@@ -1179,9 +1225,6 @@ class ServiceDeciderTests(Fixture):
                     self.assertEqual(body["reasoning"], "off")
                     kinds = [q["kind"] for q in body["requests"][0]["questions"]]
                     self.assertEqual(kinds, ["scale", "tags"])
-                    self.assertIn(
-                        "DATA", body["requests"][0]["content"]
-                    ) if False else None
                     self.assertAlmostEqual(out["decision_cost_usd"], 500 * 0.05 / 1e6)
                     self.assertEqual(out["signals"]["tags"]["code"], 0.9)
                 elif decider["kind"] == "jev":
@@ -1368,6 +1411,32 @@ class EvalTests(Fixture):
         self.assertEqual(Provider.requests, [])
         self.assertEqual(report["metrics"]["accuracy"], 0.5)
         self.assertFalse(report["gate"]["accepted"])
+
+    def test_eval_measures_the_decider_even_in_shadow_mode(self):
+        Provider.reply_fn = lambda body: {
+            "choices": [
+                {
+                    "message": {
+                        "content": '{"difficulty": 4, "tags": []}'
+                        if "HARD" in json.dumps(body)
+                        else '{"difficulty": 1, "tags": ["code"]}'
+                    }
+                }
+            ],
+            "usage": {"prompt_tokens": 100, "completion_tokens": 10},
+        }
+        self.config["router"]["mode"] = "shadow"
+        self.save()
+        report = json.loads(
+            self.run_cli(
+                "eval", "--items", str(self.write_items()), "--decider", "llm", "--json"
+            ).stdout
+        )
+        self.assertEqual(report["metrics"]["accuracy"], 1.0)
+        # the rules-only baseline made no decision: no cost, no latency
+        self.assertEqual(report["baseline"]["accuracy"], 0.5)
+        self.assertEqual(report["baseline"]["decision_cost_usd"], 0.0)
+        self.assertEqual(report["baseline"]["latency_ms"]["p95"], 0)
 
 
 class ServerTests(Fixture):
@@ -1713,6 +1782,89 @@ class ServerTests(Fixture):
         self.assertIn("HTTP/1.1 403", text)
         self.assertIn("connection: close", text.lower())
         self.assertEqual(Provider.requests, [])
+
+    def raw_request(self, body=b"", extra=b""):
+        head = (
+            b"POST /v1/chat/completions HTTP/1.1\r\nHost: x\r\n"
+            b"Content-Type: application/json\r\n" + extra
+        )
+        if body:
+            head += b"Content-Length: " + str(len(body)).encode() + b"\r\n"
+        return head + b"\r\n" + body
+
+    @staticmethod
+    def read_one(sock):
+        """One HTTP response (status line, headers, body by Content-Length)."""
+        raw = b""
+        while b"\r\n\r\n" not in raw:
+            piece = sock.recv(65536)
+            if not piece:
+                return raw
+            raw += piece
+        head, rest = raw.split(b"\r\n\r\n", 1)
+        length = 0
+        for line in head.split(b"\r\n"):
+            if line.lower().startswith(b"content-length:"):
+                length = int(line.split(b":", 1)[1])
+        while len(rest) < length:
+            piece = sock.recv(65536)
+            if not piece:
+                break
+            rest += piece
+        return head + b"\r\n\r\n" + rest[:length]
+
+    def test_kept_alive_connection_answers_every_request(self):
+        """An SDK reuses one connection: a failure after a success on it is
+        still a full response, with that request's own disclosure."""
+        ok = json.dumps(self.chat("frontier")).encode()
+        with socket.create_connection(("127.0.0.1", self.port), timeout=5) as sock:
+            sock.sendall(self.raw_request(ok))
+            first = self.read_one(sock)
+            self.assertIn(b"HTTP/1.1 200", first)
+            self.assertIn(b"X-Router-Profile: frontier", first)
+            sock.sendall(self.raw_request(json.dumps(self.chat("nope")).encode()))
+            second = self.read_one(sock)
+            self.assertIn(b"HTTP/1.1 404", second)
+            self.assertIn(b"unknown-model", second)
+            self.assertNotIn(b"X-Router-Profile", second)
+            # a refusal before the body is read closes the connection
+            sock.sendall(self.raw_request(b"{}", b"Origin: http://evil\r\n"))
+            third = self.read_one(sock)
+            self.assertIn(b"HTTP/1.1 403", third)
+            self.assertIn(b"connection: close", third.lower())
+
+    def test_single_eligible_profile_is_routed_not_refused(self):
+        """The default is blocked and exactly one other profile fits: the
+        decision still runs and lands on that profile."""
+        self.config["profiles"]["mid"]["context"] = 100
+        self.config["router"]["pool"] = ["small", "mid"]
+        self.save()
+        self.restart()
+        Provider.reply = {
+            "choices": [{"message": {"content": '{"difficulty": 1, "tags": []}'}}]
+        }
+        status, data, _ = self.post(self.chat("auto", "x" * 5000))
+        self.assertEqual(status, 200, data)
+        self.assertEqual(data["router"]["chosen"]["profile"], "small")
+        self.assertIn(
+            {"profile": "mid", "reason": "context too small"}, data["router"]["blocked"]
+        )
+
+    def test_non_latin1_model_id_still_gets_one_well_formed_response(self):
+        self.config["profiles"]["frontier"]["model"] = "модель"
+        self.save()
+        self.restart()
+        Provider.reply = {
+            "model": "модель",
+            "choices": [{"message": {"content": "ok"}}],
+        }
+        status, data, headers = self.post(self.chat("frontier"))
+        self.assertEqual(status, 200, data)
+        self.assertEqual(data["router"]["chosen"]["model"], "модель")
+        self.assertFalse(data["router"]["mismatch"])
+        self.assertEqual(
+            headers["X-Router-Model"], "%D0%BC%D0%BE%D0%B4%D0%B5%D0%BB%D1%8C"
+        )
 
     def test_allowed_origin_gets_cors_and_disclosure(self):
         self.config["router"]["allow_origins"] = ["http://localhost:5173"]

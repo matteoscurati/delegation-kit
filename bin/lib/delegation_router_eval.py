@@ -91,11 +91,14 @@ def evaluate(c, items, decider_kind, input_mode=None, opener=None, env=None):
     for item in items:
         for index, text in enumerate([item["prompt"], *item["paraphrases"]]):
             body = {"messages": [{"role": "user", "content": text}]}
+            # Always the decider's own choice: under `mode: shadow` route()
+            # would hand back the default and the measure would be of nothing.
             out, choice, feats, _blocked = route(
                 c,
                 body,
                 decider_kind=decider_kind,
                 input_mode=input_mode,
+                mode="route",
                 opener=opener,
                 env=env,
             )
@@ -118,10 +121,19 @@ def evaluate(c, items, decider_kind, input_mode=None, opener=None, env=None):
         "items": len(items),
         "prompts": len(decisions),
         "metrics": score(items, decisions, default_meta["profile"]),
+        # The rules-only baseline: the default on every prompt, no decider
+        # call, so no decision cost or latency of its own.
         "baseline": score(
             items,
             [
-                dict(d, chosen=default_meta["profile"], undecidable=True)
+                dict(
+                    d,
+                    chosen=default_meta["profile"],
+                    tier=default_meta.get("tier"),
+                    undecidable=True,
+                    latency_ms=0,
+                    decision_cost_usd=0.0,
+                )
                 for d in decisions
             ],
             default_meta["profile"],

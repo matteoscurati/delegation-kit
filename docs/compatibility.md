@@ -18,7 +18,7 @@ ambient Codex CLI `0.162.1` and ambient Claude Code `2.1.296`: all 13
 regression suites green in 42 seconds here and in 80 seconds on the macOS CI
 runner, where every `HTTPServer` bind used to stall on a reverse-DNS lookup
 until the router and the test fakes stopped asking for one (the new `router`
-suite runs the 54
+suite runs the 62
 tests of `tests/router.py` — the `tiered-v1` policy table, configuration
 validation, `check`/`decide` and the loopback server against a fake provider:
 each profile receives only its own key and no canary key reaches any output,

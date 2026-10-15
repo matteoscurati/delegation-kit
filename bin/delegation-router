@@ -14,7 +14,7 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent / "lib"))
-from delegation_config import LISTEN_PATTERN, ROUTER_DECIDERS, load  # noqa: E402
+from delegation_config import ROUTER_DECIDERS, load, validate_listen  # noqa: E402
 from delegation_router_pipeline import (  # noqa: E402
     check,
     decider_line,
@@ -92,8 +92,8 @@ def main():
         if a.command == "serve":
             from delegation_router_server import serve
 
-            if a.listen and not LISTEN_PATTERN.fullmatch(a.listen):
-                raise ValueError("--listen must be a loopback host:port")
+            if a.listen:
+                validate_listen(a.listen, "--listen")
             return serve(c, a.listen)
         if a.command == "eval":
             from delegation_router_eval import evaluate, read_items

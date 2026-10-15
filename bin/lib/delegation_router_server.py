@@ -16,7 +16,7 @@ import threading
 import time
 import uuid
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
-from urllib.parse import urlsplit
+from urllib.parse import quote, urlsplit
 
 from delegation_config import ROUTER_HTTP_ADAPTERS, catalog, kit_version
 from delegation_router import (
@@ -120,6 +120,19 @@ def upstream_body(body, profile, choice, stream):
     return out
 
 
+def header_value(value):
+    """A header value http.server can send: it encodes headers as latin-1, so
+    anything outside it (a model id in another script) is percent-encoded
+    rather than left to raise after the status line is already buffered. The
+    `router` object in the body carries the exact value."""
+    text = str(value)
+    try:
+        text.encode("latin-1")
+        return text
+    except UnicodeEncodeError:
+        return quote(text, safe="/:+.-_~@")
+
+
 def disclosure_headers(out):
     chosen = out["chosen"]
     decider = out["decider"]
@@ -137,7 +150,7 @@ def disclosure_headers(out):
         ("X-Router-Latency-Ms", out.get("decision_latency_ms")),
         ("X-Router-Mode", out.get("mode")),
     ]
-    return [(k, str(v)) for k, v in pairs if v is not None]
+    return [(k, header_value(v)) for k, v in pairs if v is not None]
 
 
 class RouterServer(ThreadingHTTPServer):
@@ -183,12 +196,16 @@ class Handler(BaseHTTPRequestHandler):
 
     # ---- plumbing ------------------------------------------------------------
 
-    def setup(self):
-        super().setup()
+    def handle_one_request(self):
+        # Per-request state. setup() runs once per connection, and a kept-alive
+        # HTTP/1.1 connection carries many requests: state left over from the
+        # previous one would answer a failure with a silent close and disclose
+        # the previous choice.
         self.body_consumed = False
         self.headers_sent = False
         # Set once a choice is made, so a failure after it still discloses it.
         self.router_headers = ()
+        super().handle_one_request()
 
     def allowed_origin(self):
         origin = self.headers.get("Origin")
@@ -207,10 +224,16 @@ class Handler(BaseHTTPRequestHandler):
 
     def start_response(self, status, headers):
         self.send_response(status)
-        for key, value in list(headers) + self.cors_headers():
-            self.send_header(key, value)
-        if self.close_connection:
-            self.send_header("Connection", "close")
+        try:
+            for key, value in list(headers) + self.cors_headers():
+                self.send_header(key, value)
+            if self.close_connection:
+                self.send_header("Connection", "close")
+        except Exception:
+            # Nothing has reached the wire yet: drop the half-built status
+            # line so the failure response that follows is the only one.
+            self._headers_buffer = []
+            raise
         self.end_headers()
         self.headers_sent = True
 
@@ -488,11 +511,6 @@ class Handler(BaseHTTPRequestHandler):
             self.settle(out, meta, profile, {}, None, started, 502)
             self.end_stream(out, profile, failure.code, failure.retryable)
             return
-        self.settle(
-            out, meta, profile, answer["usage"], answer["reported"], started, 200
-        )
-        if answer["cost_usd"] is not None:
-            out["cost_usd"] = answer["cost_usd"]
         out["delegation_run"].update(
             {
                 "exit_code": 0,
@@ -500,6 +518,18 @@ class Handler(BaseHTTPRequestHandler):
                 "model_identity_source": answer["identity_source"],
                 "receipt": answer["receipt"],
             }
+        )
+        # The runner's own cost, when it reports one, goes in before the
+        # receipt is written.
+        self.settle(
+            out,
+            meta,
+            profile,
+            answer["usage"],
+            answer["reported"],
+            started,
+            200,
+            cost_usd=answer["cost_usd"],
         )
         completion_id = "chatcmpl-router-" + uuid.uuid4().hex[:12]
         if stream:
@@ -607,11 +637,19 @@ class Handler(BaseHTTPRequestHandler):
                 )
             chunks.append(piece)
 
-    def settle(self, out, meta, profile, usage, reported, started, status):
+    def settle(
+        self, out, meta, profile, usage, reported, started, status, cost_usd=None
+    ):
+        """What the exchange came to; writes the receipt. `cost_usd` is a
+        cost the transport reported itself, else it is priced from usage."""
         usage = {k: count(v) for k, v in usage.items()} if usage else {}
         out["usage"] = usage
-        cost = estimate_cost(
-            meta, usage.get("prompt_tokens"), usage.get("completion_tokens")
+        cost = (
+            cost_usd
+            if cost_usd is not None
+            else estimate_cost(
+                meta, usage.get("prompt_tokens"), usage.get("completion_tokens")
+            )
         )
         out["cost_usd"] = None if cost is None else round(cost, 8)
         out["provider_reported_model"] = reported
@@ -749,7 +787,9 @@ class Handler(BaseHTTPRequestHandler):
             with self.server.receipts_lock:
                 path.parent.mkdir(parents=True, exist_ok=True)
                 path.parent.chmod(0o700)
-                with open(path, "a") as f:
+                # Created private from the first byte, not chmod'ed after.
+                fd = os.open(path, os.O_WRONLY | os.O_APPEND | os.O_CREAT, 0o600)
+                with os.fdopen(fd, "a") as f:
                     f.write(json.dumps(line) + "\n")
                 os.chmod(path, 0o600)
         except OSError:
@@ -774,7 +814,7 @@ def serve(config, listen=None, env=None):
             r["decider"]["kind"],
             ",".join(r["pool"]),
             r["default"],
-            host,
+            "[" + host + "]" if ":" in host else host,
             server.server_address[1],
             r.get("mode", "route"),
         ),

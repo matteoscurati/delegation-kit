@@ -19,7 +19,16 @@ import re
 import urllib.error
 import urllib.request
 
-from delegation_config import ROOT, data_home, kit_version, read, atomic
+from delegation_config import (
+    EFFORT_ORDER,
+    ROOT,
+    atomic,
+    data_home,
+    kit_version,
+    normalize_name as normalize,
+    place,
+    read,
+)
 
 AA_URL = "https://artificialanalysis.ai/api/v2/data/llms/models"
 AA_ATTRIBUTION = "https://artificialanalysis.ai/"
@@ -27,28 +36,8 @@ AA_KEY_FILE = "artificial-analysis.env"
 AA_KEY_VAR = "AA_API_KEY"
 RULE = "index-bands-v1"
 BANDS = {"frontier_within": 8, "mid_within": 20}
-EFFORTS = ("none", "minimal", "low", "medium", "high", "xhigh", "max")
 VARIANT = re.compile(r"^(?P<base>.*?)\s*\((?P<inside>[^()]*)\)\s*$")
-
-
-def normalize(name):
-    """Names compared with case, spaces, dots and dashes ignored."""
-    return re.sub(r"[^a-z0-9]", "", str(name).lower())
-
-
-def place(index, tiering):
-    """One rung for one index under the bands the catalog records."""
-    if index is None:
-        return None
-    top = tiering["top_index"]
-    if index >= top - tiering["frontier_within"]:
-        return "frontier"
-    if index >= top - tiering["mid_within"]:
-        return "mid"
-    return "small"
-
-
-VARIANT_WORDS = set(EFFORTS) | {"reasoning", "non-reasoning", "thinking"}
+VARIANT_WORDS = set(EFFORT_ORDER) | {"reasoning", "non-reasoning", "thinking"}
 
 
 def parse_row(row):
@@ -128,7 +117,7 @@ def match(model_id, aa_name, families):
 
 def best_variant(variants):
     """The strongest reasoning setting a family was measured at."""
-    order = {name: i for i, name in enumerate(EFFORTS)}
+    order = {name: i for i, name in enumerate(EFFORT_ORDER)}
     return max(variants.items(), key=lambda kv: (order.get(kv[0], -1), kv[1]["index"]))
 
 

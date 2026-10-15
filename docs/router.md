@@ -119,10 +119,10 @@ chat-completions endpoint. Gemini and OpenAI do, and enter as
    not routable, it declares no tier (unless it is the default), its context
    is too small for the request, or its estimated cost is above the ceiling.
    A request that asks for JSON output (`response_format`) blocks profiles
-   declared without JSON mode. The decider is skipped when one profile or
-   fewer is eligible, or when a decision could change nothing: the default is
-   already the cheapest eligible profile *and* no eligible profile sits in a
-   higher tier.
+   declared without JSON mode. The decider is skipped when no profile other
+   than the default is eligible, or when a decision could change nothing:
+   the default is already the cheapest eligible profile *and* no eligible
+   profile sits in a higher tier.
 3. **Decider**: the `llm` decider sends an excerpt of the request — the head
    of the system prompt and the last user turn, trimmed, never images — to the
    decider profile inside a `DATA` block with the prompt in
@@ -142,8 +142,11 @@ chat-completions endpoint. Gemini and OpenAI do, and enter as
    profiles. Inside the tier the cheapest eligible profile wins
    (`price.in × est_tokens + price.out × max_tokens`, 1024 when unset). An
    empty tier escalates upward, never downward; an empty frontier falls to the
-   default. Reasoning effort is `high` for difficulty ≥ 0.9 of the scale,
-   `low` for an easy request on the small tier, else the profile's own.
+   default. Reasoning effort is `high` for difficulty ≥ 0.9 of the scale
+   (a floor: a profile declared `xhigh` or `max` keeps it), `low` for an
+   easy request on the small tier, else the profile's own — on the adapters
+   that take a per-request setting (`deepseek-api`, `token-plan-openai`);
+   elsewhere no effort is disclosed and the profile's own applies.
 5. **Forward**: one request to the chosen profile's endpoint with that
    profile's key — never a key from the caller, never a header copied from
    the caller. The `router` object in the request body is dropped; `model` is

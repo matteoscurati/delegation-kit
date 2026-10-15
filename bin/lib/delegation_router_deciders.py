@@ -254,7 +254,12 @@ class ServiceDecider:
 
     def __init__(self, cfg, timeout=None, opener=None, env=None):
         defaults = SERVICE_DEFAULTS[self.id]
-        self.url = cfg.get("url", defaults.get("url")).rstrip("/") + defaults["path"]
+        url = cfg.get("url", defaults.get("url"))
+        if not url:
+            # Reached through a `--decider` override: the configuration's own
+            # decider is validated, an override of another kind is not.
+            raise ValueError("router.decider.url is required for " + self.id)
+        self.url = url.rstrip("/") + defaults["path"]
         self.credential_env = cfg.get("credential_env", defaults.get("credential_env"))
         self.model = cfg.get("model", defaults.get("model"))
         self.price = cfg["price"] if "price" in cfg else defaults.get("price")

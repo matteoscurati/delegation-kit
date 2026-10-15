@@ -9,6 +9,7 @@ import re
 
 from delegation_config import (
     ADAPTERS,
+    EFFORT_ORDER,
     ROUTER_HTTP_ADAPTERS,
     catalog,
     data_home,
@@ -40,6 +41,10 @@ KEY_FILES = {
     "deepseek-api": ("deepseek.env", "DEEPSEEK_API_KEY"),
     "token-plan-openai": ("qwen-token-plan.env", "QWEN_TOKEN_PLAN_API_KEY"),
 }
+# The adapters the server forwards a per-request `reasoning_effort` to. An
+# openai-compatible endpoint takes none, and a bridged native profile runs at
+# its own setting; the policy discloses an effort only where it is applied.
+EFFORT_ADAPTERS = {"deepseek-api", "token-plan-openai"}
 
 
 # ---- request features --------------------------------------------------------
@@ -213,8 +218,12 @@ def prefilter(pool, feats, ceiling, default_key):
 def skip_reason(eligible, default_meta, decider_meta, feats):
     """Why a model decider would be wasted on this request, or None. A decision
     can save money (a cheaper profile than the default) or buy capability (a
-    higher tier than the default); it is skipped only when it can do neither."""
-    if len(eligible) <= 1:
+    higher tier than the default); it is skipped only when it can do neither.
+    One eligible profile that is not the default still needs the decision:
+    without it the policy lands on the default, which is blocked."""
+    if not eligible:
+        return "no eligible profile"
+    if len(eligible) == 1 and eligible[0]["profile"] == default_meta["profile"]:
         return "one eligible profile"
     default_rank = TIER_RANK.get(default_meta.get("tier"), -1)
     if any(TIER_RANK.get(m.get("tier"), -1) > default_rank for m in eligible):
@@ -278,13 +287,6 @@ def normalize(signals):
             confidences.append(
                 abs(p - 0.5) * 2 if confidence is None else float(confidence)
             )
-        elif kind == "score":
-            levels = s.get("levels") or []
-            if len(levels) > 1 and s.get("value") is not None:
-                difficulty = float(s["value"]) / (len(levels) - 1)
-            confidences.append(s.get("confidence", 1.0))
-        elif kind == "choice":
-            confidences.append(s.get("confidence", 1.0))
     undecidable = difficulty is None and p_strong is None
     return {
         "difficulty": difficulty,
@@ -323,11 +325,22 @@ def _needed_tier(verdict, cuts=CUTS):
     return "mid"
 
 
-def _effort(verdict, tier):
+def _effort(verdict, chosen):
+    """The reasoning setting for this request on the chosen profile, or None
+    for the profile's own. `high` is a floor for the hardest requests and
+    never lowers a declared `xhigh` or `max` (the setting the profile's rung
+    was measured at); `low` is the documented saving on an easy request at
+    the small rung. Only for adapters the server forwards the setting to."""
+    if chosen.get("adapter") not in EFFORT_ADAPTERS:
+        return None
     d = verdict["difficulty"]
+    declared = chosen.get("effort")
     if d is not None and d >= 0.9:
+        rank = EFFORT_ORDER.index
+        if declared in EFFORT_ORDER and rank(declared) > rank("high"):
+            return None
         return "high"
-    if tier == "small" and d is not None and d < 0.375:
+    if chosen.get("tier") == "small" and d is not None and d < 0.375:
         return "low"
     return None
 
@@ -413,7 +426,7 @@ def choose(verdict, eligible, default_meta, feats, cuts=CUTS):
         "model": chosen["model"],
         "tier": chosen.get("tier"),
         "tier_source": chosen.get("tier_source"),
-        "reasoning_effort": _effort(verdict, chosen.get("tier")),
+        "reasoning_effort": _effort(verdict, chosen),
         "reasons": reasons,
         "undecidable": False,
     }

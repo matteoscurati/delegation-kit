@@ -86,6 +86,8 @@ EFFORTS = {
     "codex": {"none", "minimal", "low", "medium", "high", "xhigh", "max"},
     "claude-code": {"low", "medium", "high", "xhigh", "max"},
 }
+# Reasoning settings from weakest to strongest, across adapters.
+EFFORT_ORDER = ("none", "minimal", "low", "medium", "high", "xhigh", "max")
 # Routing metadata a profile may declare for itself. Everything else about an
 # adapter stays code-owned; these are user statements, like `family`.
 TIERS = ("small", "mid", "frontier")
@@ -187,6 +189,31 @@ def _endpoint_ok(value):
     )
 
 
+def _origin_ok(value):
+    """An exact browser origin: scheme and host only, HTTP on loopback only."""
+    if not isinstance(value, str):
+        return False
+    url = urlsplit(value)
+    if url.scheme not in {"http", "https"} or not url.hostname:
+        return False
+    if url.path or url.query or url.fragment:
+        return False
+    return url.scheme == "https" or url.hostname in LOOPBACK_HOSTS
+
+
+LISTEN_PATTERN = re.compile(r"(localhost|127\.0\.0\.1|\[::1\]):[0-9]{1,5}")
+
+
+def validate_listen(listen, field="router.listen"):
+    """A loopback host:port with a usable port; the same rule for the
+    configuration and for `serve --listen`."""
+    if not isinstance(listen, str) or not LISTEN_PATTERN.fullmatch(listen):
+        raise ValueError(field + " must be a loopback host:port")
+    if not 1 <= int(listen.rsplit(":", 1)[1]) <= 65535:
+        raise ValueError(field + " port out of range")
+    return listen
+
+
 def validate_routing_fields(p):
     """Optional per-profile routing declarations."""
     if "tier" in p and p["tier"] not in TIERS:
@@ -203,9 +230,6 @@ def validate_routing_fields(p):
         raise ValueError("invalid price (USD per million tokens: {in, out})")
 
 
-LISTEN_PATTERN = re.compile(r"(localhost|127\.0\.0\.1|\[::1\]):[0-9]{1,5}")
-
-
 def validate_router(c):
     """The router block is a user-declared rule set: pool, default, decider."""
     r = c.get("router")
@@ -218,11 +242,7 @@ def validate_router(c):
             "router.decider is required: name the decision model "
             "(kind llm, sage, jev, dipylon, classifier or none)"
         )
-    listen = r.get("listen", "127.0.0.1:4141")
-    if not isinstance(listen, str) or not LISTEN_PATTERN.fullmatch(listen):
-        raise ValueError("router.listen must be a loopback host:port")
-    if not 1 <= int(listen.rsplit(":", 1)[1]) <= 65535:
-        raise ValueError("router.listen port out of range")
+    validate_listen(r.get("listen", "127.0.0.1:4141"))
     pool = r.get("pool")
     if (
         not isinstance(pool, list)
@@ -289,16 +309,7 @@ def validate_router(c):
     if r.get("mode", "route") not in {"route", "shadow"}:
         raise ValueError("router.mode must be route or shadow")
     origins = r.get("allow_origins", [])
-    if not isinstance(origins, list) or any(
-        not isinstance(o, str)
-        or urlsplit(o).scheme not in {"http", "https"}
-        or not urlsplit(o).hostname
-        or urlsplit(o).path
-        or urlsplit(o).query
-        or urlsplit(o).fragment
-        or (urlsplit(o).scheme == "http" and urlsplit(o).hostname not in LOOPBACK_HOSTS)
-        for o in origins
-    ):
+    if not isinstance(origins, list) or not all(_origin_ok(o) for o in origins):
         raise ValueError("router.allow_origins must list exact https origins")
 
 
@@ -387,23 +398,11 @@ def validate(c):
         ):
             raise ValueError("invalid credential variable name")
         if p["adapter"] == "openai-compatible":
-            url = urlsplit(p.get("base_url", ""))
-            if url.port is not None and not 1 <= url.port <= 65535:
-                raise ValueError("invalid endpoint port")
-            if (
-                not url.hostname
-                or url.username
-                or url.password
-                or url.query
-                or url.fragment
-                or any(ord(ch) < 33 for ch in p.get("base_url", ""))
-            ):
-                raise ValueError("invalid base_url; inline credentials forbidden")
-            if url.scheme != "https" and not (
-                url.scheme == "http"
-                and url.hostname in {"localhost", "127.0.0.1", "::1"}
-            ):
-                raise ValueError("remote endpoints require HTTPS")
+            if not _endpoint_ok(p.get("base_url", "")):
+                raise ValueError(
+                    "invalid base_url: HTTPS, or HTTP on loopback; "
+                    "inline credentials forbidden"
+                )
         elif "base_url" in p:
             raise ValueError("base_url requires openai-compatible")
         if "credential_env" in p and p["adapter"] not in {
@@ -445,10 +444,8 @@ def catalog():
     local_file = data_home() / "config" / "catalog.local.json"
     try:
         local = read(local_file)
-        if (
-            isinstance(local, dict)
-            and isinstance(local.get("models"), dict)
-            and str(local.get("catalog_version", "")) >= str(shipped["catalog_version"])
+        if _catalog_shape_ok(local) and str(local.get("catalog_version", "")) >= str(
+            shipped["catalog_version"]
         ):
             merged = dict(shipped)
             merged["models"] = {**shipped["models"], **local["models"]}
@@ -463,20 +460,55 @@ def catalog():
     return shipped
 
 
+def _catalog_shape_ok(local):
+    """A local overlay is used only when every row is an object and its
+    tiering, if any, carries the three numbers the band rule reads; anything
+    else is ignored rather than crashing every command that reads the
+    catalog."""
+    if not isinstance(local, dict) or not isinstance(local.get("models"), dict):
+        return False
+    if not all(isinstance(row, dict) for row in local["models"].values()):
+        return False
+    tiering = local.get("tiering")
+    return not tiering or (
+        isinstance(tiering, dict)
+        and all(
+            _number(tiering.get(key))
+            for key in ("top_index", "frontier_within", "mid_within")
+        )
+    )
+
+
+def normalize_name(name):
+    """Names compared with case, spaces, dots and dashes ignored."""
+    return re.sub(r"[^a-z0-9]", "", str(name).lower())
+
+
 def catalog_row(cat, model):
     """The catalog row for a profile's model id: exact, else the row whose
     evidence names the same model once case, dots and dashes are ignored."""
     if model in cat["models"]:
         return cat["models"][model]
-    wanted = re.sub(r"[^a-z0-9]", "", model.lower())
+    wanted = normalize_name(model)
     for row in cat["models"].values():
         evidence = row.get("evidence") or {}
-        if (
-            evidence.get("name")
-            and re.sub(r"[^a-z0-9]", "", evidence["name"].lower()) == wanted
-        ):
+        if evidence.get("name") and normalize_name(evidence["name"]) == wanted:
             return row
     return None
+
+
+def place(index, tiering):
+    """One rung for one index under the bands the catalog records
+    (`index-bands-v1`): frontier within N points of the best model of the
+    day, mid within M, small below."""
+    if index is None:
+        return None
+    top = tiering["top_index"]
+    if index >= top - tiering["frontier_within"]:
+        return "frontier"
+    if index >= top - tiering["mid_within"]:
+        return "mid"
+    return "small"
 
 
 def tier_for_effort(row, effort, tiering):
@@ -485,13 +517,7 @@ def tier_for_effort(row, effort, tiering):
     evidence = row.get("evidence") or {}
     variants = evidence.get("variants") or {}
     if effort and effort in variants and tiering:
-        index = variants[effort]
-        top = tiering["top_index"]
-        if index >= top - tiering["frontier_within"]:
-            return "frontier"
-        if index >= top - tiering["mid_within"]:
-            return "mid"
-        return "small"
+        return place(variants[effort], tiering)
     return row.get("tier")
 
 
