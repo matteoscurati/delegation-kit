@@ -124,7 +124,7 @@ env PATH="$TMP/bin:$PATH" "$TMP/bin/delegation-router" check --json >"$TMP/route
 jq -e '.enabled == false and .read_only == true and (.catalog_version | length) > 0' "$TMP/router-check.json" >/dev/null \
   || fail 'the installed router did not report the preset as router-less'
 [ -f "$DELEGATION_CONFIG_FILE" ] || fail 'install did not initialize the personal configuration'
-jq -e '.schema_version == 1 and .review_policy == "optional" and (.profiles | length) > 0' "$DELEGATION_CONFIG_FILE" >/dev/null \
+jq -e '.schema_version == 2 and .review_policy == "optional" and (.profiles | length) > 0' "$DELEGATION_CONFIG_FILE" >/dev/null \
   || fail 'the initialized personal configuration is not the optional-review preset'
 [ -f "$(dirname "$DELEGATION_CONFIG_FILE")/managed/profiles.json" ] \
   || fail 'install did not generate the managed host snippets'

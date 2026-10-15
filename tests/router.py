@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""delegation-router: schema 2 router block, pure policy, decide/check CLI.
+"""delegation-router: router block, pure policy, decide/check CLI.
 Real loopback HTTP only; no provider accounts."""
 
 import json
@@ -345,7 +345,11 @@ class ConfigTests(unittest.TestCase):
             return c
 
         bad = [
-            ("schema 1 with router", lambda c: c.update(schema_version=1)),
+            ("no decider", lambda c: c["router"].pop("decider")),
+            (
+                "decider without kind",
+                lambda c: c["router"].update(decider={"profile": "small"}),
+            ),
             ("unknown in pool", lambda c: c["router"]["pool"].append("nope")),
             ("default outside pool", lambda c: c["router"].update(default="native")),
             ("remote listen", lambda c: c["router"].update(listen="0.0.0.0:4141")),
@@ -413,15 +417,8 @@ class ConfigTests(unittest.TestCase):
             with self.subTest(name):
                 with self.assertRaises(ValueError):
                     validate(with_(mutate))
-        # routing fields are schema 2 only
-        c = self.base_config(schema=1)
-        del c["router"]
-        with self.assertRaises(ValueError):
-            validate(c)
-        for key in ("tier", "price"):
-            c["profiles"]["small"].pop(key)
-            c["profiles"]["mid"].pop(key)
-        validate(c)
+        # a file that still says schema_version 1 is read exactly like 2
+        validate(self.base_config(schema=1))
 
 
 class Fixture(unittest.TestCase):
@@ -572,7 +569,14 @@ class CliTests(Fixture):
         )
         self.assertEqual(
             out["decider"],
-            {"kind": "llm", "profile": "small", "timeout": 2, "input": "excerpt"},
+            {
+                "kind": "llm",
+                "profile": "small",
+                "timeout": 2,
+                "input": "excerpt",
+                "model": "small-model",
+                "adapter": "openai-compatible",
+            },
         )
         self.assertEqual(Provider.requests, [])
         del self.config["router"]
@@ -736,8 +740,7 @@ class CliTests(Fixture):
         del self.config["router"]
         self.save()
         self.run_cli("decide", "--prompt-file", str(self.base / "prompt"), rc=65)
-        self.config["schema_version"] = 1
-        self.config["router"] = {"pool": ["small"], "default": "small"}
+        self.config["router"] = {"pool": ["small"], "default": "small"}  # no decider
         self.save()
         self.run_cli("check", rc=65)
         self.assertEqual(Provider.requests, [])

@@ -19,7 +19,7 @@ regression suites green in 42 seconds here and in 80 seconds on the macOS CI
 runner, where every `HTTPServer` bind used to stall on a reverse-DNS lookup
 until the router and the test fakes stopped asking for one (the new `router`
 suite runs the 46
-tests of `tests/router.py` — the `tiered-v1` policy table, schema 2
+tests of `tests/router.py` — the `tiered-v1` policy table, configuration
 validation, `check`/`decide` and the loopback server against a fake provider:
 each profile receives only its own key and no canary key reaches any output,
 decider failures and prompt injection cannot steer the route, broken streams
@@ -40,7 +40,7 @@ gate, a reinstall from the release commit and static doctor at `53 OK, 0 WARN,
 0 FAIL` with the Grok runtime line present and the router reported as
 `not configured — optional`. One no-spend probe was run against the real
 DeepSeek and Qwen Token Plan endpoints with fake keys from a temporary
-schema 2 configuration: `check` resolved the pool, `decide --decider none`
+configuration: `check` resolved the pool, `decide --decider none`
 landed on the default as undecidable, `serve` listed the pool and `auto` on
 `/v1/models`, and a `model: auto` request came back `401
 provider-key-rejected` naming the default profile after the decider's own key

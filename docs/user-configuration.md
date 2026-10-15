@@ -7,10 +7,10 @@ of the actual result are the only checks. The starting profiles ship in
 
 ## Configure
 
-`delegation-config init` creates schema version 1 at
-`${XDG_CONFIG_HOME:-$HOME/.config}/delegation-kit/config.json`; schema
-version 2 adds the optional [router block](router.md) and is accepted by every
-command. Set
+`delegation-config init` creates the personal configuration
+(`"schema_version": 2`) at
+`${XDG_CONFIG_HOME:-$HOME/.config}/delegation-kit/config.json`; a file that
+still declares `1` is read identically. Set
 `DELEGATION_CONFIG_FILE` to use a different file. Project-local configuration
 is never discovered automatically. An existing configuration is preserved.
 
@@ -26,7 +26,7 @@ A complete configuration for an existing provider and a local endpoint:
 
 ```json
 {
-  "schema_version": 1,
+  "schema_version": 2,
   "review_policy": "optional",
   "profiles": {
     "my-deepseek": {
@@ -134,12 +134,12 @@ and run `apply`; `init` never overrides later user decisions.
 
 ## Router
 
-A `router` block, valid only with `"schema_version": 2`, declares a pool of
-profiles (HTTP or native), a default and a decider for `delegation-router`. Schema 2
-profiles may also declare routing metadata — `tier`, `code`, `price`,
-`context`, `json_mode` — which otherwise comes from the shipped
-`config/catalog.json`. Without the block the router is off; nothing else in
-the kit reads it. See [the router page](router.md) for the fields, the policy
+A `router` block names the decision model — `decider`, required: one of
+your profiles, Sage, Jev, a Dipylon, a local classifier, or `none` — and the
+profiles it governs (`pool`, `default`, HTTP or native). Profiles may declare
+routing metadata — `tier`, `code`, `price`, `context`, `json_mode` — which
+otherwise comes from the shipped `config/catalog.json`. Without the block the
+router is off; nothing else in the kit reads it. See [the router page](router.md) for the fields, the policy
 and what each response discloses.
 
 ## Adding a model
@@ -151,13 +151,13 @@ parameters the adapter supports; for a custom OpenAI-compatible endpoint add
 `base_url` and, if it needs a key, `credential_env` with the *name* of the
 variable. The adapter owns capabilities — a `builder` role on a text adapter
 yields a patch, never write access — and unsupported parameters are errors.
-Declare `tier`, `price`, `code`, `context` or `json_mode` (schema 2) when the
-router should rank the profile on your numbers rather than the catalog's.
+Declare `tier`, `price`, `code`, `context` or `json_mode` when the router
+should rank the profile on your numbers rather than the catalog's.
 
 ## Upgrading
 
 The installer never overwrites the personal file; new keys are optional and
-every command reads schema 1 and 2 alike. Installs older than 0.25, which
+a file that still says `schema_version: 1` is read like `2`. Installs older than 0.25, which
 kept their profiles in `routing-gates.json`, were migrated by 0.25 and 0.26;
 that migration is gone, so bring such an install through 0.26 first or
 recreate the profiles by hand from the shipped preset.

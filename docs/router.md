@@ -1,12 +1,16 @@
 # Model router
 
-`delegation-router` picks one profile out of a pool you declared, for each
-request you send it, and tells you which one it picked. It runs on your
-machine, listens on loopback only, and uses the keys the kit already holds.
-Nothing leaves your machine except the request to the provider you chose.
+You choose a decision model — one of your cheap profiles, Levanto Sage,
+TypeSafe Jev, your own Dipylon, a local classifier — and `delegation-router`
+lets it govern the models you already pay for: for each request, the decider
+judges how much capability the task needs, and the request goes to the
+cheapest profile in your pool that clears that bar, with that profile's own
+credential. It runs on your machine, listens on loopback only, and tells you
+which model answered and why. Nothing leaves your machine except the request
+to the model you chose.
 
-Your models. Your call. Your rules: you declare the pool, the default and the
-decider; the router selects only inside that pool, discloses the chosen model
+Your models. Your call. Your rules: you name the decider, the pool and the
+default; the router selects only inside that pool, discloses the chosen model
 in every response, and never retries, falls back, or widens the pool.
 
 ## Three commands
@@ -29,9 +33,9 @@ the pool. Every response names the profile and the model that answered.
 
 ## Configuration
 
-The router is a `router` block in the personal configuration, which must
-declare `"schema_version": 2`. Schema 1 files stay valid; without a block the
-router is off and `check` says so.
+The router is a `router` block in the personal configuration: the decider
+first, then the profiles it governs. Without a block the router is off and
+`check` says so.
 
 ```json
 {
@@ -47,10 +51,10 @@ router is off and `check` says so.
                 "base_url": "https://api.openai.com/v1", "credential_env": "OPENAI_API_KEY"}
   },
   "router": {
-    "listen": "127.0.0.1:4141",
+    "decider": {"kind": "llm", "profile": "flash", "input": "excerpt", "timeout": 3},
     "pool": ["flash", "qwen", "sol"],
     "default": "qwen",
-    "decider": {"kind": "llm", "profile": "flash", "input": "excerpt", "timeout": 3},
+    "listen": "127.0.0.1:4141",
     "max_cost_usd": 1.0,
     "receipts": false,
     "allow_origins": [],
@@ -64,7 +68,7 @@ router is off and `check` says so.
 | `listen` | loopback `host:port` only (`127.0.0.1`, `localhost`, `[::1]`); default `127.0.0.1:4141` |
 | `pool` | profile ids the router may choose from: any adapter. HTTP profiles (`openai-compatible`, `deepseek-api`, `token-plan-openai`) are called directly; native profiles (`codex`, `claude-code`, `claude-zai`, `kimi-code-cli`, `grok-build-cli`, `agy`) are bridged through `delegation-run`, see below |
 | `default` | the pool profile used when the decision is undecidable; must be in the pool |
-| `decider` | `kind`: `llm` (default), `none`, `sage`, `jev`, `dipylon` or `classifier`. For `llm`, `profile` is an HTTP profile called with its own key (default: the pool default). For the service deciders, `url` (HTTPS, or loopback HTTP; required for `dipylon` and `classifier`), `credential_env` (the variable holding that service's key), `model` (Jev only) and `price` (`{in, out}` per million tokens, to price the decision) override the defaults listed under *Deciders*. `input` is `excerpt` (default) or `full`; `timeout` seconds 1–600 |
+| `decider` | **required** — the decision model. `kind`: `llm`, `sage`, `jev`, `dipylon`, `classifier` or `none`. For `llm`, `profile` is an HTTP profile called with its own key (default: the pool default). For the service deciders, `url` (HTTPS, or loopback HTTP; required for `dipylon` and `classifier`), `credential_env` (the variable holding that service's key), `model` (Jev only) and `price` (`{in, out}` per million tokens, to price the decision) override the defaults listed under *Deciders*. `input` is `excerpt` (default) or `full`; `timeout` seconds 1–600 |
 | `max_cost_usd` | pre-dispatch ceiling on the estimated cost of one request; a request whose chosen profile exceeds it is refused, never downgraded |
 | `receipts` | when true, one JSONL line per request in `$DELEGATION_DATA_HOME/router/receipts.jsonl` (mode 600); decision, profile, usage, cost, latency — never prompt content. `uninstall.sh` keeps the file as `$DELEGATION_DATA_HOME.router-receipts.jsonl.bak` and `install.sh` restores it, like the key files |
 | `allow_origins` | exact browser origins allowed to call the server (`https://app.example`, or `http://localhost:5173`); empty by default, so a web page cannot spend your keys. A listed origin gets the CORS preflight answered and `Access-Control-Allow-Origin` plus the exposed `X-Router-*` headers on every response; any other `Origin` is refused |

@@ -1,7 +1,7 @@
 {
   "name": "delegation-kit",
   "version": "0.27.0",
-  "description": "A decision model picks which of your models answers each request, and tells you why. A local OpenAI-compatible router over the models you already pay for (API keys, Claude or Codex subscriptions, local endpoints), plus explicit one-shot delegation for Claude Code and Codex. Nothing dispatches without the user asking.",
+  "description": "You choose the decision model \u2014 one of your cheap models, Levanto Sage, TypeSafe Jev, your own Dipylon or a local classifier \u2014 and it governs the models you already pay for: a local OpenAI-compatible router sends each request to the cheapest model in your pool that will get it right, with that model's own credential, and tells you why. Nothing dispatches without you asking.",
   "author": {
     "name": "Matteo Scurati",
     "url": "https://github.com/matteoscurati"

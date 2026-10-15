@@ -152,7 +152,7 @@ def read(path):
 def preset(strict=False):
     """The shipped preset (config/presets.json) as a fresh personal configuration."""
     return {
-        "schema_version": 1,
+        "schema_version": 2,
         "review_policy": "cross-family" if strict else "optional",
         "profiles": read(ROOT / "config/presets.json")["profiles"],
     }
@@ -188,7 +188,7 @@ def _endpoint_ok(value):
 
 
 def validate_routing_fields(p):
-    """Optional per-profile routing declarations (schema 2)."""
+    """Optional per-profile routing declarations."""
     if "tier" in p and p["tier"] not in TIERS:
         raise ValueError("invalid tier (small|mid|frontier)")
     if "code" in p and type(p["code"]) is not bool:
@@ -211,10 +211,13 @@ def validate_router(c):
     r = c.get("router")
     if r is None:
         return
-    if c["schema_version"] < 2:
-        raise ValueError("router requires schema_version 2")
     if not isinstance(r, dict) or set(r) - ROUTER_FIELDS:
         raise ValueError("unknown router field")
+    if not isinstance(r.get("decider"), dict) or "kind" not in r["decider"]:
+        raise ValueError(
+            "router.decider is required: name the decision model "
+            "(kind llm, sage, jev, dipylon, classifier or none)"
+        )
     listen = r.get("listen", "127.0.0.1:4141")
     if not isinstance(listen, str) or not LISTEN_PATTERN.fullmatch(listen):
         raise ValueError("router.listen must be a loopback host:port")
@@ -233,10 +236,10 @@ def validate_router(c):
             raise ValueError("router.pool names an unknown profile: " + key)
     if r.get("default") not in pool:
         raise ValueError("router.default must be one of router.pool")
-    decider = r.get("decider", {"kind": "llm"})
-    if not isinstance(decider, dict) or set(decider) - DECIDER_FIELDS:
+    decider = r["decider"]
+    if set(decider) - DECIDER_FIELDS:
         raise ValueError("unknown router.decider field")
-    kind = decider.get("kind", "llm")
+    kind = decider["kind"]
     if kind not in ROUTER_DECIDERS:
         raise ValueError("router.decider.kind not available in this release")
     if kind == "llm":
@@ -319,16 +322,21 @@ def validate(c):
     for key, p in c["profiles"].items():
         if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_.-]*", key):
             raise ValueError("invalid profile id")
-        if not isinstance(p, dict) or set(p) - {
-            "adapter",
-            "model",
-            "family",
-            "roles",
-            "parameters",
-            "base_url",
-            "credential_env",
-            "aliases",
-        } - (PROFILE_ROUTING_FIELDS if c["schema_version"] >= 2 else set()):
+        if (
+            not isinstance(p, dict)
+            or set(p)
+            - {
+                "adapter",
+                "model",
+                "family",
+                "roles",
+                "parameters",
+                "base_url",
+                "credential_env",
+                "aliases",
+            }
+            - PROFILE_ROUTING_FIELDS
+        ):
             raise ValueError(
                 "unknown profile field (credentials and capability overrides are forbidden)"
             )

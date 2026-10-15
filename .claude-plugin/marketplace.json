@@ -6,13 +6,13 @@
     "url": "https://github.com/matteoscurati"
   },
   "metadata": {
-    "description": "A decision model picks which of your models answers each request. Local OpenAI-compatible router with user-declared pool, default and decider; explicit delegation lanes for Claude Code and Codex; nothing dispatches on its own.",
+    "description": "You choose the decision model; it governs the models you already pay for. A local OpenAI-compatible router with a user-named decider, pool and default; nothing dispatches on its own.",
     "version": "0.27.0"
   },
   "plugins": [
     {
       "name": "delegation-kit",
-      "description": "Local model router (delegation-router) and user-directed delegation profiles, runners and guard for Claude Code and Codex.",
+      "description": "Local model router (delegation-router): a user-chosen decision model governs the user's own models, over their own keys and subscriptions.",
       "version": "0.27.0",
       "author": {
         "name": "Matteo Scurati"

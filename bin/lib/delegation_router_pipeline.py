@@ -51,8 +51,8 @@ def route(
     ceiling = r.get("max_cost_usd") if ceiling is None else ceiling
     eligible, blocked = prefilter(pool, feats, ceiling, r["default"])
     default_meta = by_key[r["default"]]
-    decider_cfg = r.get("decider", {"kind": "llm"})
-    kind = decider_kind or decider_cfg.get("kind", "llm")
+    decider_cfg = r["decider"]
+    kind = decider_kind or decider_cfg["kind"]
     mode = mode or r.get("mode", "route")
     input_mode = input_mode or decider_cfg.get("input", "excerpt")
     decider = build(
@@ -133,6 +133,49 @@ def explicit(c, profile_key, body, ceiling=None):
     return out, choice, feats, blocked
 
 
+def describe_decider(c, r):
+    """The decision model as the user declared it, defaults filled in, no
+    secret values: what `check`, `serve` and doctor show first."""
+    decider = dict(r["decider"])
+    if decider["kind"] == "llm":
+        key = decider.setdefault("profile", r["default"])
+        profile = c["profiles"][key]
+        decider["model"] = profile["model"]
+        decider["adapter"] = profile["adapter"]
+        decider.setdefault("timeout", 3)
+    elif decider["kind"] in SERVICE_DECIDERS:
+        from delegation_router_deciders import SERVICE_DEFAULTS
+
+        defaults = SERVICE_DEFAULTS[decider["kind"]]
+        for key in ("url", "credential_env", "model", "price"):
+            if key in defaults and key not in decider:
+                decider[key] = defaults[key]
+        decider.setdefault("timeout", defaults["timeout"])
+    decider.setdefault("input", "excerpt")
+    return decider
+
+
+def decider_line(decider):
+    kind = decider["kind"]
+    if kind == "none":
+        return "decider: none — rules only; every request goes to the default"
+    if kind == "llm":
+        return "decider: llm — profile %s (%s/%s), input %s, timeout %ss" % (
+            decider["profile"],
+            decider["adapter"],
+            decider["model"],
+            decider["input"],
+            decider["timeout"],
+        )
+    parts = [decider.get("url") or "url not set"]
+    if decider.get("credential_env"):
+        parts.append("key " + decider["credential_env"])
+    if decider.get("model"):
+        parts.append("model " + decider["model"])
+    parts.append("timeout %ss" % decider.get("timeout"))
+    return "decider: %s — %s" % (kind, ", ".join(parts))
+
+
 def check(c):
     r = c.get("router")
     result = {
@@ -147,7 +190,8 @@ def check(c):
     }
     if not r:
         result["summary"] = (
-            "router not configured; add a router block (schema_version 2) to enable it"
+            "router not configured; a router block naming a decider and the "
+            "profiles it governs enables it"
         )
         return result
     pool = pool_meta(c)
@@ -170,26 +214,11 @@ def check(c):
                     + ": native profile, bridged through delegation-run on the %s role; "
                     "no tools, images or JSON mode, one event when streaming" % lane
                 )
-    decider = dict(r.get("decider", {"kind": "llm"}))
-    decider.setdefault("kind", "llm")
-    if decider["kind"] == "llm":
-        decider.setdefault("profile", r["default"])
-    elif decider["kind"] in SERVICE_DECIDERS:
-        from delegation_router_deciders import SERVICE_DEFAULTS
-
-        defaults = SERVICE_DEFAULTS[decider["kind"]]
-        for key in ("url", "credential_env", "model", "price"):
-            if key in defaults and key not in decider:
-                decider[key] = defaults[key]
-        decider.setdefault("timeout", defaults["timeout"])
-    decider.setdefault("input", "excerpt")
+    decider = describe_decider(c, r)
     result.update(
-        listen=r.get("listen", "127.0.0.1:4141"),
-        mode=r.get("mode", "route"),
-        default=r["default"],
         decider=decider,
-        max_cost_usd=r.get("max_cost_usd"),
-        receipts=r.get("receipts", False),
+        summary="%s governs %d profiles, default %s"
+        % (decider_line(decider), len(pool), r["default"]),
         pool=[
             {
                 key: m[key]
@@ -208,6 +237,11 @@ def check(c):
             }
             for m in pool
         ],
+        default=r["default"],
+        listen=r.get("listen", "127.0.0.1:4141"),
+        mode=r.get("mode", "route"),
+        max_cost_usd=r.get("max_cost_usd"),
+        receipts=r.get("receipts", False),
         warnings=warnings,
     )
     return result

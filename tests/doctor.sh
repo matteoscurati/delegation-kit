@@ -161,7 +161,7 @@ if env PATH="$CONTRACT_BIN:$TEST_TOOLS:$PATH" CLAUDE_HOME="$TMP/claude" \
 else
   :
 fi
-grep -Fq '[ OK ] router configured: 2-profile pool, default deepseek-flash, decider none, listen 127.0.0.1:4141, mode route' "$TMP/router-doctor.log" || {
+grep -Fq '[ OK ] router configured: decider none governs 2 profiles, default deepseek-flash, listen 127.0.0.1:4141, mode route' "$TMP/router-doctor.log" || {
   sed 's/^/    /' "$TMP/router-doctor.log" >&2
   printf 'doctor did not report the configured router\n' >&2
   exit 1

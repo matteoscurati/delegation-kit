@@ -406,9 +406,9 @@ elif have delegation-router; then
   if [ -z "$router_check" ]; then
     bad "delegation-router check failed — run delegation-config validate"
   elif printf '%s' "$router_check" | jq -e '.enabled == false' >/dev/null 2>&1; then
-    info "router not configured — optional; a router block (schema_version 2) enables it, see docs/router.md"
+    info "router not configured — optional; a router block naming a decider and the profiles it governs enables it, see docs/router.md"
   elif printf '%s' "$router_check" | jq -e '.valid == true and .read_only == true and .automatic_dispatch == false' >/dev/null 2>&1; then
-    ok "router configured: $(printf '%s' "$router_check" | jq -r '"\(.pool | length)-profile pool, default \(.default), decider \(.decider.kind), listen \(.listen), mode \(.mode)"')"
+    ok "router configured: $(printf '%s' "$router_check" | jq -r '"decider \(.decider.kind) governs \(.pool | length) profiles, default \(.default), listen \(.listen), mode \(.mode)"')"
     info "serve binds loopback only, chooses inside the pool, discloses the model in every response, never retries or widens the pool"
     while IFS= read -r line; do
       [ -n "$line" ] && warn "router: $line"

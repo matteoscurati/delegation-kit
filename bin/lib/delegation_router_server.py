@@ -769,13 +769,13 @@ def serve(config, listen=None, env=None):
     signal.signal(signal.SIGINT, stop)
     signal.signal(signal.SIGTERM, stop)
     print(
-        "delegation-router: listening on http://%s:%d (pool %s; default %s; decider %s; mode %s)"
+        "delegation-router: decider %s governs %s (default %s) — listening on http://%s:%d, mode %s"
         % (
-            host,
-            server.server_address[1],
+            r["decider"]["kind"],
             ",".join(r["pool"]),
             r["default"],
-            r.get("decider", {}).get("kind", "llm"),
+            host,
+            server.server_address[1],
             r.get("mode", "route"),
         ),
         flush=True,

@@ -15,7 +15,12 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent / "lib"))
 from delegation_config import LISTEN_PATTERN, ROUTER_DECIDERS, load  # noqa: E402
-from delegation_router_pipeline import check, route, router_block  # noqa: E402
+from delegation_router_pipeline import (  # noqa: E402
+    check,
+    decider_line,
+    route,
+    router_block,
+)
 
 def main():
     p = argparse.ArgumentParser(prog="delegation-router")
@@ -45,21 +50,28 @@ def main():
             if a.json:
                 print(json.dumps(result, indent=2))
             elif not result["enabled"]:
-                print("router: not configured")
+                print("router: not configured — " + result["summary"])
             else:
+                print(decider_line(result["decider"]))
                 print(
-                    "router: %s default=%s decider=%s mode=%s"
+                    "  governs %d profiles (default %s) on %s, mode %s:"
                     % (
-                        result["listen"],
+                        len(result["pool"]),
                         result["default"],
-                        result["decider"]["kind"],
+                        result["listen"],
                         result["mode"],
                     )
                 )
                 for m in result["pool"]:
                     print(
-                        "  %s: %s/%s tier=%s"
-                        % (m["profile"], m["adapter"], m["model"], m["tier"])
+                        "    %s: %s/%s tier=%s%s"
+                        % (
+                            m["profile"],
+                            m["adapter"],
+                            m["model"],
+                            m["tier"],
+                            " lane=" + m["lane"] if m.get("lane") else "",
+                        )
                     )
                 for w in result["warnings"]:
                     print("  ! " + w)

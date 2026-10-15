@@ -7,9 +7,11 @@ All notable changes to delegation-kit are documented here.
 ### Added
 
 - **`delegation-router`, a local model router.** A `router` block in the
-  personal configuration — which now accepts `"schema_version": 2`; schema 1
-  files stay valid — declares a pool of profiles on any adapter, a default
-  and a decider. Three
+  personal configuration names the decision model (`decider`, required —
+  the user chooses it, the kit never assumes one) and the profiles it
+  governs (`pool`, `default`, on any adapter). `delegation-config init` now
+  writes `"schema_version": 2`; a file that still says `1` is read
+  identically, and the routing fields are accepted on either. Three
   commands: `check` resolves the block without network; `decide --prompt-file`
   recommends one pool profile and never dispatches it; `serve` is an
   OpenAI-compatible `/v1/chat/completions` on loopback only (`listen` refuses
@@ -121,11 +123,15 @@ All notable changes to delegation-kit are documented here.
 
 ### Changed
 
-- **The README leads with the idea**: a decision model picks which of your
-  models answers each request, and how — measure, one typed question, the
-  ladder, cheapest in the rung, disclosure — including why Opus 5.5 is
-  chosen over GPT-6 Astra when both are `frontier` (price) and which levers
-  change that (`tier`, `price`, pool, default, ceiling). The plugin,
+- **The README leads with the idea**: you choose the decision model, it
+  governs the models you already pay for. It explains how the choice is made
+  — measure, one typed question, the ladder, cheapest in the rung,
+  disclosure — with a worked table (why GLM 5.3 Flash answers a rename and
+  Opus 5.5 a race condition) and which levers change that (`tier`, `price`,
+  pool, default, ceiling). The explicit delegation commands, agents, Codex
+  profiles and skills are described as the machinery the router dispatches
+  through, not as a second way to use the kit. `check`, `serve` and doctor
+  open with the decider. The plugin,
   marketplace and npm descriptions say the same. Every decision's `reasons`
   now list the candidates of the chosen rung with their estimated cost
   (`candidates: opus-5-5 $0.0120, astra $0.0310 → opus-5-5`), so `decide
