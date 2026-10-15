@@ -75,6 +75,17 @@ if [ -f "$DATA_HOME/config/deepseek.env" ]; then
   ( umask 077; cp "$DATA_HOME/config/deepseek.env" "$deepseek_key_backup" )
   chmod 600 "$deepseek_key_backup"
 fi
+aa_key_backup=""
+if [ -f "$DATA_HOME/config/artificial-analysis.env" ]; then
+  aa_key_backup="$DATA_HOME.artificial-analysis.env.bak"
+  ( umask 077; cp "$DATA_HOME/config/artificial-analysis.env" "$aa_key_backup" )
+  chmod 600 "$aa_key_backup"
+fi
+catalog_backup=""
+if [ -f "$DATA_HOME/config/catalog.local.json" ]; then
+  catalog_backup="$DATA_HOME.catalog.local.json.bak"
+  cp "$DATA_HOME/config/catalog.local.json" "$catalog_backup"
+fi
 grok_cli_backup=""
 if [ -d "$DATA_HOME/grok-cli" ]; then
   grok_cli_backup="$DATA_HOME.grok-cli.bak"
@@ -101,6 +112,10 @@ echo "  - removed the commands, runners, router, patch verifier and shared libra
   || echo "  - DeepSeek API key preserved at $deepseek_key_backup (mode 600) — delete it yourself when done"
 [ -z "$receipts_backup" ] \
   || echo "  - router receipts preserved at $receipts_backup (mode 600) — delete them yourself when done"
+[ -z "$aa_key_backup" ] \
+  || echo "  - Artificial Analysis key preserved at $aa_key_backup (mode 600) — delete it yourself when done"
+[ -z "$catalog_backup" ] \
+  || echo "  - refreshed model catalog preserved at $catalog_backup — delete it yourself when done"
 echo
 echo "Done. config.toml was never auto-edited, so nothing to revert there."
 echo "Backups (*.delegation-kit.bak) left in place; delete when satisfied."

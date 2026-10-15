@@ -152,7 +152,12 @@ parameters the adapter supports; for a custom OpenAI-compatible endpoint add
 variable. The adapter owns capabilities — a `builder` role on a text adapter
 yields a patch, never write access — and unsupported parameters are errors.
 Declare `tier`, `price`, `code`, `context` or `json_mode` when the router
-should rank the profile on your numbers rather than the catalog's.
+should rank the profile on your numbers rather than the catalog's. The
+catalog's rungs come from the Artificial Analysis Intelligence Index through
+a published band rule; `delegation-router catalog show` prints the source of
+every rung and `catalog refresh`, with your key in `AA_API_KEY` or in
+`$DELEGATION_DATA_HOME/config/artificial-analysis.env` (mode 600), writes a
+current ladder beside the key files. See [the router page](router.md).
 
 ## Upgrading
 

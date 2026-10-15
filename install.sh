@@ -120,14 +120,21 @@ restore_key_backup() { # $1=name (zai | qwen-token-plan | deepseek)
 restore_key_backup zai
 restore_key_backup qwen-token-plan
 restore_key_backup deepseek
-# The router's opt-in receipts get the same treatment: uninstall.sh keeps them
-# as $DATA_HOME.router-receipts.jsonl.bak, and they come back when none exist.
+restore_key_backup artificial-analysis
+# The router's opt-in receipts and the user's own catalog refresh get the same
+# treatment: uninstall.sh keeps them beside the data home, and they come back
+# when none exist. The shipped catalog never overwrites the local one.
 receipts_backup="$DATA_HOME.router-receipts.jsonl.bak"
 if [ ! -f "$DATA_HOME/router/receipts.jsonl" ] && [ -f "$receipts_backup" ] && [ ! -L "$receipts_backup" ]; then
   mkdir -p "$DATA_HOME/router" && chmod 700 "$DATA_HOME/router" \
     && ( umask 077; cp "$receipts_backup" "$DATA_HOME/router/receipts.jsonl" ) \
     && chmod 600 "$DATA_HOME/router/receipts.jsonl" \
     && echo "  + router receipts restored from $receipts_backup (mode 600)"
+fi
+catalog_backup="$DATA_HOME.catalog.local.json.bak"
+if [ ! -f "$DATA_HOME/config/catalog.local.json" ] && [ -f "$catalog_backup" ] && [ ! -L "$catalog_backup" ]; then
+  cp "$catalog_backup" "$DATA_HOME/config/catalog.local.json" \
+    && echo "  + refreshed model catalog restored from $catalog_backup"
 fi
 ZAI_KEY_FILE="$DATA_HOME/config/zai.env"
 zai_store_key() { # $1=key

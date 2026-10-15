@@ -410,6 +410,7 @@ elif have delegation-router; then
   elif printf '%s' "$router_check" | jq -e '.valid == true and .read_only == true and .automatic_dispatch == false' >/dev/null 2>&1; then
     ok "router configured: $(printf '%s' "$router_check" | jq -r '"decider \(.decider.kind) governs \(.pool | length) profiles, default \(.default), listen \(.listen), mode \(.mode)"')"
     info "serve binds loopback only, chooses inside the pool, discloses the model in every response, never retries or widens the pool"
+    info "catalog $(printf '%s' "$router_check" | jq -r '"\(.catalog_version) (\(.catalog_source)) — delegation-router catalog show names the source of every rung"')"
     while IFS= read -r line; do
       [ -n "$line" ] && warn "router: $line"
     done <<EOF

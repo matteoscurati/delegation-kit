@@ -159,6 +159,51 @@ chat-completions endpoint. Gemini and OpenAI do, and enter as
 network and always lands on the default: that is the baseline `eval`
 measures deciders against.
 
+### Where the rungs come from
+
+A third party places the models. [Artificial Analysis](https://artificialanalysis.ai/)
+publishes an Intelligence Index (0–100, a composite of public evaluations)
+with coding and math sub-indexes and list prices for a few hundred models and
+their reasoning settings; Epoch AI's Capabilities Index is the cross-check
+where it covers a model. The kit turns the index into the three rungs with
+one published rule, `index-bands-v1`: **frontier** within 8 points of the
+best model of the day, **mid** within 20, **small** below. On the board of
+2026-10-15 the best is Opus 5.5 at 58, so frontier is ≥ 50 (Opus 5.5, Sonnet
+5.5, Fable 5.1, GPT-6 Astra, GPT-6.1 Sol), mid ≥ 38 (Qwen3.8 Max 45, Kimi K3
+44, Haiku 5.5 43, GLM 5.3 Flash 42, GPT-5.6 Terra 42, Gemini 3.8 Flash 41,
+DeepSeek V4.1 Flash 39) and small below (Gemini 3.1 Pro Preview 30, MiniMax
+M3 29). The bands are a choice, recorded in the catalog with the date; the
+decision's `reasons` and `tier_source` say which placement was used.
+
+Every catalog row carries its evidence — source, measured name, index per
+reasoning setting, date — or `null` when a model was placed by hand because
+the board does not list it. A profile that declares `effort` is placed at
+the index of that setting when it was measured (Opus 5.5 at `medium` is 51,
+still frontier); a profile's own `tier` wins over everything.
+
+Two ways to a current ladder, neither automatic:
+
+- **The shipped catalog**, `config/catalog.json`, refreshed before each
+  release with the data of that day.
+- **Your own refresh**: `delegation-router catalog refresh` makes one request
+  to the Artificial Analysis API with your key and writes
+  `$DELEGATION_DATA_HOME/config/catalog.local.json`, which takes precedence
+  while it is at least as recent as the shipped file (`catalog show` says
+  which is in effect). The key goes in the variable `AA_API_KEY` or in
+  `$DELEGATION_DATA_HOME/config/artificial-analysis.env` as
+  `AA_API_KEY=<key>` with mode 600, beside the other key files; a free
+  account at artificialanalysis.ai issues one. The uninstaller keeps both
+  the key and the local catalog beside the data home and the installer
+  restores them. Attribution: the data is Artificial Analysis's.
+
+Models the board does not list keep their hand placement and are named by
+`refresh`; a profile for a model outside the catalog has no rung and can
+only be the default, unless you declare one. A model id that differs from
+the catalog's only in case or punctuation (`GLM-5.3-Flash`, `claude.opus.5.5`)
+is matched by the measured name. The index measures general capability on
+public benchmarks, not your tasks: `eval` on your golden set is the local
+proof, and the catalog is where the ladder starts, not where it ends.
+
 ### Why this model and not that one
 
 The rule is Sage's: *the cheapest model that will get it right*. The decider

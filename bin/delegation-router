@@ -34,6 +34,11 @@ def main():
     pd.add_argument("--json", action="store_true")
     ps = sub.add_parser("serve", help="OpenAI-compatible endpoint on loopback")
     ps.add_argument("--listen", help="loopback host:port (default: router.listen)")
+    pk = sub.add_parser("catalog", help="where the ladder comes from; refresh it")
+    pk.add_argument("action", choices=["show", "refresh"])
+    pk.add_argument("--key-env", default="AA_API_KEY", help="variable holding the Artificial Analysis key")
+    pk.add_argument("--shipped", action="store_true", help="write config/catalog.json (release)")
+    pk.add_argument("--json", action="store_true")
     pe = sub.add_parser(
         "eval", help="measure a decider offline on a golden set; never dispatches"
     )
@@ -44,6 +49,8 @@ def main():
     pe.add_argument("--json", action="store_true")
     a = p.parse_args()
     try:
+        if a.command == "catalog":
+            return catalog_command(a)
         c = load()
         if a.command == "check":
             result = check(c)
@@ -64,15 +71,20 @@ def main():
                 )
                 for m in result["pool"]:
                     print(
-                        "    %s: %s/%s tier=%s%s"
+                        "    %s: %s/%s tier=%s (%s)%s"
                         % (
                             m["profile"],
                             m["adapter"],
                             m["model"],
                             m["tier"],
+                            m.get("tier_source"),
                             " lane=" + m["lane"] if m.get("lane") else "",
                         )
                     )
+                print(
+                    "  catalog %s (%s)"
+                    % (result["catalog_version"], result["catalog_source"])
+                )
                 for w in result["warnings"]:
                     print("  ! " + w)
             return 0
@@ -145,6 +157,94 @@ def main():
     except (OSError, ValueError, KeyError, TypeError) as error:
         print("delegation-router: " + str(error), file=sys.stderr)
         return 65
+
+
+def catalog_command(a):
+    import os
+
+    from delegation_config import catalog
+    from delegation_router_catalog import (
+        AA_KEY_FILE,
+        aa_key,
+        data_home,
+        describe,
+        fetch,
+        refresh,
+        shipped,
+        today,
+        write,
+    )
+
+    if a.action == "show":
+        report = describe(catalog())
+        if a.json:
+            print(json.dumps(report, indent=2))
+            return 0
+        t = report["tiering"]
+        print(
+            "catalog %s (%s: %s)"
+            % (report["catalog_version"], report["catalog_source"], report["catalog_file"])
+        )
+        if t:
+            print(
+                "  ladder: %s — frontier within %s of the best (%s), mid within %s; %s, %s"
+                % (
+                    t.get("rule"),
+                    t.get("frontier_within"),
+                    t.get("top_index"),
+                    t.get("mid_within"),
+                    t.get("source"),
+                    t.get("date"),
+                )
+            )
+        print(
+            "  %d models with third-party evidence, %d placed by hand"
+            % (report["with_evidence"], report["hand_placed"])
+        )
+        for m in report["models"]:
+            print(
+                "    %-26s %-9s %s%s"
+                % (
+                    m["model"],
+                    m["tier"],
+                    m["tier_source"],
+                    " index %s (%s)" % (m["index"], m["variant"]) if m["index"] is not None else "",
+                )
+            )
+        return 0
+    key = aa_key(os.environ, a.key_env)
+    if not key:
+        raise ValueError(
+            "no Artificial Analysis key: set %s, or write %s=<key> into %s (mode 600)"
+            % (a.key_env, a.key_env, data_home() / "config" / AA_KEY_FILE)
+        )
+    rows = fetch(key)
+    new, unmatched = refresh(shipped(), rows, today())
+    path = write(new, shipped=a.shipped)
+    summary = {
+        "written": str(path),
+        "catalog_version": new["catalog_version"],
+        "tiering": new["tiering"],
+        "matched": len(new["models"]) - len(unmatched),
+        "unmatched": unmatched,
+        "attribution": new["tiering"]["attribution"],
+    }
+    if a.json:
+        print(json.dumps(summary, indent=2))
+    else:
+        print(
+            "catalog refreshed → %s (%s): %d models placed from Artificial Analysis (top index %s), %d unmatched%s"
+            % (
+                path,
+                new["catalog_version"],
+                summary["matched"],
+                new["tiering"]["top_index"],
+                len(unmatched),
+                ": " + ", ".join(unmatched) if unmatched else "",
+            )
+        )
+        print("  data: Artificial Analysis, " + new["tiering"]["attribution"])
+    return 0
 
 
 def _pct(value):

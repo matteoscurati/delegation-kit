@@ -101,9 +101,26 @@ All notable changes to delegation-kit are documented here.
   profile, usage, cost and latency and never prompt content. `uninstall.sh`
   keeps them as `$DELEGATION_DATA_HOME.router-receipts.jsonl.bak` and
   `install.sh` restores them, the key-file treatment.
-- **`config/catalog.json`**, a dated snapshot of tier, code capability,
-  USD-per-million prices, context and JSON-mode support for the models the
-  presets name and the usual pool candidates. Schema 2 profiles may declare
+- **The ladder comes from a third party.** `config/catalog.json` places
+  every model it can from the Artificial Analysis Intelligence Index with
+  one published rule, `index-bands-v1` (frontier within 8 points of the
+  best model of the day, mid within 20, small below), and records the
+  evidence — measured name, index per reasoning setting, date — beside each
+  row; models the board does not list keep a hand placement marked as such.
+  A profile that declares `effort` is placed at that setting's index; the
+  decision's `reasons` and `tier_source` name the placement used.
+  `delegation-router catalog show` prints the source of every rung;
+  `delegation-router catalog refresh` makes one request to the Artificial
+  Analysis API with the user's key (`AA_API_KEY`, or
+  `$DELEGATION_DATA_HOME/config/artificial-analysis.env`, mode 600) and
+  writes `catalog.local.json`, which takes precedence over the shipped file
+  while it is at least as recent; `--shipped` refreshes the shipped file
+  before a release. The uninstaller keeps the key and the local catalog
+  beside the data home and the installer restores them. Data attribution:
+  Artificial Analysis.
+- **`config/catalog.json`** otherwise stays a dated snapshot of code
+  capability, USD-per-million prices, context and JSON-mode support for the
+  models the presets name and the usual pool candidates. Schema 2 profiles may declare
   `tier`, `code`, `price`, `context` and `json_mode` themselves; the
   declaration wins and `check` reports `metadata_source`. `config/router-
   prompt.v1.md` is the decider prompt; the decider version is the model plus

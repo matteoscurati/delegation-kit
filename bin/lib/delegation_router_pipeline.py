@@ -122,6 +122,7 @@ def explicit(c, profile_key, body, ceiling=None):
         "profile": meta["profile"],
         "model": meta["model"],
         "tier": meta.get("tier"),
+        "tier_source": meta.get("tier_source"),
         "reasoning_effort": None,
         "reasons": ["explicit profile → no decider"],
         "undecidable": False,
@@ -186,6 +187,7 @@ def check(c):
         "authorization_granted": False,
         "valid": True,
         "catalog_version": catalog()["catalog_version"],
+        "catalog_source": catalog().get("catalog_source", "shipped"),
         "enabled": bool(r),
     }
     if not r:
@@ -227,6 +229,7 @@ def check(c):
                     "model",
                     "adapter",
                     "tier",
+                    "tier_source",
                     "code",
                     "price",
                     "context",

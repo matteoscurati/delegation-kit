@@ -45,8 +45,18 @@ With a pool of GLM 5.3 Flash (`small`, subscription) and Opus 5.5
 | summarise this contract | difficulty 2 | mid | Opus 5.5 | the mid rung is empty: escalate, never descend |
 | what is 17 % of 2,340 € | difficulty 1, `math` | mid | Opus 5.5 | `math` lifts an easy request to `mid`; empty, so up |
 
-Add GLM 5.2 (`mid`) to the pool and the last two rows go to it instead. The
-levers are yours — `tier` and `price` per profile, the pool, the default, a
+Add GLM 5.2 (`mid`) to the pool and the last two rows go to it instead.
+
+Where the rungs come from: a third party, not the kit. The shipped catalog
+places every model it knows from the Artificial Analysis Intelligence Index
+through one published rule — frontier within 8 points of the best model of
+the day, mid within 20, small below — and records the evidence and the date
+beside each row; `delegation-router catalog show` prints it. With your own
+Artificial Analysis key (`AA_API_KEY`, or
+`~/.local/share/delegation-kit/config/artificial-analysis.env`),
+`delegation-router catalog refresh` writes a current ladder on your machine
+that takes precedence over the shipped one; without a key you get the ladder
+the package shipped with, refreshed at every release. The levers are yours — `tier` and `price` per profile, the pool, the default, a
 cost ceiling — and `delegation-router decide --json` prints the reasons for
 any prompt without dispatching it. `delegation-router eval` measures a
 decider against the rules-only baseline on a golden set of yours.

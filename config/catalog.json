@@ -1,29 +1,561 @@
 {
-  "catalog_version": "2026-10-13",
-  "notes": "Code-owned routing metadata for known model identifiers. A profile may override every field with its own declaration (tier, code, price, context, json_mode). Prices are USD per million tokens, list rates, Standard tier, no cache or batch discounts; null means credit- or subscription-billed with no per-token list price. context is a safe lower bound of the input window.",
+  "catalog_version": "2026-10-15",
+  "tiering": {
+    "rule": "index-bands-v1",
+    "frontier_within": 8,
+    "mid_within": 20,
+    "top_index": 58,
+    "source": "artificialanalysis",
+    "date": "2026-10-15",
+    "via": "leaderboard",
+    "attribution": "https://artificialanalysis.ai/"
+  },
   "models": {
-    "gpt-5.6-luna": {"provider": "openai", "tier": "small", "code": true, "price": {"in": 0.2, "out": 1.2}, "context": 272000, "json_mode": true, "price_source": "ai-consultants cost_rates.json 5.1.2", "price_date": "2026-09-28"},
-    "gpt-5.6-terra": {"provider": "openai", "tier": "mid", "code": true, "price": {"in": 2.0, "out": 12.0}, "context": 272000, "json_mode": true, "price_source": "ai-consultants cost_rates.json 5.1.2", "price_date": "2026-09-28"},
-    "gpt-5.6-sol": {"provider": "openai", "tier": "frontier", "code": true, "price": {"in": 4.0, "out": 20.0}, "context": 272000, "json_mode": true, "price_source": "ai-consultants cost_rates.json 5.1.2", "price_date": "2026-09-28"},
-    "gpt-6-astra": {"provider": "openai", "tier": "frontier", "code": true, "price": {"in": 10.0, "out": 50.0}, "context": 272000, "json_mode": true, "price_source": "developers.openai.com/api/docs/models/gpt-6-astra", "price_date": "2026-09-28"},
-    "gpt-6.1-sol": {"provider": "openai", "tier": "frontier", "code": true, "price": {"in": 2.0, "out": 10.0}, "context": 1050000, "json_mode": true, "price_source": "developers.openai.com/api/docs/models/gpt-6.1-sol", "price_date": "2026-10-04"},
-    "gpt-5.5": {"provider": "openai", "tier": "frontier", "code": true, "price": {"in": 5.0, "out": 30.0}, "context": 272000, "json_mode": true, "price_source": "ai-consultants cost_rates.json 5.1.2", "price_date": "2026-09-28"},
-    "claude-haiku-4-5": {"provider": "anthropic", "tier": "small", "code": true, "price": {"in": 1.0, "out": 5.0}, "context": 200000, "json_mode": false, "price_source": "ai-consultants cost_rates.json 5.1.2", "price_date": "2026-09-28"},
-    "claude-sonnet-5": {"provider": "anthropic", "tier": "mid", "code": true, "price": {"in": 3.0, "out": 15.0}, "context": 200000, "json_mode": false, "price_source": "ai-consultants cost_rates.json 5.1.2", "price_date": "2026-09-28"},
-    "claude-opus-5": {"provider": "anthropic", "tier": "frontier", "code": true, "price": {"in": 5.0, "out": 25.0}, "context": 200000, "json_mode": false, "price_source": "ai-consultants cost_rates.json 5.1.2", "price_date": "2026-09-28"},
-    "claude-opus-5-5": {"provider": "anthropic", "tier": "frontier", "code": true, "price": {"in": 4.0, "out": 20.0}, "context": 200000, "json_mode": false, "price_source": "platform.claude.com/docs/en/models/opus-5-5/overview", "price_date": "2026-09-28"},
-    "claude-fable-5": {"provider": "anthropic", "tier": "frontier", "code": true, "price": {"in": 10.0, "out": 50.0}, "context": 200000, "json_mode": false, "price_source": "ai-consultants cost_rates.json 5.1.2", "price_date": "2026-09-28"},
-    "claude-fable-5-1": {"provider": "anthropic", "tier": "frontier", "code": true, "price": {"in": 10.0, "out": 50.0}, "context": 200000, "json_mode": false, "price_source": "ai-consultants cost_rates.json 5.1.2", "price_date": "2026-09-28"},
-    "deepseek-flash": {"provider": "deepseek", "tier": "small", "code": true, "price": {"in": 0.3, "out": 1.2}, "context": 128000, "json_mode": true, "price_source": "ai-consultants cost_rates.json 5.1.2 (peak cache-miss rate)", "price_date": "2026-09-10"},
-    "qwen3.8-max": {"provider": "alibaba", "tier": "mid", "code": true, "price": null, "context": 128000, "json_mode": true, "price_source": "Token Plan credits; no per-token list price", "price_date": "2026-09-28"},
-    "glm-5.3-flash": {"provider": "zai", "tier": "small", "code": true, "price": null, "context": 128000, "json_mode": true, "price_source": "Z.AI coding plan subscription; no per-token list price", "price_date": "2026-09-28"},
-    "glm-5.2": {"provider": "zai", "tier": "mid", "code": true, "price": {"in": 0.98, "out": 3.08}, "context": 128000, "json_mode": true, "price_source": "ai-consultants cost_rates.json 5.1.2", "price_date": "2026-09-28"},
-    "grok-4.6": {"provider": "xai", "tier": "mid", "code": true, "price": {"in": 2.0, "out": 6.0}, "context": 200000, "json_mode": true, "price_source": "ai-consultants cost_rates.json 5.1.2", "price_date": "2026-09-28"},
-    "grok-4.7": {"provider": "xai", "tier": "mid", "code": true, "price": {"in": 2.0, "out": 6.0}, "context": 200000, "json_mode": true, "price_source": "ai-consultants cost_rates.json 5.1.2", "price_date": "2026-09-28"},
-    "kimi-k3": {"provider": "moonshot", "tier": "mid", "code": true, "price": {"in": 0.5, "out": 2.0}, "context": 128000, "json_mode": true, "price_source": "ai-consultants cost_rates.json 5.1.2 (kimi-code/k3)", "price_date": "2026-09-28"},
-    "gemini-3.8-flash": {"provider": "google", "tier": "small", "code": true, "price": {"in": 0.75, "out": 3.75}, "context": 1000000, "json_mode": true, "price_source": "ai-consultants cost_rates.json 5.1.2 (promotional through 2026-12-31)", "price_date": "2026-09-28"},
-    "gemini-3.1-pro-preview": {"provider": "google", "tier": "mid", "code": true, "price": {"in": 1.25, "out": 5.0}, "context": 1000000, "json_mode": true, "price_source": "ai-consultants cost_rates.json 5.1.2", "price_date": "2026-09-28"},
-    "minimax-m3": {"provider": "minimax", "tier": "small", "code": true, "price": {"in": 0.3, "out": 1.2}, "context": 128000, "json_mode": true, "price_source": "ai-consultants cost_rates.json 5.1.2", "price_date": "2026-09-28"},
-    "mistral-large-3": {"provider": "mistral", "tier": "mid", "code": true, "price": {"in": 2.0, "out": 6.0}, "context": 128000, "json_mode": true, "price_source": "ai-consultants cost_rates.json 5.1.2", "price_date": "2026-09-28"}
+    "claude-fable-5": {
+      "provider": "anthropic",
+      "tier": "frontier",
+      "code": true,
+      "price": {
+        "in": 10.0,
+        "out": 50.0
+      },
+      "context": 200000,
+      "json_mode": false,
+      "price_source": "ai-consultants cost_rates.json 5.1.2",
+      "price_date": "2026-09-28",
+      "evidence": null
+    },
+    "claude-fable-5-1": {
+      "provider": "anthropic",
+      "tier": "frontier",
+      "code": true,
+      "price": {
+        "in": 10.0,
+        "out": 50.0
+      },
+      "context": 200000,
+      "json_mode": false,
+      "price_source": "ai-consultants cost_rates.json 5.1.2",
+      "price_date": "2026-09-28",
+      "evidence": {
+        "source": "artificialanalysis",
+        "name": "Claude Fable 5.1",
+        "aa_id": null,
+        "match": "exact",
+        "index": 53,
+        "variant": "max",
+        "variants": {
+          "max": 53,
+          "xhigh": 53,
+          "high": 51,
+          "medium": 49
+        },
+        "coding_index": null,
+        "math_index": null,
+        "date": "2026-10-15",
+        "via": "leaderboard"
+      }
+    },
+    "claude-haiku-4-5": {
+      "provider": "anthropic",
+      "tier": "small",
+      "code": true,
+      "price": {
+        "in": 1.0,
+        "out": 5.0
+      },
+      "context": 200000,
+      "json_mode": false,
+      "price_source": "ai-consultants cost_rates.json 5.1.2",
+      "price_date": "2026-09-28",
+      "evidence": null
+    },
+    "claude-haiku-5-5": {
+      "provider": "anthropic",
+      "tier": "mid",
+      "code": true,
+      "price": null,
+      "context": 200000,
+      "json_mode": false,
+      "evidence": {
+        "source": "artificialanalysis",
+        "name": "Claude Haiku 5.5",
+        "aa_id": null,
+        "match": "exact",
+        "index": 43,
+        "variant": "max",
+        "variants": {
+          "max": 43,
+          "xhigh": 41
+        },
+        "coding_index": null,
+        "math_index": null,
+        "date": "2026-10-15",
+        "via": "leaderboard"
+      }
+    },
+    "claude-opus-5": {
+      "provider": "anthropic",
+      "tier": "frontier",
+      "code": true,
+      "price": {
+        "in": 5.0,
+        "out": 25.0
+      },
+      "context": 200000,
+      "json_mode": false,
+      "price_source": "ai-consultants cost_rates.json 5.1.2",
+      "price_date": "2026-09-28",
+      "evidence": null
+    },
+    "claude-opus-5-5": {
+      "provider": "anthropic",
+      "tier": "frontier",
+      "code": true,
+      "price": {
+        "in": 4.0,
+        "out": 20.0
+      },
+      "context": 200000,
+      "json_mode": false,
+      "price_source": "platform.claude.com/docs/en/models/opus-5-5/overview",
+      "price_date": "2026-09-28",
+      "evidence": {
+        "source": "artificialanalysis",
+        "name": "Claude Opus 5.5",
+        "aa_id": null,
+        "match": "exact",
+        "index": 58,
+        "variant": "max",
+        "variants": {
+          "max": 58,
+          "xhigh": 56,
+          "high": 54,
+          "medium": 51
+        },
+        "coding_index": null,
+        "math_index": null,
+        "date": "2026-10-15",
+        "via": "leaderboard"
+      }
+    },
+    "claude-sonnet-5": {
+      "provider": "anthropic",
+      "tier": "mid",
+      "code": true,
+      "price": {
+        "in": 3.0,
+        "out": 15.0
+      },
+      "context": 200000,
+      "json_mode": false,
+      "price_source": "ai-consultants cost_rates.json 5.1.2",
+      "price_date": "2026-09-28",
+      "evidence": null
+    },
+    "claude-sonnet-5-5": {
+      "provider": "anthropic",
+      "tier": "frontier",
+      "code": true,
+      "price": null,
+      "context": 200000,
+      "json_mode": false,
+      "evidence": {
+        "source": "artificialanalysis",
+        "name": "Claude Sonnet 5.5",
+        "aa_id": null,
+        "match": "exact",
+        "index": 56,
+        "variant": "max",
+        "variants": {
+          "max": 56,
+          "xhigh": 52
+        },
+        "coding_index": null,
+        "math_index": null,
+        "date": "2026-10-15",
+        "via": "leaderboard"
+      }
+    },
+    "deepseek-flash": {
+      "provider": "deepseek",
+      "tier": "mid",
+      "code": true,
+      "price": {
+        "in": 0.3,
+        "out": 1.2
+      },
+      "context": 128000,
+      "json_mode": true,
+      "price_source": "ai-consultants cost_rates.json 5.1.2 (peak cache-miss rate)",
+      "price_date": "2026-09-10",
+      "evidence": {
+        "source": "artificialanalysis",
+        "name": "DeepSeek V4.1 Flash",
+        "aa_id": null,
+        "match": "exact",
+        "index": 39,
+        "variant": "max",
+        "variants": {
+          "max": 39
+        },
+        "coding_index": null,
+        "math_index": null,
+        "date": "2026-10-15",
+        "via": "leaderboard"
+      },
+      "aa_name": "DeepSeek V4.1 Flash"
+    },
+    "gemini-3.1-pro-preview": {
+      "provider": "google",
+      "tier": "small",
+      "code": true,
+      "price": {
+        "in": 1.25,
+        "out": 5.0
+      },
+      "context": 1000000,
+      "json_mode": true,
+      "price_source": "ai-consultants cost_rates.json 5.1.2",
+      "price_date": "2026-09-28",
+      "evidence": {
+        "source": "artificialanalysis",
+        "name": "Gemini 3.1 Pro Preview",
+        "aa_id": null,
+        "match": "exact",
+        "index": 30,
+        "variant": "default",
+        "variants": {
+          "default": 30
+        },
+        "coding_index": null,
+        "math_index": null,
+        "date": "2026-10-15",
+        "via": "leaderboard"
+      }
+    },
+    "gemini-3.8-flash": {
+      "provider": "google",
+      "tier": "mid",
+      "code": true,
+      "price": {
+        "in": 0.75,
+        "out": 3.75
+      },
+      "context": 1000000,
+      "json_mode": true,
+      "price_source": "ai-consultants cost_rates.json 5.1.2 (promotional through 2026-12-31)",
+      "price_date": "2026-09-28",
+      "evidence": {
+        "source": "artificialanalysis",
+        "name": "Gemini 3.8 Flash",
+        "aa_id": null,
+        "match": "exact",
+        "index": 41,
+        "variant": "high",
+        "variants": {
+          "high": 41
+        },
+        "coding_index": null,
+        "math_index": null,
+        "date": "2026-10-15",
+        "via": "leaderboard"
+      }
+    },
+    "glm-5.2": {
+      "provider": "zai",
+      "tier": "mid",
+      "code": true,
+      "price": {
+        "in": 0.98,
+        "out": 3.08
+      },
+      "context": 128000,
+      "json_mode": true,
+      "price_source": "ai-consultants cost_rates.json 5.1.2",
+      "price_date": "2026-09-28",
+      "evidence": null
+    },
+    "glm-5.3-flash": {
+      "provider": "zai",
+      "tier": "mid",
+      "code": true,
+      "price": null,
+      "context": 128000,
+      "json_mode": true,
+      "price_source": "Z.AI coding plan subscription; no per-token list price",
+      "price_date": "2026-09-28",
+      "evidence": {
+        "source": "artificialanalysis",
+        "name": "GLM-5.3 Flash",
+        "aa_id": null,
+        "match": "exact",
+        "index": 42,
+        "variant": "default",
+        "variants": {
+          "default": 42
+        },
+        "coding_index": null,
+        "math_index": null,
+        "date": "2026-10-15",
+        "via": "leaderboard"
+      }
+    },
+    "gpt-5.5": {
+      "provider": "openai",
+      "tier": "frontier",
+      "code": true,
+      "price": {
+        "in": 5.0,
+        "out": 30.0
+      },
+      "context": 272000,
+      "json_mode": true,
+      "price_source": "ai-consultants cost_rates.json 5.1.2",
+      "price_date": "2026-09-28",
+      "evidence": null
+    },
+    "gpt-5.6-luna": {
+      "provider": "openai",
+      "tier": "small",
+      "code": true,
+      "price": {
+        "in": 0.2,
+        "out": 1.2
+      },
+      "context": 272000,
+      "json_mode": true,
+      "price_source": "ai-consultants cost_rates.json 5.1.2",
+      "price_date": "2026-09-28",
+      "evidence": null
+    },
+    "gpt-5.6-sol": {
+      "provider": "openai",
+      "tier": "frontier",
+      "code": true,
+      "price": {
+        "in": 4.0,
+        "out": 20.0
+      },
+      "context": 272000,
+      "json_mode": true,
+      "price_source": "ai-consultants cost_rates.json 5.1.2",
+      "price_date": "2026-09-28",
+      "evidence": null
+    },
+    "gpt-5.6-terra": {
+      "provider": "openai",
+      "tier": "mid",
+      "code": true,
+      "price": {
+        "in": 2.0,
+        "out": 12.0
+      },
+      "context": 272000,
+      "json_mode": true,
+      "price_source": "ai-consultants cost_rates.json 5.1.2",
+      "price_date": "2026-09-28",
+      "evidence": {
+        "source": "artificialanalysis",
+        "name": "GPT-5.6 Terra",
+        "aa_id": null,
+        "match": "exact",
+        "index": 42,
+        "variant": "max",
+        "variants": {
+          "max": 42
+        },
+        "coding_index": null,
+        "math_index": null,
+        "date": "2026-10-15",
+        "via": "leaderboard"
+      }
+    },
+    "gpt-6-astra": {
+      "provider": "openai",
+      "tier": "frontier",
+      "code": true,
+      "price": {
+        "in": 10.0,
+        "out": 50.0
+      },
+      "context": 272000,
+      "json_mode": true,
+      "price_source": "developers.openai.com/api/docs/models/gpt-6-astra",
+      "price_date": "2026-09-28",
+      "evidence": {
+        "source": "artificialanalysis",
+        "name": "GPT-6 Astra",
+        "aa_id": null,
+        "match": "exact",
+        "index": 53,
+        "variant": "max",
+        "variants": {
+          "max": 53,
+          "xhigh": 52,
+          "high": 51,
+          "medium": 50
+        },
+        "coding_index": null,
+        "math_index": null,
+        "date": "2026-10-15",
+        "via": "leaderboard"
+      }
+    },
+    "gpt-6.1-sol": {
+      "provider": "openai",
+      "tier": "frontier",
+      "code": true,
+      "price": {
+        "in": 2.0,
+        "out": 10.0
+      },
+      "context": 1050000,
+      "json_mode": true,
+      "price_source": "developers.openai.com/api/docs/models/gpt-6.1-sol",
+      "price_date": "2026-10-04",
+      "evidence": {
+        "source": "artificialanalysis",
+        "name": "GPT-6.1 Sol",
+        "aa_id": null,
+        "match": "exact",
+        "index": 52,
+        "variant": "max",
+        "variants": {
+          "max": 52,
+          "xhigh": 51,
+          "high": 50,
+          "medium": 48
+        },
+        "coding_index": null,
+        "math_index": null,
+        "date": "2026-10-15",
+        "via": "leaderboard"
+      }
+    },
+    "grok-4.6": {
+      "provider": "xai",
+      "tier": "mid",
+      "code": true,
+      "price": {
+        "in": 2.0,
+        "out": 6.0
+      },
+      "context": 200000,
+      "json_mode": true,
+      "price_source": "ai-consultants cost_rates.json 5.1.2",
+      "price_date": "2026-09-28",
+      "evidence": null
+    },
+    "grok-4.7": {
+      "provider": "xai",
+      "tier": "mid",
+      "code": true,
+      "price": {
+        "in": 2.0,
+        "out": 6.0
+      },
+      "context": 200000,
+      "json_mode": true,
+      "price_source": "ai-consultants cost_rates.json 5.1.2",
+      "price_date": "2026-09-28",
+      "evidence": null
+    },
+    "kimi-k3": {
+      "provider": "moonshot",
+      "tier": "mid",
+      "code": true,
+      "price": {
+        "in": 0.5,
+        "out": 2.0
+      },
+      "context": 128000,
+      "json_mode": true,
+      "price_source": "ai-consultants cost_rates.json 5.1.2 (kimi-code/k3)",
+      "price_date": "2026-09-28",
+      "evidence": {
+        "source": "artificialanalysis",
+        "name": "Kimi K3",
+        "aa_id": null,
+        "match": "exact",
+        "index": 44,
+        "variant": "max",
+        "variants": {
+          "max": 44
+        },
+        "coding_index": null,
+        "math_index": null,
+        "date": "2026-10-15",
+        "via": "leaderboard"
+      }
+    },
+    "minimax-m3": {
+      "provider": "minimax",
+      "tier": "small",
+      "code": true,
+      "price": {
+        "in": 0.3,
+        "out": 1.2
+      },
+      "context": 128000,
+      "json_mode": true,
+      "price_source": "ai-consultants cost_rates.json 5.1.2",
+      "price_date": "2026-09-28",
+      "evidence": {
+        "source": "artificialanalysis",
+        "name": "MiniMax-M3",
+        "aa_id": null,
+        "match": "exact",
+        "index": 29,
+        "variant": "default",
+        "variants": {
+          "default": 29
+        },
+        "coding_index": null,
+        "math_index": null,
+        "date": "2026-10-15",
+        "via": "leaderboard"
+      }
+    },
+    "mistral-large-3": {
+      "provider": "mistral",
+      "tier": "mid",
+      "code": true,
+      "price": {
+        "in": 2.0,
+        "out": 6.0
+      },
+      "context": 128000,
+      "json_mode": true,
+      "price_source": "ai-consultants cost_rates.json 5.1.2",
+      "price_date": "2026-09-28",
+      "evidence": null
+    },
+    "qwen3.8-max": {
+      "provider": "alibaba",
+      "tier": "mid",
+      "code": true,
+      "price": null,
+      "context": 128000,
+      "json_mode": true,
+      "price_source": "Token Plan credits; no per-token list price",
+      "price_date": "2026-09-28",
+      "evidence": {
+        "source": "artificialanalysis",
+        "name": "Qwen3.8 Max (0902)",
+        "aa_id": null,
+        "match": "exact",
+        "index": 45,
+        "variant": "default",
+        "variants": {
+          "default": 45
+        },
+        "coding_index": null,
+        "math_index": null,
+        "date": "2026-10-15",
+        "via": "leaderboard"
+      },
+      "aa_name": "Qwen3.8 Max (0902)"
+    }
   }
 }

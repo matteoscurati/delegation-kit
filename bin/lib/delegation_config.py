@@ -426,34 +426,105 @@ def kit_version():
     return "unknown"
 
 
+def data_home():
+    return Path(
+        os.environ.get(
+            "DELEGATION_DATA_HOME", str(Path.home() / ".local/share/delegation-kit")
+        )
+    )
+
+
 @functools.lru_cache(maxsize=1)
 def catalog():
-    """Code-owned routing metadata for known model identifiers. Immutable for
-    the life of a process, so read once."""
-    return read(ROOT / "config/catalog.json")
+    """The model catalog: the shipped `config/catalog.json`, overlaid by the
+    user's own `catalog.local.json` (written by `delegation-router catalog
+    refresh`) whenever that one is at least as recent. Read once per process."""
+    shipped = read(ROOT / "config/catalog.json")
+    shipped["catalog_source"] = "shipped"
+    shipped["catalog_file"] = str(ROOT / "config/catalog.json")
+    local_file = data_home() / "config" / "catalog.local.json"
+    try:
+        local = read(local_file)
+        if (
+            isinstance(local, dict)
+            and isinstance(local.get("models"), dict)
+            and str(local.get("catalog_version", "")) >= str(shipped["catalog_version"])
+        ):
+            merged = dict(shipped)
+            merged["models"] = {**shipped["models"], **local["models"]}
+            merged["catalog_version"] = local["catalog_version"]
+            if local.get("tiering"):
+                merged["tiering"] = local["tiering"]
+            merged["catalog_source"] = "local"
+            merged["catalog_file"] = str(local_file)
+            return merged
+    except (OSError, ValueError):
+        pass
+    return shipped
+
+
+def catalog_row(cat, model):
+    """The catalog row for a profile's model id: exact, else the row whose
+    evidence names the same model once case, dots and dashes are ignored."""
+    if model in cat["models"]:
+        return cat["models"][model]
+    wanted = re.sub(r"[^a-z0-9]", "", model.lower())
+    for row in cat["models"].values():
+        evidence = row.get("evidence") or {}
+        if (
+            evidence.get("name")
+            and re.sub(r"[^a-z0-9]", "", evidence["name"].lower()) == wanted
+        ):
+            return row
+    return None
+
+
+def tier_for_effort(row, effort, tiering):
+    """A rung for the reasoning setting the profile runs at, when the
+    evidence measured that setting; else the row's rung."""
+    evidence = row.get("evidence") or {}
+    variants = evidence.get("variants") or {}
+    if effort and effort in variants and tiering:
+        index = variants[effort]
+        top = tiering["top_index"]
+        if index >= top - tiering["frontier_within"]:
+            return "frontier"
+        if index >= top - tiering["mid_within"]:
+            return "mid"
+        return "small"
+    return row.get("tier")
 
 
 def profile_meta(key, p, cat=None):
     """Routing metadata for one profile: the profile's own declarations win,
     the catalog fills the rest, unknown models stay without tier or price."""
     cat = cat if cat is not None else catalog()
-    base = cat["models"].get(p["model"], {})
+    row = catalog_row(cat, p["model"])
+    base = row or {}
     declared = PROFILE_ROUTING_FIELDS & set(p)
+    effort = p.get("parameters", {}).get("effort")
+    evidence = base.get("evidence")
+    if "tier" in p:
+        tier, tier_source = p["tier"], "profile"
+    elif evidence:
+        tier = tier_for_effort(base, effort, cat.get("tiering"))
+        tier_source = "%s:%s" % (evidence["source"], evidence["date"])
+    else:
+        tier, tier_source = base.get("tier"), ("hand" if row else "unknown")
     return {
         "profile": key,
         "model": p["model"],
         "adapter": p["adapter"],
         "family": p.get("family"),
-        "tier": p["tier"] if "tier" in p else base.get("tier"),
+        "tier": tier,
+        "tier_source": tier_source,
         "code": p["code"] if "code" in p else base.get("code", False),
         "price": p["price"] if "price" in p else base.get("price"),
         "context": p["context"] if "context" in p else base.get("context"),
         "json_mode": p["json_mode"] if "json_mode" in p else base.get("json_mode"),
-        "effort": p.get("parameters", {}).get("effort"),
+        "effort": effort,
         "metadata_source": (
-            "profile"
-            if declared
-            else ("catalog" if p["model"] in cat["models"] else "unknown")
+            "profile" if declared else ("catalog" if row else "unknown")
         ),
         "catalog_version": cat["catalog_version"],
     }

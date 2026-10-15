@@ -18,7 +18,7 @@ ambient Codex CLI `0.162.1` and ambient Claude Code `2.1.296`: all 13
 regression suites green in 42 seconds here and in 80 seconds on the macOS CI
 runner, where every `HTTPServer` bind used to stall on a reverse-DNS lookup
 until the router and the test fakes stopped asking for one (the new `router`
-suite runs the 46
+suite runs the 54
 tests of `tests/router.py` — the `tiered-v1` policy table, configuration
 validation, `check`/`decide` and the loopback server against a fake provider:
 each profile receives only its own key and no canary key reaches any output,
@@ -31,8 +31,9 @@ and survive `uninstall.sh`, the server writes nothing to stderr, a native
 profile is bridged through `delegation-run` against fake `codex`/`claude`
 executables (read-only role, transcript, mapped exit codes, one-event
 stream), the four service deciders each speak their wire format to a fake
-service and land in the same signals, and `eval` scores a decider against
-the baseline without dispatching; the doctor and install-marker suites cover
+service and land in the same signals, `eval` scores a decider against
+the baseline without dispatching, and the catalog's band rule, row parsing,
+matching, refresh, key file and local overlay are covered without network; the doctor and install-marker suites cover
 the "Model router" section, the installed command, catalog, prompt and
 receipts backup),
 ShellCheck at `-S warning`, ruff, the eight Node tests, the ten-check version

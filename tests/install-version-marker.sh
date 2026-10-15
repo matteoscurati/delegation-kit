@@ -49,6 +49,7 @@ printf '%s\n' '{}' >"$GROK_TEST_HOME/auth.json"
 ( umask 077; printf 'DEEPSEEK_API_KEY=stale-backup\n' >"$DATA.deepseek.env.bak" )
 ( umask 077; printf 'DEEPSEEK_API_KEY=current\n' >"$DATA/config/deepseek.env" )
 ( umask 077; printf '{"ts":1,"profile":"restored"}\n' >"$DATA.router-receipts.jsonl.bak" )
+printf '{"catalog_version":"2099-01-01","models":{}}\n' >"$DATA.catalog.local.json.bak"
 cat >"$DATA/grok-cli/current/grok" <<'EOF'
 #!/usr/bin/env bash
 case "${1:-}" in
@@ -84,8 +85,10 @@ env CLAUDE_HOME="$TMP/claude" CODEX_HOME="$TMP/codex" \
     "$ROOT/install.sh" </dev/null >"$TMP/install.log" 2>&1 \
   || { sed 's/^/    /' "$TMP/install.log" >&2; fail 'install.sh exited non-zero'; }
 
-[ "$(find "$DATA/config" -maxdepth 1 -name '*.json' | sort | xargs -n1 basename | tr '\n' ' ')" = 'catalog.json external-patch-policy.json ' ] \
+[ "$(find "$DATA/config" -maxdepth 1 -name '*.json' | sort | xargs -n1 basename | tr '\n' ' ')" = 'catalog.json catalog.local.json external-patch-policy.json ' ] \
   || fail "install left unexpected JSON files in $DATA/config: $(ls "$DATA/config")"
+[ "$(jq -r .catalog_version "$DATA/config/catalog.local.json")" = 2099-01-01 ] \
+  || fail 'install did not restore the refreshed catalog from the uninstaller backup'
 [ -x "$DATA/bin/delegation-deepseek" ] || fail 'install did not include the DeepSeek runner'
 [ "$(cat "$DATA/config/zai.env")" = 'ZAI_API_KEY=restored-from-backup' ] \
   || fail 'install did not restore the Z.AI key from the uninstaller backup'
@@ -283,6 +286,7 @@ ok
 [ -f "$TMP/data2/config/external-patch-policy.json" ] \
   || fail 'the --claude-only install did not include the patch policy'
 mkdir -p "$TMP/data2/router" && printf '{"ts":2}\n' >"$TMP/data2/router/receipts.jsonl"
+printf '{"catalog_version":"2098-01-01","models":{}}\n' >"$TMP/data2/config/catalog.local.json"
 env CLAUDE_HOME="$TMP/claude2" CODEX_HOME="$TMP/codex2" \
     DELEGATION_BIN_HOME="$TMP/bin2" DELEGATION_DATA_HOME="$TMP/data2" \
     "$ROOT/uninstall.sh" </dev/null >"$TMP/uninstall2.log" 2>&1 \
@@ -295,6 +299,8 @@ env CLAUDE_HOME="$TMP/claude2" CODEX_HOME="$TMP/codex2" \
   || fail 'uninstall left route discovery or the router on the bin path'
 [ "$(cat "$TMP/data2.router-receipts.jsonl.bak")" = '{"ts":2}' ] \
   || fail 'uninstall did not preserve the router receipts beside the data home'
+[ "$(jq -r .catalog_version "$TMP/data2.catalog.local.json.bak")" = 2098-01-01 ] \
+  || fail 'uninstall did not preserve the refreshed catalog beside the data home'
 ok
 
 doctor_section() { # runs doctor against $1 as DATA_HOME, prints its version block

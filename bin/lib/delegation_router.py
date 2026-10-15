@@ -6,12 +6,12 @@ import json
 import math
 import os
 import re
-from pathlib import Path
 
 from delegation_config import (
     ADAPTERS,
     ROUTER_HTTP_ADAPTERS,
     catalog,
+    data_home,
     profile_meta,
 )
 
@@ -350,6 +350,7 @@ def choose(verdict, eligible, default_meta, feats, cuts=CUTS):
             "profile": default_meta["profile"],
             "model": default_meta["model"],
             "tier": default_meta.get("tier"),
+            "tier_source": default_meta.get("tier_source"),
             "reasoning_effort": None,
             "reasons": reasons,
             "undecidable": True,
@@ -395,6 +396,10 @@ def choose(verdict, eligible, default_meta, feats, cuts=CUTS):
         return default("no eligible profile at or above the needed tier → default")
     chosen = _cheapest(candidates, feats)
     reasons.append(
+        "%s is %s (%s)"
+        % (chosen["profile"], chosen.get("tier"), chosen.get("tier_source"))
+    )
+    reasons.append(
         "candidates: "
         + ", ".join(
             "%s %s" % (m["profile"], _usd(rank_cost(m, feats)))
@@ -407,6 +412,7 @@ def choose(verdict, eligible, default_meta, feats, cuts=CUTS):
         "profile": chosen["profile"],
         "model": chosen["model"],
         "tier": chosen.get("tier"),
+        "tier_source": chosen.get("tier_source"),
         "reasoning_effort": _effort(verdict, chosen.get("tier")),
         "reasons": reasons,
         "undecidable": False,
@@ -440,14 +446,6 @@ def verdict_from_signals(signals):
 
 
 # ---- credentials and endpoints -----------------------------------------------
-
-
-def data_home():
-    return Path(
-        os.environ.get(
-            "DELEGATION_DATA_HOME", str(Path.home() / ".local/share/delegation-kit")
-        )
-    )
 
 
 def _key_from_file(path, var):
@@ -519,6 +517,7 @@ def disclosure(c, feats, verdict, choice, decision, blocked, skipped, mode):
             "profile": choice["profile"],
             "model": choice["model"],
             "tier": choice["tier"],
+            "tier_source": choice.get("tier_source"),
             "reasoning_effort": choice["reasoning_effort"],
         },
         "default": r["default"],

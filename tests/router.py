@@ -20,6 +20,14 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "bin/lib"))
 from delegation_config import validate  # noqa: E402
+from delegation_router_catalog import (  # noqa: E402
+    aa_key,
+    fetch,
+    match,
+    parse_row,
+    place,
+    refresh,
+)
 from delegation_router import (  # noqa: E402
     choose,
     estimate_cost,
@@ -736,6 +744,96 @@ class CliTests(Fixture):
         self.assertLess(time.monotonic() - started, 2.5)
         self.assertTrue(out["undecidable"])
 
+    def test_local_catalog_overlays_the_shipped_one_when_newer(self):
+        local = self.base / "data/config/catalog.local.json"
+        local.parent.mkdir(parents=True)
+        tiering = {
+            "rule": "index-bands-v1",
+            "frontier_within": 8,
+            "mid_within": 20,
+            "top_index": 58,
+            "source": "artificialanalysis",
+            "date": "2099-01-01",
+        }
+        row = {
+            "provider": "test",
+            "tier": "frontier",
+            "code": True,
+            "price": {"in": 1, "out": 2},
+            "context": 100000,
+            "json_mode": True,
+            "evidence": {
+                "source": "artificialanalysis",
+                "name": "Mid Model",
+                "index": 57,
+                "variant": "max",
+                "variants": {"max": 57, "medium": 30},
+                "date": "2099-01-01",
+            },
+        }
+        local.write_text(
+            json.dumps(
+                {
+                    "catalog_version": "2099-01-01",
+                    "tiering": tiering,
+                    "models": {"mid-model": row},
+                }
+            )
+        )
+        # the fixture declares tiers on every profile; drop mid's so the catalog places it
+        del self.config["profiles"]["mid"]["tier"]
+        del self.config["profiles"]["mid"]["price"]
+        self.save()
+        out = json.loads(self.run_cli("check", "--json").stdout)
+        self.assertEqual(out["catalog_source"], "local")
+        mid = next(m for m in out["pool"] if m["profile"] == "mid")
+        self.assertEqual(
+            (mid["tier"], mid["tier_source"]),
+            ("frontier", "artificialanalysis:2099-01-01"),
+        )
+        small = next(m for m in out["pool"] if m["profile"] == "small")
+        self.assertEqual(small["tier_source"], "profile")
+        # the profile's own reasoning setting picks the measured variant
+        # (on an adapter that takes `effort`)
+        self.config["profiles"]["mid-medium"] = {
+            "adapter": "deepseek-api",
+            "model": "mid-model",
+            "roles": ["builder"],
+            "parameters": {"effort": "medium"},
+        }
+        self.config["router"]["pool"].append("mid-medium")
+        self.save()
+        out = json.loads(self.run_cli("check", "--json").stdout)
+        self.assertEqual(
+            next(m for m in out["pool"] if m["profile"] == "mid-medium")["tier"],
+            "small",
+        )
+        # a model id that differs only in case and punctuation finds the row by name
+        self.config["profiles"]["mid"]["model"] = "Mid.Model"
+        self.save()
+        out = json.loads(self.run_cli("check", "--json").stdout)
+        self.assertEqual(
+            next(m for m in out["pool"] if m["profile"] == "mid")["tier_source"],
+            "artificialanalysis:2099-01-01",
+        )
+        # an older local file is ignored
+        local.write_text(
+            json.dumps({"catalog_version": "2000-01-01", "models": {"mid-model": row}})
+        )
+        out = json.loads(self.run_cli("check", "--json").stdout)
+        self.assertEqual(out["catalog_source"], "shipped")
+        show = json.loads(self.run_cli("catalog", "show", "--json").stdout)
+        self.assertEqual(show["catalog_source"], "shipped")
+        self.assertGreater(show["with_evidence"], 0)
+        self.assertEqual(Provider.requests, [])
+
+    def test_catalog_refresh_without_a_key_names_the_file_and_stays_offline(self):
+        self.env.pop("AA_API_KEY", None)
+        result = self.run_cli("catalog", "refresh", rc=65)
+        self.assertIn("artificial-analysis.env", result.stderr)
+        self.assertIn("AA_API_KEY", result.stderr)
+        self.assertEqual(Provider.requests, [])
+
     def test_missing_router_or_config_fails_closed(self):
         del self.config["router"]
         self.save()
@@ -744,6 +842,201 @@ class CliTests(Fixture):
         self.save()
         self.run_cli("check", rc=65)
         self.assertEqual(Provider.requests, [])
+
+
+AA_ROWS = [
+    {
+        "id": "aa-opus-max",
+        "name": "Claude Opus 5.5 (max with fallback)",
+        "model_creator": {"name": "Anthropic"},
+        "evaluations": {
+            "artificial_analysis_intelligence_index": 58,
+            "artificial_analysis_coding_index": 61,
+        },
+        "pricing": {"price_1m_input_tokens": 4, "price_1m_output_tokens": 20},
+    },
+    {
+        "id": "aa-opus-medium",
+        "name": "Claude Opus 5.5 (medium with fallback)",
+        "evaluations": {"artificial_analysis_intelligence_index": 51},
+        "pricing": {"price_1m_input_tokens": 4, "price_1m_output_tokens": 20},
+    },
+    {
+        "id": "aa-glm",
+        "name": "GLM-5.3 Flash",
+        "evaluations": {"artificial_analysis_intelligence_index": 42},
+        "pricing": {"price_1m_input_tokens": 0.2, "price_1m_output_tokens": 1.1},
+    },
+    {
+        "id": "aa-qwen",
+        "name": "Qwen3.8 Max (0902)",
+        "evaluations": {"artificial_analysis_intelligence_index": 45},
+        "pricing": {},
+    },
+    {
+        "id": "aa-ds",
+        "name": "DeepSeek V4.1 Flash (max)",
+        "evaluations": {"artificial_analysis_intelligence_index": 39},
+    },
+    {"id": "aa-noindex", "name": "Some Preview (high)", "evaluations": {}},
+    {
+        "id": "aa-tiny",
+        "name": "Tiny Model",
+        "evaluations": {"artificial_analysis_intelligence_index": 12},
+    },
+]
+
+
+class CatalogTests(unittest.TestCase):
+    """The ladder from a third party: bands, row parsing, matching, refresh."""
+
+    def test_bands_place_relative_to_the_best_of_the_day(self):
+        tiering = {"top_index": 58, "frontier_within": 8, "mid_within": 20}
+        for index, tier in [
+            (58, "frontier"),
+            (50, "frontier"),
+            (49.9, "mid"),
+            (38, "mid"),
+            (37.9, "small"),
+            (5, "small"),
+        ]:
+            self.assertEqual(place(index, tiering), tier, index)
+        self.assertIsNone(place(None, tiering))
+
+    def test_rows_parse_variants_and_prices(self):
+        row = parse_row(AA_ROWS[0])
+        self.assertEqual(
+            (row["base"], row["variant"], row["index"], row["coding_index"]),
+            ("Claude Opus 5.5", "max", 58, 61),
+        )
+        self.assertEqual((row["price_in"], row["price_out"]), (4, 20))
+        row = parse_row(AA_ROWS[3])  # a date in parentheses is part of the name
+        self.assertEqual(
+            (row["base"], row["variant"], row["price_in"]),
+            ("Qwen3.8 Max (0902)", None, None),
+        )
+        self.assertIsNone(parse_row(AA_ROWS[5])["index"])
+
+    def test_matching_exact_alias_and_prefix(self):
+        from delegation_router_catalog import group
+
+        families = group(AA_ROWS)
+        self.assertEqual(
+            match("claude-opus-5-5", None, families), ("claudeopus55", "exact")
+        )
+        self.assertEqual(
+            match("glm-5.3-flash", None, families), ("glm53flash", "exact")
+        )
+        self.assertEqual(
+            match("qwen3.8-max", None, families), ("qwen38max0902", "prefix")
+        )
+        self.assertEqual(
+            match("deepseek-flash", "DeepSeek V4.1 Flash", families),
+            ("deepseekv41flash", "exact"),
+        )
+        self.assertEqual(match("deepseek-flash", None, families), (None, None))
+        self.assertEqual(match("grok-4.6", None, families), (None, None))
+
+    def test_refresh_places_evidence_and_keeps_the_rest(self):
+        shipped = {
+            "catalog_version": "2026-01-01",
+            "models": {
+                "claude-opus-5-5": {
+                    "provider": "anthropic",
+                    "tier": "mid",
+                    "code": True,
+                    "price": {"in": 4, "out": 20},
+                    "context": 200000,
+                    "json_mode": False,
+                },
+                "glm-5.3-flash": {
+                    "provider": "zai",
+                    "tier": "small",
+                    "code": True,
+                    "price": None,
+                    "context": 128000,
+                    "json_mode": True,
+                },
+                "deepseek-flash": {
+                    "provider": "deepseek",
+                    "tier": "small",
+                    "code": True,
+                    "price": {"in": 0.3, "out": 1.2},
+                    "context": 128000,
+                    "json_mode": True,
+                    "aa_name": "DeepSeek V4.1 Flash",
+                },
+                "grok-4.6": {
+                    "provider": "xai",
+                    "tier": "mid",
+                    "code": True,
+                    "price": {"in": 2, "out": 6},
+                    "context": 256000,
+                    "json_mode": True,
+                },
+            },
+        }
+        new, unmatched = refresh(shipped, AA_ROWS, "2026-10-15")
+        self.assertEqual(new["catalog_version"], "2026-10-15")
+        self.assertEqual(new["tiering"]["top_index"], 58)
+        self.assertEqual(unmatched, ["grok-4.6"])
+        opus = new["models"]["claude-opus-5-5"]
+        self.assertEqual(
+            (opus["tier"], opus["evidence"]["index"], opus["evidence"]["variant"]),
+            ("frontier", 58, "max"),
+        )
+        self.assertEqual(opus["evidence"]["variants"], {"max": 58, "medium": 51})
+        glm = new["models"]["glm-5.3-flash"]
+        self.assertEqual(
+            (glm["tier"], glm["price"]), ("mid", {"in": 0.2, "out": 1.1})
+        )  # a missing price is filled
+        self.assertEqual(
+            new["models"]["deepseek-flash"]["price"], {"in": 0.3, "out": 1.2}
+        )  # a declared one is kept
+        self.assertEqual(new["models"]["deepseek-flash"]["tier"], "mid")
+        grok = new["models"]["grok-4.6"]
+        self.assertEqual((grok["tier"], grok["evidence"]), ("mid", None))
+
+    def test_fetch_sends_the_key_and_reads_the_envelope(self):
+        seen = {}
+
+        class Response:
+            def __init__(self, payload):
+                self.payload = payload
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *args):
+                return False
+
+            def read(self, n=-1):
+                return json.dumps(self.payload).encode()
+
+        def opener(request, timeout):
+            seen["key"] = request.get_header("X-api-key")
+            seen["url"] = request.full_url
+            return Response({"status": 200, "data": AA_ROWS})
+
+        rows = fetch("sk-canary-aa", opener=opener)
+        self.assertEqual(len(rows), len(AA_ROWS))
+        self.assertEqual(seen["key"], "sk-canary-aa")
+        self.assertTrue(seen["url"].startswith("https://artificialanalysis.ai/api/v2/"))
+
+    def test_key_comes_from_the_variable_or_a_private_file(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            os.environ["DELEGATION_DATA_HOME"] = tmp
+            try:
+                self.assertEqual(aa_key({"AA_API_KEY": "from-env"}), "from-env")
+                path = Path(tmp) / "config" / "artificial-analysis.env"
+                path.parent.mkdir()
+                path.write_text("AA_API_KEY=from-file\n")
+                path.chmod(0o644)
+                self.assertIsNone(aa_key({}))  # group/world readable: refused
+                path.chmod(0o600)
+                self.assertEqual(aa_key({}), "from-file")
+            finally:
+                os.environ.pop("DELEGATION_DATA_HOME")
 
 
 class ServiceDeciderTests(Fixture):
