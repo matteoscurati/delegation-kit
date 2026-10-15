@@ -214,9 +214,15 @@ def catalog_command(a):
         return 0
     key = aa_key(os.environ, a.key_env)
     if not key:
+        key_file = data_home() / "config" / AA_KEY_FILE
+        if key_file.exists() and key_file.stat().st_mode & 0o077:
+            raise ValueError(
+                "%s is readable by group or others and is ignored: chmod 600 %s"
+                % (key_file, key_file)
+            )
         raise ValueError(
             "no Artificial Analysis key: set %s, or write %s=<key> into %s (mode 600)"
-            % (a.key_env, a.key_env, data_home() / "config" / AA_KEY_FILE)
+            % (a.key_env, a.key_env, key_file)
         )
     rows = fetch(key)
     new, unmatched = refresh(shipped(), rows, today())

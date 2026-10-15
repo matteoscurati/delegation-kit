@@ -117,7 +117,11 @@ All notable changes to delegation-kit are documented here.
   while it is at least as recent; `--shipped` refreshes the shipped file
   before a release. The uninstaller keeps the key and the local catalog
   beside the data home and the installer restores them. Data attribution:
-  Artificial Analysis.
+  Artificial Analysis. The shipped snapshot of 2026-10-15 was taken from
+  the API: 24 of the 25 catalog models matched by slug or alias (Haiku 4.5
+  is not on the board), which corrected four hand placements — GPT-5.6 Sol
+  (47.0) and GPT-5.5 (38.4) are `mid`, GLM 5.2 (33.7) and Mistral Large 3
+  (9.3) are `small` — and filled four missing prices.
 - **`config/catalog.json`** otherwise stays a dated snapshot of code
   capability, USD-per-million prices, context and JSON-mode support for the
   models the presets name and the usual pool candidates. Schema 2 profiles may declare

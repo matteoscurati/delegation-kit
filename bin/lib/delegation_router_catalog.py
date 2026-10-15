@@ -48,18 +48,28 @@ def place(index, tiering):
     return "small"
 
 
+VARIANT_WORDS = set(EFFORTS) | {"reasoning", "non-reasoning", "thinking"}
+
+
 def parse_row(row):
-    """One Artificial Analysis model row → base name, reasoning variant,
-    indexes and prices. Anything missing is None; a row without a name or an
-    index is skipped by the caller."""
+    """One Artificial Analysis model row → family slug, reasoning variant,
+    indexes and prices. The variant is read from the name's parenthetical
+    ("Claude Opus 5.5 (Xhigh, Default Fallback)" → xhigh; "(0902)" → none)
+    and the family is the slug without that variant's suffix
+    (`claude-opus-5-5-xhigh` → `claude-opus-5-5`; `qwen3-8-max` stays, its
+    "max" being part of the name). Anything missing is None."""
     name = row.get("name") or ""
+    slug = row.get("slug") or ""
     base, variant = name, None
     m = VARIANT.match(name)
     if m:
-        inside = m.group("inside").strip().lower()
-        first = inside.split()[0] if inside else ""
-        if first in EFFORTS or first in {"reasoning", "non-reasoning", "thinking"}:
-            base, variant = m.group("base").strip(), first
+        parts = [part.strip().lower() for part in m.group("inside").split(",")]
+        found = [part for part in parts if part in VARIANT_WORDS]
+        if found:
+            base, variant = m.group("base").strip(), found[0]
+    family = slug
+    if variant and slug.endswith("-" + variant):
+        family = slug[: -len(variant) - 1]
     ev = row.get("evaluations") if isinstance(row.get("evaluations"), dict) else {}
     pricing = row.get("pricing") if isinstance(row.get("pricing"), dict) else {}
 
@@ -72,7 +82,8 @@ def parse_row(row):
 
     return {
         "id": row.get("id"),
-        "slug": row.get("slug"),
+        "slug": slug,
+        "family": family,
         "name": name,
         "base": base,
         "variant": variant,
@@ -88,27 +99,30 @@ def parse_row(row):
 
 
 def group(rows):
-    """Rows by normalized base name, each a dict variant → parsed row."""
+    """Rows by family: keyed by normalized family slug (and, for rows without
+    a slug, by normalized base name), each a dict variant → parsed row."""
     families = {}
     for row in rows:
         parsed = parse_row(row)
         if not parsed["name"] or parsed["index"] is None:
             continue
-        families.setdefault(normalize(parsed["base"]), {})[
-            parsed["variant"] or "default"
-        ] = parsed
+        key = normalize(parsed["family"] or parsed["base"])
+        families.setdefault(key, {"by_name": normalize(parsed["base"]), "variants": {}})
+        families[key]["variants"][parsed["variant"] or "default"] = parsed
     return families
 
 
 def match(model_id, aa_name, families):
-    """The family for a catalog model: by its `aa_name` alias, else by its id
-    normalized, exact first and then as a prefix of a single family."""
-    wanted = normalize(aa_name or model_id)
+    """The family for a catalog model: its id against the family slugs, else
+    the `aa_name` alias (or the id) against the measured base names. Exact
+    only: a guess would place the wrong model."""
+    wanted = normalize(model_id)
     if wanted in families:
-        return wanted, "exact"
-    prefixed = [key for key in families if key.startswith(wanted)]
-    if len(prefixed) == 1:
-        return prefixed[0], "prefix"
+        return wanted, "slug"
+    wanted = normalize(aa_name or model_id)
+    for key, family in families.items():
+        if family["by_name"] == wanted:
+            return key, "name"
     return None, None
 
 
@@ -126,7 +140,9 @@ def refresh(catalog, rows, today):
     if not families:
         raise ValueError("no usable model rows in the Artificial Analysis response")
     top = max(
-        parsed["index"] for family in families.values() for parsed in family.values()
+        parsed["index"]
+        for family in families.values()
+        for parsed in family["variants"].values()
     )
     tiering = {
         "rule": RULE,
@@ -150,7 +166,7 @@ def refresh(catalog, rows, today):
             unmatched.append(model_id)
             models[model_id] = new
             continue
-        variant_name, best = best_variant(families[key])
+        variant_name, best = best_variant(families[key]["variants"])
         new["evidence"] = {
             "source": "artificialanalysis",
             "name": best["base"],
@@ -158,7 +174,9 @@ def refresh(catalog, rows, today):
             "match": how,
             "index": best["index"],
             "variant": variant_name,
-            "variants": {name: p["index"] for name, p in families[key].items()},
+            "variants": {
+                name: p["index"] for name, p in families[key]["variants"].items()
+            },
             "coding_index": best["coding_index"],
             "math_index": best["math_index"],
             "date": today,

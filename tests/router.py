@@ -847,7 +847,8 @@ class CliTests(Fixture):
 AA_ROWS = [
     {
         "id": "aa-opus-max",
-        "name": "Claude Opus 5.5 (max with fallback)",
+        "slug": "claude-opus-5-5",
+        "name": "Claude Opus 5.5 (Max, Default Fallback)",
         "model_creator": {"name": "Anthropic"},
         "evaluations": {
             "artificial_analysis_intelligence_index": 58,
@@ -857,25 +858,29 @@ AA_ROWS = [
     },
     {
         "id": "aa-opus-medium",
-        "name": "Claude Opus 5.5 (medium with fallback)",
+        "slug": "claude-opus-5-5-medium",
+        "name": "Claude Opus 5.5 (Medium, Default Fallback)",
         "evaluations": {"artificial_analysis_intelligence_index": 51},
         "pricing": {"price_1m_input_tokens": 4, "price_1m_output_tokens": 20},
     },
     {
         "id": "aa-glm",
-        "name": "GLM-5.3 Flash",
+        "slug": "glm-5-3-flash",
+        "name": "GLM-5.3-Flash",
         "evaluations": {"artificial_analysis_intelligence_index": 42},
         "pricing": {"price_1m_input_tokens": 0.2, "price_1m_output_tokens": 1.1},
     },
     {
         "id": "aa-qwen",
+        "slug": "qwen3-8-max",
         "name": "Qwen3.8 Max (0902)",
         "evaluations": {"artificial_analysis_intelligence_index": 45},
         "pricing": {},
     },
     {
         "id": "aa-ds",
-        "name": "DeepSeek V4.1 Flash (max)",
+        "slug": "deepseek-v4-1-flash",
+        "name": "DeepSeek V4.1 Flash (Max)",
         "evaluations": {"artificial_analysis_intelligence_index": 39},
     },
     {"id": "aa-noindex", "name": "Some Preview (high)", "evaluations": {}},
@@ -903,39 +908,46 @@ class CatalogTests(unittest.TestCase):
             self.assertEqual(place(index, tiering), tier, index)
         self.assertIsNone(place(None, tiering))
 
-    def test_rows_parse_variants_and_prices(self):
+    def test_rows_parse_variants_families_and_prices(self):
         row = parse_row(AA_ROWS[0])
         self.assertEqual(
-            (row["base"], row["variant"], row["index"], row["coding_index"]),
-            ("Claude Opus 5.5", "max", 58, 61),
+            (
+                row["base"],
+                row["variant"],
+                row["family"],
+                row["index"],
+                row["coding_index"],
+            ),
+            ("Claude Opus 5.5", "max", "claude-opus-5-5", 58, 61),
         )
         self.assertEqual((row["price_in"], row["price_out"]), (4, 20))
-        row = parse_row(AA_ROWS[3])  # a date in parentheses is part of the name
+        row = parse_row(AA_ROWS[1])  # the variant suffix leaves the slug
+        self.assertEqual((row["variant"], row["family"]), ("medium", "claude-opus-5-5"))
+        row = parse_row(AA_ROWS[3])  # a date in parentheses is not a variant
         self.assertEqual(
-            (row["base"], row["variant"], row["price_in"]),
-            ("Qwen3.8 Max (0902)", None, None),
+            (row["base"], row["variant"], row["family"]),
+            ("Qwen3.8 Max (0902)", None, "qwen3-8-max"),
         )
         self.assertIsNone(parse_row(AA_ROWS[5])["index"])
 
-    def test_matching_exact_alias_and_prefix(self):
+    def test_matching_by_slug_or_measured_name_never_by_guess(self):
         from delegation_router_catalog import group
 
         families = group(AA_ROWS)
         self.assertEqual(
-            match("claude-opus-5-5", None, families), ("claudeopus55", "exact")
+            match("claude-opus-5-5", None, families), ("claudeopus55", "slug")
         )
-        self.assertEqual(
-            match("glm-5.3-flash", None, families), ("glm53flash", "exact")
-        )
-        self.assertEqual(
-            match("qwen3.8-max", None, families), ("qwen38max0902", "prefix")
-        )
+        self.assertEqual(match("glm-5.3-flash", None, families), ("glm53flash", "slug"))
+        self.assertEqual(match("qwen3.8-max", None, families), ("qwen38max", "slug"))
         self.assertEqual(
             match("deepseek-flash", "DeepSeek V4.1 Flash", families),
-            ("deepseekv41flash", "exact"),
+            ("deepseekv41flash", "name"),
         )
         self.assertEqual(match("deepseek-flash", None, families), (None, None))
         self.assertEqual(match("grok-4.6", None, families), (None, None))
+        self.assertEqual(
+            match("claude-opus-5", None, families), (None, None)
+        )  # not a prefix match
 
     def test_refresh_places_evidence_and_keeps_the_rest(self):
         shipped = {

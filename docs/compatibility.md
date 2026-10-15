@@ -45,7 +45,11 @@ configuration: `check` resolved the pool, `decide --decider none`
 landed on the default as undecidable, `serve` listed the pool and `auto` on
 `/v1/models`, and a `model: auto` request came back `401
 provider-key-rejected` naming the default profile after the decider's own key
-was rejected, with no key in the response or in the single log line. No model
+was rejected, with no key in the response or in the single log line. One
+authorized `delegation-router catalog refresh` ran against the Artificial
+Analysis API with the user's key (700 rows; 24 of 25 catalog models matched
+by slug or alias, Haiku 4.5 absent from the board) and the same call with
+`--shipped` wrote the catalog this release carries. No model
 inference was executed for this release; the live probes of the 0.25.0 pass
 stand.
 

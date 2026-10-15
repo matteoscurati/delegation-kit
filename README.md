@@ -35,23 +35,26 @@ configuration judges the models.
    `router` object with the signals, the reasons, the candidates with their
    estimated cost, usage and what the provider reported.
 
-With a pool of GLM 5.3 Flash (`small`, subscription) and Opus 5.5
-(`frontier`, $4/$20 per million tokens):
+With a pool of GLM 5.3 Flash (`mid`: Intelligence Index 41.8) and Opus 5.5
+(`frontier`: 57.6, the best model on the board):
 
 | request | the decider says | lowest rung | answered by | because |
 |---|---|---|---|---|
-| rename `foo` to `bar` | difficulty 1, `code` | small | GLM 5.3 Flash | the low rung suffices; GLM is the small, code-capable profile |
+| rename `foo` to `bar` | difficulty 1, `code` | small | GLM 5.3 Flash | the small rung is empty, so up to `mid`: GLM is there and is code-capable |
 | find the race condition in this scheduler | difficulty 3 | frontier | Opus 5.5 | from 3 up only the top rung; GLM is not there |
-| summarise this contract | difficulty 2 | mid | Opus 5.5 | the mid rung is empty: escalate, never descend |
-| what is 17 % of 2,340 € | difficulty 1, `math` | mid | Opus 5.5 | `math` lifts an easy request to `mid`; empty, so up |
+| summarise this contract | difficulty 2 | mid | GLM 5.3 Flash | the mid rung suffices; Opus is admissible but costs more |
+| what is 17 % of 2,340 € | difficulty 1, `math` | mid | GLM 5.3 Flash | `math` lifts an easy request to `mid` |
 
-Add GLM 5.2 (`mid`) to the pool and the last two rows go to it instead.
+Add GPT-5.6 Luna (`small`: 37.3) to the pool and the rename goes to Luna;
+nothing above Opus exists, so a 4 still goes to Opus.
 
 Where the rungs come from: a third party, not the kit. The shipped catalog
 places every model it knows from the Artificial Analysis Intelligence Index
 through one published rule — frontier within 8 points of the best model of
 the day, mid within 20, small below — and records the evidence and the date
-beside each row; `delegation-router catalog show` prints it. With your own
+beside each row; `delegation-router catalog show` prints it. That is how
+the kit knows that GPT-5.6 Sol (47.0) is `mid`, not `frontier`, whatever
+its name suggests, and that Mistral Large 3 (9.3) is `small`. With your own
 Artificial Analysis key (`AA_API_KEY`, or
 `~/.local/share/delegation-kit/config/artificial-analysis.env`),
 `delegation-router catalog refresh` writes a current ladder on your machine
@@ -134,7 +137,7 @@ are unchanged. See [`CHANGELOG.md`](./CHANGELOG.md) for the full history.
 ## Documentation
 
 - [The router: decider, pool, policy, disclosure, eval](docs/router.md)
-- [Personal configuration, adapters, adding a model, upgrading](docs/user-configuration.md)
+- [Personal configuration, keys and environment, adding a model, upgrading](docs/user-configuration.md)
 - [External executors: adapters and their limits](docs/external-executors.md)
 - [Compatibility and release verification](docs/compatibility.md)
 

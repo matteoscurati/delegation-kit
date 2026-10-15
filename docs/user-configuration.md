@@ -142,6 +142,38 @@ otherwise comes from the shipped `config/catalog.json`. Without the block the
 router is off; nothing else in the kit reads it. See [the router page](router.md) for the fields, the policy
 and what each response discloses.
 
+## Keys and environment
+
+Nothing in the kit holds a key value: profiles name a variable, services
+name a variable, and the key files live under the data home with mode 600.
+The variables a user sets:
+
+| variable | meaning |
+|---|---|
+| `DELEGATION_CONFIG_FILE` | the personal configuration (default `${XDG_CONFIG_HOME:-$HOME/.config}/delegation-kit/config.json`) |
+| `DELEGATION_DATA_HOME` | commands, runners, key files, receipts and the local catalog (default `~/.local/share/delegation-kit`) |
+| `DELEGATION_BIN_HOME` | where the installer links the commands (default `~/.local/bin`) |
+| `CLAUDE_HOME`, `CODEX_HOME` | the host homes the installer writes profiles and the guard into |
+| the name in a profile's `credential_env` | that profile's key, for the HTTP adapters |
+| the name in `router.decider.credential_env` | the decision service's key (`SAGE_API_KEY`, `TYPESAFE_API_KEY` by default) |
+| `AA_API_KEY` | the Artificial Analysis key for `delegation-router catalog refresh` |
+
+Key files, read when the variable is unset, one `NAME=value` line each,
+mode 600, under `$DELEGATION_DATA_HOME/config/`:
+
+| file | variable | used by |
+|---|---|---|
+| `zai.env` | `ZAI_API_KEY` | `claude-zai` profiles |
+| `qwen-token-plan.env` | `QWEN_TOKEN_PLAN_API_KEY` | `token-plan-openai` profiles |
+| `deepseek.env` | `DEEPSEEK_API_KEY` | `deepseek-api` profiles |
+| `artificial-analysis.env` | `AA_API_KEY` | `delegation-router catalog refresh` |
+
+A key file that is readable by group or others is ignored, not read. The
+uninstaller keeps every key file beside the data home as
+`<data home>.<name>.env.bak` and the installer restores it. There is no
+`.env` file in a project: the kit never reads one, and a key in a worktree
+would be one `git add` away from a commit.
+
 ## Adding a model
 
 Add a profile to the personal file, then `delegation-config validate` and

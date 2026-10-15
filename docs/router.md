@@ -168,12 +168,15 @@ their reasoning settings; Epoch AI's Capabilities Index is the cross-check
 where it covers a model. The kit turns the index into the three rungs with
 one published rule, `index-bands-v1`: **frontier** within 8 points of the
 best model of the day, **mid** within 20, **small** below. On the board of
-2026-10-15 the best is Opus 5.5 at 58, so frontier is ≥ 50 (Opus 5.5, Sonnet
-5.5, Fable 5.1, GPT-6 Astra, GPT-6.1 Sol), mid ≥ 38 (Qwen3.8 Max 45, Kimi K3
-44, Haiku 5.5 43, GLM 5.3 Flash 42, GPT-5.6 Terra 42, Gemini 3.8 Flash 41,
-DeepSeek V4.1 Flash 39) and small below (Gemini 3.1 Pro Preview 30, MiniMax
-M3 29). The bands are a choice, recorded in the catalog with the date; the
-decision's `reasons` and `tier_source` say which placement was used.
+2026-10-15 the best is Opus 5.5 at 57.6, so frontier is ≥ 49.6 (Opus 5.5,
+Sonnet 5.5 56.0, Fable 5.1 53.4, GPT-6 Astra 52.7, GPT-6.1 Sol 51.8, Opus 5
+50.8, Fable 5 49.6), mid ≥ 37.6 (GPT-5.6 Sol 47.0, Grok 4.7 46.4, Qwen3.8
+Max 45.4, Grok 4.6 44.2, Kimi K3 43.6, Haiku 5.5 43.4, GPT-5.6 Terra 42.1,
+GLM 5.3 Flash 41.8, Gemini 3.8 Flash 40.9, DeepSeek V4.1 Flash 39.5, GPT-5.5
+38.4, Sonnet 5 38.2) and small below (GPT-5.6 Luna 37.3, GLM 5.2 33.7,
+Gemini 3.1 Pro Preview 29.7, MiniMax M3 29.2, Mistral Large 3 9.3). The
+bands are a choice, recorded in the catalog with the date; the decision's
+`reasons` and `tier_source` say which placement was used.
 
 Every catalog row carries its evidence — source, measured name, index per
 reasoning setting, date — or `null` when a model was placed by hand because
@@ -196,8 +199,11 @@ Two ways to a current ladder, neither automatic:
   the key and the local catalog beside the data home and the installer
   restores them. Attribution: the data is Artificial Analysis's.
 
-Models the board does not list keep their hand placement and are named by
-`refresh`; a profile for a model outside the catalog has no rung and can
+`refresh` matches a catalog model to the board by the board's own slug
+(`claude-opus-5-5`, `-xhigh`, `-medium`, …), else by the measured name
+through the row's `aa_name` alias (`deepseek-flash` → "DeepSeek V4.1 Flash"),
+and never by a partial match. Models the board does not list keep their hand
+placement and are named by `refresh` (today: Haiku 4.5); a profile for a model outside the catalog has no rung and can
 only be the default, unless you declare one. A model id that differs from
 the catalog's only in case or punctuation (`GLM-5.3-Flash`, `claude.opus.5.5`)
 is matched by the measured name. The index measures general capability on

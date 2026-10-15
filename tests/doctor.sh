@@ -151,7 +151,7 @@ grep -Fq '[ .. ] router not configured' "$TMP/contract-doctor.log" || {
   exit 1
 }
 jq '{schema_version: 2, review_policy: "optional", profiles: .profiles,
-     router: {pool: ["deepseek-flash", "qwen3.8-max"], default: "deepseek-flash", decider: {kind: "none"}}}' \
+     router: {pool: ["deepseek-flash", "sonnet-clerk"], default: "deepseek-flash", decider: {kind: "none"}}}' \
   "$ROOT/config/presets.json" >"$TMP/router-config.json"
 if env PATH="$CONTRACT_BIN:$TEST_TOOLS:$PATH" CLAUDE_HOME="$TMP/claude" \
     CODEX_HOME="$TMP/codex" DELEGATION_DATA_HOME="$CONTRACT_DATA" \
@@ -170,7 +170,7 @@ grep -Fq 'never retries or widens the pool' "$TMP/router-doctor.log" || {
   printf 'doctor did not restate the router boundary\n' >&2
   exit 1
 }
-grep -Fq '[WARN] router: qwen3.8-max: no per-token price' "$TMP/router-doctor.log" || {
+grep -Fq '[WARN] router: sonnet-clerk: native profile, bridged through delegation-run on the clerk role' "$TMP/router-doctor.log" || {
   sed 's/^/    /' "$TMP/router-doctor.log" >&2
   printf 'doctor did not surface the router check warnings\n' >&2
   exit 1
