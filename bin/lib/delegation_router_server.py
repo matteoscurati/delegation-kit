@@ -18,14 +18,12 @@ import uuid
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import quote, urlsplit
 
-from delegation_config import ROUTER_HTTP_ADAPTERS, catalog, kit_version
-from delegation_router import (
+from delegation_catalog import catalog
+from delegation_config import ROUTER_HTTP_ADAPTERS, data_home, kit_version
+from delegation_credentials import credential_for, credential_required, endpoint_for
+from delegation_router_policy import (
     DEFAULT_OUTPUT_TOKENS,
     count,
-    credential_for,
-    credential_required,
-    data_home,
-    endpoint_for,
     estimate_cost,
     native_lane,
     pool_meta,

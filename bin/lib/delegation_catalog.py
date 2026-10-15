@@ -1,19 +1,20 @@
-"""The model catalog and where its ladder comes from.
+"""The model catalog: which rung each model sits on, and why.
 
-A third party places the models: Artificial Analysis publishes an
-Intelligence Index (0–100, a composite of public evaluations) with coding
-and math sub-indexes and list prices, for a few hundred models and their
-reasoning settings. The kit turns that into the three rungs the policy uses
-with one published rule — `index-bands-v1`: frontier within N points of the
-best model of the day, mid within M, small below — and records the evidence
-beside every row. The user's own declaration on a profile still wins.
+The shipped `config/catalog.json` places every model it can from the
+Artificial Analysis Intelligence Index (0–100, a composite of public
+evaluations, with coding and math sub-indexes and list prices) through one
+published rule, `index-bands-v1`: frontier within N points of the best model
+of the day, mid within M, small below. Every row records its evidence; a
+model the board does not list keeps a hand placement marked as such, and a
+profile's own `tier` wins over everything.
 
-Two ways to get a current ladder: the shipped `config/catalog.json`,
-refreshed before each release; or `delegation-router catalog refresh` with
-the user's own key, which writes `catalog.local.json` beside the key files
-and takes precedence while it is newer. Neither happens on its own."""
+Two ways to a current ladder, neither automatic: the shipped file, refreshed
+before each release; or `delegation-router catalog refresh` with the user's
+own key, which writes `catalog.local.json` beside the key files and takes
+precedence while it is at least as recent."""
 
 import datetime
+import functools
 import json
 import re
 import urllib.error
@@ -21,23 +22,168 @@ import urllib.request
 
 from delegation_config import (
     EFFORT_ORDER,
+    PROFILE_ROUTING_FIELDS,
     ROOT,
+    _number,
     atomic,
     data_home,
     kit_version,
-    normalize_name as normalize,
-    place,
     read,
 )
+from delegation_credentials import key_from_file
+
 
 AA_URL = "https://artificialanalysis.ai/api/v2/data/llms/models"
+
+
 AA_ATTRIBUTION = "https://artificialanalysis.ai/"
+
+
 AA_KEY_FILE = "artificial-analysis.env"
+
+
 AA_KEY_VAR = "AA_API_KEY"
+
+
 RULE = "index-bands-v1"
+
+
 BANDS = {"frontier_within": 8, "mid_within": 20}
+
+
 VARIANT = re.compile(r"^(?P<base>.*?)\s*\((?P<inside>[^()]*)\)\s*$")
+
+
 VARIANT_WORDS = set(EFFORT_ORDER) | {"reasoning", "non-reasoning", "thinking"}
+
+
+# ---- the catalog in effect ---------------------------------------------------
+
+
+@functools.lru_cache(maxsize=1)
+def catalog():
+    """The model catalog: the shipped `config/catalog.json`, overlaid by the
+    user's own `catalog.local.json` (written by `delegation-router catalog
+    refresh`) whenever that one is at least as recent. Read once per process."""
+    shipped = read(ROOT / "config/catalog.json")
+    shipped["catalog_source"] = "shipped"
+    shipped["catalog_file"] = str(ROOT / "config/catalog.json")
+    local_file = data_home() / "config" / "catalog.local.json"
+    try:
+        local = read(local_file)
+        if _catalog_shape_ok(local) and str(local.get("catalog_version", "")) >= str(
+            shipped["catalog_version"]
+        ):
+            merged = dict(shipped)
+            merged["models"] = {**shipped["models"], **local["models"]}
+            merged["catalog_version"] = local["catalog_version"]
+            if local.get("tiering"):
+                merged["tiering"] = local["tiering"]
+            merged["catalog_source"] = "local"
+            merged["catalog_file"] = str(local_file)
+            return merged
+    except (OSError, ValueError):
+        pass
+    return shipped
+
+
+def _catalog_shape_ok(local):
+    """A local overlay is used only when every row is an object and its
+    tiering, if any, carries the three numbers the band rule reads; anything
+    else is ignored rather than crashing every command that reads the
+    catalog."""
+    if not isinstance(local, dict) or not isinstance(local.get("models"), dict):
+        return False
+    if not all(isinstance(row, dict) for row in local["models"].values()):
+        return False
+    tiering = local.get("tiering")
+    return not tiering or (
+        isinstance(tiering, dict)
+        and all(
+            _number(tiering.get(key))
+            for key in ("top_index", "frontier_within", "mid_within")
+        )
+    )
+
+
+def normalize_name(name):
+    """Names compared with case, spaces, dots and dashes ignored."""
+    return re.sub(r"[^a-z0-9]", "", str(name).lower())
+
+
+def catalog_row(cat, model):
+    """The catalog row for a profile's model id: exact, else the row whose
+    evidence names the same model once case, dots and dashes are ignored."""
+    if model in cat["models"]:
+        return cat["models"][model]
+    wanted = normalize_name(model)
+    for row in cat["models"].values():
+        evidence = row.get("evidence") or {}
+        if evidence.get("name") and normalize_name(evidence["name"]) == wanted:
+            return row
+    return None
+
+
+def place(index, tiering):
+    """One rung for one index under the bands the catalog records
+    (`index-bands-v1`): frontier within N points of the best model of the
+    day, mid within M, small below."""
+    if index is None:
+        return None
+    top = tiering["top_index"]
+    if index >= top - tiering["frontier_within"]:
+        return "frontier"
+    if index >= top - tiering["mid_within"]:
+        return "mid"
+    return "small"
+
+
+def tier_for_effort(row, effort, tiering):
+    """A rung for the reasoning setting the profile runs at, when the
+    evidence measured that setting; else the row's rung."""
+    evidence = row.get("evidence") or {}
+    variants = evidence.get("variants") or {}
+    if effort and effort in variants and tiering:
+        return place(variants[effort], tiering)
+    return row.get("tier")
+
+
+def profile_meta(key, p, cat=None):
+    """Routing metadata for one profile: the profile's own declarations win,
+    the catalog fills the rest, unknown models stay without tier or price."""
+    cat = cat if cat is not None else catalog()
+    row = catalog_row(cat, p["model"])
+    base = row or {}
+    declared = PROFILE_ROUTING_FIELDS & set(p)
+    effort = p.get("parameters", {}).get("effort")
+    evidence = base.get("evidence")
+    if "tier" in p:
+        tier, tier_source = p["tier"], "profile"
+    elif evidence:
+        tier = tier_for_effort(base, effort, cat.get("tiering"))
+        tier_source = "%s:%s" % (evidence["source"], evidence["date"])
+    else:
+        tier, tier_source = base.get("tier"), ("hand" if row else "unknown")
+    return {
+        "profile": key,
+        "model": p["model"],
+        "adapter": p["adapter"],
+        "family": p.get("family"),
+        "tier": tier,
+        "tier_source": tier_source,
+        "code": p["code"] if "code" in p else base.get("code", False),
+        "price": p["price"] if "price" in p else base.get("price"),
+        "context": p["context"] if "context" in p else base.get("context"),
+        "json_mode": p["json_mode"] if "json_mode" in p else base.get("json_mode"),
+        "effort": effort,
+        "metadata_source": (
+            "profile" if declared else ("catalog" if row else "unknown")
+        ),
+        "catalog_version": cat["catalog_version"],
+    }
+
+
+# ---- refreshing it from Artificial Analysis -----------------------------------
 
 
 def parse_row(row):
@@ -95,8 +241,10 @@ def group(rows):
         parsed = parse_row(row)
         if not parsed["name"] or parsed["index"] is None:
             continue
-        key = normalize(parsed["family"] or parsed["base"])
-        families.setdefault(key, {"by_name": normalize(parsed["base"]), "variants": {}})
+        key = normalize_name(parsed["family"] or parsed["base"])
+        families.setdefault(
+            key, {"by_name": normalize_name(parsed["base"]), "variants": {}}
+        )
         families[key]["variants"][parsed["variant"] or "default"] = parsed
     return families
 
@@ -105,10 +253,10 @@ def match(model_id, aa_name, families):
     """The family for a catalog model: its id against the family slugs, else
     the `aa_name` alias (or the id) against the measured base names. Exact
     only: a guess would place the wrong model."""
-    wanted = normalize(model_id)
+    wanted = normalize_name(model_id)
     if wanted in families:
         return wanted, "slug"
-    wanted = normalize(aa_name or model_id)
+    wanted = normalize_name(aa_name or model_id)
     for key, family in families.items():
         if family["by_name"] == wanted:
             return key, "name"
@@ -188,13 +336,11 @@ def refresh(catalog, rows, today):
 
 def aa_key(env, key_var=AA_KEY_VAR):
     """The user's Artificial Analysis key: the variable, else the key file."""
-    from delegation_router import _key_from_file
-
     value = env.get(key_var)
     if value:
         return value
     if key_var == AA_KEY_VAR:
-        return _key_from_file(data_home() / "config" / AA_KEY_FILE, AA_KEY_VAR)
+        return key_from_file(data_home() / "config" / AA_KEY_FILE, AA_KEY_VAR)
     return None
 
 
@@ -275,3 +421,59 @@ def describe(cat):
 
 def shipped():
     return read(ROOT / "config/catalog.json")
+
+
+# ---- what the commands print --------------------------------------------------
+
+
+def render_show(report):
+    lines = [
+        "catalog %s (%s: %s)"
+        % (report["catalog_version"], report["catalog_source"], report["catalog_file"])
+    ]
+    t = report["tiering"]
+    if t:
+        lines.append(
+            "  ladder: %s — frontier within %s of the best (%s), mid within %s; %s, %s"
+            % (
+                t.get("rule"),
+                t.get("frontier_within"),
+                t.get("top_index"),
+                t.get("mid_within"),
+                t.get("source"),
+                t.get("date"),
+            )
+        )
+    lines.append(
+        "  %d models with third-party evidence, %d placed by hand"
+        % (report["with_evidence"], report["hand_placed"])
+    )
+    for m in report["models"]:
+        lines.append(
+            "    %-26s %-9s %s%s"
+            % (
+                m["model"],
+                m["tier"],
+                m["tier_source"],
+                " index %s (%s)" % (m["index"], m["variant"])
+                if m["index"] is not None
+                else "",
+            )
+        )
+    return lines
+
+
+def render_refresh(summary):
+    unmatched = summary["unmatched"]
+    return [
+        "catalog refreshed → %s (%s): %d models placed from Artificial Analysis (top index %s), %d unmatched%s"
+        % (
+            summary["written"],
+            summary["catalog_version"],
+            summary["matched"],
+            summary["tiering"]["top_index"],
+            len(unmatched),
+            ": " + ", ".join(unmatched) if unmatched else "",
+        ),
+        "  data: Artificial Analysis, " + summary["attribution"],
+    ]

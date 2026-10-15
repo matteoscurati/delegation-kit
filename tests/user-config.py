@@ -10,24 +10,13 @@ import tempfile
 import threading
 import time
 import unittest
-from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
-from socketserver import TCPServer
+from http.server import BaseHTTPRequestHandler
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "bin/lib"))
+sys.path.insert(0, str(ROOT / "tests"))
 from delegation_config import review_state  # noqa: E402
-
-
-class LoopbackServer(ThreadingHTTPServer):
-    """ThreadingHTTPServer without the reverse-DNS lookup http.server does on
-    bind: that lookup stalls for seconds per server on a CI runner."""
-
-    daemon_threads = True
-
-    def server_bind(self):
-        TCPServer.server_bind(self)
-        self.server_name = self.server_address[0]
-        self.server_port = self.server_address[1]
+from router.fakes import LoopbackServer  # noqa: E402
 
 
 class Handler(BaseHTTPRequestHandler):

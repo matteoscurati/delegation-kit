@@ -3,13 +3,9 @@
 route() never dispatches the chosen profile; it only decides and discloses.
 The server dispatches after route() when the user runs `serve`."""
 
-from delegation_config import (
-    ROUTER_HTTP_ADAPTERS,
-    SERVICE_DECIDERS,
-    catalog,
-    profile_meta,
-)
-from delegation_router import (
+from delegation_catalog import catalog, profile_meta
+from delegation_config import ROUTER_HTTP_ADAPTERS, SERVICE_DECIDERS
+from delegation_router_policy import (
     CUTS,
     choose,
     disclosure,

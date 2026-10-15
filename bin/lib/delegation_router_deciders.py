@@ -16,13 +16,11 @@ import urllib.error
 import urllib.request
 
 from delegation_config import ROOT, SERVICE_DECIDERS, kit_version
-from delegation_router import (
+from delegation_credentials import credential_for, credential_required, endpoint_for
+from delegation_router_policy import (
     DECISION_TOKENS,
     TAG_THRESHOLD,
     count,
-    credential_for,
-    credential_required,
-    endpoint_for,
     estimate_cost,
     excerpt,
 )

@@ -17,6 +17,7 @@ import time
 from pathlib import Path
 
 from delegation_config import ROOT
+from delegation_router_policy import count
 
 # Roles in the order a chat gateway prefers them: analysis first, never a
 # worktree edit when a read-only role exists. The profile must declare the
@@ -49,7 +50,7 @@ def transcript(body):
     """The conversation as one prompt. A single user turn is passed verbatim;
     anything else becomes a role-labelled transcript. Images are not text and
     tools are refused before this point."""
-    from delegation_router import text_of
+    from delegation_router_policy import text_of
 
     messages = [m for m in body.get("messages", []) if isinstance(m, dict)]
     if len(messages) == 1 and messages[0].get("role") == "user":
@@ -146,7 +147,7 @@ def dispatch(profile_key, body, lane, env):
         # writes `usage_reported: true`, it is the absence of a denial.
         usage = {}
         if metrics.get("usage_reported", True) and any(
-            _count(tokens.get(k)) for k in ("input", "output")
+            (count(tokens.get(k)) or 0) > 0 for k in ("input", "output")
         ):
             usage = {
                 "prompt_tokens": tokens.get("input"),
@@ -170,13 +171,6 @@ def dispatch(profile_key, body, lane, env):
         }
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
-
-
-def _count(value):
-    """A positive token count, else 0."""
-    if isinstance(value, bool) or not isinstance(value, (int, float)):
-        return 0
-    return int(value) if value > 0 else 0
 
 
 def _read_json(path):

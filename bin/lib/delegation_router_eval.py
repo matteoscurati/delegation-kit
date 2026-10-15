@@ -17,7 +17,7 @@ import json
 import statistics
 
 from delegation_config import ROUTER_DECIDERS
-from delegation_router import (
+from delegation_router_policy import (
     CUTS,
     choose,
     pool_meta,

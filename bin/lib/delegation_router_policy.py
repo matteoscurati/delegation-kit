@@ -1,61 +1,73 @@
-"""Local model router: request features, deterministic pre-filter, signal
-normalization and the tiered-v1 policy. Everything here is pure; the network
-lives in the deciders and in the server."""
+"""The router's policy: request features, the deterministic pre-filter,
+signal normalization, `tiered-v1` and the disclosure. Everything here is
+pure; the network lives in the deciders, the bridge and the server."""
 
 import json
 import math
-import os
 import re
 
-from delegation_config import (
-    ADAPTERS,
-    EFFORT_ORDER,
-    ROUTER_HTTP_ADAPTERS,
-    catalog,
-    data_home,
-    profile_meta,
-)
+from delegation_config import ADAPTERS, EFFORT_ORDER, ROUTER_HTTP_ADAPTERS
+from delegation_catalog import catalog, profile_meta
+
 
 POLICY_ID = "tiered-v1"
+
+
 POLICY_VERSION = "2026-10-13"
+
+
 ROUTER_VERSION = "1"
+
+
 TAGS = ("code", "math", "long", "rare", "tools")
 # Numbers that look like something to compute with — an operator, a percent,
 # a currency, a decimal — rather than a port, a line number or `LIMIT 1`.
+
+
 NUMERIC = re.compile(
     r"\d[\d,.]*\s*[%×x*/+\-^=]\s*\d"  # 17 % of 2,340 · 3 * 4 · 2^10
     r"|[€$£¥]\s?\d"  # a currency amount
     r"|\d\s?%"  # a percentage
     r"|\b\d+\.\d+\b"  # a decimal
 )
+
+
 LONG_TOKENS = 20000
+
+
 DEFAULT_OUTPUT_TOKENS = 1024
+
+
 DECISION_TOKENS = 450
+
+
 TIER_RANK = {"small": 0, "mid": 1, "frontier": 2}
+
+
 CONFIDENCE_FLOOR = 0.55
+
+
 TAG_THRESHOLD = 0.6
 # The policy's cut points on the 0..1 difficulty scale and on p_needs_strong.
 # The evaluation harness sweeps them; serve uses these.
+
+
 CUTS = {"frontier": 0.75, "small": 0.375, "p_strong": 0.7}
+
+
 EXCERPT_LIMIT = 4000
+
+
 LAST_USER_LIMIT = 2048
+
+
 SYSTEM_HEAD_LIMIT = 1000
+
+
 FULL_LIMIT = 32000
-ENDPOINTS = {
-    "deepseek-api": "https://api.deepseek.com/v1/chat/completions",
-    "token-plan-openai": "https://token-plan.ap-southeast-1.maas.aliyuncs.com/compatible-mode/v1/chat/completions",
-}
-KEY_FILES = {
-    "deepseek-api": ("deepseek.env", "DEEPSEEK_API_KEY"),
-    "token-plan-openai": ("qwen-token-plan.env", "QWEN_TOKEN_PLAN_API_KEY"),
-}
-# The adapters the server forwards a per-request `reasoning_effort` to. An
-# openai-compatible endpoint takes none, and a bridged native profile runs at
-# its own setting; the policy discloses an effort only where it is applied.
+
+
 EFFORT_ADAPTERS = {"deepseek-api", "token-plan-openai"}
-
-
-# ---- request features --------------------------------------------------------
 
 
 def text_of(content):
@@ -154,9 +166,6 @@ def excerpt(body, mode="excerpt"):
         text += "system (head):\n" + system + "\n\n"
     text += "latest user request:\n" + last_user
     return text[:EXCERPT_LIMIT]
-
-
-# ---- pool, prices, pre-filter ------------------------------------------------
 
 
 def pool_meta(c, cat=None):
@@ -259,9 +268,6 @@ def skip_reason(eligible, default_meta, decider_meta, feats):
         if saving < 10 * decision:
             return "nothing to save"
     return None
-
-
-# ---- signals → verdict → choice ---------------------------------------------
 
 
 def normalize(signals):
@@ -464,54 +470,6 @@ def verdict_from_signals(signals):
         "confidence": float(signals.get("confidence") or 0.0),
         "undecidable": d is None and signals.get("p_needs_strong") is None,
     }
-
-
-# ---- credentials and endpoints -----------------------------------------------
-
-
-def _key_from_file(path, var):
-    try:
-        if path.is_symlink() or not path.is_file():
-            return None
-        mode = path.stat().st_mode & 0o777
-        if mode & 0o077:
-            return None
-        for line in path.read_text().splitlines():
-            m = re.match(r"\s*(?:export\s+)?" + re.escape(var) + r"=(.*)$", line)
-            if m:
-                value = m.group(1).strip()
-                if len(value) >= 2 and value[0] == value[-1] and value[0] in "\"'":
-                    value = value[1:-1]
-                return value or None
-    except OSError:
-        return None
-    return None
-
-
-def credential_for(profile, env=None):
-    """The bearer token for an HTTP profile, by variable name or kit key file;
-    None when the profile needs none (local endpoints) or none is available."""
-    env = os.environ if env is None else env
-    adapter = profile["adapter"]
-    if "credential_env" in profile:
-        return env.get(profile["credential_env"]) or None
-    if adapter in KEY_FILES:
-        filename, var = KEY_FILES[adapter]
-        return env.get(var) or _key_from_file(data_home() / "config" / filename, var)
-    return None
-
-
-def endpoint_for(profile):
-    if profile["adapter"] == "openai-compatible":
-        return profile["base_url"].rstrip("/") + "/chat/completions"
-    return ENDPOINTS[profile["adapter"]]
-
-
-def credential_required(profile):
-    return profile["adapter"] != "openai-compatible" or "credential_env" in profile
-
-
-# ---- disclosure --------------------------------------------------------------
 
 
 def disclosure(c, feats, verdict, choice, decision, blocked, skipped, mode):

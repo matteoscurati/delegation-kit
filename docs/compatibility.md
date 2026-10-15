@@ -19,7 +19,7 @@ regression suites green in 42 seconds here and in 80 seconds on the macOS CI
 runner, where every `HTTPServer` bind used to stall on a reverse-DNS lookup
 until the router and the test fakes stopped asking for one (the new `router`
 suite runs the 64
-tests of `tests/router.py` — the `tiered-v1` policy table, configuration
+tests of `tests/router/` — the `tiered-v1` policy table, configuration
 validation, `check`/`decide` and the loopback server against a fake provider:
 each profile receives only its own key and no canary key reaches any output,
 decider failures and prompt injection cannot steer the route, broken streams

@@ -1,6 +1,5 @@
 """User configuration and technical adapter registry; never imports project config."""
 
-import functools
 import json
 import os
 import re
@@ -8,8 +7,13 @@ import tempfile
 from pathlib import Path
 from urllib.parse import urlsplit
 
+
 ROOT = Path(__file__).resolve().parents[2]
+
+
 REVIEW_ROLES = {"reviewer", "routine-review", "material-review", "security"}
+
+
 TEXT_ROLES = {
     "builder",
     "clerk",
@@ -20,6 +24,8 @@ TEXT_ROLES = {
     "policy-annotation",
 }
 # Capabilities are code-owned, not writable profile claims.
+
+
 ADAPTERS = {
     "deepseek-api": (
         "deepseek",
@@ -76,6 +82,8 @@ ADAPTERS = {
         {"native-profile"},
     ),
 }
+
+
 EFFORTS = {
     "kimi-code-cli": {"max"},
     "claude-zai": {"max"},
@@ -87,15 +95,27 @@ EFFORTS = {
     "claude-code": {"low", "medium", "high", "xhigh", "max"},
 }
 # Reasoning settings from weakest to strongest, across adapters.
+
+
 EFFORT_ORDER = ("none", "minimal", "low", "medium", "high", "xhigh", "max")
 # Routing metadata a profile may declare for itself. Everything else about an
 # adapter stays code-owned; these are user statements, like `family`.
+
+
 TIERS = ("small", "mid", "frontier")
+
+
 PROFILE_ROUTING_FIELDS = {"tier", "code", "price", "context", "json_mode"}
 # The router pool accepts the HTTP adapters only in this release; native CLI
 # profiles need a non-streaming bridge that arrives later.
+
+
 ROUTER_HTTP_ADAPTERS = {"openai-compatible", "deepseek-api", "token-plan-openai"}
+
+
 ROUTER_DECIDERS = {"none", "llm", "sage", "jev", "dipylon", "classifier"}
+
+
 DECIDER_FIELDS = {
     "kind",
     "profile",
@@ -107,7 +127,11 @@ DECIDER_FIELDS = {
     "price",
 }
 # Deciders that call a service of their own rather than one of the profiles.
+
+
 SERVICE_DECIDERS = {"sage", "jev", "dipylon", "classifier"}
+
+
 ROUTER_FIELDS = {
     "listen",
     "pool",
@@ -118,6 +142,8 @@ ROUTER_FIELDS = {
     "allow_origins",
     "mode",
 }
+
+
 LOOPBACK_HOSTS = {"localhost", "127.0.0.1", "::1"}
 
 
@@ -431,129 +457,6 @@ def data_home():
             "DELEGATION_DATA_HOME", str(Path.home() / ".local/share/delegation-kit")
         )
     )
-
-
-@functools.lru_cache(maxsize=1)
-def catalog():
-    """The model catalog: the shipped `config/catalog.json`, overlaid by the
-    user's own `catalog.local.json` (written by `delegation-router catalog
-    refresh`) whenever that one is at least as recent. Read once per process."""
-    shipped = read(ROOT / "config/catalog.json")
-    shipped["catalog_source"] = "shipped"
-    shipped["catalog_file"] = str(ROOT / "config/catalog.json")
-    local_file = data_home() / "config" / "catalog.local.json"
-    try:
-        local = read(local_file)
-        if _catalog_shape_ok(local) and str(local.get("catalog_version", "")) >= str(
-            shipped["catalog_version"]
-        ):
-            merged = dict(shipped)
-            merged["models"] = {**shipped["models"], **local["models"]}
-            merged["catalog_version"] = local["catalog_version"]
-            if local.get("tiering"):
-                merged["tiering"] = local["tiering"]
-            merged["catalog_source"] = "local"
-            merged["catalog_file"] = str(local_file)
-            return merged
-    except (OSError, ValueError):
-        pass
-    return shipped
-
-
-def _catalog_shape_ok(local):
-    """A local overlay is used only when every row is an object and its
-    tiering, if any, carries the three numbers the band rule reads; anything
-    else is ignored rather than crashing every command that reads the
-    catalog."""
-    if not isinstance(local, dict) or not isinstance(local.get("models"), dict):
-        return False
-    if not all(isinstance(row, dict) for row in local["models"].values()):
-        return False
-    tiering = local.get("tiering")
-    return not tiering or (
-        isinstance(tiering, dict)
-        and all(
-            _number(tiering.get(key))
-            for key in ("top_index", "frontier_within", "mid_within")
-        )
-    )
-
-
-def normalize_name(name):
-    """Names compared with case, spaces, dots and dashes ignored."""
-    return re.sub(r"[^a-z0-9]", "", str(name).lower())
-
-
-def catalog_row(cat, model):
-    """The catalog row for a profile's model id: exact, else the row whose
-    evidence names the same model once case, dots and dashes are ignored."""
-    if model in cat["models"]:
-        return cat["models"][model]
-    wanted = normalize_name(model)
-    for row in cat["models"].values():
-        evidence = row.get("evidence") or {}
-        if evidence.get("name") and normalize_name(evidence["name"]) == wanted:
-            return row
-    return None
-
-
-def place(index, tiering):
-    """One rung for one index under the bands the catalog records
-    (`index-bands-v1`): frontier within N points of the best model of the
-    day, mid within M, small below."""
-    if index is None:
-        return None
-    top = tiering["top_index"]
-    if index >= top - tiering["frontier_within"]:
-        return "frontier"
-    if index >= top - tiering["mid_within"]:
-        return "mid"
-    return "small"
-
-
-def tier_for_effort(row, effort, tiering):
-    """A rung for the reasoning setting the profile runs at, when the
-    evidence measured that setting; else the row's rung."""
-    evidence = row.get("evidence") or {}
-    variants = evidence.get("variants") or {}
-    if effort and effort in variants and tiering:
-        return place(variants[effort], tiering)
-    return row.get("tier")
-
-
-def profile_meta(key, p, cat=None):
-    """Routing metadata for one profile: the profile's own declarations win,
-    the catalog fills the rest, unknown models stay without tier or price."""
-    cat = cat if cat is not None else catalog()
-    row = catalog_row(cat, p["model"])
-    base = row or {}
-    declared = PROFILE_ROUTING_FIELDS & set(p)
-    effort = p.get("parameters", {}).get("effort")
-    evidence = base.get("evidence")
-    if "tier" in p:
-        tier, tier_source = p["tier"], "profile"
-    elif evidence:
-        tier = tier_for_effort(base, effort, cat.get("tiering"))
-        tier_source = "%s:%s" % (evidence["source"], evidence["date"])
-    else:
-        tier, tier_source = base.get("tier"), ("hand" if row else "unknown")
-    return {
-        "profile": key,
-        "model": p["model"],
-        "adapter": p["adapter"],
-        "family": p.get("family"),
-        "tier": tier,
-        "tier_source": tier_source,
-        "code": p["code"] if "code" in p else base.get("code", False),
-        "price": p["price"] if "price" in p else base.get("price"),
-        "context": p["context"] if "context" in p else base.get("context"),
-        "json_mode": p["json_mode"] if "json_mode" in p else base.get("json_mode"),
-        "effort": effort,
-        "metadata_source": (
-            "profile" if declared else ("catalog" if row else "unknown")
-        ),
-        "catalog_version": cat["catalog_version"],
-    }
 
 
 def load():
