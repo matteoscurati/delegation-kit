@@ -51,7 +51,11 @@ All notable changes to delegation-kit are documented here.
   `/decide`: one yesno; a selective-use verdict other than `retain` halves
   the confidence), `classifier` (a local `POST {"text"}` endpoint; reads
   `difficulty`/`prompt_complexity_score`, `p_needs_strong`, `tags`,
-  `task_type_1`). Sage and Jev were probed live before the release; Jev's
+  `task_type_1`). `decide --raw` shows the decider's own answer. The
+  `llm` decider asks DeepSeek with thinking disabled and Qwen at `minimal`
+  effort, with 120 tokens of room for the JSON (with thinking on, DeepSeek
+  spent 56 of 60 output tokens reasoning and cut the answer off). Sage and
+  Jev were probed live before the release; Jev's
   "never below mid with numbers" rule reads arithmetic-looking numbers
   (operator, percent, currency, decimal), not any digit. `decider.url`,
   `credential_env`, `model` and `price` override the defaults; each decider is called with its own credential and

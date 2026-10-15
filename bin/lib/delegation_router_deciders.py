@@ -28,7 +28,9 @@ from delegation_router import (
 )
 
 PROMPT_FILE = ROOT / "config/router-prompt.v1.md"
-MAX_DECISION_OUTPUT_TOKENS = 60
+# Room for the JSON answer with its twenty-word reason, nothing else: the
+# decision is a classification, not a problem to think about.
+MAX_DECISION_OUTPUT_TOKENS = 120
 LLM_CONFIDENCE = 0.8
 JSON_OBJECT = re.compile(r"\{.*\}", re.S)
 
@@ -87,10 +89,12 @@ class LlmDecider:
             body["response_format"] = {"type": "json_object"}
         adapter = self.profile["adapter"]
         if adapter == "deepseek-api":
-            body["reasoning_effort"] = "low"
-            body["thinking"] = {"type": "enabled"}
+            # Observed 2026-10-15: with thinking on, DeepSeek spent 56 of 60
+            # output tokens reasoning and the JSON was cut off. The decision
+            # needs no reasoning channel.
+            body["thinking"] = {"type": "disabled"}
         elif adapter == "token-plan-openai":
-            body["reasoning_effort"] = "low"
+            body["reasoning_effort"] = "minimal"
         return body
 
     def decide(self, body, feats, input_mode="excerpt"):
@@ -128,6 +132,7 @@ class LlmDecider:
             return fail("decider unreachable or timed out")
         try:
             data = json.loads(raw)
+            result["raw"] = data
             content = data["choices"][0]["message"]["content"]
             if isinstance(content, list):
                 content = "".join(
@@ -309,6 +314,7 @@ class ServiceDecider:
             return fail("decider http %d" % error.code)
         except (urllib.error.URLError, TimeoutError, OSError, ValueError):
             return fail("decider unreachable or timed out")
+        result["raw"] = data
         try:
             signals, version, usage = self.parse(data, feats)
         except (KeyError, IndexError, TypeError, ValueError, AttributeError):
@@ -527,11 +533,11 @@ class DipylonDecider(ServiceDecider):
 
     def parse(self, data, feats):
         response = data["response"]
-        p = float(response["probability"])
-        # `probability` is read as P(yes) when the answer is yes; when the
-        # answer is no it is whichever reading agrees with that answer.
-        p_yes = p if response.get("answer") == "yes" else min(p, 1 - p)
-        confidence = abs(p_yes - 0.5) * 2
+        p_yes = float(response["probability"])  # P(yes) by Dipylon's contract
+        answer = response.get("answer")
+        if answer not in ("yes", "no") or (answer == "yes") != (p_yes >= 0.5):
+            raise ValueError("yesno answer disagrees with its probability")
+        confidence = abs(p_yes - 0.5) * 2  # Dipylon's own yesno-confidence-v1
         selective = (
             data.get("selective_use")
             if isinstance(data.get("selective_use"), dict)

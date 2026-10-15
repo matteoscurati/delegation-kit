@@ -31,6 +31,7 @@ def main():
     pd.add_argument("--prompt-file", required=True)
     pd.add_argument("--decider", choices=sorted(ROUTER_DECIDERS))
     pd.add_argument("--input", choices=["excerpt", "full"])
+    pd.add_argument("--raw", action="store_true", help="include the decider's own answer")
     pd.add_argument("--json", action="store_true")
     ps = sub.add_parser("serve", help="OpenAI-compatible endpoint on loopback")
     ps.add_argument("--listen", help="loopback host:port (default: router.listen)")
@@ -135,7 +136,7 @@ def main():
         text = Path(a.prompt_file).read_text()
         body = {"messages": [{"role": "user", "content": text}]}
         out, _choice, _feats, _blocked = route(
-            c, body, decider_kind=a.decider, input_mode=a.input
+            c, body, decider_kind=a.decider, input_mode=a.input, raw=a.raw
         )
         if a.json:
             print(json.dumps(out, indent=2))

@@ -41,6 +41,7 @@ def route(
     opener=None,
     env=None,
     cuts=None,
+    raw=False,
 ):
     """Run the pipeline. Returns (router object, choice, feats, blocked)."""
     r = router_block(c)
@@ -87,6 +88,10 @@ def route(
     out = disclosure(c, feats, verdict, choice, decision, blocked, skipped, mode)
     if decision.get("reason"):
         out["decider"]["reason"] = decision["reason"]
+    if raw and "raw" in decision:
+        # The service's own answer, for checking what the signals were read
+        # from; never in a served response, only on `decide --raw`.
+        out["decider"]["raw"] = decision["raw"]
     if mode == "shadow" and choice["profile"] != r["default"]:
         out["shadow"] = dict(out["chosen"])
         out["chosen"] = {

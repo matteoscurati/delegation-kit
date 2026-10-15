@@ -18,7 +18,7 @@ ambient Codex CLI `0.162.1` and ambient Claude Code `2.1.296`: all 13
 regression suites green in 42 seconds here and in 80 seconds on the macOS CI
 runner, where every `HTTPServer` bind used to stall on a reverse-DNS lookup
 until the router and the test fakes stopped asking for one (the new `router`
-suite runs the 62
+suite runs the 64
 tests of `tests/router.py` — the `tiered-v1` policy table, configuration
 validation, `check`/`decide` and the loopback server against a fake provider:
 each profile receives only its own key and no canary key reaches any output,
@@ -60,7 +60,17 @@ decision). Both rated a rename as difficulty 0.7 with `code` ≈ 0.84–1.0 and
 a race-condition design question as 1.6–1.7 with "needs a frontier model"
 ≈ 0.01–0.09; Sage tagged the latter `rare` 0.98, Jev's digit heuristic
 tagged `LIMIT 1` as math until the heuristic was made arithmetic-shaped.
-No pool model was dispatched; the live probes of the 0.25.0 pass stand.
+The `llm` decider was then probed through the kit's own key files on three
+prompts each: DeepSeek V4.1 Flash (`deepseek-flash+46002df5`, 1.0–1.2 s,
+$0.00012–0.00015 per decision, 26–43 output tokens; the first attempt, with
+thinking enabled, spent 56 of 60 output tokens reasoning and cut the JSON
+off, which is why the decision now asks with thinking disabled and 120
+tokens of room) and Qwen3.8 Max (5–10 s, $0.0014–0.0025, 135–299 output
+tokens even at `minimal` effort). Both rated the rename 1, the race
+condition 2 ("classic SELECT-then-UPDATE race; SKIP LOCKED") and the
+percentage question 1 with `math`. Dipylon was not probed: no local service
+was running. No pool model was dispatched; the live probes of the 0.25.0
+pass stand.
 
 ## Host-specific boundaries
 

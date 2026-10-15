@@ -674,6 +674,24 @@ class CliTests(Fixture):
         self.assertIn("DATA", body["messages"][1]["content"])
         self.assertNotIn("sk-canary", json.dumps(out))
 
+    def test_raw_answer_only_on_request(self):
+        Provider.reply = {
+            "choices": [{"message": {"content": '{"difficulty": 2, "tags": []}'}}],
+            "usage": {"prompt_tokens": 300, "completion_tokens": 20},
+        }
+        out = json.loads(
+            self.run_cli(
+                "decide", "--prompt-file", str(self.base / "prompt"), "--json"
+            ).stdout
+        )
+        self.assertNotIn("raw", out["decider"])
+        out = json.loads(
+            self.run_cli(
+                "decide", "--prompt-file", str(self.base / "prompt"), "--raw", "--json"
+            ).stdout
+        )
+        self.assertEqual(out["decider"]["raw"], Provider.reply)
+
     def test_decider_failures_fall_to_default_and_are_disclosed(self):
         for name, reply, status in [
             ("http error", {"error": "nope"}, 500),
@@ -1307,6 +1325,22 @@ class ServiceDeciderTests(Fixture):
                 self.assertTrue(
                     any(w.startswith("decider failed") for w in out["warnings"]), out
                 )
+        # an answer that disagrees with its probability is malformed
+        Service.status = 200
+        Service.reply = dict(
+            self.DIPYLON,
+            response={
+                "type": "yesno",
+                "key": "strong",
+                "probability": 0.9,
+                "answer": "no",
+            },
+        )
+        out = self.decide({"kind": "dipylon", "url": self.service_url})
+        self.assertTrue(out["undecidable"])
+        self.assertIn(
+            "decider failed: decider returned malformed output", out["warnings"]
+        )
         # a selective-use verdict other than retain halves dipylon's confidence
         Service.status = 200
         Service.reply = dict(
@@ -1566,6 +1600,7 @@ class ServerTests(Fixture):
         self.assertTrue(headers["X-Router-Decider"].startswith("llm/small-model+"))
         self.assertEqual(headers["X-Router-Undecidable"], "0")
         self.assertEqual(headers["X-Router-Mode"], "route")
+        self.assertNotIn("raw", data["router"]["decider"])  # never in a served response
         self.assertEqual(data["router"]["usage"]["prompt_tokens"], 300)
         self.assertAlmostEqual(data["router"]["cost_usd"], (300 * 0.2 + 20 * 1.2) / 1e6)
         self.assertFalse(data["router"]["mismatch"])

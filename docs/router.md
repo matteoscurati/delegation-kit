@@ -160,7 +160,10 @@ chat-completions endpoint. Gemini and OpenAI do, and enter as
 
 `delegation-router decide --decider none` runs steps 1, 2 and 4 with no
 network and always lands on the default: that is the baseline `eval`
-measures deciders against.
+measures deciders against. `decide --raw` adds the decider's own answer —
+the service's JSON, or the chat completion — under `decider.raw`, so what
+the signals were read from can be checked; a served response never
+carries it.
 
 ### Where the rungs come from
 
@@ -246,8 +249,8 @@ never a profile's, and prices its decision from `price`.
 
 | kind | service | default `url` | default `credential_env` | asks | default `price` |
 |---|---|---|---|---|---|
-| `llm` | one of your HTTP profiles | — | the profile's | difficulty 0–4 + tags, one JSON object | the profile's |
-| `sage` | Levanto Sage, `POST /decide/batch` | `https://sage.levanto.ai` | `SAGE_API_KEY` | a `scale` 0–4 and a `tags` question in one batch; the policy's confidence is the mass of the distribution in the tier band the expectation lands in, Sage's own `confidence` is disclosed beside it. Observed 2026-10-15: `levanto-sage-v1.4`, 0.8–2.0 s, ~$0.00003 per decision, ~$0.0012 when its reasoning fires on a hard prompt | $0.05 in / $10 out per M |
+| `llm` | one of your HTTP profiles | — | the profile's | difficulty 0–4 + tags, one JSON object of at most 120 tokens; DeepSeek is asked with thinking disabled and Qwen at `minimal` effort. Observed 2026-10-15: DeepSeek V4.1 Flash 1.0–1.2 s and $0.00012–0.00015 per decision (with thinking on it had spent 56 of 60 output tokens reasoning and cut the JSON off); Qwen3.8 Max 5–10 s and $0.0014–0.0025, still reasoning at `minimal` — the cheap, fast profile is the one to pick as decider | the profile's |
+| `sage` | Levanto Sage, `POST /decide/batch` | `https://sage.levanto.ai` | `SAGE_API_KEY` | a `scale` 0–4 and a `tags` question in one batch; the policy's confidence is the mass of the distribution in the tier band the expectation lands in, Sage's own `confidence` is disclosed beside it. Observed 2026-10-15: `levanto-sage-v1.4`, 0.8–2.0 s on a short prompt and 7–13 s on a 900-token excerpt; Sage's "fanout" compute mode billed 0 output tokens on the short prompt and ~500 on the long one with `reasoning: "off"` (≈ $0.00003 vs ≈ $0.005 per decision), so the per-decision cost the router discloses is the one to watch; `reasoning: "on"` changed the answer and billed less | $0.05 in / $10 out per M |
 | `jev` | TypeSafe Jev (System One API) | `https://api.typesafe.ai/v1/systemone` | `TYPESAFE_API_KEY` | a 5-level `score`, a `noul` for "needs a frontier model", `noul`s for code and rare; `model` default `jev-latest`. Jev is weak on numbers, so a request with arithmetic-looking numbers (an operator, a percent, a currency, a decimal — not a line number or `LIMIT 1`) is never routed below mid. Observed 2026-10-15: `jev-1.13.0`, ~250 ms, ~$0.00002 per decision | $0.042 in per M |
 | `dipylon` | your own Dipylon service, `POST /decide` | required | none | one `yesno`, "does this need a strong model?"; a selective-use verdict other than `retain` halves the confidence; a 503 (model loading) is undecidable | none |
 | `classifier` | any local classifier behind `POST {"text"}` | required | none | reads `difficulty` (0..1) or NVIDIA's `prompt_complexity_score`, `p_needs_strong`, `tags`, `confidence`, and `task_type_1` naming code | none |
