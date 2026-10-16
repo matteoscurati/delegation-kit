@@ -63,7 +63,7 @@ so.
 | `pool` | profile ids the router may choose from, on any adapter: HTTP profiles (`openai-compatible`, `deepseek-api`, `token-plan-openai`) are called directly, native profiles (`codex`, `claude-code`, `claude-zai`, `kimi-code-cli`, `grok-build-cli`, `agy`) through `delegation-run` |
 | `default` | the pool profile used when the decision is undecidable |
 | `listen` | loopback `host:port` only (`127.0.0.1`, `localhost`, `[::1]`); default `127.0.0.1:4141` |
-| `max_cost_usd` | ceiling on the estimated cost of one request; a request whose chosen profile exceeds it is refused, never downgraded |
+| `max_cost_usd` | ceiling on the estimated cost of one request: every profile whose estimate is above it is set aside (listed under `blocked`); if that leaves nothing on the needed rung or above, the default answers and says so; if the profile the request lands on is over the ceiling too, the request is refused with the estimate and the ceiling |
 | `receipts` | one JSONL line per request in `$DELEGATION_DATA_HOME/router/receipts.jsonl` (mode 600) — decision, profile, usage, cost, latency, never prompt content. Kept by `uninstall.sh` and restored by `install.sh`, like the key files |
 | `allow_origins` | exact browser origins allowed to call the server (`https://app.example`, `http://localhost:5173`); empty by default. A listed origin gets the CORS preflight and the `X-Router-*` headers exposed; any other `Origin` is refused |
 | `mode` | `route` (default) or `shadow`: decide and disclose, but dispatch the default |
