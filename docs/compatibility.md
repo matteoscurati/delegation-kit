@@ -15,7 +15,12 @@ below with the numbers actually observed before tagging.
 
 The 0.27.0 release was verified on **2026-10-15** and re-checked before
 tagging on **2026-10-17**, on macOS 26.5.1 with ambient Codex CLI `0.163.0`
-and ambient Claude Code `2.1.302`.
+and ambient Claude Code `2.1.302`. 0.27.1 changes only the npm wrapper: on
+2026-10-17 the 13 suites, ShellCheck, ruff and the eleven Node tests passed
+again — three of them new, each failing on the 0.27.0 wrapper: without
+`--ref` it installs its own release tag rather than the branch tip, a
+repository missing that tag is refused naming the ref, and `--ref` without a
+value is refused.
 
 **Offline.** All 13 regression suites green in 46 seconds here and about
 80 seconds on the macOS CI runner (where every `HTTPServer` bind had
@@ -33,7 +38,7 @@ request, receipts hold no prompt text and survive `uninstall.sh`, a native
 profile is bridged through `delegation-run` against fake `codex`/`claude`
 executables, the four service deciders each speak their wire format, and
 `eval` scores a decider against the baseline without dispatching.
-ShellCheck at `-S warning`, ruff, the eight Node tests and the ten-check
+ShellCheck at `-S warning`, ruff, the eight Node tests of 0.27.0 and the ten-check
 version gate pass; a reinstall from the release commit and `doctor.sh
 --ping` report `55 OK, 0 WARN, 0 FAIL` with the router reported as `not
 configured — optional`.

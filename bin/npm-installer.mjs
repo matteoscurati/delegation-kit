@@ -1,7 +1,8 @@
 #!/usr/bin/env node
 // delegation-kit npm installer — a thin wrapper over the repository's own
-// ./install.sh. `npx delegation-kit` clones the checked-out release, verifies
-// its integrity, and runs the installer with your flags. Nothing is copied
+// ./install.sh. `npx delegation-kit` clones the release tag matching this
+// package's version (`--ref` picks another), verifies its integrity, and runs
+// the installer with your flags. Nothing is copied
 // into node_modules; the installed artifacts are exactly the files, links,
 // and guarded blocks the universal installer writes.
 //
@@ -13,12 +14,18 @@
 // The wrapper never edits config files itself and never handles credentials.
 
 import { spawnSync } from "node:child_process";
-import { mkdtempSync, rmSync, statSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync, statSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import process from "node:process";
 
 const DEFAULT_REPO = "https://github.com/matteoscurati/delegation-kit";
+// The tag this package was published from: `npx delegation-kit@X.Y.Z`
+// installs X.Y.Z, never whatever main holds today.
+const { version: VERSION } = JSON.parse(
+  readFileSync(new URL("../package.json", import.meta.url), "utf8"),
+);
+const RELEASE_REF = `delegation-kit--v${VERSION}`;
 const KNOWN_FLAGS = new Set([
   "--claude-only",
   "--codex-only",
@@ -75,10 +82,16 @@ function parseArgs(argv) {
         options.skipDoctor = true;
         break;
       case "--ref":
+        if (!argv[i + 1]) {
+          die("--ref needs a value", 64);
+        }
         options.ref = argv[i + 1];
         i += 1;
         break;
       case "--repo":
+        if (!argv[i + 1]) {
+          die("--repo needs a value", 64);
+        }
         options.repo = argv[i + 1];
         i += 1;
         break;
@@ -102,15 +115,11 @@ function cloneToTemp(repo, ref) {
     die("git is required");
   }
   const dir = mkdtempSync(join(tmpdir(), "delegation-kit-"));
-  const args = ["clone", "--depth", "1"];
-  if (ref) {
-    args.push("--branch", ref);
-  }
-  args.push(repo, dir);
+  const args = ["clone", "--depth", "1", "--branch", ref, repo, dir];
   const status = run("git", args, { stdio: "pipe" });
   if (status !== 0) {
     rmSync(dir, { recursive: true, force: true });
-    die(`could not clone ${repo}${ref ? ` (ref ${ref})` : ""} — check the URL and your network`, status);
+    die(`could not clone ${repo} at ${ref} — check the URL, the ref and your network`, status);
   }
   return dir;
 }
@@ -155,7 +164,7 @@ function main() {
     process.exit(status);
   }
 
-  const checkout = cloneToTemp(options.repo ?? DEFAULT_REPO, options.ref);
+  const checkout = cloneToTemp(options.repo ?? DEFAULT_REPO, options.ref ?? RELEASE_REF);
   let exitCode = 0;
   try {
     integrityCheck(checkout);

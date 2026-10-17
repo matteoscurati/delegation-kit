@@ -118,9 +118,13 @@ the error codes and the evaluation harness.
   and, first in its router section, which decider governs which pool;
   `--ping` runs a live round-trip.
 
-## Current release: 0.27.0
+## Current release: 0.27.1
 
-Version 0.27.0 adds `delegation-router`: a `router` block names the decider
+Version 0.27.1 fixes the npm installer: `npx delegation-kit@X.Y.Z` now
+installs the `delegation-kit--vX.Y.Z` tag instead of whatever `main` holds
+(`--ref` still picks another ref). Nothing else changed since 0.27.0.
+
+Version 0.27.0 added `delegation-router`: a `router` block names the decider
 and the profiles it governs; `check` and `decide` are read-only; `serve`
 routes `"model": "auto"` through a deterministic prefilter, the decider and
 the `tiered-v1` policy, forwards — HTTP profiles with their own key, native
@@ -154,8 +158,10 @@ the compatibility page.
 
 ## npm package
 
-`npx delegation-kit` runs the installer from a verified release checkout.
-The npm package is an installer wrapper, not a second runtime.
+`npx delegation-kit` clones the release tag of the package's own version,
+verifies the checkout and runs its `./install.sh`; `--ref <tag-or-branch>`
+installs another ref. The npm package is an installer wrapper, not a second
+runtime.
 
 ## License
 

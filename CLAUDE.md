@@ -52,7 +52,8 @@ Confirm with `grep -rn "<OLD VERSION>"` before committing that nothing stale
 remains. The `package.json` at the repo root exists only for the `npx
 delegation-kit` installer wrapper: its `version` field is a sixth version
 surface that must match the manifest on every bump (the npm wrapper ships no
-code of its own — `npx` clones this repo and runs `./install.sh`).
+code of its own — `npx` clones this repo at the `delegation-kit--v<version>`
+tag of its own `package.json` and runs `./install.sh`).
 
 ### Semver for this repo
 

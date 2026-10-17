@@ -5,7 +5,7 @@
 
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { mkdtempSync, rmSync, writeFileSync, mkdirSync, copyFileSync, existsSync } from "node:fs";
+import { mkdtempSync, rmSync, writeFileSync, mkdirSync, copyFileSync, existsSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -13,6 +13,7 @@ import test from "node:test";
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
 const INSTALLER = join(ROOT, "bin", "npm-installer.mjs");
+const RELEASE_TAG = `delegation-kit--v${JSON.parse(readFileSync(join(ROOT, "package.json"), "utf8")).version}`;
 
 function makeLocalRepo() {
   // A minimal stand-in for the delegation-kit checkout: the wrapper's
@@ -44,6 +45,8 @@ function makeLocalRepo() {
   git("init", "-q");
   git("add", "-A");
   git("commit", "-qm", "fixture");
+  // The wrapper clones the tag of its own version unless --ref says otherwise.
+  git("tag", "-a", RELEASE_TAG, "-m", "fixture release");
   return dir;
 }
 
@@ -79,6 +82,7 @@ test("integrity check fails when the guard is missing", () => {
     writeFileSync(join(dest, "claude", "CLAUDE.delegation.md"), "# no guard here\n");
     git(dest, "add", "-A");
     git(dest, "commit", "-qm", "strip guard");
+    git(dest, "tag", "-f", "-a", RELEASE_TAG, "-m", "a release without the guard");
 
     const result = runInstaller(["--repo", dest, "--skip-doctor"]);
     assert.notEqual(result.status, 0);
@@ -99,6 +103,51 @@ test("happy path: clones, verifies integrity, runs install then doctor", () => {
   } finally {
     rmSync(repo, { recursive: true, force: true });
   }
+});
+
+test("without --ref it installs its own release tag, not the branch tip", () => {
+  const repo = makeLocalRepo();
+  try {
+    // main moves on after the release: an npx of this version must not see it.
+    writeFileSync(join(repo, "install.sh"), "#!/usr/bin/env bash\necho unreleased; exit 0\n");
+    const git = (...args) => {
+      const r = spawnSync("git", ["-c", "user.email=test@example.invalid",
+                                  "-c", "user.name=delegation-kit-tests",
+                                  "-C", repo, ...args], { encoding: "utf8" });
+      if (r.status !== 0) throw new Error(`git ${args[0]} failed: ${r.stderr}`);
+    };
+    git("commit", "-qam", "after the release");
+    const released = runInstaller(["--repo", repo, "--skip-doctor"]);
+    assert.equal(released.status, 0, `stderr: ${released.stderr}`);
+    assert.match(released.stdout, /install ran with:/);
+    assert.doesNotMatch(released.stdout, /unreleased/);
+
+    const branch = spawnSync("git", ["-C", repo, "branch", "--show-current"], { encoding: "utf8" }).stdout.trim();
+    const tip = runInstaller(["--repo", repo, "--skip-doctor", "--ref", branch]);
+    assert.equal(tip.status, 0, `stderr: ${tip.stderr}`);
+    assert.match(tip.stdout, /unreleased/);
+  } finally {
+    rmSync(repo, { recursive: true, force: true });
+  }
+});
+
+test("a repository without this version's tag is refused, naming the ref", () => {
+  const repo = makeLocalRepo();
+  try {
+    spawnSync("git", ["-C", repo, "tag", "-d", RELEASE_TAG]);
+    const result = runInstaller(["--repo", repo, "--skip-doctor"]);
+    assert.notEqual(result.status, 0);
+    assert.ok(result.stderr.includes(`at ${RELEASE_TAG}`), result.stderr);
+    assert.doesNotMatch(result.stdout, /install ran/);
+  } finally {
+    rmSync(repo, { recursive: true, force: true });
+  }
+});
+
+test("--ref without a value is refused", () => {
+  const result = runInstaller(["--ref"]);
+  assert.equal(result.status, 64);
+  assert.match(result.stderr, /--ref needs a value/);
 });
 
 test("--skip-doctor runs the installer only and is not forwarded", () => {
@@ -156,6 +205,7 @@ test("a failing install.sh propagates its exit code and skips doctor", () => {
     };
     git("add", "-A");
     git("commit", "-qm", "failing installer");
+    git("tag", "-f", "-a", RELEASE_TAG, "-m", "a release whose installer fails");
     const result = runInstaller(["--repo", repo, "--skip-doctor"]);
     assert.equal(result.status, 3);
     assert.match(result.stderr, /exited with 3/);
