@@ -2,6 +2,17 @@
 
 All notable changes to delegation-kit are documented here.
 
+## [0.27.1] — 2026-10-17
+
+### Fixed
+
+- **`npx delegation-kit` installs its own release.** Without `--ref` the
+  wrapper cloned the default branch, so `npx delegation-kit@0.27.0` would
+  have installed whatever `main` held on the day it ran. It now clones the
+  `delegation-kit--v<version>` tag of the package's own `package.json` and
+  refuses, naming the ref, when that tag is missing; `--ref` still picks
+  another ref, and `--ref` or `--repo` without a value is refused.
+
 ## [0.27.0] — 2026-10-17
 
 You choose the decision model; it governs the models you already pay for.
