@@ -125,6 +125,31 @@ class CatalogTests(unittest.TestCase):
         grok = new["models"]["grok-4.6"]
         self.assertEqual((grok["tier"], grok["evidence"]), ("mid", None))
 
+        # The next refresh updates the price the board supplied and keeps its
+        # source; the declared one is still left alone.
+        repriced = [
+            {
+                **r,
+                "pricing": {
+                    "price_1m_input_tokens": 0.25,
+                    "price_1m_output_tokens": 1.2,
+                },
+            }
+            if r["id"] == "aa-glm"
+            else r
+            for r in AA_ROWS
+        ]
+        again, _ = refresh(new, repriced, "2026-10-17")
+        glm = again["models"]["glm-5.3-flash"]
+        self.assertEqual(
+            (glm["price"], glm["price_source"]),
+            ({"in": 0.25, "out": 1.2}, "artificialanalysis 2026-10-17"),
+        )
+        self.assertEqual(
+            again["models"]["deepseek-flash"]["price"], {"in": 0.3, "out": 1.2}
+        )
+        self.assertNotIn("price_source", again["models"]["deepseek-flash"])
+
     def test_fetch_sends_the_key_and_reads_the_envelope(self):
         seen = {}
 

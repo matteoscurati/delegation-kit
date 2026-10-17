@@ -292,10 +292,14 @@ def refresh(catalog, rows, today):
     models = {}
     unmatched = []
     for model_id, old in catalog["models"].items():
+        # A price an earlier refresh took from the board is the board's to
+        # update; a price written by hand is kept.
+        from_board = str(old.get("price_source", "")).startswith("artificialanalysis")
         new = {
             k: v
             for k, v in old.items()
             if k not in ("evidence", "price_source", "price_date")
+            and not (k == "price" and from_board)
         }
         key, how = match(model_id, old.get("aa_name"), families)
         if key is None:
