@@ -2,7 +2,7 @@
 
 All notable changes to delegation-kit are documented here.
 
-## [0.27.0] — 2026-10-15
+## [0.27.0] — 2026-10-17
 
 You choose the decision model; it governs the models you already pay for.
 

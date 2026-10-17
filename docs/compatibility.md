@@ -13,10 +13,11 @@ below with the numbers actually observed before tagging.
 
 ## Verified snapshot
 
-The 0.27.0 release was verified on **2026-10-15** on macOS 26.5.1 with
-ambient Codex CLI `0.162.1` and ambient Claude Code `2.1.296`.
+The 0.27.0 release was verified on **2026-10-15** and re-checked before
+tagging on **2026-10-17**, on macOS 26.5.1 with ambient Codex CLI `0.163.0`
+and ambient Claude Code `2.1.302`.
 
-**Offline.** All 13 regression suites green in 45 seconds here and about
+**Offline.** All 13 regression suites green in 46 seconds here and about
 80 seconds on the macOS CI runner (where every `HTTPServer` bind had
 stalled on a reverse-DNS lookup until the router and the test fakes stopped
 asking for one). The `router` suite, `tests/router/`, runs 64 tests: the
@@ -33,17 +34,19 @@ profile is bridged through `delegation-run` against fake `codex`/`claude`
 executables, the four service deciders each speak their wire format, and
 `eval` scores a decider against the baseline without dispatching.
 ShellCheck at `-S warning`, ruff, the eight Node tests and the ten-check
-version gate pass; a reinstall from the release commit and static doctor
-report `53 OK, 0 WARN, 0 FAIL` with the router reported as `not configured —
-optional`.
+version gate pass; a reinstall from the release commit and `doctor.sh
+--ping` report `55 OK, 0 WARN, 0 FAIL` with the router reported as `not
+configured — optional`.
 
 **Live, each call authorized, keys read from the environment and never
 printed.**
 
 - `delegation-router catalog refresh` against the Artificial Analysis API:
   700 rows; 24 of 25 catalog models matched by slug or alias (Haiku 4.5 is
-  not on the board); the same call with `--shipped` wrote the catalog this
-  release carries.
+  not on the board). Re-run with `--shipped` on 2026-10-17, it wrote the
+  catalog this release carries: every placement and price as on 2026-10-15.
+  The second refresh exposed that a price taken from the board lost its
+  source on the next run; it now keeps it and stays current.
 - Levanto Sage (`levanto-sage-v1.4`) on three prompts: 0.8–2.0 s on a short
   prompt, 7–13 s on a 900-token excerpt; its fanout mode billed 0 output
   tokens on the short prompt and ~500 on the long one with `reasoning:
