@@ -10,7 +10,7 @@ pass=0
 ok() { pass=$((pass + 1)); }
 "$ROOT/bin/delegation-config" init >/dev/null
 # check: schema 3, valid, never authorizing
-"$ROOT/bin/delegation-route" check --json | jq -e '.schema_version == 3 and .valid and .authorization_granted == false and .automatic_dispatch == false' >/dev/null; ok
+"$ROOT/bin/delegation-route" check --json | jq -e '.schema_version == 3 and .valid and .authorization_granted == false and .automatic_dispatch == false and .router.enabled == false' >/dev/null; ok
 # the shipped preset is what init wrote
 [ "$(jq -r '.profiles | length' "$DELEGATION_CONFIG_FILE")" = "$(jq -r '.profiles | length' "$ROOT/config/presets.json")" ]; ok
 # resolve validates a technically compatible selection and reports capabilities, no evidence

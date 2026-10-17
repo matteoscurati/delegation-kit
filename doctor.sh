@@ -188,11 +188,6 @@ elif grep -Fxq 'model: claude-opus-5' "$opus_profile" \
 else
   bad "active opus-builder is stale or not pinned to claude-opus-5/max — re-run ./install.sh"
 fi
-if [ -e "$CLAUDE_HOME/agents/sonnet-builder.md" ]; then
-  bad "retired Sonnet builder profile still installed — re-run ./install.sh"
-else
-  ok "retired sonnet-builder profile is absent"
-fi
 opus_reviewer_profile="$(resolve_claude_agent opus-reviewer.md || true)"
 if [ -n "$opus_reviewer_profile" ] \
     && grep -Fxq 'model: claude-opus-5' "$opus_reviewer_profile" \
@@ -222,17 +217,10 @@ if [ -n "$sonnet_reviewer_profile" ] \
 else
   bad "sonnet-reviewer missing, stale, or not cross-family/medium/read-only — re-run ./install.sh"
 fi
-# skill + the co-located advisory policy the skill points at
 if [ -f "$CLAUDE_HOME/skills/model-routing/SKILL.md" ]; then
-  [ -f "$CLAUDE_HOME/skills/model-routing/model-routing.md" ] \
-    && ok "model-routing skill installed (+ advisory policy)" \
-    || warn "model-routing skill installed but model-routing.md is missing beside it (dangling pointer) — re-run ./install.sh"
+  ok "model-routing skill installed"
 elif found_path "$CLAUDE_HOME/plugins" '*model-routing/SKILL.md'; then
-  if found_path "$CLAUDE_HOME/plugins" '*model-routing/model-routing.md'; then
-    ok "model-routing skill installed (via plugin cache, + advisory policy)"
-  else
-    warn "model-routing skill installed via plugin cache, but model-routing.md is not beside it — the skill's pointer dangles; run ./install.sh to co-locate it (the policy also lives at the kit root)"
-  fi
+  ok "model-routing skill installed (via plugin cache)"
 else bad "model-routing skill missing — run ./install.sh or /plugin install"; fi
 # orchestrate skill (the fan-out loop runbook; optional add-on to the routing policy)
 if [ -f "$CLAUDE_HOME/skills/orchestrate/SKILL.md" ]; then
@@ -296,11 +284,6 @@ done
 if [ "$total" = 0 ]; then bad "no source profiles in $KIT/codex/profiles"
 elif [ "$miss" = 0 ]; then ok "all $total ephemeral -p profiles installed"
 else bad "$miss/$total ephemeral profile(s) missing from $CODEX_HOME/ — run ./install.sh"; fi
-if [ -e "$CODEX_HOME/agents/terra-scout.toml" ] || [ -e "$CODEX_HOME/terra-scout.config.toml" ]; then
-  bad "retired terra-scout profile still installed — re-run ./install.sh"
-else
-  ok "retired terra-scout native and ephemeral profiles are absent"
-fi
 if [ -f "$CODEX_HOME/agents/terra-reviewer.toml" ] \
     && [ -f "$CODEX_HOME/terra-reviewer.config.toml" ] \
     && grep -Fxq 'model = "gpt-5.6-terra"' "$CODEX_HOME/agents/terra-reviewer.toml" \
@@ -415,6 +398,31 @@ else
   warn "delegation-route not installed — re-run ./install.sh"
 fi
 
+hdr "Model router"
+if ! have jq; then
+  warn "jq not on PATH — the router configuration cannot be validated"
+elif have delegation-router; then
+  router_check="$(delegation-router check --json 2>/dev/null || true)"
+  if [ -z "$router_check" ]; then
+    bad "delegation-router check failed — run delegation-config validate"
+  elif printf '%s' "$router_check" | jq -e '.enabled == false' >/dev/null 2>&1; then
+    info "router not configured — optional; a router block naming a decider and the profiles it governs enables it, see docs/router.md"
+  elif printf '%s' "$router_check" | jq -e '.valid == true and .read_only == true and .automatic_dispatch == false' >/dev/null 2>&1; then
+    ok "router configured: $(printf '%s' "$router_check" | jq -r '"decider \(.decider.kind) governs \(.pool | length) profiles, default \(.default), listen \(.listen), mode \(.mode)"')"
+    info "serve binds loopback only, chooses inside the pool, discloses the model in every response, never retries or widens the pool"
+    info "catalog $(printf '%s' "$router_check" | jq -r '"\(.catalog_version) (\(.catalog_source)) — delegation-router catalog show names the source of every rung"')"
+    while IFS= read -r line; do
+      [ -n "$line" ] && warn "router: $line"
+    done <<EOF
+$(printf '%s' "$router_check" | jq -r '.warnings[]?')
+EOF
+  else
+    bad "router configuration invalid — run delegation-router check"
+  fi
+else
+  warn "delegation-router not installed — re-run ./install.sh"
+fi
+
 # ---- external patch policy and its read-only verifier ----
 # Static only: the installed policy is checked for shape and fail-closed
 # defaults. No patch is parsed, no worktree is touched, and no provider is
@@ -451,7 +459,7 @@ else
 fi
 
 # ---- optional GLM-5.3-Flash external executor ----
-hdr "GLM-5.3-Flash optional executor"
+hdr "GLM executor (claude-zai)"
 if ! have jq; then
   warn "jq not on PATH — delegation-glm cannot run"
 elif have delegation-glm; then
@@ -471,7 +479,7 @@ else
 fi
 
 # ---- optional Gemini 3.8 Flash external executor ----
-hdr "Gemini 3.8 Flash optional executor"
+hdr "Gemini executor (agy)"
 if ! have jq; then
   warn "jq not on PATH — delegation-gemini cannot run"
 elif have delegation-gemini; then
@@ -491,7 +499,7 @@ else
 fi
 
 # ---- DeepSeek V4.1 Flash/max text-patch adapter ----
-hdr "DeepSeek V4.1 Flash/max builder"
+hdr "DeepSeek executor (deepseek-api)"
 if ! have jq; then
   warn "jq not on PATH — delegation-deepseek cannot run"
 elif have delegation-deepseek; then
@@ -514,7 +522,7 @@ else
 fi
 
 # ---- optional Kimi K3 external executor ----
-hdr "Kimi K3 optional executor"
+hdr "Kimi executor (kimi-code-cli)"
 if ! have jq; then
   warn "jq not on PATH — delegation-kimi cannot run"
 elif have delegation-kimi; then
@@ -567,7 +575,7 @@ else
 fi
 
 # ---- optional Grok 4.6 builder executor ----
-hdr "Grok 4.6 builder executor"
+hdr "Grok executor (grok-build-cli)"
 if ! have jq; then
   warn "jq not on PATH — delegation-grok cannot run"
 elif have delegation-grok; then
@@ -614,7 +622,7 @@ else
 fi
 
 # ---- Qwen3.8-Max text-patch adapter ----
-hdr "Qwen3.8-Max builder"
+hdr "Qwen executor (token-plan-openai)"
 if ! have jq; then
   warn "jq not on PATH — delegation-qwen cannot run"
 elif have delegation-qwen; then

@@ -38,10 +38,9 @@ esac
 EOF
 chmod 700 "$TEST_TOOLS/claude"
 
-# Seed an upgrade-shaped install: the routing gates, executor contract,
-# evidence snapshot, and retired commands a 0.24.0 install left behind, plus a
-# digest-valid Grok archive. The installer must remove every retired file and
-# recognize the retained archive.
+# Seed an upgrade-shaped install: key-file backups the uninstaller leaves
+# beside the data home, and a digest-valid Grok archive the installer must
+# recognize and retain.
 mkdir -p "$DATA/config" "$DATA/bin" "$DATA/grok-cli/current" "$GROK_TEST_HOME" "$TMP/bin"
 printf '%s\n' '{}' >"$GROK_TEST_HOME/auth.json"
 # A key file the uninstaller backed up next to the data home must come back
@@ -49,16 +48,8 @@ printf '%s\n' '{}' >"$GROK_TEST_HOME/auth.json"
 ( umask 077; printf 'ZAI_API_KEY=restored-from-backup\n' >"$DATA.zai.env.bak" )
 ( umask 077; printf 'DEEPSEEK_API_KEY=stale-backup\n' >"$DATA.deepseek.env.bak" )
 ( umask 077; printf 'DEEPSEEK_API_KEY=current\n' >"$DATA/config/deepseek.env" )
-for retired_config in routing-gates.json grok-4.6-routing.json glm-5.3-flash-max-routing.json \
-    kimi-k3-routing.json gemini-3.8-flash-routing.json qwen3.8-max-routing.json \
-    deepseek-flash-routing.json external-executor-contract.json model-evidence.json; do
-  printf '%s\n' '{}' >"$DATA/config/$retired_config"
-done
-for retired_command in delegation-schema delegation-evidence delegation-epoch delegation-executor-contract; do
-  printf '#!/bin/sh\nexit 0\n' >"$DATA/bin/$retired_command"
-  chmod 755 "$DATA/bin/$retired_command"
-  ln -sfn "$DATA/bin/$retired_command" "$TMP/bin/$retired_command"
-done
+( umask 077; printf '{"ts":1,"profile":"restored"}\n' >"$DATA.router-receipts.jsonl.bak" )
+printf '{"catalog_version":"2099-01-01","models":{}}\n' >"$DATA.catalog.local.json.bak"
 cat >"$DATA/grok-cli/current/grok" <<'EOF'
 #!/usr/bin/env bash
 case "${1:-}" in
@@ -81,13 +72,9 @@ else
 fi
 printf '%s  grok\n' "$archive_sha" >"$DATA/grok-cli/current/grok.sha256"
 
-# Seed one retired profile and stale copies of the reviewer profiles. The
-# installer must remove the retired name and overwrite both reviewers.
+# Seed stale copies of the reviewer profiles: the installer must overwrite both.
 mkdir -p "$TMP/claude/agents" "$TMP/codex/agents"
-printf '%s\n' stale >"$TMP/claude/agents/sonnet-builder.md"
 printf '%s\n' stale >"$TMP/claude/agents/opus-reviewer.md"
-printf '%s\n' stale >"$TMP/codex/agents/terra-scout.toml"
-printf '%s\n' stale >"$TMP/codex/terra-scout.config.toml"
 printf '%s\n' stale >"$TMP/codex/agents/terra-reviewer.toml"
 printf '%s\n' stale >"$TMP/codex/terra-reviewer.config.toml"
 
@@ -98,17 +85,10 @@ env CLAUDE_HOME="$TMP/claude" CODEX_HOME="$TMP/codex" \
     "$ROOT/install.sh" </dev/null >"$TMP/install.log" 2>&1 \
   || { sed 's/^/    /' "$TMP/install.log" >&2; fail 'install.sh exited non-zero'; }
 
-for retired_config in routing-gates.json grok-4.6-routing.json glm-5.3-flash-max-routing.json \
-    kimi-k3-routing.json gemini-3.8-flash-routing.json qwen3.8-max-routing.json \
-    deepseek-flash-routing.json external-executor-contract.json model-evidence.json; do
-  [ ! -e "$DATA/config/$retired_config" ] || fail "upgrade retained the retired $retired_config"
-done
-for retired_command in delegation-schema delegation-evidence delegation-epoch delegation-executor-contract; do
-  [ ! -e "$DATA/bin/$retired_command" ] && [ ! -e "$TMP/bin/$retired_command" ] && [ ! -L "$TMP/bin/$retired_command" ] \
-    || fail "upgrade retained the retired command $retired_command"
-done
-[ "$(find "$DATA/config" -maxdepth 1 -name '*.json' | sort | xargs -n1 basename)" = external-patch-policy.json ] \
+[ "$(find "$DATA/config" -maxdepth 1 -name '*.json' | sort | xargs -n1 basename | tr '\n' ' ')" = 'catalog.json catalog.local.json external-patch-policy.json ' ] \
   || fail "install left unexpected JSON files in $DATA/config: $(ls "$DATA/config")"
+[ "$(jq -r .catalog_version "$DATA/config/catalog.local.json")" = 2099-01-01 ] \
+  || fail 'install did not restore the refreshed catalog from the uninstaller backup'
 [ -x "$DATA/bin/delegation-deepseek" ] || fail 'install did not include the DeepSeek runner'
 [ "$(cat "$DATA/config/zai.env")" = 'ZAI_API_KEY=restored-from-backup' ] \
   || fail 'install did not restore the Z.AI key from the uninstaller backup'
@@ -116,6 +96,10 @@ done
   || fail 'restored Z.AI key file is not mode 600'
 [ "$(cat "$DATA/config/deepseek.env")" = 'DEEPSEEK_API_KEY=current' ] \
   || fail 'install replaced an existing DeepSeek key with the backup'
+[ "$(cat "$DATA/router/receipts.jsonl")" = '{"ts":1,"profile":"restored"}' ] \
+  || fail 'install did not restore the router receipts from the uninstaller backup'
+[ "$(stat -f '%Lp' "$DATA/router/receipts.jsonl" 2>/dev/null || stat -c '%a' "$DATA/router/receipts.jsonl")" = 600 ] \
+  || fail 'restored router receipts are not mode 600'
 grep -Fq 'zai key restored from' "$TMP/install.log" || fail 'install did not report the restored key'
 # The runners source the shared library from the installed tree, so it must be
 # present and an installed runner must run through its PATH symlink.
@@ -128,13 +112,22 @@ jq -e '.model == "deepseek-flash" and .adapter == "deepseek-api" and (.roles | i
   || fail 'the installed DeepSeek runner reported the wrong model or adapter contract'
 # The personal-configuration commands ship with the kit and the installer
 # initializes the configuration file (isolated here via DELEGATION_CONFIG_FILE).
-for command in delegation-config delegation-run delegation-openai-compatible; do
+for command in delegation-config delegation-run delegation-openai-compatible delegation-route delegation-router; do
   [ -L "$TMP/bin/$command" ] && [ -x "$DATA/bin/$command" ] \
     || fail "install did not link $command onto the bin path"
 done
 [ -f "$DATA/bin/lib/delegation_config.py" ] || fail 'install did not include delegation_config.py'
+[ -f "$DATA/bin/lib/delegation_router_server.py" ] || fail 'install did not include the router library'
+[ -f "$DATA/config/catalog.json" ] && [ -f "$DATA/config/router-prompt.v1.md" ] \
+  || fail 'install did not include the model catalog and the decider prompt'
+# The installed router resolves its catalog from its own install root and
+# reports the preset as router-less without touching any provider.
+env PATH="$TMP/bin:$PATH" "$TMP/bin/delegation-router" check --json >"$TMP/router-check.json" 2>"$TMP/router-check.err" \
+  || { sed 's/^/    /' "$TMP/router-check.err" >&2; fail 'the installed router could not run check'; }
+jq -e '.enabled == false and .read_only == true and (.catalog_version | length) > 0' "$TMP/router-check.json" >/dev/null \
+  || fail 'the installed router did not report the preset as router-less'
 [ -f "$DELEGATION_CONFIG_FILE" ] || fail 'install did not initialize the personal configuration'
-jq -e '.schema_version == 1 and .review_policy == "optional" and (.profiles | length) > 0' "$DELEGATION_CONFIG_FILE" >/dev/null \
+jq -e '.schema_version == 2 and .review_policy == "optional" and (.profiles | length) > 0' "$DELEGATION_CONFIG_FILE" >/dev/null \
   || fail 'the initialized personal configuration is not the optional-review preset'
 [ -f "$(dirname "$DELEGATION_CONFIG_FILE")/managed/profiles.json" ] \
   || fail 'install did not generate the managed host snippets'
@@ -188,8 +181,6 @@ ok
   && grep -Fxq 'effort: max' "$TMP/claude/agents/fable-judge.md" \
   && grep -Fxq 'tools: Read, Grep, Glob' "$TMP/claude/agents/fable-judge.md" \
   || fail 'install did not include fable-judge at max'
-[ ! -e "$TMP/claude/agents/sonnet-builder.md" ] \
-  || fail 'upgrade retained the retired Sonnet builder profile'
 [ -f "$TMP/claude/agents/opus-reviewer.md" ] \
   && grep -Fxq 'effort: max' "$TMP/claude/agents/opus-reviewer.md" \
   && grep -Fxq 'tools: Read, Grep, Glob' "$TMP/claude/agents/opus-reviewer.md" \
@@ -201,8 +192,6 @@ ok
   && grep -Fxq 'tools: Read, Grep, Glob' "$TMP/claude/agents/sonnet-reviewer.md" \
   && grep -Fq 'configured review policy' "$TMP/claude/agents/sonnet-reviewer.md" \
   || fail 'install did not refresh the Sonnet tool-read-only cross-family reviewer'
-[ ! -e "$TMP/codex/agents/terra-scout.toml" ] && [ ! -e "$TMP/codex/terra-scout.config.toml" ] \
-  || fail 'upgrade retained the retired Terra scout profile'
 [ -f "$TMP/codex/agents/terra-builder.toml" ] && [ -f "$TMP/codex/terra-builder.config.toml" ] \
   || fail 'install did not retain Terra builder profiles'
 [ -f "$TMP/codex/agents/terra-reviewer.toml" ] && [ -f "$TMP/codex/terra-reviewer.config.toml" ] \
@@ -287,7 +276,7 @@ grep -Fxq 'personal profile edit' "$TMP/claude2/agents/opus-reviewer.md" \
   || fail 'repeat install overwrote an edited profile'
 [ "$(jq -r '.review_policy' "$DELEGATION_CONFIG_FILE")" = required ] \
   || fail 'repeat install overwrote personal review policy'
-for command in delegation-config delegation-run delegation-openai-compatible; do
+for command in delegation-config delegation-run delegation-openai-compatible delegation-route delegation-router; do
   [ -x "$TMP/bin2/$command" ] || fail "missing new command $command"
 done
 ok
@@ -296,6 +285,8 @@ ok
 # without touching the credentials/archives the uninstaller deliberately keeps.
 [ -f "$TMP/data2/config/external-patch-policy.json" ] \
   || fail 'the --claude-only install did not include the patch policy'
+mkdir -p "$TMP/data2/router" && printf '{"ts":2}\n' >"$TMP/data2/router/receipts.jsonl"
+printf '{"catalog_version":"2098-01-01","models":{}}\n' >"$TMP/data2/config/catalog.local.json"
 env CLAUDE_HOME="$TMP/claude2" CODEX_HOME="$TMP/codex2" \
     DELEGATION_BIN_HOME="$TMP/bin2" DELEGATION_DATA_HOME="$TMP/data2" \
     "$ROOT/uninstall.sh" </dev/null >"$TMP/uninstall2.log" 2>&1 \
@@ -304,8 +295,12 @@ env CLAUDE_HOME="$TMP/claude2" CODEX_HOME="$TMP/codex2" \
   || fail 'uninstall left the patch verifier on the bin path'
 [ ! -e "$TMP/data2/config/external-patch-policy.json" ] \
   || fail 'uninstall left the installed patch policy behind'
-[ ! -e "$TMP/bin2/delegation-route" ] \
-  || fail 'uninstall left the router on the bin path'
+[ ! -e "$TMP/bin2/delegation-route" ] && [ ! -e "$TMP/bin2/delegation-router" ] \
+  || fail 'uninstall left route discovery or the router on the bin path'
+[ "$(cat "$TMP/data2.router-receipts.jsonl.bak")" = '{"ts":2}' ] \
+  || fail 'uninstall did not preserve the router receipts beside the data home'
+[ "$(jq -r .catalog_version "$TMP/data2.catalog.local.json.bak")" = 2098-01-01 ] \
+  || fail 'uninstall did not preserve the refreshed catalog beside the data home'
 ok
 
 doctor_section() { # runs doctor against $1 as DATA_HOME, prints its version block

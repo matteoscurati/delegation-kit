@@ -36,3 +36,16 @@ choice. The lead still verifies all results before integration.
 The lead owns integration, verification, and the final response. Never silently
 substitute a profile, widen a lane, merge, deploy, or claim that provider output
 is verified.
+
+## The model router
+
+A router block in the personal configuration is a user-declared rule set:
+the user chose the pool, the default and the decider. Calling
+`delegation-router serve`, or sending `model: auto` to it, is the user's
+choice; the router selects only inside that pool, discloses the chosen model
+in every response, and never retries, falls back, or widens the pool.
+`delegation-router check` and `delegation-router decide` are read-only
+discovery: `decide` recommends a profile (calling the configured decider
+once, with its own key, when it is an LLM), it does not dispatch. Running the
+recommended profile is a separate `delegation-run` that needs its own
+explicit request.

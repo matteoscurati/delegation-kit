@@ -68,8 +68,8 @@ os.replace(temporary, manifest)
 PYMANAGED
 }
 
-# Snapshot legacy configuration before updating any distributed files. User
-# configuration lives separately and an existing v1 file is never overwritten.
+# The personal configuration is created from the shipped preset only when
+# absent; an existing file is never overwritten.
 "$KIT/bin/delegation-config" init
 
 # Shared optional external-model bridges. Installing a command does not make its
@@ -86,7 +86,7 @@ install_file() { # $1=source $2=target
   tmp="$(mktemp "$2.XXXXXX")" || return 1
   cp "$1" "$tmp" && chmod 644 "$tmp" && mv -f "$tmp" "$2"
 }
-for lib in "$KIT"/bin/lib/*.sh "$KIT/bin/lib/delegation_config.py"; do
+for lib in "$KIT"/bin/lib/*.sh "$KIT"/bin/lib/delegation_*.py; do
   install_file "$lib" "$DATA_HOME/bin/lib/$(basename "$lib")"
 done
 for command in delegation-config delegation-run delegation-openai-compatible; do
@@ -98,17 +98,6 @@ done
 
 chmod 644 "$DATA_HOME"/bin/lib/*.sh
 echo "Shared runner library -> $DATA_HOME/bin/lib (sourced by the external runners; not on PATH)"
-# Routing gates, executor contract, evidence snapshot, and the schema compiler
-# shipped until 0.24.0. The personal configuration replaced them; remove the
-# installed copies and the commands that read them.
-rm -f -- "$DATA_HOME"/config/*-routing.json \
-  "$DATA_HOME/config/routing-gates.json" \
-  "$DATA_HOME/config/external-executor-contract.json" \
-  "$DATA_HOME/config/model-evidence.json"
-for retired in delegation-schema delegation-evidence delegation-epoch delegation-executor-contract; do
-  rm -f -- "$DATA_HOME/bin/$retired" "$BIN_HOME/$retired"
-done
-echo "Retired routing gates, executor contract, evidence, and schema commands removed from $DATA_HOME"
 install_file "$KIT/bin/delegation-glm" "$DATA_HOME/bin/delegation-glm"
 chmod 755 "$DATA_HOME/bin/delegation-glm"
 ln -sfn "$DATA_HOME/bin/delegation-glm" "$BIN_HOME/delegation-glm"
@@ -131,6 +120,22 @@ restore_key_backup() { # $1=name (zai | qwen-token-plan | deepseek)
 restore_key_backup zai
 restore_key_backup qwen-token-plan
 restore_key_backup deepseek
+restore_key_backup artificial-analysis
+# The router's opt-in receipts and the user's own catalog refresh get the same
+# treatment: uninstall.sh keeps them beside the data home, and they come back
+# when none exist. The shipped catalog never overwrites the local one.
+receipts_backup="$DATA_HOME.router-receipts.jsonl.bak"
+if [ ! -f "$DATA_HOME/router/receipts.jsonl" ] && [ -f "$receipts_backup" ] && [ ! -L "$receipts_backup" ]; then
+  mkdir -p "$DATA_HOME/router" && chmod 700 "$DATA_HOME/router" \
+    && ( umask 077; cp "$receipts_backup" "$DATA_HOME/router/receipts.jsonl" ) \
+    && chmod 600 "$DATA_HOME/router/receipts.jsonl" \
+    && echo "  + router receipts restored from $receipts_backup (mode 600)"
+fi
+catalog_backup="$DATA_HOME.catalog.local.json.bak"
+if [ ! -f "$DATA_HOME/config/catalog.local.json" ] && [ -f "$catalog_backup" ] && [ ! -L "$catalog_backup" ]; then
+  cp "$catalog_backup" "$DATA_HOME/config/catalog.local.json" \
+    && echo "  + refreshed model catalog restored from $catalog_backup"
+fi
 ZAI_KEY_FILE="$DATA_HOME/config/zai.env"
 zai_store_key() { # $1=key
   ( umask 077; printf 'ZAI_API_KEY=%s\n' "$1" >"$ZAI_KEY_FILE" )
@@ -291,6 +296,16 @@ chmod 755 "$DATA_HOME/bin/delegation-route"
 ln -sfn "$DATA_HOME/bin/delegation-route" "$BIN_HOME/delegation-route"
 echo "Route discovery -> $BIN_HOME/delegation-route (reads the personal configuration)"
 
+# The local model router: check and decide are read-only; serve is the user's
+# explicit choice to let it pick inside the pool they declared. The catalog and
+# the decider prompt are code-owned data it reads from its install root.
+install_file "$KIT/bin/delegation-router" "$DATA_HOME/bin/delegation-router"
+chmod 755 "$DATA_HOME/bin/delegation-router"
+ln -sfn "$DATA_HOME/bin/delegation-router" "$BIN_HOME/delegation-router"
+install_file "$KIT/config/catalog.json" "$DATA_HOME/config/catalog.json"
+install_file "$KIT/config/router-prompt.v1.md" "$DATA_HOME/config/router-prompt.v1.md"
+echo "Model router -> $BIN_HOME/delegation-router (off until the personal configuration declares a router block; loopback only)"
+
 # The read-only patch verifier for text-patch adapters, and the versioned
 # policy it enforces. The verifier validates and describes a patch; it never
 # applies one — the lead remains the only actor that applies and tests.
@@ -318,9 +333,6 @@ fi
 if [ "$do_claude" = 1 ]; then
   echo "Claude Code -> $CLAUDE_HOME"
   mkdir -p "$CLAUDE_HOME/agents" "$CLAUDE_HOME/skills"
-  # Remove the profile retired by the 2026-08-17 owner routing decision. A plain
-  # glob copy cannot remove a stale name left by an older installation.
-  rm -f "$CLAUDE_HOME/agents/sonnet-builder.md"
   for profile in "$KIT"/agents/*.md; do copy_managed "$profile" "$CLAUDE_HOME/agents/$(basename "$profile")"; done
   echo "  + 6 subagent profiles -> $CLAUDE_HOME/agents/"
   # register the user-direction guard first — it is the linchpin, so a missing
@@ -329,8 +341,7 @@ if [ "$do_claude" = 1 ]; then
   # previous orchestration policy) during the upgrade.
   append_guarded "$CLAUDE_HOME/CLAUDE.md" "@$KIT/claude/CLAUDE.delegation.md"
   cp -R "$KIT/skills/model-routing" "$CLAUDE_HOME/skills/"
-  cp "$KIT/model-routing.md" "$CLAUDE_HOME/skills/model-routing/"   # co-locate the advisory policy so the skill's pointer resolves
-  echo "  + model-routing skill (+ advisory policy) -> $CLAUDE_HOME/skills/model-routing/"
+  echo "  + model-routing skill -> $CLAUDE_HOME/skills/model-routing/"
   cp -R "$KIT/skills/orchestrate" "$CLAUDE_HOME/skills/"
   echo "  + orchestrate skill -> $CLAUDE_HOME/skills/orchestrate/"
   cp -R "$KIT/skills/glm-executor" "$CLAUDE_HOME/skills/"
@@ -340,17 +351,16 @@ if [ "$do_claude" = 1 ]; then
   cp -R "$KIT/skills/gemini-executor" "$CLAUDE_HOME/skills/"
   echo "  + optional Gemini executor skill -> $CLAUDE_HOME/skills/gemini-executor/"
   cp -R "$KIT/skills/deepseek-executor" "$CLAUDE_HOME/skills/"
-  echo "  + provisional DeepSeek builder skill -> $CLAUDE_HOME/skills/deepseek-executor/"
+  echo "  + DeepSeek executor skill -> $CLAUDE_HOME/skills/deepseek-executor/"
   cp -R "$KIT/skills/qwen-executor" "$CLAUDE_HOME/skills/"
-  echo "  + provisional Qwen builder skill -> $CLAUDE_HOME/skills/qwen-executor/"
+  echo "  + Qwen executor skill -> $CLAUDE_HOME/skills/qwen-executor/"
   cp -R "$KIT/skills/grok-executor" "$CLAUDE_HOME/skills/"
-  echo "  + provisional Grok builder skill -> $CLAUDE_HOME/skills/grok-executor/"
+  echo "  + Grok executor skill -> $CLAUDE_HOME/skills/grok-executor/"
 fi
 
 if [ "$do_codex" = 1 ]; then
   echo "Codex -> $CODEX_HOME"
   mkdir -p "$CODEX_HOME/agents" "$CODEX_HOME/skills"
-  rm -f "$CODEX_HOME/agents/terra-scout.toml" "$CODEX_HOME/terra-scout.config.toml"
   for profile in "$KIT"/codex/agents/*.toml; do copy_managed "$profile" "$CODEX_HOME/agents/$(basename "$profile")"; done
   echo "  + 5 native subagent profiles -> $CODEX_HOME/agents/"
   for profile in "$KIT"/codex/profiles/*.config.toml; do copy_managed "$profile" "$CODEX_HOME/$(basename "$profile")"; done
@@ -362,11 +372,11 @@ if [ "$do_codex" = 1 ]; then
   cp -R "$KIT/skills/gemini-executor" "$CODEX_HOME/skills/"
   echo "  + optional Gemini executor skill -> $CODEX_HOME/skills/gemini-executor/"
   cp -R "$KIT/skills/deepseek-executor" "$CODEX_HOME/skills/"
-  echo "  + provisional DeepSeek builder skill -> $CODEX_HOME/skills/deepseek-executor/"
+  echo "  + DeepSeek executor skill -> $CODEX_HOME/skills/deepseek-executor/"
   cp -R "$KIT/skills/qwen-executor" "$CODEX_HOME/skills/"
-  echo "  + provisional Qwen builder skill -> $CODEX_HOME/skills/qwen-executor/"
+  echo "  + Qwen executor skill -> $CODEX_HOME/skills/qwen-executor/"
   cp -R "$KIT/skills/grok-executor" "$CODEX_HOME/skills/"
-  echo "  + provisional Grok builder skill -> $CODEX_HOME/skills/grok-executor/"
+  echo "  + Grok executor skill -> $CODEX_HOME/skills/grok-executor/"
   append_guarded "$CODEX_HOME/AGENTS.md" "$(cat "$KIT/codex/AGENTS.md")"
   echo
   echo "  Codex config is NOT auto-edited. Review and merge into $CODEX_HOME/config.toml:"
@@ -411,4 +421,4 @@ echo "Installed version marker -> $VERSION_FILE (${kit_version:-unknown}$([ "$ki
 echo
 echo "Done. Restart Claude Code / open a new Codex session to pick up the changes."
 echo "Verify the bridge is wired:  $KIT/doctor.sh   (add --ping for a live round-trip)"
-echo "Adapt the models to your own tiers: see $KIT/ADAPTING.md"
+echo "Declare your own models, tiers and router pool: see $KIT/docs/user-configuration.md and $KIT/docs/router.md"

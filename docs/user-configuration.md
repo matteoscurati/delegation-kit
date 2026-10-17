@@ -7,8 +7,10 @@ of the actual result are the only checks. The starting profiles ship in
 
 ## Configure
 
-`delegation-config init` creates schema version 1 at
-`${XDG_CONFIG_HOME:-$HOME/.config}/delegation-kit/config.json`. Set
+`delegation-config init` creates the personal configuration
+(`"schema_version": 2`) at
+`${XDG_CONFIG_HOME:-$HOME/.config}/delegation-kit/config.json`; a file that
+still declares `1` is read identically. Set
 `DELEGATION_CONFIG_FILE` to use a different file. Project-local configuration
 is never discovered automatically. An existing configuration is preserved.
 
@@ -24,7 +26,7 @@ A complete configuration for an existing provider and a local endpoint:
 
 ```json
 {
-  "schema_version": 1,
+  "schema_version": 2,
   "review_policy": "optional",
   "profiles": {
     "my-deepseek": {
@@ -130,16 +132,69 @@ a compatible reviewer it stays pending as well. Optional results are
 configuration. For an existing configuration explicitly change `review_policy`
 and run `apply`; `init` never overrides later user decisions.
 
-## Migration
+## Router
 
-Before the installer replaces distributed configuration it snapshots the old
-configuration directory as `migration-v1-backup` next to the personal config.
-The original model choices and supported parameters are imported, credential
-files remain in place, and the summary announces optional review. The backup is
-retained on repeated initialization/installations. The personal file and later
-policy changes are preserved.
+A `router` block names the decision model — `decider`, required: one of
+your profiles, Sage, Jev, a Dipylon, a local classifier, or `none` — and the
+profiles it governs (`pool`, `default`, HTTP or native). Profiles may declare
+routing metadata — `tier`, `code`, `price`, `context`, `json_mode` — which
+otherwise comes from the shipped `config/catalog.json`. Without the block the
+router is off; nothing else in the kit reads it. See [the router page](router.md) for the fields, the policy
+and what each response discloses.
 
-`--allow-provisional` was removed in 0.26.0; passing it is an unknown argument.
-A legacy `routing-gates.json` that does not parse, or has no profiles, falls
-back to the shipped preset; the snapshot is kept either way. The installer
-removes the retired gate, contract, and evidence files from the data directory.
+## Keys and environment
+
+Nothing in the kit holds a key value: profiles name a variable, services
+name a variable, and the key files live under the data home with mode 600.
+The variables a user sets:
+
+| variable | meaning |
+|---|---|
+| `DELEGATION_CONFIG_FILE` | the personal configuration (default `${XDG_CONFIG_HOME:-$HOME/.config}/delegation-kit/config.json`) |
+| `DELEGATION_DATA_HOME` | commands, runners, key files, receipts and the local catalog (default `~/.local/share/delegation-kit`) |
+| `DELEGATION_BIN_HOME` | where the installer links the commands (default `~/.local/bin`) |
+| `CLAUDE_HOME`, `CODEX_HOME` | the host homes the installer writes profiles and the guard into |
+| the name in a profile's `credential_env` | that profile's key, for the HTTP adapters |
+| the name in `router.decider.credential_env` | the decision service's key (`SAGE_API_KEY`, `TYPESAFE_API_KEY` by default) |
+| `AA_API_KEY` | the Artificial Analysis key for `delegation-router catalog refresh` |
+
+Key files, read when the variable is unset, one `NAME=value` line each,
+mode 600, under `$DELEGATION_DATA_HOME/config/`:
+
+| file | variable | used by |
+|---|---|---|
+| `zai.env` | `ZAI_API_KEY` | `claude-zai` profiles |
+| `qwen-token-plan.env` | `QWEN_TOKEN_PLAN_API_KEY` | `token-plan-openai` profiles |
+| `deepseek.env` | `DEEPSEEK_API_KEY` | `deepseek-api` profiles |
+| `artificial-analysis.env` | `AA_API_KEY` | `delegation-router catalog refresh` |
+
+A key file that is readable by group or others is ignored, not read. The
+uninstaller keeps every key file beside the data home as
+`<data home>.<name>.env.bak` and the installer restores it. There is no
+`.env` file in a project: the kit never reads one, and a key in a worktree
+would be one `git add` away from a commit.
+
+## Adding a model
+
+Add a profile to the personal file, then `delegation-config validate` and
+`delegation-config apply`. Nothing else in the kit has to change: choose the
+adapter, the exact model identifier the endpoint accepts, the roles and the
+parameters the adapter supports; for a custom OpenAI-compatible endpoint add
+`base_url` and, if it needs a key, `credential_env` with the *name* of the
+variable. The adapter owns capabilities — a `builder` role on a text adapter
+yields a patch, never write access — and unsupported parameters are errors.
+Declare `tier`, `price`, `code`, `context` or `json_mode` when the router
+should rank the profile on your numbers rather than the catalog's. The
+catalog's rungs come from the Artificial Analysis Intelligence Index through
+a published band rule; `delegation-router catalog show` prints the source of
+every rung and `catalog refresh`, with your key in `AA_API_KEY` or in
+`$DELEGATION_DATA_HOME/config/artificial-analysis.env` (mode 600), writes a
+current ladder beside the key files. See [the router page](router.md).
+
+## Upgrading
+
+The installer never overwrites the personal file; new keys are optional and
+a file that still says `schema_version: 1` is read like `2`. Installs older than 0.25, which
+kept their profiles in `routing-gates.json`, were migrated by 0.25 and 0.26;
+that migration is gone, so bring such an install through 0.26 first or
+recreate the profiles by hand from the shipped preset.

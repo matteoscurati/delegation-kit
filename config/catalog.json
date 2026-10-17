@@ -1,0 +1,718 @@
+{
+  "catalog_version": "2026-10-17",
+  "tiering": {
+    "rule": "index-bands-v1",
+    "frontier_within": 8,
+    "mid_within": 20,
+    "top_index": 57.6,
+    "source": "artificialanalysis",
+    "date": "2026-10-17",
+    "attribution": "https://artificialanalysis.ai/"
+  },
+  "models": {
+    "claude-fable-5": {
+      "provider": "anthropic",
+      "tier": "frontier",
+      "code": true,
+      "price": {
+        "in": 10.0,
+        "out": 50.0
+      },
+      "context": 200000,
+      "json_mode": false,
+      "evidence": {
+        "source": "artificialanalysis",
+        "name": "Claude Fable 5",
+        "aa_id": "cd55210d-358e-4df1-ba9c-9acb5f186cc9",
+        "match": "slug",
+        "index": 49.6,
+        "variant": "max",
+        "variants": {
+          "max": 49.6
+        },
+        "coding_index": 76.5,
+        "math_index": null,
+        "date": "2026-10-17",
+        "via": "api"
+      }
+    },
+    "claude-fable-5-1": {
+      "provider": "anthropic",
+      "tier": "frontier",
+      "code": true,
+      "price": {
+        "in": 10.0,
+        "out": 50.0
+      },
+      "context": 200000,
+      "json_mode": false,
+      "evidence": {
+        "source": "artificialanalysis",
+        "name": "Claude Fable 5.1",
+        "aa_id": "3e87c73e-a257-495e-9730-367a66229811",
+        "match": "slug",
+        "index": 53.4,
+        "variant": "max",
+        "variants": {
+          "max": 53.4,
+          "xhigh": 53.2,
+          "high": 51.2,
+          "medium": 48.9,
+          "low": 46.8
+        },
+        "coding_index": 81.6,
+        "math_index": null,
+        "date": "2026-10-17",
+        "via": "api"
+      }
+    },
+    "claude-haiku-4-5": {
+      "provider": "anthropic",
+      "tier": "small",
+      "code": true,
+      "price": {
+        "in": 1.0,
+        "out": 5.0
+      },
+      "context": 200000,
+      "json_mode": false,
+      "evidence": null
+    },
+    "claude-haiku-5-5": {
+      "provider": "anthropic",
+      "tier": "mid",
+      "code": true,
+      "context": 200000,
+      "json_mode": false,
+      "evidence": {
+        "source": "artificialanalysis",
+        "name": "Claude Haiku 5.5",
+        "aa_id": "7d064a11-6e78-4030-b535-cdf940615041",
+        "match": "slug",
+        "index": 43.4,
+        "variant": "max",
+        "variants": {
+          "max": 43.4,
+          "xhigh": 41.2,
+          "high": 37.8,
+          "medium": 34.5,
+          "low": 29.5
+        },
+        "coding_index": null,
+        "math_index": null,
+        "date": "2026-10-17",
+        "via": "api"
+      },
+      "price": {
+        "in": 0.1,
+        "out": 0.5
+      },
+      "price_source": "artificialanalysis 2026-10-17"
+    },
+    "claude-opus-5": {
+      "provider": "anthropic",
+      "tier": "frontier",
+      "code": true,
+      "price": {
+        "in": 5.0,
+        "out": 25.0
+      },
+      "context": 200000,
+      "json_mode": false,
+      "evidence": {
+        "source": "artificialanalysis",
+        "name": "Claude Opus 5",
+        "aa_id": "b8fc61f7-5e9a-49e6-8547-6ac56db24627",
+        "match": "slug",
+        "index": 50.8,
+        "variant": "max",
+        "variants": {
+          "max": 50.8,
+          "xhigh": 49.7,
+          "high": 48.1,
+          "medium": 44.8,
+          "low": 39.4
+        },
+        "coding_index": 78.0,
+        "math_index": null,
+        "date": "2026-10-17",
+        "via": "api"
+      }
+    },
+    "claude-opus-5-5": {
+      "provider": "anthropic",
+      "tier": "frontier",
+      "code": true,
+      "price": {
+        "in": 4.0,
+        "out": 20.0
+      },
+      "context": 200000,
+      "json_mode": false,
+      "evidence": {
+        "source": "artificialanalysis",
+        "name": "Claude Opus 5.5",
+        "aa_id": "2f3c4dc9-a450-4303-8697-0237257cf08f",
+        "match": "slug",
+        "index": 57.6,
+        "variant": "max",
+        "variants": {
+          "max": 57.6,
+          "xhigh": 56.0,
+          "high": 53.6,
+          "medium": 51.2,
+          "low": 42.3
+        },
+        "coding_index": null,
+        "math_index": null,
+        "date": "2026-10-17",
+        "via": "api"
+      }
+    },
+    "claude-sonnet-5": {
+      "provider": "anthropic",
+      "tier": "mid",
+      "code": true,
+      "price": {
+        "in": 3.0,
+        "out": 15.0
+      },
+      "context": 200000,
+      "json_mode": false,
+      "evidence": {
+        "source": "artificialanalysis",
+        "name": "Claude Sonnet 5",
+        "aa_id": "23c86e4a-c769-43c0-a056-79e3cd15834f",
+        "match": "slug",
+        "index": 38.2,
+        "variant": "max",
+        "variants": {
+          "max": 38.2,
+          "xhigh": 34.4,
+          "high": 31.7,
+          "medium": 28.1,
+          "low": 24.3,
+          "non-reasoning": 23.2
+        },
+        "coding_index": 71.5,
+        "math_index": null,
+        "date": "2026-10-17",
+        "via": "api"
+      }
+    },
+    "claude-sonnet-5-5": {
+      "provider": "anthropic",
+      "tier": "frontier",
+      "code": true,
+      "context": 200000,
+      "json_mode": false,
+      "evidence": {
+        "source": "artificialanalysis",
+        "name": "Claude Sonnet 5.5",
+        "aa_id": "b171d979-5ec1-45de-b8b9-db1ee65e77ec",
+        "match": "slug",
+        "index": 56.0,
+        "variant": "max",
+        "variants": {
+          "max": 56.0,
+          "xhigh": 51.9,
+          "high": 46.8,
+          "medium": 40.8,
+          "low": 35.9
+        },
+        "coding_index": null,
+        "math_index": null,
+        "date": "2026-10-17",
+        "via": "api"
+      },
+      "price": {
+        "in": 2.0,
+        "out": 10.0
+      },
+      "price_source": "artificialanalysis 2026-10-17"
+    },
+    "deepseek-flash": {
+      "provider": "deepseek",
+      "tier": "mid",
+      "code": true,
+      "price": {
+        "in": 0.3,
+        "out": 1.2
+      },
+      "context": 128000,
+      "json_mode": true,
+      "aa_name": "DeepSeek V4.1 Flash",
+      "evidence": {
+        "source": "artificialanalysis",
+        "name": "DeepSeek V4.1 Flash",
+        "aa_id": "dbe7c625-3100-4463-b479-a228c41f75dd",
+        "match": "name",
+        "index": 39.5,
+        "variant": "max",
+        "variants": {
+          "max": 39.5,
+          "non-reasoning": 24.7
+        },
+        "coding_index": null,
+        "math_index": null,
+        "date": "2026-10-17",
+        "via": "api"
+      }
+    },
+    "gemini-3.1-pro-preview": {
+      "provider": "google",
+      "tier": "small",
+      "code": true,
+      "price": {
+        "in": 1.25,
+        "out": 5.0
+      },
+      "context": 1000000,
+      "json_mode": true,
+      "evidence": {
+        "source": "artificialanalysis",
+        "name": "Gemini 3.1 Pro Preview",
+        "aa_id": "bbd93ebe-80da-4594-bb19-61e69d0331df",
+        "match": "slug",
+        "index": 29.7,
+        "variant": "default",
+        "variants": {
+          "default": 29.7
+        },
+        "coding_index": 68.8,
+        "math_index": null,
+        "date": "2026-10-17",
+        "via": "api"
+      }
+    },
+    "gemini-3.8-flash": {
+      "provider": "google",
+      "tier": "mid",
+      "code": true,
+      "price": {
+        "in": 0.75,
+        "out": 3.75
+      },
+      "context": 1000000,
+      "json_mode": true,
+      "evidence": {
+        "source": "artificialanalysis",
+        "name": "Gemini 3.8 Flash",
+        "aa_id": "8a999846-4c1d-4ce7-a8b7-1310a7166fd7",
+        "match": "slug",
+        "index": 40.9,
+        "variant": "high",
+        "variants": {
+          "high": 40.9,
+          "medium": 39.8,
+          "low": 33.5
+        },
+        "coding_index": 76.3,
+        "math_index": null,
+        "date": "2026-10-17",
+        "via": "api"
+      }
+    },
+    "glm-5.2": {
+      "provider": "zai",
+      "tier": "small",
+      "code": true,
+      "price": {
+        "in": 0.98,
+        "out": 3.08
+      },
+      "context": 128000,
+      "json_mode": true,
+      "evidence": {
+        "source": "artificialanalysis",
+        "name": "GLM-5.2",
+        "aa_id": "f7a4ea75-e548-4069-80d4-9be8bc7c009b",
+        "match": "slug",
+        "index": 33.7,
+        "variant": "max",
+        "variants": {
+          "max": 33.7,
+          "non-reasoning": 22.4
+        },
+        "coding_index": 68.8,
+        "math_index": null,
+        "date": "2026-10-17",
+        "via": "api"
+      }
+    },
+    "glm-5.3-flash": {
+      "provider": "zai",
+      "tier": "mid",
+      "code": true,
+      "context": 128000,
+      "json_mode": true,
+      "evidence": {
+        "source": "artificialanalysis",
+        "name": "GLM-5.3-Flash",
+        "aa_id": "19496b81-9f41-4214-a77a-1df803b3c5ae",
+        "match": "slug",
+        "index": 41.8,
+        "variant": "default",
+        "variants": {
+          "default": 41.8
+        },
+        "coding_index": 71.5,
+        "math_index": null,
+        "date": "2026-10-17",
+        "via": "api"
+      },
+      "price": {
+        "in": 0.15,
+        "out": 0.5
+      },
+      "price_source": "artificialanalysis 2026-10-17"
+    },
+    "gpt-5.5": {
+      "provider": "openai",
+      "tier": "mid",
+      "code": true,
+      "price": {
+        "in": 5.0,
+        "out": 30.0
+      },
+      "context": 272000,
+      "json_mode": true,
+      "evidence": {
+        "source": "artificialanalysis",
+        "name": "GPT-5.5",
+        "aa_id": "1f054429-397e-4fdb-9e71-67bc92c1735e",
+        "match": "slug",
+        "index": 38.4,
+        "variant": "xhigh",
+        "variants": {
+          "xhigh": 38.4,
+          "high": 37.0,
+          "medium": 33.8,
+          "low": 30.7,
+          "non-reasoning": 23.2
+        },
+        "coding_index": 74.9,
+        "math_index": null,
+        "date": "2026-10-17",
+        "via": "api"
+      }
+    },
+    "gpt-5.6-luna": {
+      "provider": "openai",
+      "tier": "small",
+      "code": true,
+      "price": {
+        "in": 0.2,
+        "out": 1.2
+      },
+      "context": 272000,
+      "json_mode": true,
+      "evidence": {
+        "source": "artificialanalysis",
+        "name": "GPT-5.6 Luna",
+        "aa_id": "426d24c8-49ae-482a-b4a8-20f1c53f21c1",
+        "match": "slug",
+        "index": 37.3,
+        "variant": "max",
+        "variants": {
+          "max": 37.3,
+          "xhigh": 34.6,
+          "high": 32.1,
+          "medium": 25.0,
+          "low": 21.0,
+          "non-reasoning": 15.5
+        },
+        "coding_index": 71.4,
+        "math_index": null,
+        "date": "2026-10-17",
+        "via": "api"
+      }
+    },
+    "gpt-5.6-sol": {
+      "provider": "openai",
+      "tier": "mid",
+      "code": true,
+      "price": {
+        "in": 4.0,
+        "out": 20.0
+      },
+      "context": 272000,
+      "json_mode": true,
+      "evidence": {
+        "source": "artificialanalysis",
+        "name": "GPT-5.6 Sol",
+        "aa_id": "d93edfe8-bf35-49ad-b56e-b18116142a1c",
+        "match": "slug",
+        "index": 47.0,
+        "variant": "max",
+        "variants": {
+          "max": 47.0,
+          "xhigh": 44.0,
+          "high": 42.3,
+          "medium": 39.2,
+          "low": 33.5,
+          "non-reasoning": 28.3
+        },
+        "coding_index": 77.4,
+        "math_index": null,
+        "date": "2026-10-17",
+        "via": "api"
+      }
+    },
+    "gpt-5.6-terra": {
+      "provider": "openai",
+      "tier": "mid",
+      "code": true,
+      "price": {
+        "in": 2.0,
+        "out": 12.0
+      },
+      "context": 272000,
+      "json_mode": true,
+      "evidence": {
+        "source": "artificialanalysis",
+        "name": "GPT-5.6 Terra",
+        "aa_id": "bcf8db0a-3bb6-4d82-9516-0f57370c85a6",
+        "match": "slug",
+        "index": 42.1,
+        "variant": "max",
+        "variants": {
+          "max": 42.1,
+          "xhigh": 38.0,
+          "high": 34.2,
+          "medium": 30.1,
+          "low": 27.5,
+          "non-reasoning": 20.8
+        },
+        "coding_index": 76.7,
+        "math_index": null,
+        "date": "2026-10-17",
+        "via": "api"
+      }
+    },
+    "gpt-6-astra": {
+      "provider": "openai",
+      "tier": "frontier",
+      "code": true,
+      "price": {
+        "in": 10.0,
+        "out": 50.0
+      },
+      "context": 272000,
+      "json_mode": true,
+      "evidence": {
+        "source": "artificialanalysis",
+        "name": "GPT-6 Astra",
+        "aa_id": "2f339a97-9a0d-499a-9cb5-e0db665bfa25",
+        "match": "slug",
+        "index": 52.7,
+        "variant": "max",
+        "variants": {
+          "max": 52.7,
+          "xhigh": 52.4,
+          "high": 50.9,
+          "medium": 49.6,
+          "low": 45.8
+        },
+        "coding_index": 76.9,
+        "math_index": null,
+        "date": "2026-10-17",
+        "via": "api"
+      }
+    },
+    "gpt-6.1-sol": {
+      "provider": "openai",
+      "tier": "frontier",
+      "code": true,
+      "price": {
+        "in": 2.0,
+        "out": 10.0
+      },
+      "context": 1050000,
+      "json_mode": true,
+      "evidence": {
+        "source": "artificialanalysis",
+        "name": "GPT-6.1 Sol",
+        "aa_id": "b25ac058-1e33-4c31-bbc9-a20c3ad0717a",
+        "match": "slug",
+        "index": 51.8,
+        "variant": "max",
+        "variants": {
+          "max": 51.8,
+          "xhigh": 51.0,
+          "high": 50.2,
+          "medium": 47.8,
+          "low": 42.1
+        },
+        "coding_index": null,
+        "math_index": null,
+        "date": "2026-10-17",
+        "via": "api"
+      }
+    },
+    "grok-4.6": {
+      "provider": "xai",
+      "tier": "mid",
+      "code": true,
+      "price": {
+        "in": 2.0,
+        "out": 6.0
+      },
+      "context": 200000,
+      "json_mode": true,
+      "evidence": {
+        "source": "artificialanalysis",
+        "name": "Grok 4.6",
+        "aa_id": "d6f43d0a-e8c4-447c-9ff7-5cf0a9d59aa3",
+        "match": "slug",
+        "index": 44.2,
+        "variant": "xhigh",
+        "variants": {
+          "high": 44.3,
+          "xhigh": 44.2,
+          "medium": 42.8,
+          "low": 35.1
+        },
+        "coding_index": 75.9,
+        "math_index": null,
+        "date": "2026-10-17",
+        "via": "api"
+      }
+    },
+    "grok-4.7": {
+      "provider": "xai",
+      "tier": "mid",
+      "code": true,
+      "price": {
+        "in": 2.0,
+        "out": 6.0
+      },
+      "context": 200000,
+      "json_mode": true,
+      "evidence": {
+        "source": "artificialanalysis",
+        "name": "Grok 4.7",
+        "aa_id": "59627802-1546-422c-9a65-65b61c022d36",
+        "match": "slug",
+        "index": 46.4,
+        "variant": "xhigh",
+        "variants": {
+          "xhigh": 46.4,
+          "high": 46.3,
+          "low": 42.2
+        },
+        "coding_index": null,
+        "math_index": null,
+        "date": "2026-10-17",
+        "via": "api"
+      }
+    },
+    "kimi-k3": {
+      "provider": "moonshot",
+      "tier": "mid",
+      "code": true,
+      "price": {
+        "in": 0.5,
+        "out": 2.0
+      },
+      "context": 128000,
+      "json_mode": true,
+      "evidence": {
+        "source": "artificialanalysis",
+        "name": "Kimi K3",
+        "aa_id": "f7d2fc3e-1f7b-405f-818c-07952a4af78f",
+        "match": "slug",
+        "index": 43.6,
+        "variant": "max",
+        "variants": {
+          "max": 43.6,
+          "low": 30.1
+        },
+        "coding_index": 76.2,
+        "math_index": null,
+        "date": "2026-10-17",
+        "via": "api"
+      }
+    },
+    "minimax-m3": {
+      "provider": "minimax",
+      "tier": "small",
+      "code": true,
+      "price": {
+        "in": 0.3,
+        "out": 1.2
+      },
+      "context": 128000,
+      "json_mode": true,
+      "evidence": {
+        "source": "artificialanalysis",
+        "name": "MiniMax-M3",
+        "aa_id": "277f939a-985b-4b37-859d-b3eabc7c0b26",
+        "match": "slug",
+        "index": 29.2,
+        "variant": "default",
+        "variants": {
+          "default": 29.2
+        },
+        "coding_index": 58.6,
+        "math_index": null,
+        "date": "2026-10-17",
+        "via": "api"
+      }
+    },
+    "mistral-large-3": {
+      "provider": "mistral",
+      "tier": "small",
+      "code": true,
+      "price": {
+        "in": 2.0,
+        "out": 6.0
+      },
+      "context": 128000,
+      "json_mode": true,
+      "evidence": {
+        "source": "artificialanalysis",
+        "name": "Mistral Large 3",
+        "aa_id": "4928e950-7f37-4475-b0dc-c5bad781a321",
+        "match": "slug",
+        "index": 9.3,
+        "variant": "default",
+        "variants": {
+          "default": 9.3
+        },
+        "coding_index": 20.1,
+        "math_index": 38.0,
+        "date": "2026-10-17",
+        "via": "api"
+      }
+    },
+    "qwen3.8-max": {
+      "provider": "alibaba",
+      "tier": "mid",
+      "code": true,
+      "context": 128000,
+      "json_mode": true,
+      "aa_name": "Qwen3.8 Max (0902)",
+      "evidence": {
+        "source": "artificialanalysis",
+        "name": "Qwen3.8 Max (0902)",
+        "aa_id": "b112af07-3bd5-4647-b09f-b23204361bb2",
+        "match": "slug",
+        "index": 45.4,
+        "variant": "default",
+        "variants": {
+          "default": 45.4
+        },
+        "coding_index": 76.2,
+        "math_index": null,
+        "date": "2026-10-17",
+        "via": "api"
+      },
+      "price": {
+        "in": 2.0,
+        "out": 6.0
+      },
+      "price_source": "artificialanalysis 2026-10-17"
+    }
+  }
+}

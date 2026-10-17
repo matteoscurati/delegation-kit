@@ -31,7 +31,17 @@ try:
         "review_policy": c["review_policy"],
     }
     if a.command == "check":
-        result.update(valid=True, profiles=len(profiles))
+        r = c.get("router") or {}
+        result.update(
+            valid=True,
+            profiles=len(profiles),
+            router={
+                "enabled": bool(r),
+                "pool": list(r.get("pool", [])),
+                "default": r.get("default"),
+                "decider": (r.get("decider") or {}).get("kind", "llm") if r else None,
+            },
+        )
     elif a.command == "profile":
         if a.name not in profiles:
             raise ValueError("unknown profile")

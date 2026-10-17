@@ -1,0 +1,216 @@
+#!/usr/bin/env python3
+"""Local model router over the personal configuration.
+
+The user declares a pool of profiles, a default and a decider. `check` and
+`decide` are read-only discovery: `decide` recommends one profile and never
+dispatches it. `serve` is the user's explicit choice to let the router pick a
+profile inside that pool for every request sent to it. `eval` measures a
+decider offline against recorded outcomes; it calls the decider, never a
+pool profile."""
+
+import argparse
+import json
+import sys
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent / "lib"))
+from delegation_config import ROUTER_DECIDERS, load, validate_listen  # noqa: E402
+from delegation_router_pipeline import (  # noqa: E402
+    check,
+    decider_line,
+    route,
+    router_block,
+)
+
+def main():
+    p = argparse.ArgumentParser(prog="delegation-router")
+    sub = p.add_subparsers(dest="command", required=True)
+    pc = sub.add_parser("check", help="validate the router block; no network")
+    pc.add_argument("--json", action="store_true")
+    pd = sub.add_parser("decide", help="recommend one profile; never dispatches it")
+    pd.add_argument("--prompt-file", required=True)
+    pd.add_argument("--decider", choices=sorted(ROUTER_DECIDERS))
+    pd.add_argument("--input", choices=["excerpt", "full"])
+    pd.add_argument("--raw", action="store_true", help="include the decider's own answer")
+    pd.add_argument("--json", action="store_true")
+    ps = sub.add_parser("serve", help="OpenAI-compatible endpoint on loopback")
+    ps.add_argument("--listen", help="loopback host:port (default: router.listen)")
+    pk = sub.add_parser("catalog", help="where the ladder comes from; refresh it")
+    pk.add_argument("action", choices=["show", "refresh"])
+    pk.add_argument("--key-env", default="AA_API_KEY", help="variable holding the Artificial Analysis key")
+    pk.add_argument("--shipped", action="store_true", help="write config/catalog.json (release)")
+    pk.add_argument("--json", action="store_true")
+    pe = sub.add_parser(
+        "eval", help="measure a decider offline on a golden set; never dispatches"
+    )
+    pe.add_argument("--items", required=True, help="JSONL golden set")
+    pe.add_argument("--decider", choices=sorted(ROUTER_DECIDERS))
+    pe.add_argument("--input", choices=["excerpt", "full"])
+    pe.add_argument("--output", help="directory for report.json and gate.json")
+    pe.add_argument("--json", action="store_true")
+    a = p.parse_args()
+    try:
+        if a.command == "catalog":
+            return catalog_command(a)
+        c = load()
+        if a.command == "check":
+            result = check(c)
+            if a.json:
+                print(json.dumps(result, indent=2))
+            elif not result["enabled"]:
+                print("router: not configured — " + result["summary"])
+            else:
+                print(decider_line(result["decider"]))
+                print(
+                    "  governs %d profiles (default %s) on %s, mode %s:"
+                    % (
+                        len(result["pool"]),
+                        result["default"],
+                        result["listen"],
+                        result["mode"],
+                    )
+                )
+                for m in result["pool"]:
+                    print(
+                        "    %s: %s/%s tier=%s (%s)%s"
+                        % (
+                            m["profile"],
+                            m["adapter"],
+                            m["model"],
+                            m["tier"],
+                            m.get("tier_source"),
+                            " lane=" + m["lane"] if m.get("lane") else "",
+                        )
+                    )
+                print(
+                    "  catalog %s (%s)"
+                    % (result["catalog_version"], result["catalog_source"])
+                )
+                for w in result["warnings"]:
+                    print("  ! " + w)
+            return 0
+        router_block(c)
+        if a.command == "serve":
+            from delegation_router_server import serve
+
+            if a.listen:
+                validate_listen(a.listen, "--listen")
+            return serve(c, a.listen)
+        if a.command == "eval":
+            from delegation_router_eval import evaluate, read_items
+
+            kind = a.decider or c["router"].get("decider", {}).get("kind", "llm")
+            report = evaluate(c, read_items(a.items), kind, a.input)
+            if a.output:
+                out_dir = Path(a.output)
+                out_dir.mkdir(parents=True, exist_ok=True)
+                (out_dir / "report.json").write_text(json.dumps(report, indent=2) + "\n")
+                (out_dir / "gate.json").write_text(
+                    json.dumps(report["gate"], indent=2) + "\n"
+                )
+            if a.json:
+                print(json.dumps(report, indent=2))
+            else:
+                m, b = report["metrics"], report["baseline"]
+                print(
+                    "%s/%s on %d items (%d prompts): accuracy %s vs baseline %s; cost $%.4f vs $%.4f; optimal %s; robustness %s; p95 %s ms; undecidable %.0f%% → %s"
+                    % (
+                        report["decider"]["id"],
+                        report["decider"]["version"],
+                        report["items"],
+                        report["prompts"],
+                        _pct(m["accuracy"]),
+                        _pct(b["accuracy"]),
+                        m["cost_usd"],
+                        b["cost_usd"],
+                        _pct(m["optimal_selection_ratio"]),
+                        _pct(m["robustness"]),
+                        m["latency_ms"]["p95"],
+                        100 * m["undecidable_rate"],
+                        "accepted" if report["gate"]["accepted"] else "not accepted",
+                    )
+                )
+                for name, ok in report["gate"]["checks"].items():
+                    print("  %s %s" % ("ok " if ok else "NO ", name))
+            return 0
+        text = Path(a.prompt_file).read_text()
+        body = {"messages": [{"role": "user", "content": text}]}
+        out, _choice, _feats, _blocked = route(
+            c, body, decider_kind=a.decider, input_mode=a.input, raw=a.raw
+        )
+        if a.json:
+            print(json.dumps(out, indent=2))
+        else:
+            print(
+                "%s (%s, tier %s)%s"
+                % (
+                    out["chosen"]["profile"],
+                    out["chosen"]["model"],
+                    out["chosen"]["tier"],
+                    " — undecidable, default" if out["undecidable"] else "",
+                )
+            )
+            for reason in out["reasons"]:
+                print("  " + reason)
+            for warning in out["warnings"]:
+                print("  ! " + warning)
+        return 0
+    except (OSError, ValueError, KeyError, TypeError) as error:
+        print("delegation-router: " + str(error), file=sys.stderr)
+        return 65
+
+
+def catalog_command(a):
+    import os
+
+    from delegation_catalog import (
+        AA_KEY_FILE,
+        aa_key,
+        catalog,
+        data_home,
+        describe,
+        fetch,
+        refresh,
+        render_refresh,
+        render_show,
+        shipped,
+        today,
+        write,
+    )
+
+    if a.action == "show":
+        report = describe(catalog())
+        print(json.dumps(report, indent=2) if a.json else "\n".join(render_show(report)))
+        return 0
+    key = aa_key(os.environ, a.key_env)
+    if not key:
+        key_file = data_home() / "config" / AA_KEY_FILE
+        if key_file.exists() and key_file.stat().st_mode & 0o077:
+            raise ValueError(
+                "%s is readable by group or others and is ignored: chmod 600 %s"
+                % (key_file, key_file)
+            )
+        raise ValueError(
+            "no Artificial Analysis key: set %s, or write %s=<key> into %s (mode 600)"
+            % (a.key_env, a.key_env, key_file)
+        )
+    new, unmatched = refresh(shipped(), fetch(key), today())
+    path = write(new, shipped=a.shipped)
+    summary = {
+        "written": str(path),
+        "catalog_version": new["catalog_version"],
+        "tiering": new["tiering"],
+        "matched": len(new["models"]) - len(unmatched),
+        "unmatched": unmatched,
+        "attribution": new["tiering"]["attribution"],
+    }
+    print(json.dumps(summary, indent=2) if a.json else "\n".join(render_refresh(summary)))
+    return 0
+
+
+def _pct(value):
+    return "n/a" if value is None else "%.0f%%" % (100 * value)
+
+
+if __name__ == "__main__":
+    sys.exit(main())

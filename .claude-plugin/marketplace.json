@@ -6,14 +6,14 @@
     "url": "https://github.com/matteoscurati"
   },
   "metadata": {
-    "description": "Cross-tool delegation kit with model-routing profiles, guarded external-model bridges, deterministic Claude/Codex schema transport, and user-directed activation: every dispatch is chosen or explicitly delegated by the user.",
-    "version": "0.26.1"
+    "description": "You choose the decision model; it governs the models you already pay for. A local OpenAI-compatible router with a user-named decider, pool and default; nothing dispatches on its own.",
+    "version": "0.27.0"
   },
   "plugins": [
     {
       "name": "delegation-kit",
-      "description": "User-directed model-routing profiles, orchestration, guarded external-model executor skills, and deterministic Claude/Codex schema transport.",
-      "version": "0.26.1",
+      "description": "Local model router (delegation-router): a user-chosen decision model governs the user's own models, over their own keys and subscriptions.",
+      "version": "0.27.0",
       "author": {
         "name": "Matteo Scurati"
       },

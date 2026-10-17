@@ -2,6 +2,109 @@
 
 All notable changes to delegation-kit are documented here.
 
+## [0.27.0] — 2026-10-17
+
+You choose the decision model; it governs the models you already pay for.
+
+### Added
+
+- **`delegation-router`**, a local model router. A `router` block in the
+  personal configuration names the decision model (`decider`, required) and
+  the profiles it governs (`pool`, `default`, on any adapter). `check`
+  resolves it without network; `decide --prompt-file` recommends one profile
+  and never dispatches it (`--raw` shows the decider's own answer); `serve`
+  is an OpenAI-compatible `/v1/chat/completions` on loopback only. A
+  `"model": "auto"` request goes through a deterministic prefilter (rung,
+  context, cost ceiling, JSON mode, native limits), the decider and the
+  `tiered-v1` policy — the lowest rung the answer allows, `code` narrowing,
+  `math`/`rare`/`tools` lifting to `mid`, the cheapest eligible profile in
+  the rung, escalation never descent, a 0.55 confidence floor — then one
+  forward with the chosen profile's own key, streaming passed through. A pool
+  profile named directly skips the decider. `mode: shadow` decides and
+  discloses but dispatches the default.
+- **Five deciders**, all asking the same question — how much capability,
+  which specialties — and reporting the same signals: `llm` (one of your
+  HTTP profiles, `temperature 0`, the excerpt in a `DATA` block, 120 tokens
+  of room; DeepSeek with thinking disabled, Qwen at `minimal`), `sage`
+  (Levanto, `scale` + `tags`), `jev` (TypeSafe System One, `score` +
+  `noul`s; arithmetic-looking numbers never below `mid`), `dipylon` (your
+  own `/decide`, one `yesno`), `classifier` (a local `POST {"text"}`), and
+  `none` as the rules-only baseline. Each is called with its own credential
+  and prices its decision; `url`, `credential_env`, `model` and `price`
+  override the defaults. Sage, Jev and `llm` through DeepSeek and Qwen were
+  probed live before the release (see the compatibility page).
+- **Native profiles in the pool** through `delegation-run`: the
+  conversation becomes a prompt file, the dispatcher runs the profile on its
+  first read-only role in an empty temporary workdir, and the answer file
+  comes back as one chat completion with the dispatcher's receipt under
+  `router.delegation_run`. Timeouts, identity checks, OAuth locks and
+  sandboxes stay with the dispatcher; its exit codes are mapped. No tools,
+  images or JSON mode on a native profile; a stream is one event. This is
+  how Claude models join a pool.
+- **The ladder comes from a third party.** `config/catalog.json` places
+  every model it can from the Artificial Analysis Intelligence Index with
+  one published rule, `index-bands-v1` (frontier within 8 points of the best
+  model of the day, mid within 20, small below), and records the evidence
+  beside each row; a profile's own `tier` wins, a profile with `effort` is
+  placed at that setting's index, and every decision names its placement
+  (`tier_source`). `catalog show` prints the source of every rung; `catalog
+  refresh` makes one request to the API with the user's key (`AA_API_KEY`,
+  or `config/artificial-analysis.env` under the data home, mode 600) and
+  writes `catalog.local.json`, which takes precedence while it is at least
+  as recent; `--shipped` refreshes the shipped file before a release. The
+  shipped snapshot of 2026-10-15 placed 24 of 25 models from the API and
+  corrected four hand placements (GPT-5.6 Sol and GPT-5.5 are `mid`, GLM 5.2
+  and Mistral Large 3 `small`). Data attribution: Artificial Analysis.
+- **`delegation-router eval`**: an offline measure of one decider on a
+  golden set the user assembled (prompt, paraphrases, recorded outcomes per
+  profile). Reports accuracy, cost, optimal-selection ratio, robustness,
+  undecidable rate, latency, the rules-only baseline, a deferral curve and
+  an advisory `gate.json`. It calls the decider, never a pool profile.
+- **Disclosure and refusals.** `X-Router-*` headers and a `router` object
+  with signals, reasons (including the candidates of the chosen rung with
+  their estimated cost), blocked profiles, usage, cost and the
+  provider-reported model (`mismatch` disclosed, not fatal). Refusals that
+  never reach a provider: unknown model, browser `Origin` outside
+  `allow_origins` (a listed origin gets CORS), cost ceiling from the
+  configuration or `X-Router-Max-Cost-USD`, invalid body, missing credential,
+  busy. Provider failures keep their meaning and lose their payload. The
+  server prints one listening line and nothing else. Opt-in receipts (JSONL,
+  mode 600, no prompt content) survive `uninstall.sh`.
+- `delegation-route check` reports the router; `doctor.sh` has a "Model
+  router" section that opens with the decider and names the catalog in
+  effect; the installer links `delegation-router` and ships the catalog and
+  the decider prompt. The router suite, `tests/router/`, runs 64 tests
+  against fake providers and services; CI runs ruff beside shellcheck.
+
+### Changed
+
+- **One idea, up front.** The README opens with the decision model and how
+  the choice is made, with a worked table on the measured ladder; the
+  explicit delegation commands, agents, Codex profiles and skills are
+  described as the machinery the router dispatches through. Plugin,
+  marketplace and npm descriptions say the same.
+- **One configuration schema.** `delegation-config init` writes
+  `schema_version: 2`; a file that still says `1` is read identically, and
+  the routing fields (`tier`, `code`, `price`, `context`, `json_mode`) are
+  accepted on either.
+- `doctor.sh` names executor sections by adapter rather than by a model the
+  presets may change; `uninstall.sh` reports what it removes in current
+  terms; `run-tests.sh` prints each suite's time as it finishes. The router
+  and the test fakes bind without the reverse-DNS lookup `http.server` does,
+  which had stalled the macOS CI job past its limit.
+- `bin/lib` has one module per domain: configuration, credentials, catalog,
+  router policy, pipeline, deciders, bridge, server, eval.
+
+### Removed
+
+- The pre-0.24 migration (`routing-gates.json` import, retired-file sweep,
+  retired-profile checks): an install older than 0.25 goes through 0.26
+  first.
+- `model-routing.md` and `ADAPTING.md` (folded into the configuration
+  page); the historical snapshots and matrices of `docs/compatibility.md`
+  and the "Flags retired" section of the executors page — this changelog and
+  git history keep them.
+
 ## [0.26.1] — 2026-09-16
 
 ### Fixed

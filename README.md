@@ -1,82 +1,145 @@
 # delegation-kit
 
-User-directed model delegation for Claude Code and Codex. Configure the models
-you want through existing native adapters or any supported OpenAI-compatible
-text endpoint. No kit qualification or benchmark is required to use a model.
+You choose the decision model. It governs the models you already pay for.
 
-Every dispatch requires an explicit user request. Authorization never silently
-extends to retries, fallback, review or more workers. The lead verifies results
-before integration. Review is optional by default, with `required` and
-`cross-family` policies available.
+Name a decider — one of your cheap models, Levanto Sage, TypeSafe Jev, your
+own Dipylon, a local classifier — and the pool it governs: API keys, a Claude
+or Codex subscription, a local endpoint. `delegation-router serve` is an
+OpenAI-compatible endpoint on your own machine. Send it `"model": "auto"`:
+the decider judges how much capability the request needs, the request goes
+to the cheapest model in your pool that clears that bar, with that model's
+own credential, and the response names the model and the reasons. Nothing
+leaves your machine except the request to the model you chose. Your models.
+Your call. Your rules.
+
+## How the choice is made
+
+The decider never picks a model by name. It judges the task; your
+configuration judges the models.
+
+1. **The request is measured**, not judged: tokens, turns, tools, images,
+   JSON output.
+2. **The decider answers one typed question**: how much capability does
+   answering this correctly need (0 trivial … 4 frontier), and does it
+   involve code, math or rare knowledge. It sees an excerpt, never your keys,
+   never your model names; text inside the request cannot steer it.
+3. **The answer sets the lowest rung** of a three-rung ladder — `small`,
+   `mid`, `frontier` — on which every profile in the pool sits (`tier`, from
+   your declaration or the shipped catalog). `code` keeps only code-capable
+   profiles; `math`, `rare` and `tools` lift an easy request to `mid`; a very
+   long request goes to the top.
+4. **Inside the rung the cheapest eligible profile wins**, priced for this
+   request. An empty rung escalates, never descends. Doubt — low confidence,
+   a decider error, a timeout — lands on your default, and says so.
+5. **Every response discloses the choice**: `X-Router-*` headers and a
+   `router` object with the signals, the reasons, the candidates with their
+   estimated cost, usage and what the provider reported.
+
+With a pool of GLM 5.3 Flash (`mid`: Intelligence Index 41.8) and Opus 5.5
+(`frontier`: 57.6, the best model on the board):
+
+| request | the decider says | lowest rung | answered by | because |
+|---|---|---|---|---|
+| rename `foo` to `bar` | difficulty 1, `code` | small | GLM 5.3 Flash | the small rung is empty, so up to `mid`: GLM is there and is code-capable |
+| find the race condition in this scheduler | difficulty 3 | frontier | Opus 5.5 | from 3 up only the top rung; GLM is not there |
+| summarise this contract | difficulty 2 | mid | GLM 5.3 Flash | the mid rung suffices; Opus is admissible but costs more |
+| what is 17 % of 2,340 € | difficulty 1, `math` | mid | GLM 5.3 Flash | `math` lifts an easy request to `mid` |
+
+Add GPT-5.6 Luna (`small`: 37.3) to the pool and the rename goes to Luna;
+nothing above Opus exists, so a 4 still goes to Opus.
+
+Where the rungs come from: a third party, not the kit. The shipped catalog
+places every model it knows from the Artificial Analysis Intelligence Index
+through one published rule — frontier within 8 points of the best model of
+the day, mid within 20, small below — and records the evidence and the date
+beside each row; `delegation-router catalog show` prints it. That is how
+the kit knows that GPT-5.6 Sol (47.0) is `mid`, not `frontier`, whatever
+its name suggests, and that Mistral Large 3 (9.3) is `small`. With your own
+Artificial Analysis key (`AA_API_KEY`, or
+`~/.local/share/delegation-kit/config/artificial-analysis.env`),
+`delegation-router catalog refresh` writes a current ladder on your machine
+that takes precedence over the shipped one; without a key you get the ladder
+the package shipped with, refreshed at every release. The levers are yours — `tier` and `price` per profile, the pool, the default, a
+cost ceiling — and `delegation-router decide --json` prints the reasons for
+any prompt without dispatching it. `delegation-router eval` measures a
+decider against the rules-only baseline on a golden set of yours.
 
 ## Quick start
 
 ```sh
-./install.sh
-# Inspect and edit the personal configuration, then validate it:
-delegation-config show
-delegation-config validate
-delegation-config apply
-delegation-route resolve --lane builder --json
+./install.sh                      # commands, runners, Claude/Codex profiles, the guard
+delegation-config show            # the personal configuration the installer created
 ```
 
-The installer initializes the personal configuration only if absent and backs
-up a legacy installation before migration. Profiles live outside projects at
-`${XDG_CONFIG_HOME:-$HOME/.config}/delegation-kit/config.json`, with an explicit
-`DELEGATION_CONFIG_FILE` override. Never put credential values in profiles.
+Add a `router` block to `~/.config/delegation-kit/config.json`: the decider
+first, then the profiles it governs (names that already exist in the file):
 
-[Configuration examples and migration](docs/user-configuration.md) include an
-existing provider and a local endpoint, parameter support, model identity,
-review policies and output schemas. Selection is read-only and grants no
-permission. Run a selected profile only when the user explicitly requests it:
+```json
+"router": {
+  "decider": {"kind": "llm", "profile": "deepseek-flash"},
+  "pool": ["deepseek-flash", "qwen3.8-max", "sonnet-clerk"],
+  "default": "qwen3.8-max"
+}
+```
 
 ```sh
-delegation-run --profile PROFILE --lane builder \
-  --prompt-file /tmp/task.txt --output /tmp/result.txt --workdir /path/to/repo
+delegation-router check           # the decider, then the pool with tiers and prices; no network
+delegation-router serve           # http://127.0.0.1:4141/v1, loopback only
+curl -s 127.0.0.1:4141/v1/chat/completions -H 'Content-Type: application/json' \
+  -d '{"model":"auto","messages":[{"role":"user","content":"Rename foo to bar in utils.py"}]}'
 ```
 
-## Capabilities and evidence
+Any OpenAI SDK works with `base_url="http://127.0.0.1:4141/v1"`. Naming a
+pool profile as `model` skips the decider and still discloses. The
+[router page](docs/router.md) has every field, the policy, the deciders,
+the error codes and the evaluation harness.
 
-Native adapters retain sandbox and file-access controls. Text adapters only
-send the supplied prompt and return text or a patch; assigning a builder role
-cannot grant worktree access. No automatic provider substitution or retry.
+## How it works inside
 
-Metrics distinguish requested model identity from provider-reported identity.
-An absent identity is usable as `requested-only`; an incompatible response model
-fails unless its alias was explicitly configured. Provider reports are not
-independent certification.
+- **One description per model.** The personal configuration holds a
+  profile for each model you can call: HTTP adapters (`openai-compatible`,
+  `deepseek-api`, `token-plan-openai`) and native CLIs (`codex`,
+  `claude-code`, `claude-zai`, `kimi-code-cli`, `grok-build-cli`, `agy`).
+  Each native CLI has a runner that enforces its sandbox, identity check and
+  limits; the router reaches those profiles through the kit's own
+  dispatcher, which is how Claude models join a pool although Anthropic
+  exposes no chat-completions endpoint. A shipped catalog supplies tier,
+  price and context for known models; your declarations win.
+- **The installer also puts the same profiles in front of Claude Code and
+  Codex** — six Claude subagents, five Codex profiles, the skills for a lead
+  — together with a guard that nothing dispatches, retries, falls back or
+  reviews without the user asking. The router follows the same rule: starting
+  `serve` and sending `auto` is the user's choice, and the router never
+  leaves the pool.
+- **The patch trust boundary.** Text adapters return patches and never write
+  to a worktree; `delegation-patch-verify` checks a patch against the shipped
+  policy before the lead applies and tests it.
+- **`doctor.sh`** reports what is installed, which runtimes are reachable
+  and, first in its router section, which decider governs which pool;
+  `--ping` runs a live round-trip.
 
-The kit ships no routing gates, benchmark evidence, or qualification
-machinery. `config/presets.json` holds the starting profiles, adapters own their
-roles and efforts, and `evaluation/` is a frozen archive of earlier
-qualification runs that no command reads.
+## Current release: 0.27.0
 
-## Current release: 0.26.1
-
-Version 0.26.1 corrects the 0.26.0 compatibility snapshot. Version 0.26.0 removes every dispatch timeout the kit imposed on its own: a run
-has no time limit unless the profile sets `timeout`, which now bounds the whole
-run on every adapter, native CLIs included. The `--allow-provisional` no-op is
-gone. Version 0.25.2 trimmed the `kimi-k3` preset to the roles its runner
-implements. Version 0.25.1 fixed the installer so a key file the uninstaller backed up is
-restored instead of asked for again, and cleans the last gate-era wording out
-of the configuration docs. Version 0.25.0 removed the qualification machinery that 0.24.0 had demoted to
-history: the central and executable routing gates, the executor contract, the
-evidence snapshot and Epoch importer, the schema compiler, and the runners'
-`--evaluation` and `--preflight-only` modes are gone, together with roughly
-13,000 lines of code, records, tests, and documentation. The starting profiles now live
-in `config/presets.json`; each runner's `check` reports the adapter's roles and
-efforts; `delegation-route` is a read-only discovery over the personal
-configuration. Explicit per-dispatch authorization, sandboxes, model identity
-checks, and the patch trust boundary are unchanged. See
-[`CHANGELOG.md`](./CHANGELOG.md) for details and full history.
+Version 0.27.0 adds `delegation-router`: a `router` block names the decider
+and the profiles it governs; `check` and `decide` are read-only; `serve`
+routes `"model": "auto"` through a deterministic prefilter, the decider and
+the `tiered-v1` policy, forwards — HTTP profiles with their own key, native
+profiles through the kit's dispatcher — streams through and discloses the
+choice. Five deciders (`llm`, `sage`, `jev`, `dipylon`, `classifier`), a cost
+ceiling, opt-in receipts without prompt content, a model catalog and an
+offline `eval` come with it. One configuration schema (`init` writes
+`schema_version: 2`, a file that says `1` is read identically); the pre-0.24
+migration, the advisory routing page and the adapting guide are gone; the
+compatibility page keeps only the current snapshot. Explicit per-dispatch
+authorization, sandboxes, model identity checks and the patch trust boundary
+are unchanged. See [`CHANGELOG.md`](./CHANGELOG.md) for the full history.
 
 ## Documentation
 
-- [Personal configuration, adapters and migration](docs/user-configuration.md)
-- [Routing policy (advisory)](model-routing.md)
+- [The router: decider, pool, policy, disclosure, eval](docs/router.md)
+- [Personal configuration, keys and environment, adding a model, upgrading](docs/user-configuration.md)
 - [External executors: adapters and their limits](docs/external-executors.md)
 - [Compatibility and release verification](docs/compatibility.md)
-- [Adapting the kit](ADAPTING.md)
 
 ## Testing
 
@@ -85,13 +148,14 @@ checks, and the patch trust boundary are unchanged. See
 npm test
 ```
 
-The suites use isolated fixtures and simulated providers. Tests do not authorize
-or prove live provider behavior. Releases and live paid tests are separate work.
+The suites use isolated fixtures and fake providers. They do not authorize
+or prove live provider behavior; live probes are recorded per release in
+the compatibility page.
 
 ## npm package
 
 `npx delegation-kit` runs the installer from a verified release checkout.
-The npm package is an installer wrapper, not a second runtime implementation.
+The npm package is an installer wrapper, not a second runtime.
 
 ## License
 

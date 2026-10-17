@@ -3,13 +3,17 @@
 import json
 import os
 import re
-import shutil
 import tempfile
 from pathlib import Path
 from urllib.parse import urlsplit
 
+
 ROOT = Path(__file__).resolve().parents[2]
+
+
 REVIEW_ROLES = {"reviewer", "routine-review", "material-review", "security"}
+
+
 TEXT_ROLES = {
     "builder",
     "clerk",
@@ -20,6 +24,8 @@ TEXT_ROLES = {
     "policy-annotation",
 }
 # Capabilities are code-owned, not writable profile claims.
+
+
 ADAPTERS = {
     "deepseek-api": (
         "deepseek",
@@ -76,6 +82,8 @@ ADAPTERS = {
         {"native-profile"},
     ),
 }
+
+
 EFFORTS = {
     "kimi-code-cli": {"max"},
     "claude-zai": {"max"},
@@ -86,6 +94,57 @@ EFFORTS = {
     "codex": {"none", "minimal", "low", "medium", "high", "xhigh", "max"},
     "claude-code": {"low", "medium", "high", "xhigh", "max"},
 }
+# Reasoning settings from weakest to strongest, across adapters.
+
+
+EFFORT_ORDER = ("none", "minimal", "low", "medium", "high", "xhigh", "max")
+# Routing metadata a profile may declare for itself. Everything else about an
+# adapter stays code-owned; these are user statements, like `family`.
+
+
+TIERS = ("small", "mid", "frontier")
+
+
+PROFILE_ROUTING_FIELDS = {"tier", "code", "price", "context", "json_mode"}
+# The router pool accepts the HTTP adapters only in this release; native CLI
+# profiles need a non-streaming bridge that arrives later.
+
+
+ROUTER_HTTP_ADAPTERS = {"openai-compatible", "deepseek-api", "token-plan-openai"}
+
+
+ROUTER_DECIDERS = {"none", "llm", "sage", "jev", "dipylon", "classifier"}
+
+
+DECIDER_FIELDS = {
+    "kind",
+    "profile",
+    "input",
+    "timeout",
+    "url",
+    "credential_env",
+    "model",
+    "price",
+}
+# Deciders that call a service of their own rather than one of the profiles.
+
+
+SERVICE_DECIDERS = {"sage", "jev", "dipylon", "classifier"}
+
+
+ROUTER_FIELDS = {
+    "listen",
+    "pool",
+    "default",
+    "decider",
+    "max_cost_usd",
+    "receipts",
+    "allow_origins",
+    "mode",
+}
+
+
+LOOPBACK_HOSTS = {"localhost", "127.0.0.1", "::1"}
 
 
 def config_path():
@@ -118,34 +177,166 @@ def read(path):
     )
 
 
-def preset(strict=False, source=None):
-    """The shipped preset (config/presets.json), or the profiles imported from a
-    legacy routing-gates.json snapshot when migrating a pre-0.24 install."""
-    profiles = None
-    if source is not None:
-        # A legacy snapshot that does not parse or lacks the expected shape
-        # falls back to the shipped preset instead of failing the install.
-        try:
-            old = read(source)
-            profiles = {
-                key: {
-                    "adapter": p["harness"],
-                    "model": p["model"],
-                    "family": old.get("model_families", {}).get(p["model"]),
-                    "roles": list(p["lanes"]),
-                    "parameters": {"effort": p["effort"]},
-                }
-                for key, p in old["profiles"].items()
-            }
-        except (ValueError, KeyError, TypeError, AttributeError, OSError):
-            profiles = None
-    if not profiles:
-        profiles = read(ROOT / "config/presets.json")["profiles"]
+def preset(strict=False):
+    """The shipped preset (config/presets.json) as a fresh personal configuration."""
     return {
-        "schema_version": 1,
+        "schema_version": 2,
         "review_policy": "cross-family" if strict else "optional",
-        "profiles": profiles,
+        "profiles": read(ROOT / "config/presets.json")["profiles"],
     }
+
+
+def _number(value):
+    return type(value) in (int, float) and value == value and value >= 0
+
+
+def _price_ok(price):
+    return price is None or (
+        isinstance(price, dict)
+        and set(price) == {"in", "out"}
+        and _number(price["in"])
+        and _number(price["out"])
+        and price["in"] <= 100_000
+        and price["out"] <= 100_000
+    )
+
+
+def _endpoint_ok(value):
+    """HTTPS anywhere, HTTP on loopback only, no inline credentials."""
+    if not isinstance(value, str) or any(ord(ch) < 33 for ch in value):
+        return False
+    url = urlsplit(value)
+    if url.port is not None and not 1 <= url.port <= 65535:
+        return False
+    if not url.hostname or url.username or url.password or url.query or url.fragment:
+        return False
+    return url.scheme == "https" or (
+        url.scheme == "http" and url.hostname in LOOPBACK_HOSTS
+    )
+
+
+def _origin_ok(value):
+    """An exact browser origin: scheme and host only, HTTP on loopback only."""
+    if not isinstance(value, str):
+        return False
+    url = urlsplit(value)
+    if url.scheme not in {"http", "https"} or not url.hostname:
+        return False
+    if url.path or url.query or url.fragment:
+        return False
+    return url.scheme == "https" or url.hostname in LOOPBACK_HOSTS
+
+
+LISTEN_PATTERN = re.compile(r"(localhost|127\.0\.0\.1|\[::1\]):[0-9]{1,5}")
+
+
+def validate_listen(listen, field="router.listen"):
+    """A loopback host:port with a usable port; the same rule for the
+    configuration and for `serve --listen`."""
+    if not isinstance(listen, str) or not LISTEN_PATTERN.fullmatch(listen):
+        raise ValueError(field + " must be a loopback host:port")
+    if not 1 <= int(listen.rsplit(":", 1)[1]) <= 65535:
+        raise ValueError(field + " port out of range")
+    return listen
+
+
+def validate_routing_fields(p):
+    """Optional per-profile routing declarations."""
+    if "tier" in p and p["tier"] not in TIERS:
+        raise ValueError("invalid tier (small|mid|frontier)")
+    if "code" in p and type(p["code"]) is not bool:
+        raise ValueError("invalid code flag")
+    if "json_mode" in p and type(p["json_mode"]) is not bool:
+        raise ValueError("invalid json_mode flag")
+    if "context" in p and (
+        type(p["context"]) is not int or not 1 <= p["context"] <= 100_000_000
+    ):
+        raise ValueError("invalid context")
+    if "price" in p and not _price_ok(p["price"]):
+        raise ValueError("invalid price (USD per million tokens: {in, out})")
+
+
+def validate_router(c):
+    """The router block is a user-declared rule set: pool, default, decider."""
+    r = c.get("router")
+    if r is None:
+        return
+    if not isinstance(r, dict) or set(r) - ROUTER_FIELDS:
+        raise ValueError("unknown router field")
+    if not isinstance(r.get("decider"), dict) or "kind" not in r["decider"]:
+        raise ValueError(
+            "router.decider is required: name the decision model "
+            "(kind llm, sage, jev, dipylon, classifier or none)"
+        )
+    validate_listen(r.get("listen", "127.0.0.1:4141"))
+    pool = r.get("pool")
+    if (
+        not isinstance(pool, list)
+        or not pool
+        or any(not isinstance(x, str) for x in pool)
+        or len(set(pool)) != len(pool)
+    ):
+        raise ValueError("router.pool must be a nonempty list of distinct profile ids")
+    for key in pool:
+        if key not in c["profiles"]:
+            raise ValueError("router.pool names an unknown profile: " + key)
+    if r.get("default") not in pool:
+        raise ValueError("router.default must be one of router.pool")
+    decider = r["decider"]
+    if set(decider) - DECIDER_FIELDS:
+        raise ValueError("unknown router.decider field")
+    kind = decider["kind"]
+    if kind not in ROUTER_DECIDERS:
+        raise ValueError("router.decider.kind not available in this release")
+    if kind == "llm":
+        profile = decider.get("profile", r["default"])
+        if profile not in c["profiles"]:
+            raise ValueError("router.decider.profile names an unknown profile")
+        if c["profiles"][profile]["adapter"] not in ROUTER_HTTP_ADAPTERS:
+            raise ValueError("router.decider.profile must use an HTTP adapter")
+    elif "profile" in decider:
+        raise ValueError("router.decider.profile applies to the llm decider only")
+    if kind in SERVICE_DECIDERS:
+        if "url" in decider and not _endpoint_ok(decider["url"]):
+            raise ValueError("router.decider.url must be HTTPS or loopback HTTP")
+        if kind in {"dipylon", "classifier"} and "url" not in decider:
+            raise ValueError("router.decider.url is required for " + kind)
+    elif set(decider) & {"url", "credential_env", "model", "price"}:
+        raise ValueError(
+            "router.decider url/credential_env/model/price need a service decider"
+        )
+    if "credential_env" in decider and (
+        not isinstance(decider["credential_env"], str)
+        or not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", decider["credential_env"])
+    ):
+        raise ValueError("invalid router.decider.credential_env")
+    if "model" in decider and (
+        not isinstance(decider["model"], str)
+        or not decider["model"]
+        or any(ord(x) < 33 for x in decider["model"])
+    ):
+        raise ValueError("invalid router.decider.model")
+    if "price" in decider and not _price_ok(decider["price"]):
+        raise ValueError("invalid router.decider.price")
+    if decider.get("input", "excerpt") not in {"excerpt", "full"}:
+        raise ValueError("router.decider.input must be excerpt or full")
+    if "timeout" in decider and (
+        type(decider["timeout"]) is not int or not 1 <= decider["timeout"] <= 600
+    ):
+        raise ValueError("invalid router.decider.timeout")
+    if "max_cost_usd" in r and (
+        not _number(r["max_cost_usd"])
+        or r["max_cost_usd"] <= 0
+        or r["max_cost_usd"] > 1000
+    ):
+        raise ValueError("invalid router.max_cost_usd")
+    if "receipts" in r and type(r["receipts"]) is not bool:
+        raise ValueError("invalid router.receipts")
+    if r.get("mode", "route") not in {"route", "shadow"}:
+        raise ValueError("router.mode must be route or shadow")
+    origins = r.get("allow_origins", [])
+    if not isinstance(origins, list) or not all(_origin_ok(o) for o in origins):
+        raise ValueError("router.allow_origins must list exact https origins")
 
 
 def validate(c):
@@ -153,9 +344,13 @@ def validate(c):
         "schema_version",
         "review_policy",
         "profiles",
+        "router",
     }:
         raise ValueError("unknown configuration field")
-    if type(c.get("schema_version")) is not int or c.get("schema_version") != 1:
+    if type(c.get("schema_version")) is not int or c.get("schema_version") not in {
+        1,
+        2,
+    }:
         raise ValueError("unsupported config schema_version")
     if c.get("review_policy") not in {"optional", "required", "cross-family"}:
         raise ValueError("invalid review_policy")
@@ -164,19 +359,25 @@ def validate(c):
     for key, p in c["profiles"].items():
         if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_.-]*", key):
             raise ValueError("invalid profile id")
-        if not isinstance(p, dict) or set(p) - {
-            "adapter",
-            "model",
-            "family",
-            "roles",
-            "parameters",
-            "base_url",
-            "credential_env",
-            "aliases",
-        }:
+        if (
+            not isinstance(p, dict)
+            or set(p)
+            - {
+                "adapter",
+                "model",
+                "family",
+                "roles",
+                "parameters",
+                "base_url",
+                "credential_env",
+                "aliases",
+            }
+            - PROFILE_ROUTING_FIELDS
+        ):
             raise ValueError(
                 "unknown profile field (credentials and capability overrides are forbidden)"
             )
+        validate_routing_fields(p)
         if p.get("adapter") not in ADAPTERS:
             raise ValueError("unsupported adapter")
         if (
@@ -223,23 +424,11 @@ def validate(c):
         ):
             raise ValueError("invalid credential variable name")
         if p["adapter"] == "openai-compatible":
-            url = urlsplit(p.get("base_url", ""))
-            if url.port is not None and not 1 <= url.port <= 65535:
-                raise ValueError("invalid endpoint port")
-            if (
-                not url.hostname
-                or url.username
-                or url.password
-                or url.query
-                or url.fragment
-                or any(ord(ch) < 33 for ch in p.get("base_url", ""))
-            ):
-                raise ValueError("invalid base_url; inline credentials forbidden")
-            if url.scheme != "https" and not (
-                url.scheme == "http"
-                and url.hostname in {"localhost", "127.0.0.1", "::1"}
-            ):
-                raise ValueError("remote endpoints require HTTPS")
+            if not _endpoint_ok(p.get("base_url", "")):
+                raise ValueError(
+                    "invalid base_url: HTTPS, or HTTP on loopback; "
+                    "inline credentials forbidden"
+                )
         elif "base_url" in p:
             raise ValueError("base_url requires openai-compatible")
         if "credential_env" in p and p["adapter"] not in {
@@ -248,7 +437,26 @@ def validate(c):
             "token-plan-openai",
         }:
             raise ValueError("this adapter uses native credential storage")
+    validate_router(c)
     return c
+
+
+def kit_version():
+    """The installed marker when running from an install root, else the checkout."""
+    for name in ("installed-version.json", "package.json"):
+        try:
+            return json.loads((ROOT / name).read_text())["version"]
+        except (OSError, ValueError, KeyError, TypeError):
+            continue
+    return "unknown"
+
+
+def data_home():
+    return Path(
+        os.environ.get(
+            "DELEGATION_DATA_HOME", str(Path.home() / ".local/share/delegation-kit")
+        )
+    )
 
 
 def load():
@@ -295,28 +503,13 @@ def initialize(strict=False):
             "file": str(path),
             "review_policy": load()["review_policy"],
         }
-    data = Path(
-        os.environ.get(
-            "DELEGATION_DATA_HOME", str(Path.home() / ".local/share/delegation-kit")
-        )
-    )
-    source = data / "config/routing-gates.json"
-    backup = None
-    if source.exists():
-        backup = path.parent / "migration-v1-backup"
-        backup.parent.mkdir(parents=True, exist_ok=True)
-        if not backup.exists():
-            shutil.copytree(data / "config", backup)
-            backup.chmod(0o700)
-        source = backup / "routing-gates.json"
-    c = validate(preset(strict, source if source.exists() else None))
+    c = validate(preset(strict))
     atomic(path, c)
     return {
         "preserved": False,
         "file": str(path),
-        "backup": str(backup) if backup else None,
         "review_policy": c["review_policy"],
-        "summary": "Review is optional by default; evidence no longer blocks execution. Existing technical restrictions remain.",
+        "summary": "Review is optional by default. Existing technical restrictions remain.",
     }
 
 
