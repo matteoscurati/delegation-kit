@@ -14,8 +14,8 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  lint:
-    name: shellcheck and ruff
+  shellcheck:
+    name: shellcheck
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -30,7 +30,14 @@ jobs:
       # only informational findings and is deliberately not a gate.
       - name: shellcheck
         run: tr '\n' '\0' <shfiles.txt | xargs -0 shellcheck -S warning
-      # The Python commands and suites: the same ruff the release gate runs.
+
+  # The Python commands and suites: the same ruff the release gate runs.
+  ruff:
+    name: ruff
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
       - name: ruff
         run: |
           pip install --quiet ruff==0.13.0
