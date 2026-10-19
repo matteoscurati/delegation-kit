@@ -17,7 +17,7 @@ retries, falls back or widens the pool.
 ## Commands
 
 ```sh
-delegation-router check [--json]                        # the decider and the pool, resolved; no network
+delegation-router check [--json]                        # the decider and the pool, resolved, and what this machine can reach; no model call
 delegation-router decide --prompt-file F [--lane ROLE] [--raw] [--json] # one recommendation; never dispatches it
 delegation-router serve [--listen 127.0.0.1:4141]       # OpenAI-compatible endpoint on loopback
 delegation-router catalog show|refresh [--shipped]      # where the tiers come from; refresh them
@@ -90,7 +90,14 @@ only be the default; a profile with no price is ranked last within its tier.
 
 1. **Features**, deterministic: estimated tokens, turns, tools, images,
    `max_tokens`, JSON output requested, arithmetic-looking numbers.
-2. **Prefilter**, deterministic. A pool profile is blocked when it declares
+2. **Prefilter**, deterministic. A pool profile this machine cannot
+   dispatch is set aside first — an HTTP profile without its key (the named
+   variable or the kit's key file), a native profile whose runner's `check
+   --json` selects no backend, `codex` or `claude` missing from PATH — and
+   listed under `blocked` as `unreachable: <why>`; `serve` checks once when it
+   starts, `decide` and `check` every time, with no model call (a login that
+   lapses later still fails at dispatch, with its own error). Then a profile
+   is blocked when it declares
    no tier (unless it is the default), its context is too small for the
    request, its estimated cost is above the ceiling, or the request wants
    JSON output and the profile is declared without JSON mode; a native
@@ -98,7 +105,7 @@ only be the default; a profile with no price is ranked last within its tier.
    The decider is skipped when no profile other than the default is
    eligible, or when a decision could change nothing — the default is
    already the cheapest eligible profile and no eligible profile sits on a
-   higher tier.
+   higher score.
 3. **Decider**. It sees an excerpt — the head of the system prompt and the
    last user turn, trimmed, never images — and answers one question: how
    much capability does this need (0 trivial … 4 frontier), and does it

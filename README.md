@@ -126,9 +126,14 @@ the error codes and the evaluation harness.
   and, first in its router section, which decider rates for which pool;
   `--ping` runs a live round-trip.
 
-## Current release: 0.28.0
+## Current release: 0.29.0
 
-Version 0.28.0 changes how the router chooses. The rating becomes a minimum
+Version 0.29.0 sets aside the models this machine cannot reach: a pool
+profile without its key, a CLI that is not installed or not logged in is
+left out before the decision and named in the response, instead of being
+chosen and failing. `check` and `doctor` list them.
+
+Version 0.28.0 changed how the router chooses. The rating becomes a minimum
 score on the Artificial Analysis index, and the cheapest of your models that
 reaches it answers, whatever its tier (`floor-v1`); before, the cheapest on
 the rated tier answered, so a pricier small model beat a cheaper, stronger

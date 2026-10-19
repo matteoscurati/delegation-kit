@@ -15,9 +15,11 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent / "lib"))
 from delegation_config import ROUTER_DECIDERS, load, validate_listen  # noqa: E402
+from delegation_credentials import reachability  # noqa: E402
 from delegation_router_pipeline import (  # noqa: E402
     check,
     decider_line,
+    reach_keys,
     route,
     router_block,
 )
@@ -67,7 +69,9 @@ def main():
             return catalog_command(a)
         c = load()
         if a.command == "check":
-            result = check(c)
+            result = check(
+                c, reachability(c, reach_keys(c)) if c.get("router") else None
+            )
             if a.json:
                 print(json.dumps(result, indent=2))
             elif not result["enabled"]:
@@ -152,7 +156,13 @@ def main():
         text = Path(a.prompt_file).read_text()
         body = {"messages": [{"role": "user", "content": text}]}
         out, _choice, _feats, _blocked = route(
-            c, body, decider_kind=a.decider, input_mode=a.input, raw=a.raw, lane=a.lane
+            c,
+            body,
+            decider_kind=a.decider,
+            input_mode=a.input,
+            raw=a.raw,
+            lane=a.lane,
+            reach=reachability(c, router_block(c)["pool"]),
         )
         if a.json:
             print(json.dumps(out, indent=2))
