@@ -34,6 +34,20 @@ model, so the receipt records `requested_model: claude-opus-5-5` with
 which model a `claude-code` profile ran. The README's routing example was
 checked against `choose()` with the shipped presets.
 
+0.28.0 was checked on **2026-10-19**: the 13 suites (the router suite at 70
+tests, with the `floor-v1` table, a cheaper stronger model beating a pricier
+weaker one, measured scores splitting a band, half points moving the
+minimum, `decide --lane`), ShellCheck, ruff, the eleven Node tests and the
+version gate pass; a reinstall and static doctor report `54 OK, 2 WARN,
+0 FAIL`, the two warnings being the configured pool's native profiles
+(`luna-clerk`, `opus-reviewer`: no tools, images or JSON mode). Live, four
+`decide --raw` calls to the DeepSeek Flash decider, no pool profile
+dispatched: a rename rated 0 (`code`), a contract summary 1, a Go
+worker-pool deadlock 2.5 (`code`) and a four-colour proof 3.5 (`math`,
+`rare`), each in 0.8–1.1 s for about $0.00014; the half points were read as
+given and set minimums of 0, 0, 43.6 and 49.6. Every example route in the
+README was checked against `choose()` with the shipped presets.
+
 **Offline.** All 13 regression suites green in 46 seconds here and about
 80 seconds on the macOS CI runner (where every `HTTPServer` bind had
 stalled on a reverse-DNS lookup until the router and the test fakes stopped
