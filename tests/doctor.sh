@@ -82,8 +82,8 @@ if env PATH="$TEST_TOOLS:$PATH" CLAUDE_HOME="$TMP/claude" CODEX_HOME="$TMP/codex
 else
   :
 fi
-grep -Fq '[ OK ] opus-builder pinned to claude-opus-5/max' "$TMP/plugin-doctor.log"
-grep -Fq '[ OK ] opus-reviewer pinned to claude-opus-5/max and configured review policy' "$TMP/plugin-doctor.log"
+grep -Fq '[ OK ] opus-builder pinned to claude-opus-5-5/max' "$TMP/plugin-doctor.log"
+grep -Fq '[ OK ] opus-reviewer pinned to claude-opus-5-5/max and configured review policy' "$TMP/plugin-doctor.log"
 grep -Fq '[ OK ] fable-judge pinned to claude-fable-5-1/max and read-only judgement' "$TMP/plugin-doctor.log"
 grep -Fq '[ OK ] sonnet-reviewer pinned to sonnet/medium, tool-read-only, and configured review policy' "$TMP/plugin-doctor.log"
 grep -Fq '== Route discovery ==' "$TMP/plugin-doctor.log" || {

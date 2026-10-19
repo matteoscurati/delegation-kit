@@ -1,17 +1,18 @@
 # Model router
 
-You choose a decision model — one of your cheap profiles, Levanto Sage,
-TypeSafe Jev, your own Dipylon, a local classifier — and `delegation-router`
-lets it govern the models you already pay for. For each request the decider
-judges how much capability the task needs; the request goes to the cheapest
-profile in your pool that clears that bar, with that profile's own
+You choose a decider — one of your cheap profiles, Levanto Sage, TypeSafe
+Jev, your own Dipylon, a local classifier — and `delegation-router` uses it
+to pick, per request, which of your models answers. The decider rates how
+much capability the task needs; the request goes to the cheapest profile in
+your pool on the tier that rating allows, with that profile's own
 credential; the response names the model and the reasons. It runs on your
-machine and listens on loopback only. Nothing leaves your machine except the
-request to the model you chose.
+machine and listens on loopback only. For each request the decider gets an
+excerpt (the whole request with `input: full`) unless it runs on your
+machine, and the chosen profile gets the request.
 
-Your models. Your call. Your rules: you name the decider, the pool and the
-default; the router selects only inside that pool, discloses the chosen
-model in every response, and never retries, falls back or widens the pool.
+You name the decider, the pool and the default; the router selects only
+inside that pool, discloses the chosen model in every response, and never
+retries, falls back or widens the pool.
 
 ## Commands
 
@@ -19,7 +20,7 @@ model in every response, and never retries, falls back or widens the pool.
 delegation-router check [--json]                        # the decider and the pool, resolved; no network
 delegation-router decide --prompt-file F [--raw] [--json] # one recommendation; never dispatches it
 delegation-router serve [--listen 127.0.0.1:4141]       # OpenAI-compatible endpoint on loopback
-delegation-router catalog show|refresh [--shipped]      # where the ladder comes from; refresh it
+delegation-router catalog show|refresh [--shipped]      # where the tiers come from; refresh them
 delegation-router eval --items F [--decider K] [--output DIR]  # measure a decider offline
 ```
 
@@ -34,7 +35,7 @@ user directing the router to choose inside the pool.
 ## Configuration
 
 A `router` block in the personal configuration: the decider first, then the
-profiles it governs. Without the block the router is off and `check` says
+profiles it may pick from. Without the block the router is off and `check` says
 so.
 
 ```json
@@ -59,11 +60,11 @@ so.
 
 | field | meaning |
 |---|---|
-| `decider` | **required** — the decision model. `kind`: `llm`, `sage`, `jev`, `dipylon`, `classifier` or `none`. For `llm`, `profile` is an HTTP profile called with its own key (default: the pool default). For a service, `url` (HTTPS, or loopback HTTP; required for `dipylon` and `classifier`), `credential_env`, `model` (Jev) and `price` (`{in, out}` per million tokens) override the defaults under *Deciders*. `input`: `excerpt` (default) or `full`. `timeout`: seconds 1–600 |
+| `decider` | **required** — the model or service that rates each request. `kind`: `llm`, `sage`, `jev`, `dipylon`, `classifier` or `none`. For `llm`, `profile` is an HTTP profile called with its own key (default: the pool default). For a service, `url` (HTTPS, or loopback HTTP; required for `dipylon` and `classifier`), `credential_env`, `model` (Jev) and `price` (`{in, out}` per million tokens) override the defaults under *Deciders*. `input`: `excerpt` (default) or `full`. `timeout`: seconds 1–600 |
 | `pool` | profile ids the router may choose from, on any adapter: HTTP profiles (`openai-compatible`, `deepseek-api`, `token-plan-openai`) are called directly, native profiles (`codex`, `claude-code`, `claude-zai`, `kimi-code-cli`, `grok-build-cli`, `agy`) through `delegation-run` |
 | `default` | the pool profile used when the decision is undecidable |
 | `listen` | loopback `host:port` only (`127.0.0.1`, `localhost`, `[::1]`); default `127.0.0.1:4141` |
-| `max_cost_usd` | ceiling on the estimated cost of one request: every profile whose estimate is above it is set aside (listed under `blocked`); if that leaves nothing on the needed rung or above, the default answers and says so; if the profile the request lands on is over the ceiling too, the request is refused with the estimate and the ceiling |
+| `max_cost_usd` | ceiling on the estimated cost of one request: every profile whose estimate is above it is set aside (listed under `blocked`); if that leaves nothing on the needed tier or above, the default answers and says so; if the profile the request lands on is over the ceiling too, the request is refused with the estimate and the ceiling |
 | `receipts` | one JSONL line per request in `$DELEGATION_DATA_HOME/router/receipts.jsonl` (mode 600) — decision, profile, usage, cost, latency, never prompt content. Kept by `uninstall.sh` and restored by `install.sh`, like the key files |
 | `allow_origins` | exact browser origins allowed to call the server (`https://app.example`, `http://localhost:5173`); empty by default. A listed origin gets the CORS preflight and the `X-Router-*` headers exposed; any other `Origin` is refused |
 | `mode` | `route` (default) or `shadow`: decide and disclose, but dispatch the default |
@@ -72,22 +73,22 @@ Profiles may declare their own routing metadata — `tier` (`small`, `mid`,
 `frontier`), `code`, `price` (`{"in", "out"}` USD per million tokens),
 `context` (tokens), `json_mode` — and the declaration wins. Anything not
 declared comes from the catalog (below); `check` reports the source of each
-profile's rung (`tier_source`). A profile with no tier from either source can
-only be the default; a profile with no price is ranked last within its rung.
+profile's tier (`tier_source`). A profile with no tier from either source can
+only be the default; a profile with no price is ranked last within its tier.
 
 ## How a request is routed
 
 1. **Features**, deterministic: estimated tokens, turns, tools, images,
    `max_tokens`, JSON output requested, arithmetic-looking numbers.
 2. **Prefilter**, deterministic. A pool profile is blocked when it declares
-   no rung (unless it is the default), its context is too small for the
+   no tier (unless it is the default), its context is too small for the
    request, its estimated cost is above the ceiling, or the request wants
    JSON output and the profile is declared without JSON mode; a native
    profile is blocked when the request carries tools, images or JSON mode.
    The decider is skipped when no profile other than the default is
    eligible, or when a decision could change nothing — the default is
    already the cheapest eligible profile and no eligible profile sits on a
-   higher rung.
+   higher tier.
 3. **Decider**. It sees an excerpt — the head of the system prompt and the
    last user turn, trimmed, never images — and answers one question: how
    much capability does this need (0 trivial … 4 frontier), and does it
@@ -101,13 +102,13 @@ only be the default; a profile with no price is ranked last within its rung.
    default. Difficulty ≥ 3, `long`, or "needs a strong model" ≥ 0.7 →
    `frontier`; difficulty < 1.5 without `math`, `rare` or `tools` → `small`;
    otherwise `mid`. `math`, `rare` and `tools` lift the floor to `mid`;
-   `code` never raises the rung, it narrows the choice to code-capable
-   profiles. Inside the rung the cheapest eligible profile wins
+   `code` never raises the tier, it narrows the choice to code-capable
+   profiles. Inside the tier the cheapest eligible profile wins
    (`price.in × est_tokens + price.out × max_tokens`, 1024 when unset). An
-   empty rung escalates, never descends; an empty frontier falls to the
+   empty tier escalates, never descends; an empty frontier falls to the
    default. Reasoning effort is `high` for difficulty ≥ 3.6 (a floor: a
    profile declared `xhigh` or `max` keeps it) and `low` for an easy request
-   on the small rung, only on the adapters that take a per-request setting
+   on the small tier, only on the adapters that take a per-request setting
    (`deepseek-api`, `token-plan-openai`).
 5. **Forward**: one request to the chosen profile's endpoint with that
    profile's key — never a key or a header from the caller. The `router`
@@ -122,38 +123,38 @@ only be the default; a profile with no price is ranked last within its rung.
 
 The rule is Sage's: *the cheapest model that will get it right*. The decider
 judges the task, never a model; your configuration judges the models. With
-Opus 5.5 and GPT-6 Astra both on the `frontier` rung, a hard request goes to
+Opus 5.5 and GPT-6 Astra both on the `frontier` tier, a hard request goes to
 Opus while Opus is eligible, because Opus is the cheaper frontier model;
 Astra answers when Opus is blocked (context, ceiling, JSON mode) or when you
-put Astra alone on the top rung. The levers are yours — `tier` and `price`
+put Astra alone on the top tier. The levers are yours — `tier` and `price`
 per profile, the pool, the default, the ceiling — and every decision carries
-its `reasons`, including the candidates of the chosen rung with their
+its `reasons`, including the candidates of the chosen tier with their
 estimated cost, so `decide --json` and the `router` object answer the
 question per request. `decide --raw` adds the decider's own answer under
 `decider.raw`; a served response never carries it.
 
 Three deliberate departures from the Sage recipe: the recipe names one
-model per rung, the kit ranks the rung by price so a pool can hold several;
+model per tier, the kit ranks the tier by price so a pool can hold several;
 the kit adds the confidence floor; and `math`, `rare` and `tools` lift an
 easy request to `mid`, where the recipe only sends `code` to a code model and
 `long` to the frontier.
 
-## Where the rungs come from
+## Where the tiers come from
 
 A third party places the models. [Artificial Analysis](https://artificialanalysis.ai/)
 publishes an Intelligence Index (0–100, a composite of public evaluations)
 with coding and math sub-indexes and list prices for a few hundred models
-and their reasoning settings. The kit turns the index into the three rungs
+and their reasoning settings. The kit turns the index into the three tiers
 with one published rule, `index-bands-v1`: **frontier** within 8 points of
 the best model of the day, **mid** within 20, **small** below. The bands are
 a choice, recorded in the catalog with the date; `delegation-router catalog
-show` prints the rule, the board's best, and every model's rung with its
+show` prints the rule, the board's best, and every model's tier with its
 source. Every row carries its evidence — measured name, index per reasoning
 setting, date — or `null` when the board does not list the model and it was
 placed by hand. A profile that declares `effort` is placed at the index of
 that setting when it was measured.
 
-Two ways to a current ladder, neither automatic:
+Two ways to current tiers, neither automatic:
 
 - **The shipped catalog**, `config/catalog.json`, refreshed from the API
   before each release.
@@ -205,7 +206,7 @@ from `price`; the per-decision cost is disclosed.
 | kind | service | default `url` | default `credential_env` | asks |
 |---|---|---|---|---|
 | `llm` | one of your HTTP profiles | — | the profile's | one chat completion at `temperature 0` with [`config/router-prompt.v1.md`](../config/router-prompt.v1.md), the excerpt in a `DATA` block, one JSON object back (`difficulty`, `tags`, `reason`) in at most 120 tokens; DeepSeek with thinking disabled, Qwen at `minimal` effort. A cheap, fast profile is the one to pick |
-| `sage` | Levanto Sage, `POST /decide/batch` | `https://sage.levanto.ai` | `SAGE_API_KEY` | a `scale` 0–4 and a `tags` question in one batch. The policy's confidence is the mass of the distribution in the rung's band; Sage's own `confidence` is disclosed beside it; a `null` answer is undecidable. Its fanout mode bills output tokens on long excerpts even with reasoning off, so watch the disclosed cost |
+| `sage` | Levanto Sage, `POST /decide/batch` | `https://sage.levanto.ai` | `SAGE_API_KEY` | a `scale` 0–4 and a `tags` question in one batch. The policy's confidence is the mass of the distribution in the tier's band; Sage's own `confidence` is disclosed beside it; a `null` answer is undecidable. Its fanout mode bills output tokens on long excerpts even with reasoning off, so watch the disclosed cost |
 | `jev` | TypeSafe Jev, System One API | `https://api.typesafe.ai/v1/systemone` | `TYPESAFE_API_KEY` | a 5-level `score`, a `noul` for "needs a frontier model", `noul`s for code and rare; `model` default `jev-latest`. Jev is weak on numbers, so a request with arithmetic-looking numbers is never routed below `mid` |
 | `dipylon` | your own Dipylon, `POST /decide` | required | none | one `yesno`, "does this need a strong model?"; `probability` is P(yes); a selective-use verdict other than `retain` halves the confidence; a 503 is undecidable |
 | `classifier` | any local classifier behind `POST {"text"}` | required | none | reads `difficulty` (0..1) or NVIDIA's `prompt_complexity_score`, `p_needs_strong`, `tags`, `confidence`, and `task_type_1` naming code |
@@ -303,7 +304,7 @@ The golden set lives outside the repository. Each JSONL line is one item:
 The harness never dispatches a pool profile: it asks the decider once per
 prompt and paraphrase and looks the chosen profile up. It reports accuracy,
 cost (outcomes plus decisions), optimal-selection ratio, robustness (same
-rung on prompt and paraphrases), undecidable rate, decision latency p50/p95,
+tier on prompt and paraphrases), undecidable rate, decision latency p50/p95,
 the same for the rules-only baseline, and a deferral curve (the frontier cut
 swept 0.1–0.9 without new decider calls). `gate.json` says whether the
 decider clears an advisory bar — accuracy ≥ baseline − 2 pp, cost ≤ 0.8×
