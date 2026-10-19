@@ -21,17 +21,20 @@ configuration judges the models.
 1. **The request is measured**, not judged: tokens, turns, tools, images,
    JSON output.
 2. **The decider answers one typed question**: how much capability does
-   answering this correctly need (0 trivial … 4 frontier), and does it
-   involve code, math or rare knowledge. It sees an excerpt, never your keys,
-   never your model names; text inside the request cannot steer it.
-3. **The answer sets the lowest tier** the request may use: `small`, `mid`
-   or `frontier`. Every profile in the pool sits on one (`tier`, from your
-   declaration or the shipped catalog). `code` keeps only code-capable
-   profiles, on that tier or above; `math`, `rare` and `tools` lift an easy request to `mid`; a very
-   long request goes to the top.
-4. **Inside the tier the cheapest eligible profile wins**, priced for this
-   request. An empty tier escalates, never descends. Doubt — low confidence,
-   a decider error, a timeout — lands on your default, and says so.
+   answering this correctly need (0 trivial … 4 frontier, half points
+   allowed), and does it involve code, math or rare knowledge. It sees an
+   excerpt, never your keys, never your model names; text inside the request
+   cannot steer it.
+3. **The rating becomes a minimum score** on the same public index that
+   places the models: up to 1, none; at 2, the bottom of the mid band
+   (37.6 today); from 3, the bottom of the frontier band (49.6); in between,
+   in proportion (2.5 → 43.6). `math`, `rare` and `tools` raise it to the
+   mid band, a very long request to the frontier band; `code` keeps only
+   code-capable profiles.
+4. **The cheapest profile that reaches it wins**, whatever its tier, priced
+   for this request. When none does, the strongest eligible one answers and
+   the response says so. Doubt — low confidence, a decider error, a timeout —
+   lands on your default, and says so.
 5. **Every response discloses the choice**: `X-Router-*` headers and a
    `router` object with the signals, the reasons, the candidates with their
    estimated cost, usage and what the provider reported.
@@ -41,17 +44,17 @@ With three models from the default install — GPT-5.6 Luna as `luna-clerk`
 (`mid`: 39.5) and Claude Opus 5.5 as `opus-reviewer` (`frontier`: 57.6, the
 best model on the board):
 
-| request | the decider says | lowest tier | answered by | because |
+| request | the decider says | minimum | answered by | because |
 |---|---|---|---|---|
-| rename `foo` to `bar` | difficulty 1, `code` | small | GPT-5.6 Luna | `code` keeps the code-capable models at `small` or above; Luna is the cheapest |
-| summarise this contract | difficulty 2 | mid | DeepSeek Flash | the mid tier is enough, so only mid models are considered |
-| what is 17 % of 2,340 € | difficulty 1, `math` | mid | DeepSeek Flash | `math` lifts an easy request to `mid` |
-| find the race condition in this scheduler | difficulty 3, `code` | frontier | Claude Opus 5.5 | from 3 up only the top tier |
+| rename `foo` to `bar` | 1, `code` | none | GPT-5.6 Luna | every model reaches it; Luna is the cheapest |
+| summarise this contract | 2 | 37.6 | DeepSeek Flash | 39.5 reaches it, Luna's 37.3 does not; cheaper than Opus |
+| what is 17 % of 2,340 € | 1, `math` | 37.6 | DeepSeek Flash | `math` raises an easy request to the mid band |
+| why this Go worker pool deadlocks | 2.5, `code` | 43.6 | Claude Opus 5.5 | DeepSeek's 39.5 falls short; Opus is the only one above |
+| find the race condition in this scheduler | 3, `code` | 49.6 | Claude Opus 5.5 | from 3 up only the frontier band |
 
-Take Luna out of the pool and the rename goes to DeepSeek Flash, the
-cheapest code-capable model at `small` or above, and an easy request
-without `code` climbs from the empty small tier to `mid`. Nothing sits above
-Opus, so a 4 still goes to Opus.
+Add GLM 5.3 Flash (41.8, $0.15/$0.50 per million) and the first three go to
+GLM: it reaches both minimums and costs less than Luna and DeepSeek. Add
+Kimi K3 (43.6) as well and the 2.5 request goes to Kimi instead of Opus.
 
 Where the tiers come from: a third party, not the kit. The shipped catalog
 places every model it knows from the Artificial Analysis Intelligence Index
@@ -123,9 +126,17 @@ the error codes and the evaluation harness.
   and, first in its router section, which decider rates for which pool;
   `--ping` runs a live round-trip.
 
-## Current release: 0.27.2
+## Current release: 0.28.0
 
-Version 0.27.2 moves the shipped Opus profiles and Claude Code agents to
+Version 0.28.0 changes how the router chooses. The rating becomes a minimum
+score on the Artificial Analysis index, and the cheapest of your models that
+reaches it answers, whatever its tier (`floor-v1`); before, the cheapest on
+the rated tier answered, so a pricier small model beat a cheaper, stronger
+mid one. The LLM decider rates in half points, and `decide --lane ROLE`
+recommends only profiles that take the role of a task you are about to
+delegate.
+
+Version 0.27.2 moved the shipped Opus profiles and Claude Code agents to
 Claude Opus 5.5, rewrites the README and router page in the words the
 responses use (tier, decider), corrects what they said leaves your machine
 and the routing example, and has the installer warn when its bin directory

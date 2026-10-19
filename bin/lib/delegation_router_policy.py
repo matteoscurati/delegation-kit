@@ -1,5 +1,5 @@
 """The router's policy: request features, the deterministic pre-filter,
-signal normalization, `tiered-v1` and the disclosure. Everything here is
+signal normalization, `floor-v1` and the disclosure. Everything here is
 pure; the network lives in the deciders, the bridge and the server."""
 
 import json
@@ -7,13 +7,13 @@ import math
 import re
 
 from delegation_config import ADAPTERS, EFFORT_ORDER, ROUTER_HTTP_ADAPTERS
-from delegation_catalog import catalog, profile_meta
+from delegation_catalog import bar as catalog_bar, catalog, profile_meta
 
 
-POLICY_ID = "tiered-v1"
+POLICY_ID = "floor-v1"
 
 
-POLICY_VERSION = "2026-10-13"
+POLICY_VERSION = "2026-10-19"
 
 
 ROUTER_VERSION = "1"
@@ -41,18 +41,23 @@ DEFAULT_OUTPUT_TOKENS = 1024
 DECISION_TOKENS = 450
 
 
-TIER_RANK = {"small": 0, "mid": 1, "frontier": 2}
-
-
 CONFIDENCE_FLOOR = 0.55
 
 
 TAG_THRESHOLD = 0.6
-# The policy's cut points on the 0..1 difficulty scale and on p_needs_strong.
-# The evaluation harness sweeps them; serve uses these.
+# Where the minimum score bends, on the 0..1 difficulty scale (a 0–4 rating
+# divided by 4): up to `free` (1 of 4) no minimum; at `mid` (2 of 4) the
+# bottom of the mid band; from `frontier` (3 of 4) the bottom of the frontier
+# band; in between, in proportion. A yes/no "needs a strong model" maps to
+# the frontier from `p_strong`, to mid from `p_weak`, to no minimum below.
+# The evaluation harness sweeps `frontier`; serve uses these.
 
 
-CUTS = {"frontier": 0.75, "small": 0.375, "p_strong": 0.7}
+CUTS = {"free": 0.25, "mid": 0.5, "frontier": 0.75, "p_strong": 0.7, "p_weak": 0.3}
+
+
+# The bands of a catalog without a tiering block: tiers only, as ranks.
+RANK_BAR = {"mid": 1.0, "frontier": 2.0}
 
 
 EXCERPT_LIMIT = 4000
@@ -242,8 +247,10 @@ def skip_reason(eligible, default_meta, decider_meta, feats):
         return "no eligible profile"
     if len(eligible) == 1 and eligible[0]["profile"] == default_meta["profile"]:
         return "one eligible profile"
-    default_rank = TIER_RANK.get(default_meta.get("tier"), -1)
-    if any(TIER_RANK.get(m.get("tier"), -1) > default_rank for m in eligible):
+    bar = current_bar()
+    default_score = score_of(default_meta, bar)
+    default_score = -1.0 if default_score is None else default_score
+    if any((score_of(m, bar) or -1.0) > default_score for m in eligible):
         return None
     out_tokens = feats["max_tokens"] or DEFAULT_OUTPUT_TOKENS
     cheapest = min(
@@ -318,25 +325,58 @@ def pretags(feats):
     }
 
 
-def _needed_tier(verdict, cuts=CUTS):
-    """The weakest tier the verdict allows. `code` never raises the tier: it
+def current_bar():
+    """The mid and frontier scores of the catalog in effect."""
+    return catalog_bar(catalog().get("tiering")) or RANK_BAR
+
+
+def score_of(meta, bar):
+    """A profile's score: measured, else the bottom of its tier's band."""
+    if meta.get("score") is not None:
+        return meta["score"]
+    return {"small": 0.0, "mid": bar["mid"], "frontier": bar["frontier"]}.get(
+        meta.get("tier")
+    )
+
+
+def _between(d, low, high, at_low, at_high):
+    if high <= low:
+        return at_high
+    return at_low + (d - low) / (high - low) * (at_high - at_low)
+
+
+def minimum_score(verdict, bar, cuts=CUTS):
+    """The weakest score the verdict allows. `code` never raises it: it
     narrows the candidates to code-capable profiles instead. math, rare and
-    tools raise an easy request to mid; long always needs the frontier."""
+    tools raise it to the mid band; long to the frontier band."""
     d = verdict["difficulty"]
     p = verdict["p_needs_strong"]
     tags = verdict["tags"]
-    raising = max(tags[t] for t in ("math", "rare", "tools"))
-    if (
-        (d is not None and d >= cuts["frontier"])
-        or (p is not None and p >= cuts["p_strong"])
-        or tags["long"] >= TAG_THRESHOLD
-    ):
-        return "frontier"
-    if d is not None and d < cuts["small"] and raising < TAG_THRESHOLD:
-        return "small"
-    if d is None and p is not None and p < 0.3 and raising < TAG_THRESHOLD:
-        return "small"
-    return "mid"
+    floors = []
+    if d is not None:
+        if d >= cuts["frontier"]:
+            floors.append(bar["frontier"])
+        elif d >= cuts["mid"]:
+            floors.append(
+                _between(d, cuts["mid"], cuts["frontier"], bar["mid"], bar["frontier"])
+            )
+        elif d > cuts["free"]:
+            floors.append(_between(d, cuts["free"], cuts["mid"], 0.0, bar["mid"]))
+        else:
+            floors.append(0.0)
+    if p is not None:
+        if p >= cuts["p_strong"]:
+            floors.append(bar["frontier"])
+        elif p >= cuts["p_weak"]:
+            floors.append(bar["mid"])
+        else:
+            floors.append(0.0)
+    need = max(floors) if floors else 0.0
+    if max(tags[t] for t in ("math", "rare", "tools")) >= TAG_THRESHOLD:
+        need = max(need, bar["mid"])
+    if tags["long"] >= TAG_THRESHOLD:
+        need = max(need, bar["frontier"])
+    return round(need, 1)
 
 
 def _effort(verdict, chosen):
@@ -367,8 +407,11 @@ def _cheapest(candidates, feats):
     return sorted(candidates, key=lambda m: rank_cost(m, feats))[0]
 
 
-def choose(verdict, eligible, default_meta, feats, cuts=CUTS):
-    """tiered-v1: the policy that turns a verdict into one profile. Pure."""
+def choose(verdict, eligible, default_meta, feats, cuts=CUTS, bar=None):
+    """floor-v1: the policy that turns a verdict into one profile — the
+    cheapest eligible profile whose score reaches the request's minimum. Pure
+    but for reading the catalog's bands when `bar` is not given."""
+    bar = bar or current_bar()
     reasons = []
 
     def default(reason):
@@ -378,6 +421,8 @@ def choose(verdict, eligible, default_meta, feats, cuts=CUTS):
             "model": default_meta["model"],
             "tier": default_meta.get("tier"),
             "tier_source": default_meta.get("tier_source"),
+            "score": score_of(default_meta, bar),
+            "minimum_score": None,
             "reasoning_effort": None,
             "reasons": reasons,
             "undecidable": True,
@@ -391,7 +436,7 @@ def choose(verdict, eligible, default_meta, feats, cuts=CUTS):
             % (verdict["confidence"], CONFIDENCE_FLOOR)
         )
     tags = verdict["tags"]
-    needed = _needed_tier(verdict, cuts)
+    need = minimum_score(verdict, bar, cuts)
     if verdict["difficulty"] is not None:
         reasons.append("difficulty %.2f" % verdict["difficulty"])
     if verdict["p_needs_strong"] is not None:
@@ -399,32 +444,49 @@ def choose(verdict, eligible, default_meta, feats, cuts=CUTS):
     for t in TAGS:
         if tags[t] >= TAG_THRESHOLD:
             reasons.append("tag %s %.2f" % (t, tags[t]))
+    reasons.append(
+        "minimum score %.1f (mid from %.1f, frontier from %.1f)"
+        % (need, bar["mid"], bar["frontier"])
+    )
+    if not eligible:
+        return default("no eligible profile → default")
+
+    def clears(m):
+        score = score_of(m, bar)
+        return score is not None and score >= need
+
     candidates = []
     if tags["code"] >= TAG_THRESHOLD:
-        candidates = [
-            m
-            for m in eligible
-            if m.get("code")
-            and m.get("tier")
-            and TIER_RANK[m["tier"]] >= TIER_RANK[needed]
-        ]
+        candidates = [m for m in eligible if m.get("code") and clears(m)]
         if candidates:
-            reasons.append("code → cheapest code-capable profile at tier ≥ %s" % needed)
-    tier = needed
-    while not candidates and tier is not None:
-        candidates = [m for m in eligible if m.get("tier") == tier]
-        if candidates:
-            reasons.append("tier %s → cheapest eligible" % tier)
-        else:
-            tier = {"small": "mid", "mid": "frontier", "frontier": None}[tier]
-            if tier:
-                reasons.append("tier empty → escalate to %s" % tier)
+            reasons.append("code → cheapest code-capable profile scoring ≥ %.1f" % need)
     if not candidates:
-        return default("no eligible profile at or above the needed tier → default")
-    chosen = _cheapest(candidates, feats)
+        candidates = [m for m in eligible if clears(m)]
+        if candidates:
+            reasons.append("cheapest profile scoring ≥ %.1f" % need)
+    if candidates:
+        chosen = _cheapest(candidates, feats)
+    else:
+        scored = [m for m in eligible if score_of(m, bar) is not None]
+        if not scored:
+            return default("no eligible profile has a score → default")
+        coders = [m for m in scored if m.get("code")]
+        if tags["code"] >= TAG_THRESHOLD and coders:
+            scored = coders
+        chosen = max(scored, key=lambda m: (score_of(m, bar), -rank_cost(m, feats)))
+        candidates = [chosen]
+        reasons.append(
+            "no profile reaches %.1f → the strongest eligible: %s"
+            % (need, chosen["profile"])
+        )
     reasons.append(
-        "%s is %s (%s)"
-        % (chosen["profile"], chosen.get("tier"), chosen.get("tier_source"))
+        "%s scores %.1f, %s (%s)"
+        % (
+            chosen["profile"],
+            score_of(chosen, bar),
+            chosen.get("tier"),
+            chosen.get("tier_source"),
+        )
     )
     reasons.append(
         "candidates: "
@@ -440,6 +502,8 @@ def choose(verdict, eligible, default_meta, feats, cuts=CUTS):
         "model": chosen["model"],
         "tier": chosen.get("tier"),
         "tier_source": chosen.get("tier_source"),
+        "score": score_of(chosen, bar),
+        "minimum_score": need,
         "reasoning_effort": _effort(verdict, chosen),
         "reasons": reasons,
         "undecidable": False,
@@ -497,8 +561,10 @@ def disclosure(c, feats, verdict, choice, decision, blocked, skipped, mode):
             "model": choice["model"],
             "tier": choice["tier"],
             "tier_source": choice.get("tier_source"),
+            "score": choice.get("score"),
             "reasoning_effort": choice["reasoning_effort"],
         },
+        "minimum_score": choice.get("minimum_score"),
         "default": r["default"],
         "undecidable": choice["undecidable"],
         "reasons": list(choice["reasons"]),

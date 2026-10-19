@@ -2,6 +2,7 @@ import unittest
 
 from delegation_router_policy import (
     choose,
+    minimum_score,
     estimate_cost,
     excerpt,
     features,
@@ -20,33 +21,93 @@ from router.fakes import (
 )
 
 
+BAR = {"mid": 37.6, "frontier": 49.6}
+
+
 class PolicyTests(unittest.TestCase):
-    def test_tiered_v1_table(self):
+    def test_floor_v1_table(self):
+        # The fixture pool sits on the bottom of each band: small 0, mid 37.6,
+        # frontier 49.6; the cheapest model that reaches the minimum answers.
         cases = [
-            ("trivial → small", verdict(0.0), "small", "low"),
-            ("easy → small", verdict(0.25), "small", "low"),
-            ("moderate → mid", verdict(0.5), "mid", None),
-            ("hard → frontier", verdict(0.75), "frontier", None),
-            ("frontier → frontier high", verdict(1.0), "frontier", "high"),
+            ("trivial → no minimum → small", verdict(0.0), 0.0, "small", "low"),
+            ("easy → no minimum → small", verdict(0.25), 0.0, "small", "low"),
+            ("moderate → mid band", verdict(0.5), 37.6, "mid", None),
             (
-                "easy but code → cheapest code at small",
+                "between moderate and hard → in proportion",
+                verdict(0.625),
+                43.6,
+                "frontier",
+                None,
+            ),
+            ("hard → frontier band", verdict(0.75), 49.6, "frontier", None),
+            ("frontier → frontier, high", verdict(1.0), 49.6, "frontier", "high"),
+            (
+                "easy code → cheapest code-capable",
                 verdict(0.25, code=1.0),
+                0.0,
                 "small",
                 "low",
             ),
-            ("moderate code → mid code", verdict(0.5, code=1.0), "mid", None),
-            ("easy but long → frontier", verdict(0.25, long=1.0), "frontier", None),
-            ("easy with math tag → mid", verdict(0.25, math=1.0), "mid", None),
-            ("yesno strong → frontier", verdict(None, p=0.9), "frontier", None),
-            ("yesno weak → small", verdict(None, p=0.1), "small", None),
-            ("yesno middle → mid", verdict(None, p=0.5), "mid", None),
+            ("moderate code → mid", verdict(0.5, code=1.0), 37.6, "mid", None),
+            (
+                "easy but long → frontier",
+                verdict(0.25, long=1.0),
+                49.6,
+                "frontier",
+                None,
+            ),
+            ("easy with math → mid", verdict(0.25, math=1.0), 37.6, "mid", None),
+            ("yesno strong → frontier", verdict(None, p=0.9), 49.6, "frontier", None),
+            ("yesno weak → no minimum", verdict(None, p=0.1), 0.0, "small", None),
+            ("yesno middle → mid", verdict(None, p=0.5), 37.6, "mid", None),
         ]
-        for name, v, tier, effort in cases:
+        for name, v, minimum, profile, effort in cases:
             with self.subTest(name):
-                choice = choose(v, POOL, MID, FEATS)
-                self.assertEqual(choice["tier"], tier)
+                choice = choose(v, POOL, MID, FEATS, bar=BAR)
+                self.assertEqual(choice["minimum_score"], minimum)
+                self.assertEqual(choice["profile"], profile)
                 self.assertEqual(choice["reasoning_effort"], effort)
                 self.assertFalse(choice["undecidable"])
+
+    def test_a_cheaper_stronger_model_beats_a_pricier_weaker_one(self):
+        # The case tiered-v1 got wrong: an easy request went to the small
+        # tier even when a cheaper mid model was there.
+        pricey_small = meta("luna", "small", 0.2, 1.2, score=37.3)
+        cheap_mid = meta("glm", "mid", 0.15, 0.5, score=41.8)
+        choice = choose(
+            verdict(0.25), [pricey_small, cheap_mid], cheap_mid, FEATS, bar=BAR
+        )
+        self.assertEqual(choice["profile"], "glm")
+
+    def test_measured_scores_split_a_band(self):
+        glm = meta("glm", "mid", 0.15, 0.5, score=41.8)
+        kimi = meta("kimi", "mid", 0.5, 2.0, score=43.6)
+        qwen = meta("qwen", "mid", 2.0, 6.0, score=45.4)
+        opus = meta("opus", "frontier", 4.0, 20.0, score=57.6)
+        pool = [glm, kimi, qwen, opus]
+        for d, profile in [
+            (0.5, "glm"),
+            (0.625, "kimi"),
+            (0.65, "qwen"),
+            (0.75, "opus"),
+        ]:
+            with self.subTest(d):
+                self.assertEqual(
+                    choose(verdict(d), pool, glm, FEATS, bar=BAR)["profile"], profile
+                )
+
+    def test_minimum_score_points(self):
+        for d, expected in [
+            (0.0, 0.0),
+            (0.25, 0.0),
+            (0.375, 18.8),
+            (0.5, 37.6),
+            (0.625, 43.6),
+            (0.75, 49.6),
+            (1.0, 49.6),
+        ]:
+            with self.subTest(d):
+                self.assertEqual(minimum_score(verdict(d), BAR), expected)
 
     def test_effort_is_a_floor_and_only_where_it_is_forwarded(self):
         # `high` never lowers a declared xhigh/max on the hardest requests
@@ -68,13 +129,17 @@ class PolicyTests(unittest.TestCase):
             self.assertEqual(choice["profile"], "mid")
             self.assertTrue(choice["undecidable"])
 
-    def test_empty_tier_escalates_never_descends(self):
-        choice = choose(verdict(0.0), [MID, FRONTIER], FRONTIER, FEATS)
+    def test_climbs_when_nothing_cheaper_reaches_and_takes_the_strongest_when_nothing_does(
+        self,
+    ):
+        choice = choose(verdict(0.0), [MID, FRONTIER], FRONTIER, FEATS, bar=BAR)
         self.assertEqual(choice["profile"], "mid")
-        self.assertIn("tier empty → escalate to mid", choice["reasons"])
-        choice = choose(verdict(1.0), [SMALL, MID], SMALL, FEATS)
-        self.assertEqual(choice["profile"], "small")
-        self.assertTrue(choice["undecidable"])
+        choice = choose(verdict(1.0), [SMALL, MID], SMALL, FEATS, bar=BAR)
+        self.assertEqual(choice["profile"], "mid")
+        self.assertFalse(choice["undecidable"])
+        self.assertIn(
+            "no profile reaches 49.6 → the strongest eligible: mid", choice["reasons"]
+        )
 
     def test_cheapest_wins_and_unpriced_ranks_last(self):
         cheap = meta("cheap", "mid", 1.0, 5.0)

@@ -86,7 +86,16 @@ class Service(BaseHTTPRequestHandler):
         self.wfile.write(json.dumps(type(self).reply).encode())
 
 
-def meta(profile, tier, price_in, price_out, code=True, context=128000, effort=None):
+def meta(
+    profile,
+    tier,
+    price_in,
+    price_out,
+    code=True,
+    context=128000,
+    effort=None,
+    score=None,
+):
     # An adapter the server forwards `reasoning_effort` to, so the policy's
     # effort column is observable.
     return {
@@ -95,6 +104,7 @@ def meta(profile, tier, price_in, price_out, code=True, context=128000, effort=N
         "adapter": "deepseek-api",
         "effort": effort,
         "tier": tier,
+        "score": score,
         "code": code,
         "price": {"in": price_in, "out": price_out} if price_in is not None else None,
         "context": context,

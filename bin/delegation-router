@@ -85,12 +85,13 @@ def main():
                 )
                 for m in result["pool"]:
                     print(
-                        "    %s: %s/%s tier=%s (%s)%s"
+                        "    %s: %s/%s tier=%s score=%s (%s)%s"
                         % (
                             m["profile"],
                             m["adapter"],
                             m["model"],
                             m["tier"],
+                            m.get("score"),
                             m.get("tier_source"),
                             " lane=" + m["lane"] if m.get("lane") else "",
                         )
@@ -157,11 +158,12 @@ def main():
             print(json.dumps(out, indent=2))
         else:
             print(
-                "%s (%s, tier %s)%s%s"
+                "%s (%s, tier %s, score %s)%s%s"
                 % (
                     out["chosen"]["profile"],
                     out["chosen"]["model"],
                     out["chosen"]["tier"],
+                    out["chosen"].get("score"),
                     " on the %s role" % a.lane if a.lane else "",
                     " — undecidable, default" if out["undecidable"] else "",
                 )

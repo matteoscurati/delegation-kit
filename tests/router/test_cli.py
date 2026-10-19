@@ -149,6 +149,27 @@ class CliTests(Fixture):
         )
         self.assertEqual(out["decider"]["raw"], Provider.reply)
 
+    def test_a_half_point_moves_the_minimum(self):
+        # 2 of 4 needs the mid band (37.6): `mid` reaches it. 2.5 needs 43.6,
+        # halfway to the frontier band: only `frontier` reaches it.
+        decide = ("decide", "--prompt-file", str(self.base / "prompt"), "--json")
+        for rating, minimum, profile in [(2, 37.6, "mid"), (2.5, 43.6, "frontier")]:
+            with self.subTest(rating):
+                Provider.reply = {
+                    "choices": [
+                        {
+                            "message": {
+                                "content": '{"difficulty": %s, "tags": []}' % rating
+                            }
+                        }
+                    ]
+                }
+                out = json.loads(self.run_cli(*decide).stdout)
+                self.assertEqual(out["signals"]["difficulty"], rating)
+                self.assertEqual(out["minimum_score"], minimum)
+                self.assertEqual(out["chosen"]["profile"], profile)
+                self.assertEqual(out["policy"]["id"], "floor-v1")
+
     def test_decider_failures_fall_to_default_and_are_disclosed(self):
         for name, reply, status in [
             ("http error", {"error": "nope"}, 500),
@@ -162,6 +183,24 @@ class CliTests(Fixture):
                 {
                     "choices": [
                         {"message": {"content": '{"difficulty": 9, "tags": []}'}}
+                    ]
+                },
+                200,
+            ),
+            (
+                "off the half-point grid",
+                {
+                    "choices": [
+                        {"message": {"content": '{"difficulty": 2.3, "tags": []}'}}
+                    ]
+                },
+                200,
+            ),
+            (
+                "a string",
+                {
+                    "choices": [
+                        {"message": {"content": '{"difficulty": "2", "tags": []}'}}
                     ]
                 },
                 200,

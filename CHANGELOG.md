@@ -2,7 +2,34 @@
 
 All notable changes to delegation-kit are documented here.
 
-## [Unreleased]
+## [0.28.0] — 2026-10-19
+
+The rating becomes a minimum score; the cheapest model that reaches it
+answers.
+
+### Changed
+
+- **Policy `floor-v1` replaces `tiered-v1`.** The decider's rating becomes a
+  minimum score on the Artificial Analysis Intelligence Index: up to 1 of 4,
+  none; at 2, the bottom of the mid band (37.6 on the 2026-10-17 catalog);
+  from 3, the bottom of the frontier band (49.6); in between, in proportion
+  (2.5 → 43.6). `math`, `rare` and `tools` raise it to the mid band, `long`
+  to the frontier band; `code` still narrows to code-capable profiles. Every
+  eligible profile at or above the minimum is a candidate, whatever its
+  tier, and the cheapest wins; when none reaches it, the strongest eligible
+  profile answers and says so (it used to fall to the default). Under
+  `tiered-v1` the rating picked one tier and the cheapest profile on it won,
+  so GPT-5.6 Luna (small, 37.3) answered an easy request ahead of a cheaper
+  GLM 5.3 Flash (mid, 41.8), and a stronger mid model such as Kimi K3 never
+  answered while a cheaper mid one was eligible. Each profile now carries a
+  `score` (the index at its reasoning setting, or the bottom of its band
+  when placed by hand); `check` prints it, and `decide` and every response
+  disclose `minimum_score` and the chosen profile's `score`.
+- **The LLM decider rates in half points** (0, 0.5 … 4), so a request
+  between two levels gets a minimum between them. An answer off that grid,
+  or not a number, is outside the schema and lands on the default. Checked
+  live with DeepSeek Flash: it uses the half points (2.5, 3.5), about 1 s
+  and $0.00014 a decision.
 
 ### Added
 

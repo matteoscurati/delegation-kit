@@ -271,6 +271,7 @@ def check(c):
                     "adapter",
                     "tier",
                     "tier_source",
+                    "score",
                     "code",
                     "price",
                     "context",
