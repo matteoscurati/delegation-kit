@@ -181,20 +181,20 @@ else bad "$miss/$total subagent profile(s) missing from $CLAUDE_HOME/agents/ (an
 opus_profile="$(resolve_claude_agent opus-builder.md || true)"
 if [ -z "$opus_profile" ]; then
   bad "cannot resolve the active opus-builder profile — run ./install.sh or reinstall the plugin"
-elif grep -Fxq 'model: claude-opus-5' "$opus_profile" \
+elif grep -Fxq 'model: claude-opus-5-5' "$opus_profile" \
     && grep -Fxq 'effort: max' "$opus_profile" \
-    && grep -Fq 'Opus 5 builder running at max effort' "$opus_profile"; then
-  ok "opus-builder pinned to claude-opus-5/max"
+    && grep -Fq 'Opus 5.5 builder running at max effort' "$opus_profile"; then
+  ok "opus-builder pinned to claude-opus-5-5/max"
 else
-  bad "active opus-builder is stale or not pinned to claude-opus-5/max — re-run ./install.sh"
+  bad "active opus-builder is stale or not pinned to claude-opus-5-5/max — re-run ./install.sh"
 fi
 opus_reviewer_profile="$(resolve_claude_agent opus-reviewer.md || true)"
 if [ -n "$opus_reviewer_profile" ] \
-    && grep -Fxq 'model: claude-opus-5' "$opus_reviewer_profile" \
+    && grep -Fxq 'model: claude-opus-5-5' "$opus_reviewer_profile" \
     && grep -Fxq 'effort: max' "$opus_reviewer_profile" \
     && grep -Fxq 'tools: Read, Grep, Glob' "$opus_reviewer_profile" \
     && grep -Fq 'configured review policy' "$opus_reviewer_profile"; then
-  ok "opus-reviewer pinned to claude-opus-5/max and configured review policy"
+  ok "opus-reviewer pinned to claude-opus-5-5/max and configured review policy"
 else
   bad "opus-reviewer missing, stale, or not cross-family/max — re-run ./install.sh"
 fi

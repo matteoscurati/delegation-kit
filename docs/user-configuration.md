@@ -134,9 +134,9 @@ and run `apply`; `init` never overrides later user decisions.
 
 ## Router
 
-A `router` block names the decision model — `decider`, required: one of
+A `router` block names the decider — `decider`, required: one of
 your profiles, Sage, Jev, a Dipylon, a local classifier, or `none` — and the
-profiles it governs (`pool`, `default`, HTTP or native). Profiles may declare
+profiles it may pick from (`pool`, `default`, HTTP or native). Profiles may declare
 routing metadata — `tier`, `code`, `price`, `context`, `json_mode` — which
 otherwise comes from the shipped `config/catalog.json`. Without the block the
 router is off; nothing else in the kit reads it. See [the router page](router.md) for the fields, the policy
@@ -185,11 +185,11 @@ variable. The adapter owns capabilities — a `builder` role on a text adapter
 yields a patch, never write access — and unsupported parameters are errors.
 Declare `tier`, `price`, `code`, `context` or `json_mode` when the router
 should rank the profile on your numbers rather than the catalog's. The
-catalog's rungs come from the Artificial Analysis Intelligence Index through
+catalog's tiers come from the Artificial Analysis Intelligence Index through
 a published band rule; `delegation-router catalog show` prints the source of
-every rung and `catalog refresh`, with your key in `AA_API_KEY` or in
+every tier and `catalog refresh`, with your key in `AA_API_KEY` or in
 `$DELEGATION_DATA_HOME/config/artificial-analysis.env` (mode 600), writes a
-current ladder beside the key files. See [the router page](router.md).
+current catalog beside the key files. See [the router page](router.md).
 
 ## Upgrading
 
@@ -198,3 +198,9 @@ a file that still says `schema_version: 1` is read like `2`. Installs older than
 kept their profiles in `routing-gates.json`, were migrated by 0.25 and 0.26;
 that migration is gone, so bring such an install through 0.26 first or
 recreate the profiles by hand from the shipped preset.
+
+0.27.2 moves the shipped `opus-builder`, `opus-reviewer` and
+`opus-policy-annotator` profiles to `claude-opus-5-5`. A personal file made
+earlier keeps `claude-opus-5` in those profiles until you change their
+`model`; the Claude Code agents the installer writes move to Opus 5.5 on the
+next install either way.

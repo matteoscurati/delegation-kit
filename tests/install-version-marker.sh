@@ -98,6 +98,8 @@ env CLAUDE_HOME="$TMP/claude" CODEX_HOME="$TMP/codex" \
   || fail 'install replaced an existing DeepSeek key with the backup'
 [ "$(cat "$DATA/router/receipts.jsonl")" = '{"ts":1,"profile":"restored"}' ] \
   || fail 'install did not restore the router receipts from the uninstaller backup'
+grep -Fq "$TMP/bin is not on your PATH" "$TMP/install.log" \
+  || fail 'install did not warn that its bin directory is off PATH'
 [ "$(stat -f '%Lp' "$DATA/router/receipts.jsonl" 2>/dev/null || stat -c '%a' "$DATA/router/receipts.jsonl")" = 600 ] \
   || fail 'restored router receipts are not mode 600'
 grep -Fq 'zai key restored from' "$TMP/install.log" || fail 'install did not report the restored key'
@@ -173,7 +175,7 @@ done
   || fail 'orchestrate still mandates hidden agent calls'
 ok
 [ -f "$TMP/claude/agents/opus-builder.md" ] \
-  && grep -Fxq 'model: claude-opus-5' "$TMP/claude/agents/opus-builder.md" \
+  && grep -Fxq 'model: claude-opus-5-5' "$TMP/claude/agents/opus-builder.md" \
   && grep -Fxq 'effort: max' "$TMP/claude/agents/opus-builder.md" \
   || fail 'install did not include opus-builder at max'
 [ -f "$TMP/claude/agents/fable-judge.md" ] \
@@ -269,9 +271,11 @@ jq '.review_policy = "required"' "$DELEGATION_CONFIG_FILE" >"$TMP/personal.json"
 mv "$TMP/personal.json" "$DELEGATION_CONFIG_FILE"
 env CLAUDE_HOME="$TMP/claude2" CODEX_HOME="$TMP/codex2" \
     DELEGATION_BIN_HOME="$TMP/bin2" DELEGATION_DATA_HOME="$TMP/data2" \
-    DELEGATION_GROK_HOME="$GROK_TEST_HOME" \
+    DELEGATION_GROK_HOME="$GROK_TEST_HOME" PATH="$TMP/bin2:$PATH" \
     "$ROOT/install.sh" --claude-only </dev/null >"$TMP/reinstall.log" 2>&1 \
   || { cat "$TMP/reinstall.log" >&2; fail 'repeat install failed'; }
+! grep -Fq 'is not on your PATH' "$TMP/reinstall.log" \
+  || fail 'install warned about PATH although its bin directory is on it'
 grep -Fxq 'personal profile edit' "$TMP/claude2/agents/opus-reviewer.md" \
   || fail 'repeat install overwrote an edited profile'
 [ "$(jq -r '.review_policy' "$DELEGATION_CONFIG_FILE")" = required ] \

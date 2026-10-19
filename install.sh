@@ -420,5 +420,10 @@ echo "Installed version marker -> $VERSION_FILE (${kit_version:-unknown}$([ "$ki
 
 echo
 echo "Done. Restart Claude Code / open a new Codex session to pick up the changes."
+# The commands live in $BIN_HOME; macOS does not put ~/.local/bin on PATH.
+case ":$PATH:" in
+  *":$BIN_HOME:"*) ;;
+  *) echo "  ! $BIN_HOME is not on your PATH: add  export PATH=\"$BIN_HOME:\$PATH\"  to your shell profile" ;;
+esac
 echo "Verify the bridge is wired:  $KIT/doctor.sh   (add --ping for a live round-trip)"
 echo "Declare your own models, tiers and router pool: see $KIT/docs/user-configuration.md and $KIT/docs/router.md"

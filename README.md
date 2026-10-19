@@ -1,16 +1,17 @@
 # delegation-kit
 
-You choose the decision model. It governs the models you already pay for.
+Easy requests go to your cheap models, hard ones to your strong ones.
 
-Name a decider — one of your cheap models, Levanto Sage, TypeSafe Jev, your
-own Dipylon, a local classifier — and the pool it governs: API keys, a Claude
-or Codex subscription, a local endpoint. `delegation-router serve` is an
-OpenAI-compatible endpoint on your own machine. Send it `"model": "auto"`:
-the decider judges how much capability the request needs, the request goes
-to the cheapest model in your pool that clears that bar, with that model's
-own credential, and the response names the model and the reasons. Nothing
-leaves your machine except the request to the model you chose. Your models.
-Your call. Your rules.
+You choose a decider — one of your cheap models, Levanto Sage, TypeSafe Jev,
+your own Dipylon, a local classifier — and the models it may pick from: API
+keys, a Claude or Codex subscription, a local endpoint. `delegation-router
+serve` is an OpenAI-compatible endpoint on your own machine. Send it
+`"model": "auto"`: the decider rates how much capability the request needs,
+the request goes to the cheapest of your models on the tier that rating
+allows, with that model's own credential, and the response names the model
+and the reasons. For each request the decider gets an excerpt (the whole
+request with `input: full`) unless it runs on your machine, and the chosen
+model gets the request.
 
 ## How the choice is made
 
@@ -23,32 +24,36 @@ configuration judges the models.
    answering this correctly need (0 trivial … 4 frontier), and does it
    involve code, math or rare knowledge. It sees an excerpt, never your keys,
    never your model names; text inside the request cannot steer it.
-3. **The answer sets the lowest rung** of a three-rung ladder — `small`,
-   `mid`, `frontier` — on which every profile in the pool sits (`tier`, from
-   your declaration or the shipped catalog). `code` keeps only code-capable
-   profiles; `math`, `rare` and `tools` lift an easy request to `mid`; a very
+3. **The answer sets the lowest tier** the request may use: `small`, `mid`
+   or `frontier`. Every profile in the pool sits on one (`tier`, from your
+   declaration or the shipped catalog). `code` keeps only code-capable
+   profiles, on that tier or above; `math`, `rare` and `tools` lift an easy request to `mid`; a very
    long request goes to the top.
-4. **Inside the rung the cheapest eligible profile wins**, priced for this
-   request. An empty rung escalates, never descends. Doubt — low confidence,
+4. **Inside the tier the cheapest eligible profile wins**, priced for this
+   request. An empty tier escalates, never descends. Doubt — low confidence,
    a decider error, a timeout — lands on your default, and says so.
 5. **Every response discloses the choice**: `X-Router-*` headers and a
    `router` object with the signals, the reasons, the candidates with their
    estimated cost, usage and what the provider reported.
 
-With a pool of GLM 5.3 Flash (`mid`: Intelligence Index 41.8) and Opus 5.5
-(`frontier`: 57.6, the best model on the board):
+With three models from the default install — GPT-5.6 Luna as `luna-clerk`
+(`small`: Intelligence Index 37.3), DeepSeek Flash as `deepseek-flash`
+(`mid`: 39.5) and Claude Opus 5.5 as `opus-reviewer` (`frontier`: 57.6, the
+best model on the board):
 
-| request | the decider says | lowest rung | answered by | because |
+| request | the decider says | lowest tier | answered by | because |
 |---|---|---|---|---|
-| rename `foo` to `bar` | difficulty 1, `code` | small | GLM 5.3 Flash | the small rung is empty, so up to `mid`: GLM is there and is code-capable |
-| find the race condition in this scheduler | difficulty 3 | frontier | Opus 5.5 | from 3 up only the top rung; GLM is not there |
-| summarise this contract | difficulty 2 | mid | GLM 5.3 Flash | the mid rung suffices; Opus is admissible but costs more |
-| what is 17 % of 2,340 € | difficulty 1, `math` | mid | GLM 5.3 Flash | `math` lifts an easy request to `mid` |
+| rename `foo` to `bar` | difficulty 1, `code` | small | GPT-5.6 Luna | `code` keeps the code-capable models at `small` or above; Luna is the cheapest |
+| summarise this contract | difficulty 2 | mid | DeepSeek Flash | the mid tier is enough, so only mid models are considered |
+| what is 17 % of 2,340 € | difficulty 1, `math` | mid | DeepSeek Flash | `math` lifts an easy request to `mid` |
+| find the race condition in this scheduler | difficulty 3, `code` | frontier | Claude Opus 5.5 | from 3 up only the top tier |
 
-Add GPT-5.6 Luna (`small`: 37.3) to the pool and the rename goes to Luna;
-nothing above Opus exists, so a 4 still goes to Opus.
+Take Luna out of the pool and the rename goes to DeepSeek Flash, the
+cheapest code-capable model at `small` or above, and an easy request
+without `code` climbs from the empty small tier to `mid`. Nothing sits above
+Opus, so a 4 still goes to Opus.
 
-Where the rungs come from: a third party, not the kit. The shipped catalog
+Where the tiers come from: a third party, not the kit. The shipped catalog
 places every model it knows from the Artificial Analysis Intelligence Index
 through one published rule — frontier within 8 points of the best model of
 the day, mid within 20, small below — and records the evidence and the date
@@ -57,8 +62,8 @@ the kit knows that GPT-5.6 Sol (47.0) is `mid`, not `frontier`, whatever
 its name suggests, and that Mistral Large 3 (9.3) is `small`. With your own
 Artificial Analysis key (`AA_API_KEY`, or
 `~/.local/share/delegation-kit/config/artificial-analysis.env`),
-`delegation-router catalog refresh` writes a current ladder on your machine
-that takes precedence over the shipped one; without a key you get the ladder
+`delegation-router catalog refresh` writes a current catalog on your machine
+that takes precedence over the shipped one; without a key you get the catalog
 the package shipped with, refreshed at every release. The levers are yours — `tier` and `price` per profile, the pool, the default, a
 cost ceiling — and `delegation-router decide --json` prints the reasons for
 any prompt without dispatching it. `delegation-router eval` measures a
@@ -72,13 +77,13 @@ delegation-config show            # the personal configuration the installer cre
 ```
 
 Add a `router` block to `~/.config/delegation-kit/config.json`: the decider
-first, then the profiles it governs (names that already exist in the file):
+first, then the profiles it may pick from (names that already exist in the file):
 
 ```json
 "router": {
   "decider": {"kind": "llm", "profile": "deepseek-flash"},
-  "pool": ["deepseek-flash", "qwen3.8-max", "sonnet-clerk"],
-  "default": "qwen3.8-max"
+  "pool": ["luna-clerk", "deepseek-flash", "opus-reviewer"],
+  "default": "deepseek-flash"
 }
 ```
 
@@ -115,17 +120,20 @@ the error codes and the evaluation harness.
   to a worktree; `delegation-patch-verify` checks a patch against the shipped
   policy before the lead applies and tests it.
 - **`doctor.sh`** reports what is installed, which runtimes are reachable
-  and, first in its router section, which decider governs which pool;
+  and, first in its router section, which decider rates for which pool;
   `--ping` runs a live round-trip.
 
-## Current release: 0.27.1
+## Current release: 0.27.2
 
-Version 0.27.1 fixes the npm installer: `npx delegation-kit@X.Y.Z` now
-installs the `delegation-kit--vX.Y.Z` tag instead of whatever `main` holds
-(`--ref` still picks another ref). Nothing else changed since 0.27.0.
+Version 0.27.2 moves the shipped Opus profiles and Claude Code agents to
+Claude Opus 5.5, rewrites the README and router page in the words the
+responses use (tier, decider), corrects what they said leaves your machine
+and the routing example, and has the installer warn when its bin directory
+is not on your PATH. 0.27.1 made `npx delegation-kit@X.Y.Z` install the
+`delegation-kit--vX.Y.Z` tag.
 
 Version 0.27.0 added `delegation-router`: a `router` block names the decider
-and the profiles it governs; `check` and `decide` are read-only; `serve`
+and the profiles it may pick from; `check` and `decide` are read-only; `serve`
 routes `"model": "auto"` through a deterministic prefilter, the decider and
 the `tiered-v1` policy, forwards — HTTP profiles with their own key, native
 profiles through the kit's dispatcher — streams through and discloses the

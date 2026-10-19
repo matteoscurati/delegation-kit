@@ -2,6 +2,42 @@
 
 All notable changes to delegation-kit are documented here.
 
+## [0.27.2] — 2026-10-19
+
+### Changed
+
+- **The Opus profiles run Claude Opus 5.5.** Owner decision: `opus-builder`,
+  `opus-reviewer` and `opus-policy-annotator` in `config/presets.json`, and
+  the `opus-builder` and `opus-reviewer` Claude Code agents, move from
+  `claude-opus-5` to `claude-opus-5-5` at the same efforts. Opus 5.5 is the
+  best model on the Artificial Analysis board (57.6, `frontier`) and costs
+  less per token than Opus 5 ($4/$20 against $5/$25 per million).
+  `doctor.sh` checks the new pin. A personal configuration keeps the model
+  it has; *Upgrading* in the configuration page says what to change.
+- **The docs use the words the responses use.** `tier` instead of rung and
+  ladder (the `X-Router-Tier` header, the `tier` field), "decider" instead
+  of "decision model", "the profiles it may pick from" instead of "the pool
+  it governs". The README opens with what the router does.
+
+### Fixed
+
+- **What leaves your machine.** The README and the router page said nothing
+  leaves the machine except the request to the chosen model. The decider
+  also gets an excerpt of each request (the whole request with
+  `input: full`) unless it runs on your machine; both pages now say so.
+- **The README's routing example.** It said that adding GPT-5.6 Luna would
+  send the rename to Luna, which `tiered-v1` does not do when a cheaper
+  code-capable model sits higher (GLM 5.3 Flash). The example now uses three
+  models from the default install, one per tier (`luna-clerk`,
+  `deepseek-flash`, `opus-reviewer`), each row checked against the policy's
+  `choose()`, and the Quick start pool spans the three tiers instead of
+  three `mid` models.
+- **`install.sh` warns when its bin directory is not on PATH.** macOS does
+  not put `~/.local/bin` there, and the first command then failed with
+  "command not found"; the installer prints the line to add.
+- The tagline "Your models. Your call. Your rules." is gone from the README
+  and the router page.
+
 ## [0.27.1] — 2026-10-17
 
 ### Fixed

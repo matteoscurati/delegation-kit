@@ -95,7 +95,7 @@
     },
     "opus-builder": {
       "adapter": "claude-code",
-      "model": "claude-opus-5",
+      "model": "claude-opus-5-5",
       "family": "anthropic",
       "roles": [
         "builder"
@@ -106,7 +106,7 @@
     },
     "opus-reviewer": {
       "adapter": "claude-code",
-      "model": "claude-opus-5",
+      "model": "claude-opus-5-5",
       "family": "anthropic",
       "roles": [
         "routine-review",
@@ -119,7 +119,7 @@
     },
     "opus-policy-annotator": {
       "adapter": "claude-code",
-      "model": "claude-opus-5",
+      "model": "claude-opus-5-5",
       "family": "anthropic",
       "roles": [
         "policy-annotation"
