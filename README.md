@@ -126,9 +126,12 @@ the error codes and the evaluation harness.
   and, first in its router section, which decider rates for which pool;
   `--ping` runs a live round-trip.
 
-## Current release: 0.29.0
+## Current release: 0.29.1
 
-Version 0.29.0 sets aside the models this machine cannot reach: a pool
+Version 0.29.1 replaces MiniMax-M3 with MiniMax-M3.1-Flash in the shipped
+catalog: 42.4 on the index, `mid`, at $0.15/$0.60 per million tokens.
+
+Version 0.29.0 set aside the models this machine cannot reach: a pool
 profile without its key, a CLI that is not installed or not logged in is
 left out before the decision and named in the response, instead of being
 chosen and failing. `check` and `doctor` list them.

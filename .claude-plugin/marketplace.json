@@ -7,13 +7,13 @@
   },
   "metadata": {
     "description": "You choose the decision model; it governs the models you already pay for. A local OpenAI-compatible router with a user-named decider, pool and default; nothing dispatches on its own.",
-    "version": "0.29.0"
+    "version": "0.29.1"
   },
   "plugins": [
     {
       "name": "delegation-kit",
       "description": "Local model router (delegation-router): a user-chosen decision model governs the user's own models, over their own keys and subscriptions.",
-      "version": "0.29.0",
+      "version": "0.29.1",
       "author": {
         "name": "Matteo Scurati"
       },

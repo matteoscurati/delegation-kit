@@ -63,6 +63,12 @@ rated 0 went to `glm53-flash-max-builder` (cheapest of five builders), a Go
 deadlock rated 2.5 (minimum 43.6) to `kimi-k3`, the three profiles without
 the role listed as blocked; 0.8–1.1 s each.
 
+0.29.1 changes only the shipped catalog: `catalog refresh --shipped` on
+**2026-10-19**, with MiniMax-M3.1-Flash (released that day) in place of
+MiniMax-M3, matched by slug at 42.4 (`mid`, $0.15/$0.60); 24 of 25 models
+placed (Haiku 4.5 is still not on the board), every other placement and
+price unchanged since 2026-10-17. The 13 suites and the version gate pass.
+
 **Offline.** All 13 regression suites green in 46 seconds here and about
 80 seconds on the macOS CI runner (where every `HTTPServer` bind had
 stalled on a reverse-DNS lookup until the router and the test fakes stopped
