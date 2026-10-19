@@ -4,7 +4,7 @@ route() never dispatches the chosen profile; it only decides and discloses.
 The server dispatches after route() when the user runs `serve`."""
 
 from delegation_catalog import catalog, profile_meta
-from delegation_config import ROUTER_HTTP_ADAPTERS, SERVICE_DECIDERS
+from delegation_config import ROUTER_HTTP_ADAPTERS, SERVICE_DECIDERS, row
 from delegation_router_policy import (
     CUTS,
     choose,
@@ -27,6 +27,16 @@ def router_block(c):
     return r
 
 
+def takes_lane(c, key, lane):
+    """The check `delegation-run` makes before it dispatches a profile on a
+    role: the profile declares the role and its adapter implements it."""
+    profile = c["profiles"][key]
+    return (
+        lane in profile["roles"]
+        and row(key, profile, lane, c)["technical_compatibility"]
+    )
+
+
 def route(
     c,
     body,
@@ -38,16 +48,35 @@ def route(
     env=None,
     cuts=None,
     raw=False,
+    lane=None,
 ):
-    """Run the pipeline. Returns (router object, choice, feats, blocked)."""
+    """Run the pipeline. Returns (router object, choice, feats, blocked).
+
+    `lane` (decide only) narrows the pool to the profiles that take that role,
+    so a delegated task is recommended a profile `delegation-run` will run on
+    it; a decision that lands on a default without the role recommends
+    nothing."""
     r = router_block(c)
     cat = catalog()
     pool = pool_meta(c, cat)
+    full = {m["profile"]: m for m in pool}
+    lane_blocked = []
+    if lane is not None:
+        takes = [m for m in pool if takes_lane(c, m["profile"], lane)]
+        if not takes:
+            raise ValueError("no pool profile takes the %s role" % lane)
+        lane_blocked = [
+            {"profile": m["profile"], "reason": "does not take the %s role" % lane}
+            for m in pool
+            if m not in takes
+        ]
+        pool = takes
     by_key = {m["profile"]: m for m in pool}
     feats = features(body)
     ceiling = r.get("max_cost_usd") if ceiling is None else ceiling
     eligible, blocked = prefilter(pool, feats, ceiling, r["default"])
-    default_meta = by_key[r["default"]]
+    blocked = lane_blocked + blocked
+    default_meta = full[r["default"]]
     decider_cfg = r["decider"]
     kind = decider_kind or decider_cfg["kind"]
     mode = mode or r.get("mode", "route")
@@ -81,7 +110,18 @@ def route(
     for tag, value in pretags(feats).items():
         verdict["tags"][tag] = max(verdict["tags"][tag], value)
     choice = choose(verdict, eligible, default_meta, feats, cuts or CUTS)
+    if lane is not None and choice["profile"] not in by_key:
+        raise ValueError(
+            "%s; the default %s does not take the %s role, so there is no "
+            "recommendation: choose a profile by hand"
+            % (choice["reasons"][-1], choice["profile"], lane)
+        )
     out = disclosure(c, feats, verdict, choice, decision, blocked, skipped, mode)
+    if lane is not None:
+        out["lane"] = lane
+        out["chosen"]["capabilities"] = row(
+            choice["profile"], c["profiles"][choice["profile"]], lane, c
+        )["capabilities"]
     if decision.get("reason"):
         out["decider"]["reason"] = decision["reason"]
     if raw and "raw" in decision:

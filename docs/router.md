@@ -18,7 +18,7 @@ retries, falls back or widens the pool.
 
 ```sh
 delegation-router check [--json]                        # the decider and the pool, resolved; no network
-delegation-router decide --prompt-file F [--raw] [--json] # one recommendation; never dispatches it
+delegation-router decide --prompt-file F [--lane ROLE] [--raw] [--json] # one recommendation; never dispatches it
 delegation-router serve [--listen 127.0.0.1:4141]       # OpenAI-compatible endpoint on loopback
 delegation-router catalog show|refresh [--shipped]      # where the tiers come from; refresh them
 delegation-router eval --items F [--decider K] [--output DIR]  # measure a decider offline
@@ -31,6 +31,16 @@ request to Artificial Analysis with your key. Dispatching the recommended
 profile is a separate `delegation-run` the user has to ask for. `serve` is
 the user's choice: starting it, and sending `"model": "auto"` to it, is the
 user directing the router to choose inside the pool.
+
+`decide --lane ROLE` is the same decision for a task you are about to
+delegate: only the pool profiles that take that role — the check
+`delegation-run` makes before it dispatches — are candidates, the others are
+listed under `blocked`, and the recommendation carries the profile's
+`capabilities` on that role (`text-patch`, `sandboxed-worktree`, …). A role
+can lift the choice: if only a frontier profile judges, a judgement task goes
+to it whatever the rating. When the decision would land on a default that
+does not take the role, `decide` recommends nothing and says so; a role no
+pool profile takes is an error.
 
 ## Configuration
 

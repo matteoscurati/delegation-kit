@@ -83,6 +83,54 @@ class CliTests(Fixture):
         self.assertIn("DATA", body["messages"][1]["content"])
         self.assertNotIn("sk-canary", json.dumps(out))
 
+    def test_lane_narrows_the_pool_to_profiles_that_take_the_role(self):
+        # An easy rename would go to `small` (a clerk); a builder task cannot.
+        Provider.reply = {
+            "choices": [
+                {"message": {"content": '{"difficulty": 1, "tags": ["code"]}'}}
+            ],
+            "usage": {"prompt_tokens": 300, "completion_tokens": 20},
+        }
+        decide = ("decide", "--prompt-file", str(self.base / "prompt"), "--json")
+        self.assertEqual(
+            json.loads(self.run_cli(*decide).stdout)["chosen"]["profile"], "small"
+        )
+        out = json.loads(self.run_cli(*decide, "--lane", "builder").stdout)
+        self.assertEqual((out["lane"], out["chosen"]["profile"]), ("builder", "mid"))
+        self.assertEqual(out["chosen"]["capabilities"], ["read-only", "text-patch"])
+        self.assertIn(
+            {"profile": "small", "reason": "does not take the builder role"},
+            out["blocked"],
+        )
+        # The role can lift the choice: only `frontier` judges.
+        out = json.loads(self.run_cli(*decide, "--lane", "judgement").stdout)
+        self.assertEqual(out["chosen"]["profile"], "frontier")
+
+    def test_lane_without_a_recommendation_says_so(self):
+        # No decision lands on the default (`mid`), which does not judge.
+        result = self.run_cli(
+            "decide",
+            "--decider",
+            "none",
+            "--prompt-file",
+            str(self.base / "prompt"),
+            "--lane",
+            "judgement",
+            rc=65,
+        )
+        self.assertIn("does not take the judgement role", result.stderr)
+        self.assertIn("choose a profile by hand", result.stderr)
+        result = self.run_cli(
+            "decide",
+            "--prompt-file",
+            str(self.base / "prompt"),
+            "--lane",
+            "security",
+            rc=65,
+        )
+        self.assertIn("no pool profile takes the security role", result.stderr)
+        self.assertEqual(Provider.requests, [])
+
     def test_raw_answer_only_on_request(self):
         Provider.reply = {
             "choices": [{"message": {"content": '{"difficulty": 2, "tags": []}'}}],
