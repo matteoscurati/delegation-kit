@@ -2,6 +2,20 @@
 
 All notable changes to delegation-kit are documented here.
 
+## [0.29.1] — 2026-10-19
+
+### Changed
+
+- **MiniMax-M3.1-Flash replaces MiniMax-M3 in the catalog** (owner
+  decision). Released on 2026-10-19, it scores 42.4 on the Artificial
+  Analysis Intelligence Index, which places it `mid`, at $0.15/$0.60 per
+  million tokens, against MiniMax-M3's 29.2 (`small`) at $0.30/$1.20. Its
+  context and JSON mode are not published on the board, so the row leaves
+  them unknown instead of carrying M3's over; the router then applies no
+  context or JSON-mode rule to it. The shipped catalog was refreshed from
+  the board on 2026-10-19: every other placement and price is as on
+  2026-10-17.
+
 ## [0.29.0] — 2026-10-19
 
 A model you cannot reach is set aside before the decision, not chosen and
