@@ -22,6 +22,7 @@ from delegation_router_pipeline import (  # noqa: E402
     router_block,
 )
 
+
 def main():
     p = argparse.ArgumentParser(prog="delegation-router")
     sub = p.add_subparsers(dest="command", required=True)
@@ -31,14 +32,26 @@ def main():
     pd.add_argument("--prompt-file", required=True)
     pd.add_argument("--decider", choices=sorted(ROUTER_DECIDERS))
     pd.add_argument("--input", choices=["excerpt", "full"])
-    pd.add_argument("--raw", action="store_true", help="include the decider's own answer")
+    pd.add_argument(
+        "--raw", action="store_true", help="include the decider's own answer"
+    )
+    pd.add_argument(
+        "--lane",
+        help="only the pool profiles that take this role, as delegation-run checks it",
+    )
     pd.add_argument("--json", action="store_true")
     ps = sub.add_parser("serve", help="OpenAI-compatible endpoint on loopback")
     ps.add_argument("--listen", help="loopback host:port (default: router.listen)")
     pk = sub.add_parser("catalog", help="where the ladder comes from; refresh it")
     pk.add_argument("action", choices=["show", "refresh"])
-    pk.add_argument("--key-env", default="AA_API_KEY", help="variable holding the Artificial Analysis key")
-    pk.add_argument("--shipped", action="store_true", help="write config/catalog.json (release)")
+    pk.add_argument(
+        "--key-env",
+        default="AA_API_KEY",
+        help="variable holding the Artificial Analysis key",
+    )
+    pk.add_argument(
+        "--shipped", action="store_true", help="write config/catalog.json (release)"
+    )
     pk.add_argument("--json", action="store_true")
     pe = sub.add_parser(
         "eval", help="measure a decider offline on a golden set; never dispatches"
@@ -104,7 +117,9 @@ def main():
             if a.output:
                 out_dir = Path(a.output)
                 out_dir.mkdir(parents=True, exist_ok=True)
-                (out_dir / "report.json").write_text(json.dumps(report, indent=2) + "\n")
+                (out_dir / "report.json").write_text(
+                    json.dumps(report, indent=2) + "\n"
+                )
                 (out_dir / "gate.json").write_text(
                     json.dumps(report["gate"], indent=2) + "\n"
                 )
@@ -136,17 +151,18 @@ def main():
         text = Path(a.prompt_file).read_text()
         body = {"messages": [{"role": "user", "content": text}]}
         out, _choice, _feats, _blocked = route(
-            c, body, decider_kind=a.decider, input_mode=a.input, raw=a.raw
+            c, body, decider_kind=a.decider, input_mode=a.input, raw=a.raw, lane=a.lane
         )
         if a.json:
             print(json.dumps(out, indent=2))
         else:
             print(
-                "%s (%s, tier %s)%s"
+                "%s (%s, tier %s)%s%s"
                 % (
                     out["chosen"]["profile"],
                     out["chosen"]["model"],
                     out["chosen"]["tier"],
+                    " on the %s role" % a.lane if a.lane else "",
                     " — undecidable, default" if out["undecidable"] else "",
                 )
             )
@@ -180,7 +196,9 @@ def catalog_command(a):
 
     if a.action == "show":
         report = describe(catalog())
-        print(json.dumps(report, indent=2) if a.json else "\n".join(render_show(report)))
+        print(
+            json.dumps(report, indent=2) if a.json else "\n".join(render_show(report))
+        )
         return 0
     key = aa_key(os.environ, a.key_env)
     if not key:
@@ -204,7 +222,9 @@ def catalog_command(a):
         "unmatched": unmatched,
         "attribution": new["tiering"]["attribution"],
     }
-    print(json.dumps(summary, indent=2) if a.json else "\n".join(render_refresh(summary)))
+    print(
+        json.dumps(summary, indent=2) if a.json else "\n".join(render_refresh(summary))
+    )
     return 0
 
 

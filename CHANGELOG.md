@@ -2,6 +2,18 @@
 
 All notable changes to delegation-kit are documented here.
 
+## [Unreleased]
+
+### Added
+
+- **`delegation-router decide --lane ROLE`**: the decider's recommendation
+  for a task you are about to delegate. Only the pool profiles that take the
+  role, by the same check `delegation-run` makes, are candidates; the rest
+  are listed under `blocked`; the recommendation names the profile's
+  capabilities on that role. A decision that would land on a default
+  without the role recommends nothing, and says so. The `model-routing`
+  skill asks Claude Code and Codex to pass the lane.
+
 ## [0.27.2] — 2026-10-19
 
 ### Changed

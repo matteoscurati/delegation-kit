@@ -19,9 +19,11 @@ or `DELEGATION_CONFIG_FILE`, never automatically from the project repository.
 No benchmark or kit qualification is required to choose a profile.
 
 When the configuration declares a `router` block, `delegation-router decide
---prompt-file FILE --json` returns one recommended pool profile with its
-signals and reasons. It is discovery, not dispatch: show the recommendation
-and run it only through the same explicit `delegation-run` request below.
+--prompt-file FILE --lane LANE --json` returns one recommended pool profile
+that takes that lane, with its signals, reasons and capabilities on it. It is
+discovery, not dispatch: show the recommendation and run it only through the
+same explicit `delegation-run` request below. No recommendation (a role no
+pool profile takes, or a default without it) means the user chooses.
 
 Dispatch the chosen profile once using `delegation-run --profile PROFILE
 --lane LANE --prompt-file FILE --output FILE --workdir DIR`. Output and receipt
