@@ -274,6 +274,23 @@ class ServerTests(Fixture):
         )
         self.assertEqual(Provider.requests, [])
 
+    def test_auto_sets_aside_a_profile_this_machine_cannot_reach(self):
+        # Without MID_KEY a 2 goes to the next profile that reaches 37.6
+        # instead of failing on `mid`, and the response says why.
+        self.env.pop("MID_KEY")
+        self.restart()
+        Provider.reply = {
+            "choices": [{"message": {"content": '{"difficulty": 2, "tags": []}'}}],
+            "usage": {"prompt_tokens": 300, "completion_tokens": 20},
+        }
+        status, data, headers = self.post(self.chat("auto", "Summarise this. " * 40))
+        self.assertEqual(status, 200, data)
+        self.assertEqual(headers["X-Router-Profile"], "frontier")
+        self.assertIn(
+            {"profile": "mid", "reason": "unreachable: no MID_KEY"},
+            data["router"]["blocked"],
+        )
+
     def test_stream_passthrough_ends_with_router_chunk_then_done(self):
         Provider.stream_lines = [
             b'data: {"id":"x","object":"chat.completion.chunk","model":"frontier-model","choices":[{"delta":{"content":"Hel"}}]}\n\n',

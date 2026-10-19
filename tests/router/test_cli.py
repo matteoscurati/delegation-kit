@@ -131,6 +131,30 @@ class CliTests(Fixture):
         self.assertIn("no pool profile takes the security role", result.stderr)
         self.assertEqual(Provider.requests, [])
 
+    def test_unreachable_profiles_are_set_aside_and_named_by_check(self):
+        self.env.pop("MID_KEY")
+        Provider.reply = {
+            "choices": [{"message": {"content": '{"difficulty": 2, "tags": []}'}}]
+        }
+        decide = ("decide", "--prompt-file", str(self.base / "prompt"), "--json")
+        out = json.loads(self.run_cli(*decide).stdout)
+        self.assertEqual(out["chosen"]["profile"], "frontier")
+        self.assertIn(
+            {"profile": "mid", "reason": "unreachable: no MID_KEY"}, out["blocked"]
+        )
+        result = json.loads(self.run_cli("check", "--json").stdout)
+        self.assertEqual(
+            {m["profile"]: m["reachable"] for m in result["pool"]},
+            {"small": True, "mid": False, "frontier": True},
+        )
+        self.assertIn(
+            "mid: unreachable on this machine (no MID_KEY); the router sets it aside",
+            result["warnings"],
+        )
+        # The only builder is unreachable: no recommendation for the role.
+        result = self.run_cli(*decide, "--lane", "builder", rc=65)
+        self.assertIn("no reachable pool profile takes the builder role", result.stderr)
+
     def test_raw_answer_only_on_request(self):
         Provider.reply = {
             "choices": [{"message": {"content": '{"difficulty": 2, "tags": []}'}}],

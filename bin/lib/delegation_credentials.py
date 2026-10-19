@@ -5,10 +5,14 @@ own key files under the data home (mode 600, one NAME=value line) cover the
 adapters that have one. A key file readable by group or others is ignored,
 not read."""
 
+import json
 import os
 import re
+import shutil
+import subprocess
+from concurrent.futures import ThreadPoolExecutor
 
-from delegation_config import data_home
+from delegation_config import ADAPTERS, ROOT, ROUTER_HTTP_ADAPTERS, data_home
 
 
 ENDPOINTS = {
@@ -66,3 +70,66 @@ def endpoint_for(profile):
 
 def credential_required(profile):
     return profile["adapter"] != "openai-compatible" or "credential_env" in profile
+
+
+# The native adapters the kit drives without a runner of its own: the CLI on
+# PATH is all that can be checked without a model call.
+NATIVE_BINARIES = {"codex": "codex", "claude-code": "claude"}
+
+
+RUNNER_CHECK_TIMEOUT = 20
+
+
+def unreachable(profile, env=None):
+    """Why this machine cannot dispatch the profile right now, or None.
+
+    Read-only and without a model call: the key for an HTTP profile, the
+    named variable `delegation-run` requires, `<runner> check --json` for a
+    native runner, the CLI on PATH for codex and claude-code. A login that
+    lapses afterwards still fails at dispatch, with its own error."""
+    env = os.environ if env is None else env
+    adapter = profile["adapter"]
+    if "credential_env" in profile and not env.get(profile["credential_env"]):
+        return "no %s" % profile["credential_env"]
+    if adapter in ROUTER_HTTP_ADAPTERS:
+        if credential_required(profile) and not credential_for(profile, env):
+            filename, var = KEY_FILES.get(adapter, (None, "a key"))
+            return "no %s%s" % (
+                var,
+                " and no %s key file" % filename if filename else "",
+            )
+        return None
+    if adapter in NATIVE_BINARIES:
+        binary = NATIVE_BINARIES[adapter]
+        if shutil.which(binary, path=env.get("PATH")):
+            return None
+        return "no `%s` on PATH" % binary
+    runner = ROOT / "bin" / ("delegation-" + ADAPTERS[adapter][0])
+    try:
+        proc = subprocess.run(
+            [str(runner), "check", "--json"],
+            capture_output=True,
+            text=True,
+            timeout=RUNNER_CHECK_TIMEOUT,
+            env=env,
+        )
+        report = json.loads(proc.stdout)
+    except (OSError, subprocess.TimeoutExpired, ValueError):
+        return "`%s check` failed" % runner.name
+    if report.get("selected_backend") in (None, "none"):
+        reasons = [
+            str(b.get("reason"))
+            for b in (report.get("backends") or {}).values()
+            if isinstance(b, dict) and not b.get("available") and b.get("reason")
+        ]
+        return ("; ".join(reasons) or "no backend available")[:200]
+    return None
+
+
+def reachability(c, keys, env=None):
+    """`unreachable()` for each profile key, checked in parallel: a native
+    runner's check can take seconds."""
+    keys = list(keys)
+    with ThreadPoolExecutor(max_workers=max(1, min(8, len(keys)))) as pool:
+        reasons = list(pool.map(lambda k: unreachable(c["profiles"][k], env), keys))
+    return dict(zip(keys, reasons))

@@ -20,7 +20,12 @@ from urllib.parse import quote, urlsplit
 
 from delegation_catalog import catalog
 from delegation_config import ROUTER_HTTP_ADAPTERS, data_home, kit_version
-from delegation_credentials import credential_for, credential_required, endpoint_for
+from delegation_credentials import (
+    credential_for,
+    credential_required,
+    endpoint_for,
+    reachability,
+)
 from delegation_router_policy import (
     DEFAULT_OUTPUT_TOKENS,
     count,
@@ -166,6 +171,9 @@ class RouterServer(ThreadingHTTPServer):
         self.started = time.time()
         self.catalog = catalog()
         self.pool = {m["profile"]: m for m in pool_meta(config, self.catalog)}
+        # Checked once, at start: a pool profile this machine cannot dispatch
+        # is set aside for every `auto` request, and disclosed as blocked.
+        self.reach = reachability(config, config["router"]["pool"], self.env)
 
     def server_bind(self):
         # http.server resolves the bound address back to a name on every bind
@@ -381,7 +389,7 @@ class Handler(BaseHTTPRequestHandler):
         started = time.monotonic()
         if model == "auto":
             out, choice, feats, blocked = route(
-                c, body, ceiling=ceiling, env=self.server.env
+                c, body, ceiling=ceiling, env=self.server.env, reach=self.server.reach
             )
         elif isinstance(model, str) and model in r["pool"]:
             out, choice, feats, blocked = explicit(c, model, body, ceiling=ceiling)
@@ -806,8 +814,9 @@ def serve(config, listen=None, env=None):
 
     signal.signal(signal.SIGINT, stop)
     signal.signal(signal.SIGTERM, stop)
+    unreachable = sorted(k for k, why in server.reach.items() if why)
     print(
-        "delegation-router: decider %s governs %s (default %s) — listening on http://%s:%d, mode %s"
+        "delegation-router: decider %s governs %s (default %s) — listening on http://%s:%d, mode %s%s"
         % (
             r["decider"]["kind"],
             ",".join(r["pool"]),
@@ -815,6 +824,9 @@ def serve(config, listen=None, env=None):
             "[" + host + "]" if ":" in host else host,
             server.server_address[1],
             r.get("mode", "route"),
+            "; set aside as unreachable: " + ",".join(unreachable)
+            if unreachable
+            else "",
         ),
         flush=True,
     )

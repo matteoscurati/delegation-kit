@@ -2,6 +2,33 @@
 
 All notable changes to delegation-kit are documented here.
 
+## [0.29.0] — 2026-10-19
+
+A model you cannot reach is set aside before the decision, not chosen and
+failed.
+
+### Changed
+
+- **Unreachable pool profiles are set aside.** Before the decision, every
+  pool profile is checked without a model call: an HTTP profile needs its
+  key (the named variable or the kit's key file), a native runner's `check
+  --json` must select a backend, `codex` and `claude` must be on PATH, and a
+  profile that names `credential_env` needs that variable, as
+  `delegation-run` does. A profile that fails is left out like a context too
+  small and listed under `blocked` as `unreachable: <why>`, so the cheapest
+  profile you can actually use answers. Before, the policy could pick a
+  model whose key or login was missing and the request failed, with no
+  fallback. `serve` checks once when it starts and names what it set aside
+  in its start line; `decide` checks every time (the native runners' checks
+  run in parallel, about 3 s at worst); a login that lapses later still
+  fails at dispatch, with its own error. A profile named as `model` is
+  never set aside: it fails as before.
+- **`check` and `doctor` say what this machine can reach.** Each pool entry
+  carries `reachable`, and an unreachable profile, or an unreachable `llm`
+  decider, is a warning. `decide --lane` says "no reachable pool profile
+  takes the role" when the only candidates are unreachable, and names the
+  reason when the decision lands on an unreachable default.
+
 ## [0.28.0] — 2026-10-19
 
 The rating becomes a minimum score; the cheapest model that reaches it

@@ -49,23 +49,38 @@ def route(
     cuts=None,
     raw=False,
     lane=None,
+    reach=None,
 ):
     """Run the pipeline. Returns (router object, choice, feats, blocked).
 
     `lane` (decide only) narrows the pool to the profiles that take that role,
     so a delegated task is recommended a profile `delegation-run` will run on
     it; a decision that lands on a default without the role recommends
-    nothing."""
+    nothing.
+
+    `reach` maps pool profiles to why this machine cannot dispatch them (see
+    `delegation_credentials.reachability`); those are set aside before the
+    decision, like a context too small, and listed under `blocked`."""
     r = router_block(c)
     cat = catalog()
     pool = pool_meta(c, cat)
     full = {m["profile"]: m for m in pool}
     lane_blocked = []
+    if reach:
+        lane_blocked = [
+            {"profile": m["profile"], "reason": "unreachable: " + reach[m["profile"]]}
+            for m in pool
+            if reach.get(m["profile"])
+        ]
+        pool = [m for m in pool if not reach.get(m["profile"])]
     if lane is not None:
         takes = [m for m in pool if takes_lane(c, m["profile"], lane)]
         if not takes:
-            raise ValueError("no pool profile takes the %s role" % lane)
-        lane_blocked = [
+            raise ValueError(
+                "no %spool profile takes the %s role"
+                % ("reachable " if lane_blocked else "", lane)
+            )
+        lane_blocked += [
             {"profile": m["profile"], "reason": "does not take the %s role" % lane}
             for m in pool
             if m not in takes
@@ -111,10 +126,14 @@ def route(
         verdict["tags"][tag] = max(verdict["tags"][tag], value)
     choice = choose(verdict, eligible, default_meta, feats, cuts or CUTS)
     if lane is not None and choice["profile"] not in by_key:
+        why = (
+            "is unreachable (%s)" % reach[choice["profile"]]
+            if reach and reach.get(choice["profile"])
+            else "does not take the %s role" % lane
+        )
         raise ValueError(
-            "%s; the default %s does not take the %s role, so there is no "
-            "recommendation: choose a profile by hand"
-            % (choice["reasons"][-1], choice["profile"], lane)
+            "%s; the default %s %s, so there is no recommendation: choose a "
+            "profile by hand" % (choice["reasons"][-1], choice["profile"], why)
         )
     out = disclosure(c, feats, verdict, choice, decision, blocked, skipped, mode)
     if lane is not None:
@@ -218,7 +237,19 @@ def decider_line(decider):
     return "decider: %s — %s" % (kind, ", ".join(parts))
 
 
-def check(c):
+def reach_keys(c):
+    """The profiles whose reachability matters: the pool and an llm decider."""
+    r = c["router"]
+    keys = list(r["pool"])
+    decider = r["decider"]
+    if decider.get("kind") == "llm":
+        key = decider.get("profile", r["default"])
+        if key not in keys:
+            keys.append(key)
+    return keys
+
+
+def check(c, reach=None):
     r = c.get("router")
     result = {
         "schema_version": 1,
@@ -257,6 +288,22 @@ def check(c):
                     + ": native profile, bridged through delegation-run on the %s role; "
                     "no tools, images or JSON mode, one event when streaming" % lane
                 )
+    for key, why in (reach or {}).items():
+        if not why:
+            continue
+        if key in r["pool"]:
+            warnings.append(
+                "%s: unreachable on this machine (%s); the router sets it aside"
+                % (key, why)
+            )
+        else:
+            warnings.append(
+                "%s: the decider is unreachable on this machine (%s); every "
+                "request goes to the default" % (key, why)
+            )
+    for m in pool:
+        if reach is not None:
+            m["reachable"] = not reach.get(m["profile"])
     decider = describe_decider(c, r)
     result.update(
         decider=decider,
@@ -277,6 +324,7 @@ def check(c):
                     "context",
                     "metadata_source",
                     "lane",
+                    "reachable",
                 )
                 if key in m
             }
