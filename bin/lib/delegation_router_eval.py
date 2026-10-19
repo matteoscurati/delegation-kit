@@ -187,7 +187,9 @@ def curve(items, decisions, pool, default_meta):
     """Re-choose every decision at each frontier cut, without a decider call."""
     points = []
     for cut in CURVE:
-        cuts = dict(CUTS, frontier=cut, small=min(CUTS["small"], cut))
+        cuts = dict(
+            CUTS, frontier=cut, mid=min(CUTS["mid"], cut), free=min(CUTS["free"], cut)
+        )
         rechosen = []
         for d in decisions:
             verdict = verdict_from_signals(d["signals"])

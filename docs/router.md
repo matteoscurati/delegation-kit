@@ -108,18 +108,28 @@ only be the default; a profile with no price is ranked last within its tier.
    warning is disclosed, nothing is retried. Text inside the request cannot
    steer the route: the decider never sees it as instructions and cannot
    name a model.
-4. **Policy `tiered-v1`**. No usable signal or confidence below 0.55 →
-   default. Difficulty ≥ 3, `long`, or "needs a strong model" ≥ 0.7 →
-   `frontier`; difficulty < 1.5 without `math`, `rare` or `tools` → `small`;
-   otherwise `mid`. `math`, `rare` and `tools` lift the floor to `mid`;
-   `code` never raises the tier, it narrows the choice to code-capable
-   profiles. Inside the tier the cheapest eligible profile wins
-   (`price.in × est_tokens + price.out × max_tokens`, 1024 when unset). An
-   empty tier escalates, never descends; an empty frontier falls to the
-   default. Reasoning effort is `high` for difficulty ≥ 3.6 (a floor: a
-   profile declared `xhigh` or `max` keeps it) and `low` for an easy request
-   on the small tier, only on the adapters that take a per-request setting
-   (`deepseek-api`, `token-plan-openai`).
+4. **Policy `floor-v1`**. No usable signal or confidence below 0.55 →
+   default. Otherwise the rating becomes a **minimum score** on the
+   Artificial Analysis index: up to 1, none; at 2, the bottom of the mid
+   band; from 3, the bottom of the frontier band; in between, in proportion
+   (with today's bands, 1.5 → 18.8, 2 → 37.6, 2.5 → 43.6, 3 → 49.6). A
+   yes/no "needs a strong model" maps to the frontier band from 0.7, to the
+   mid band from 0.3. `math`, `rare` and `tools` raise the minimum to the mid
+   band, `long` to the frontier band; `code` never raises it, it narrows the
+   choice to code-capable profiles (any profile when no code-capable one
+   reaches it). Every eligible profile whose score reaches the minimum is a
+   candidate, whatever its tier, and the cheapest wins
+   (`price.in × est_tokens + price.out × max_tokens`, 1024 when unset). When
+   none reaches it, the strongest eligible profile answers and the reasons
+   say so. A profile's score is the index measured at the reasoning setting
+   it runs at; a model placed by hand, or a profile that declares `tier`,
+   counts as the bottom of its band. Reasoning effort is `high` for
+   difficulty ≥ 3.6 (a floor: a profile declared `xhigh` or `max` keeps it)
+   and `low` for an easy request on a small-tier profile, only on the
+   adapters that take a per-request setting (`deepseek-api`,
+   `token-plan-openai`). Until 0.28.0 the policy was `tiered-v1`: the rating
+   picked one tier and the cheapest profile *on that tier* won, so a pricier
+   small model beat a cheaper, stronger mid one.
 5. **Forward**: one request to the chosen profile's endpoint with that
    profile's key — never a key or a header from the caller. The `router`
    object in the request body is dropped, `model` is rewritten,
@@ -133,21 +143,25 @@ only be the default; a profile with no price is ranked last within its tier.
 
 The rule is Sage's: *the cheapest model that will get it right*. The decider
 judges the task, never a model; your configuration judges the models. With
-Opus 5.5 and GPT-6 Astra both on the `frontier` tier, a hard request goes to
-Opus while Opus is eligible, because Opus is the cheaper frontier model;
-Astra answers when Opus is blocked (context, ceiling, JSON mode) or when you
-put Astra alone on the top tier. The levers are yours — `tier` and `price`
-per profile, the pool, the default, the ceiling — and every decision carries
-its `reasons`, including the candidates of the chosen tier with their
-estimated cost, so `decide --json` and the `router` object answer the
-question per request. `decide --raw` adds the decider's own answer under
+Opus 5.5 (57.6) and GPT-6 Astra (52.7) both above a hard request's minimum
+(49.6), the request goes to Opus while Opus is eligible, because Opus is the
+cheaper of the two; Astra answers when Opus is blocked (context, ceiling,
+JSON mode) or when you leave Opus out. With GLM 5.3 Flash (41.8), Kimi K3
+(43.6) and Qwen3.8 Max (45.4), a 2 goes to GLM (cheapest above 37.6), a 2.5
+to Kimi (cheapest above 43.6), and Qwen answers only between 43.6 and 45.4
+— it costs four times Kimi for 1.8 more points. The levers are yours —
+`tier` and `price` per profile, the pool, the default, the ceiling — and
+every decision carries its `reasons`, including the minimum, the chosen
+profile's score and the candidates with their estimated cost, so `decide
+--json` and the `router` object answer the question per request. `decide --raw` adds the decider's own answer under
 `decider.raw`; a served response never carries it.
 
 Three deliberate departures from the Sage recipe: the recipe names one
-model per tier, the kit ranks the tier by price so a pool can hold several;
-the kit adds the confidence floor; and `math`, `rare` and `tools` lift an
-easy request to `mid`, where the recipe only sends `code` to a code model and
-`long` to the frontier.
+model per tier, the kit turns the rating into a minimum score and ranks
+every model above it by price, so a pool can hold several per tier; the kit
+adds the confidence floor; and `math`, `rare` and `tools` raise an easy
+request to the mid band, where the recipe only sends `code` to a code model
+and `long` to the frontier.
 
 ## Where the tiers come from
 
@@ -243,16 +257,18 @@ A `router` object next to `choices`:
 "router": {
   "version": "1", "mode": "route",
   "decider": {"id": "llm", "version": "deepseek-flash+46002df5", "input": "excerpt", "reason": "routine rename"},
-  "policy": {"id": "tiered-v1", "version": "2026-10-13"},
+  "policy": {"id": "floor-v1", "version": "2026-10-19"},
   "signals": {"difficulty": 1, "scale": [0, 4], "tags": {"code": 1.0, "math": 0.0, "long": 0.0, "rare": 0.0, "tools": 0.0},
               "p_needs_strong": null, "confidence": 0.8},
-  "chosen": {"profile": "flash", "model": "deepseek-flash", "tier": "mid", "tier_source": "artificialanalysis:2026-10-15", "reasoning_effort": null},
+  "chosen": {"profile": "flash", "model": "deepseek-flash", "tier": "mid", "tier_source": "artificialanalysis:2026-10-17", "score": 39.5, "reasoning_effort": null},
+  "minimum_score": 0.0,
   "default": "qwen", "undecidable": false,
-  "reasons": ["difficulty 0.25", "tag code 1.00", "code → cheapest code-capable profile at tier ≥ small",
-              "flash is mid (artificialanalysis:2026-10-15)", "candidates: flash $0.0013, qwen $0.0066 → flash"],
+  "reasons": ["difficulty 0.25", "tag code 1.00", "minimum score 0.0 (mid from 37.6, frontier from 49.6)",
+              "code → cheapest code-capable profile scoring ≥ 0.0", "flash scores 39.5, mid (artificialanalysis:2026-10-17)",
+              "candidates: flash $0.0013, qwen $0.0068, sol $0.0109 → flash"],
   "blocked": [], "warnings": [],
   "features": {"est_tokens": 310, "turns": 1, "tools": false, "images": false},
-  "decision_latency_ms": 1171, "decision_cost_usd": 0.00012, "catalog_version": "2026-10-15",
+  "decision_latency_ms": 1171, "decision_cost_usd": 0.00012, "catalog_version": "2026-10-17",
   "usage": {"prompt_tokens": 300, "completion_tokens": 20}, "cost_usd": 0.000114,
   "provider_reported_model": "deepseek-flash", "mismatch": false,
   "latency_ms": 1830, "upstream_status": 200

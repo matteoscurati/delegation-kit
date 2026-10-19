@@ -125,7 +125,7 @@ them instead.
 `delegation_credentials` (where a profile's key and endpoint come from),
 `delegation_catalog` (the catalog in effect, the band rule, profile
 metadata, the Artificial Analysis refresh), `delegation_router_policy`
-(features, prefilter, signals, `tiered-v1`, disclosure) and the router's
+(features, prefilter, signals, `floor-v1`, disclosure) and the router's
 `_pipeline`, `_deciders`, `_bridge`, `_server` and `_eval`. The shell
 runners share `delegation-runner-common.sh` and
 `delegation-chat-completions.sh`. The router suite is the package

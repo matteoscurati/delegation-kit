@@ -138,6 +138,36 @@ def place(index, tiering):
     return "small"
 
 
+def bar(tiering):
+    """The two scores the bands start at, from the catalog in effect: mid at
+    the best of the day minus M, frontier at the best minus N."""
+    if not tiering:
+        return None
+    top = tiering["top_index"]
+    return {
+        "mid": round(top - tiering["mid_within"], 1),
+        "frontier": round(top - tiering["frontier_within"], 1),
+    }
+
+
+def tier_floor(tier, tiering):
+    """The score a tier placed by hand stands for: the bottom of its band."""
+    b = bar(tiering)
+    if b is None or tier is None:
+        return None
+    return {"small": 0.0, "mid": b["mid"], "frontier": b["frontier"]}.get(tier)
+
+
+def score_for_effort(row, effort):
+    """The index measured at the reasoning setting the profile runs at, else
+    the row's own index."""
+    evidence = row.get("evidence") or {}
+    variants = evidence.get("variants") or {}
+    if effort and effort in variants:
+        return variants[effort]
+    return evidence.get("index")
+
+
 def tier_for_effort(row, effort, tiering):
     """A rung for the reasoning setting the profile runs at, when the
     evidence measured that setting; else the row's rung."""
@@ -157,13 +187,17 @@ def profile_meta(key, p, cat=None):
     declared = PROFILE_ROUTING_FIELDS & set(p)
     effort = p.get("parameters", {}).get("effort")
     evidence = base.get("evidence")
+    tiering = cat.get("tiering")
     if "tier" in p:
         tier, tier_source = p["tier"], "profile"
+        score = tier_floor(tier, tiering)
     elif evidence:
-        tier = tier_for_effort(base, effort, cat.get("tiering"))
+        tier = tier_for_effort(base, effort, tiering)
         tier_source = "%s:%s" % (evidence["source"], evidence["date"])
+        score = score_for_effort(base, effort)
     else:
         tier, tier_source = base.get("tier"), ("hand" if row else "unknown")
+        score = tier_floor(tier, tiering)
     return {
         "profile": key,
         "model": p["model"],
@@ -171,6 +205,9 @@ def profile_meta(key, p, cat=None):
         "family": p.get("family"),
         "tier": tier,
         "tier_source": tier_source,
+        # The index the policy compares with the request's minimum: measured
+        # where the board has the model, the bottom of its band otherwise.
+        "score": score,
         "code": p["code"] if "code" in p else base.get("code", False),
         "price": p["price"] if "price" in p else base.get("price"),
         "context": p["context"] if "context" in p else base.get("context"),

@@ -143,8 +143,9 @@ class LlmDecider:
             return fail("decider returned malformed output")
         if (
             not isinstance(answer, dict)
-            or type(answer.get("difficulty")) is not int
+            or type(answer.get("difficulty")) not in (int, float)
             or not 0 <= answer["difficulty"] <= 4
+            or answer["difficulty"] * 2 != int(answer["difficulty"] * 2)
             or not isinstance(answer.get("tags", []), list)
             or any(t not in {"code", "math", "rare"} for t in answer.get("tags", []))
         ):
