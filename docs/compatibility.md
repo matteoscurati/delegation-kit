@@ -22,6 +22,18 @@ again — three of them new, each failing on the 0.27.0 wrapper: without
 repository missing that tag is refused naming the ref, and `--ref` without a
 value is refused.
 
+0.27.2 was checked on **2026-10-19** with Claude Code `2.1.303`: the 13
+suites (the installer's PATH warning asserted both ways), ShellCheck, ruff,
+the eleven Node tests and the version gate pass; a reinstall and static
+doctor report `53 OK, 0 WARN, 0 FAIL` with `opus-builder` and
+`opus-reviewer` pinned to `claude-opus-5-5/max`. Live, authorized, one call:
+`delegation-run --profile opus-reviewer --lane routine-review` on Claude
+Opus 5.5 at `max` answered `PONG` in 3 s. Claude Code's JSON result names no
+model, so the receipt records `requested_model: claude-opus-5-5` with
+`model_identity_source: requested-only`: the identity check cannot confirm
+which model a `claude-code` profile ran. The README's routing example was
+checked against `choose()` with the shipped presets.
+
 **Offline.** All 13 regression suites green in 46 seconds here and about
 80 seconds on the macOS CI runner (where every `HTTPServer` bind had
 stalled on a reverse-DNS lookup until the router and the test fakes stopped
