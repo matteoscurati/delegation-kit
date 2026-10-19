@@ -48,6 +48,21 @@ worker-pool deadlock 2.5 (`code`) and a four-colour proof 3.5 (`math`,
 given and set minimums of 0, 0, 43.6 and 49.6. Every example route in the
 README was checked against `choose()` with the shipped presets.
 
+0.29.0 was checked on **2026-10-19**: the 13 suites (the router suite at 75
+tests: an unreachable profile set aside by `decide`, by `serve` and named by
+`check`, and what `unreachable()` reads for a key, a CLI on PATH and a
+runner's check), ShellCheck, ruff, the eleven Node tests and the version
+gate pass. With the installed kit and an eight-profile pool, `check` found
+every profile reachable — the runners' own checks took 0.04–3 s, Kimi the
+longest — and doctor reported `54 OK, 6 WARN, 0 FAIL`, the warnings being
+the six native profiles' limits. Run from a source checkout, the GLM runner
+looks for its key beside the checkout and `check` reports it unreachable,
+which is what a dispatch from there would meet. Live, two `decide --lane
+builder` calls to the DeepSeek Flash decider, nothing dispatched: a rename
+rated 0 went to `glm53-flash-max-builder` (cheapest of five builders), a Go
+deadlock rated 2.5 (minimum 43.6) to `kimi-k3`, the three profiles without
+the role listed as blocked; 0.8–1.1 s each.
+
 **Offline.** All 13 regression suites green in 46 seconds here and about
 80 seconds on the macOS CI runner (where every `HTTPServer` bind had
 stalled on a reverse-DNS lookup until the router and the test fakes stopped
