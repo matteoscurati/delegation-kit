@@ -19,10 +19,11 @@ The decider never picks a model by name. It judges the task; your
 configuration judges the models.
 
 1. **The request is measured**, not judged: tokens, turns, tools, images,
-   JSON output. **Your models are checked**, without a call: one this
-   machine cannot reach — no key, no login, its CLI missing — is set aside
-   and named in the response, so the choice is only among models that can
-   answer.
+   JSON output. **Your models are checked**, without a model call: one this
+   machine cannot reach — no key, its CLI missing, its runner logged out (a
+   Codex or Claude Code login is not checked) — is set aside and named in
+   the response, so the choice is only among models that can answer. The
+   default is the exception: doubt still lands on it, so keep it reachable.
 2. **The decider answers one typed question**: how much capability does
    answering this correctly need (0 trivial … 4 frontier, half points
    allowed), and does it involve code, math or rare knowledge. It sees an
@@ -101,7 +102,7 @@ first, then the profiles it may pick from (names that already exist in the file)
 ```
 
 ```sh
-delegation-router check           # the decider, the pool with tiers, scores and prices, what this machine can reach
+delegation-router check           # the decider, the pool with tiers and scores, what this machine cannot reach (--json adds prices)
 delegation-router serve           # http://127.0.0.1:4141/v1, loopback only
 curl -s 127.0.0.1:4141/v1/chat/completions -H 'Content-Type: application/json' \
   -d '{"model":"auto","messages":[{"role":"user","content":"Rename foo to bar in utils.py"}]}'
@@ -142,9 +143,16 @@ the error codes and the evaluation harness.
   which pool models this machine cannot reach; `--ping` runs a live
   round-trip.
 
-## Current release: 0.30.1
+## Current release: 0.30.2
 
-Version 0.30.1 is documentation only: every page now says where keys go,
+Version 0.30.2 fixes what a review of 0.30.1 found: `doctor` no longer stops
+on an unset variable when the configuration is missing, `check` says that an
+unreachable default refuses the requests that land on it instead of claiming
+it is set aside, and several pages are corrected (which error an unreachable
+default produces, which runners read a key, the MiniMax walkthrough). The
+shipped catalog is refreshed to 2026-10-20.
+
+Version 0.30.1 was documentation only: every page now says where keys go,
 which models the router sets aside and why, what `decide --lane` is for,
 and that Claude Code and Codex can be picked by the router but cannot send
 it their requests.

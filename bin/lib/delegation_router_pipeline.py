@@ -291,7 +291,12 @@ def check(c, reach=None):
     for key, why in (reach or {}).items():
         if not why:
             continue
-        if key in r["pool"]:
+        if key == r["default"]:
+            warnings.append(
+                "%s: the default is unreachable on this machine (%s); a request "
+                "that lands on it is refused as no-usable-candidate" % (key, why)
+            )
+        elif key in r["pool"]:
             warnings.append(
                 "%s: unreachable on this machine (%s); the router sets it aside"
                 % (key, why)

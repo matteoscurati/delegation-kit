@@ -29,7 +29,10 @@ def main():
     load_env_file()
     p = argparse.ArgumentParser(prog="delegation-router")
     sub = p.add_subparsers(dest="command", required=True)
-    pc = sub.add_parser("check", help="validate the router block; no network")
+    pc = sub.add_parser(
+        "check",
+        help="validate the router block and what this machine can reach; no model call",
+    )
     pc.add_argument("--json", action="store_true")
     pd = sub.add_parser("decide", help="recommend one profile; never dispatches it")
     pd.add_argument("--prompt-file", required=True)

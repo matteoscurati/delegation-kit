@@ -2,6 +2,42 @@
 
 All notable changes to delegation-kit are documented here.
 
+## [0.30.2] — 2026-10-20
+
+What a review of 0.30.1 found.
+
+### Fixed
+
+- **`doctor.sh` with a missing or invalid configuration** stopped the
+  personal-configuration section on `config_file: unbound variable` and then
+  reported a keys file at `/.env`. It now looks for the `.env` beside the
+  path the commands read, whether or not the configuration validated.
+- **`check` on an unreachable default** said the router sets it aside. The
+  default is never set aside, since doubt lands on it: `check` now says that
+  a request landing on it is refused as `no-usable-candidate`.
+- **`delegation-router check --help`** said "no network"; it says "no model
+  call", since a runner's own check may reach its service.
+- **Documentation.** 0.30.1 said that an undecidable request landing on a
+  keyless default meets `401 provider-key-missing`; it meets `400
+  no-usable-candidate`, with `unreachable: <why>` as the reason, and the
+  router page's error table and routing steps say so. The README no longer
+  claims every login is checked (a Codex or Claude Code login is not, only
+  the CLI on PATH) and names the default as the exception; the `check`
+  comment no longer promises prices outside `--json`; the external
+  executors page says which runners read a key (GLM, Qwen, DeepSeek, and
+  `openai-compatible` through `credential_env`) and which use their CLI's
+  login (Kimi, Grok, Gemini); the router page says an `llm` decider uses its
+  profile's key, kit key file included; the MiniMax walkthrough adds the
+  profile to `router.pool` before `check --json` reports it and gives the
+  full `delegation-run` command. The compatibility page leads with this
+  release's numbers and labels the earlier ones by release.
+
+### Changed
+
+- **Shipped catalog refreshed** on 2026-10-20 (0.30.0 and 0.30.1 were tagged
+  without the refresh the release rules ask for): MiniMax-M3.1-Flash 42.4 →
+  42.7, still `mid`; every other placement and price unchanged.
+
 ## [0.30.1] — 2026-10-20
 
 Documentation only: the pages catch up with 0.28.0–0.30.0.

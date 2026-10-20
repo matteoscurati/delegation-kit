@@ -225,5 +225,22 @@ grep -Fq '[FAIL] installed patch policy is missing, invalid, or has drifted open
   exit 1
 }
 
+# A missing personal configuration: doctor still reports the .env beside the
+# path the commands read, and never trips over an unset variable.
+if env PATH="$CONTRACT_BIN:$TEST_TOOLS:$PATH" CLAUDE_HOME="$TMP/claude" \
+    CODEX_HOME="$TMP/codex" DELEGATION_DATA_HOME="$CONTRACT_DATA" \
+    DELEGATION_CONFIG_FILE="$TMP/no-config/config.json" \
+    "$ROOT/doctor.sh" >"$TMP/no-config-doctor.log" 2>&1; then
+  :
+else
+  :
+fi
+if grep -Fq 'unbound variable' "$TMP/no-config-doctor.log" \
+   || ! grep -Fq "no keys file at $TMP/no-config/.env" "$TMP/no-config-doctor.log"; then
+  sed 's/^/    /' "$TMP/no-config-doctor.log" >&2
+  printf 'doctor misreported the keys file without a valid configuration\n' >&2
+  exit 1
+fi
+
 printf 'doctor end-to-end regression passed
 '

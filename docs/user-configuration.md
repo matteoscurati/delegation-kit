@@ -141,7 +141,8 @@ routing metadata — `tier`, `code`, `price`, `context`, `json_mode` — which
 otherwise comes from the shipped `config/catalog.json`; each profile's
 `score`, the index the policy compares with a request's minimum, comes from
 the catalog (or the bottom of a declared tier's band). A pool profile this
-machine cannot reach is set aside, and `delegation-router check` says which.
+machine cannot reach is set aside, and `delegation-router check` says which;
+the default is not, since doubt still lands on it.
 `delegation-router decide --lane ROLE` recommends one pool profile for a task
 you are about to delegate. Without the block the router is off; nothing else
 in the kit reads it. See [the router page](router.md) for the fields, the policy
@@ -215,11 +216,14 @@ variable, and put the key itself in the environment or in the personal
 with `MINIMAX_API_KEY=…` in `~/.config/delegation-kit/.env`. The `model` is
 the identifier the endpoint accepts; the catalog still recognises it
 (`minimax-m3.1-flash`), so the profile gets the catalog's tier, score and
-price; `context` comes from MiniMax's own documentation. `delegation-router
-check` then lists it as reachable, and one `delegation-run --profile
-minimax-m3.1-flash --lane clerk` confirms the key and the model name: the
-receipt's `provider_reported_model` should read `MiniMax-M3.1-Flash`. The adapter owns capabilities — a `builder` role on a text adapter
-yields a patch, never write access — and unsupported parameters are errors.
+price; `context` comes from MiniMax's own documentation. Once it is in
+`router.pool`, `delegation-router check --json` lists it with `"reachable":
+true`; one `delegation-run --profile minimax-m3.1-flash --lane clerk
+--prompt-file FILE --output FILE --workdir DIR` confirms the key and the
+model name: the receipt's `provider_reported_model` should read
+`MiniMax-M3.1-Flash`. The adapter owns capabilities — a `builder` role on a
+text adapter yields a patch, never write access — and unsupported
+parameters are errors.
 Declare `tier`, `price`, `code`, `context` or `json_mode` when the router
 should rank the profile on your numbers rather than the catalog's. The
 catalog's tiers come from the Artificial Analysis Intelligence Index through

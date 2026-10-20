@@ -96,7 +96,9 @@ only be the default; a profile with no price is ranked last within its tier.
    --json` selects no backend, `codex` or `claude` missing from PATH — and
    listed under `blocked` as `unreachable: <why>`; `serve` checks once when it
    starts, `decide` and `check` every time, with no model call (a login that
-   lapses later still fails at dispatch, with its own error). Then a profile
+   lapses later still fails at dispatch, with its own error). Doubt still
+   lands on the default, so `serve` refuses a request that lands on an
+   unreachable default as `no-usable-candidate`. Then a profile
    is blocked when it declares
    no tier (unless it is the default), its context is too small for the
    request, its estimated cost is above the ceiling, or the request wants
@@ -231,9 +233,11 @@ followed by the router chunk; a native CLI that reports no usage leaves
 
 Every decider answers the same question and reports the same signals: a 0–4
 difficulty (expectation, distribution, confidence), a "needs a strong model"
-probability, tag probabilities. The excerpt is all any of them sees. Each is
-called with its own credential, never a profile's — from the environment or
-the personal `.env` — and prices its decision from `price`; the per-decision
+probability, tag probabilities. The excerpt is all any of them sees. A
+service decider is called with its own key (`credential_env`, from the
+environment or the personal `.env`), never a pool profile's; an `llm`
+decider uses its profile's key, found like any profile's (the kit's key
+file included). Each prices its decision from `price`; the per-decision
 cost is disclosed.
 
 | kind | service | default `url` | default `credential_env` | asks |
@@ -304,10 +308,10 @@ Errors are `{"error": {"code", "retryable", "profile"?, …}}` with
 | 403 | `browser-denied` | an `Origin` header not in `allow_origins` |
 | 400 | `cost-ceiling` | the chosen profile's estimate is above `max_cost_usd` or `X-Router-Max-Cost-USD` (with `estimated_usd`, `ceiling_usd`) |
 | 400 | `invalid-cost-ceiling` | the header is not a number in (0, 1000] |
-| 400 | `no-usable-candidate` | the named profile is blocked (context, JSON mode, no routable role) |
+| 400 | `no-usable-candidate` | the named profile is blocked (context, JSON mode, no routable role), or an `auto` request lands on a default that is blocked or unreachable (`reason` says which) |
 | 400 | `invalid-json`, `invalid-request` | not a JSON object with a `messages` list |
 | 411 / 413 | `length-required`, `size-limit` | no `Content-Length`, or above 4 MiB |
-| 401 | `provider-key-missing` | a profile named as `model`, or the default an undecidable request lands on, declares a credential nothing holds (an `auto` request sets such profiles aside before the decision) |
+| 401 | `provider-key-missing` | a profile named as `model` declares a credential nothing holds (an `auto` request has set such profiles aside before the decision) |
 | 429 | `busy` | more than 16 requests in flight |
 
 Provider failures keep their meaning and lose their payload: 401/403 → `401

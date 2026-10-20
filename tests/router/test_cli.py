@@ -147,13 +147,24 @@ class CliTests(Fixture):
             {m["profile"]: m["reachable"] for m in result["pool"]},
             {"small": True, "mid": False, "frontier": True},
         )
+        # `mid` is the default: it is never set aside, so check says what a
+        # request landing on it meets.
         self.assertIn(
-            "mid: unreachable on this machine (no MID_KEY); the router sets it aside",
+            "mid: the default is unreachable on this machine (no MID_KEY); a "
+            "request that lands on it is refused as no-usable-candidate",
             result["warnings"],
         )
         # The only builder is unreachable: no recommendation for the role.
         result = self.run_cli(*decide, "--lane", "builder", rc=65)
         self.assertIn("no reachable pool profile takes the builder role", result.stderr)
+
+    def test_check_says_a_non_default_profile_is_set_aside(self):
+        self.env.pop("SMALL_KEY")
+        result = json.loads(self.run_cli("check", "--json").stdout)
+        self.assertIn(
+            "small: unreachable on this machine (no SMALL_KEY); the router sets it aside",
+            result["warnings"],
+        )
 
     def test_raw_answer_only_on_request(self):
         Provider.reply = {
