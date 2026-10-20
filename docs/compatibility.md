@@ -20,7 +20,7 @@ below with the numbers actually observed before tagging.
   tests), ShellCheck at `-S warning`, ruff, the eleven Node tests and the
   version gate.
 - **Install and doctor**: a reinstall from the release commit and static
-  `doctor.sh` report `DOCTOR_RESULT`; the warnings are the configured
+  `doctor.sh` report `55 OK, 6 WARN, 0 FAIL`; the six warnings are the configured
   pool's native profiles (no tools, images or JSON mode through the router).
   With no personal configuration, doctor reports the keys file beside the
   path the commands read and stops on nothing.
