@@ -78,6 +78,7 @@ previous release's numbers forward.
 
 **Refresh the shipped catalog before tagging**: `bin/delegation-router
 catalog refresh --shipped` with an Artificial Analysis key in `AA_API_KEY`
+(the environment or `~/.config/delegation-kit/.env`)
 rewrites `config/catalog.json` with that day's index and places every listed
 model by the band rule. Commit it with the release; the data is Artificial
 Analysis's and the attribution stays in the file.

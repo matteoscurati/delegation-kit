@@ -19,7 +19,10 @@ The decider never picks a model by name. It judges the task; your
 configuration judges the models.
 
 1. **The request is measured**, not judged: tokens, turns, tools, images,
-   JSON output.
+   JSON output. **Your models are checked**, without a call: one this
+   machine cannot reach — no key, no login, its CLI missing — is set aside
+   and named in the response, so the choice is only among models that can
+   answer.
 2. **The decider answers one typed question**: how much capability does
    answering this correctly need (0 trivial … 4 frontier, half points
    allowed), and does it involve code, math or rare knowledge. It sees an
@@ -63,13 +66,14 @@ the day, mid within 20, small below — and records the evidence and the date
 beside each row; `delegation-router catalog show` prints it. That is how
 the kit knows that GPT-5.6 Sol (47.0) is `mid`, not `frontier`, whatever
 its name suggests, and that Mistral Large 3 (9.3) is `small`. With your own
-Artificial Analysis key (`AA_API_KEY`, or
-`~/.local/share/delegation-kit/config/artificial-analysis.env`),
+Artificial Analysis key (`AA_API_KEY` in your environment or in
+`~/.config/delegation-kit/.env`),
 `delegation-router catalog refresh` writes a current catalog on your machine
 that takes precedence over the shipped one; without a key you get the catalog
 the package shipped with, refreshed at every release. The levers are yours — `tier` and `price` per profile, the pool, the default, a
 cost ceiling — and `delegation-router decide --json` prints the reasons for
-any prompt without dispatching it. `delegation-router eval` measures a
+any prompt without dispatching it; with `--lane ROLE` it recommends, for a
+task you are about to delegate, only the models that take that role. `delegation-router eval` measures a
 decider against the rules-only baseline on a golden set of yours.
 
 ## Quick start
@@ -78,6 +82,12 @@ decider against the rules-only baseline on a golden set of yours.
 ./install.sh                      # commands, runners, Claude/Codex profiles, the guard
 delegation-config show            # the personal configuration the installer created
 ```
+
+Keys: the installer asks for the DeepSeek, Qwen and Z.AI keys and keeps them
+in files only you can read; any other key — a model you add, a decider, the
+Artificial Analysis key — goes in `~/.config/delegation-kit/.env`, created
+from [`.env.example`](.env.example) with mode 600. A variable already set in
+your environment wins. Never commit the real file.
 
 Add a `router` block to `~/.config/delegation-kit/config.json`: the decider
 first, then the profiles it may pick from (names that already exist in the file):
@@ -91,14 +101,18 @@ first, then the profiles it may pick from (names that already exist in the file)
 ```
 
 ```sh
-delegation-router check           # the decider, then the pool with tiers and prices; no network
+delegation-router check           # the decider, the pool with tiers, scores and prices, what this machine can reach
 delegation-router serve           # http://127.0.0.1:4141/v1, loopback only
 curl -s 127.0.0.1:4141/v1/chat/completions -H 'Content-Type: application/json' \
   -d '{"model":"auto","messages":[{"role":"user","content":"Rename foo to bar in utils.py"}]}'
 ```
 
-Any OpenAI SDK works with `base_url="http://127.0.0.1:4141/v1"`. Naming a
-pool profile as `model` skips the decider and still discloses. The
+Any client that speaks OpenAI Chat Completions works with
+`base_url="http://127.0.0.1:4141/v1"`: the OpenAI SDKs, curl, tools that let
+you set the base URL. Claude Code (Anthropic Messages) and Codex (OpenAI
+Responses) speak other formats and cannot send their requests here; the
+router can pick them to answer. Naming a pool profile as `model` skips the
+decider and still discloses. The
 [router page](docs/router.md) has every field, the policy, the deciders,
 the error codes and the evaluation harness.
 
@@ -122,13 +136,20 @@ the error codes and the evaluation harness.
 - **The patch trust boundary.** Text adapters return patches and never write
   to a worktree; `delegation-patch-verify` checks a patch against the shipped
   policy before the lead applies and tests it.
-- **`doctor.sh`** reports what is installed, which runtimes are reachable
-  and, first in its router section, which decider rates for which pool;
-  `--ping` runs a live round-trip.
+- **`doctor.sh`** reports what is installed, which runtimes are reachable,
+  the personal `.env` (its mode and how many keys it sets, never a value)
+  and, first in its router section, which decider rates for which pool and
+  which pool models this machine cannot reach; `--ping` runs a live
+  round-trip.
 
-## Current release: 0.30.0
+## Current release: 0.30.1
 
-Version 0.30.0 reads your keys from one `.env` beside the configuration
+Version 0.30.1 is documentation only: every page now says where keys go,
+which models the router sets aside and why, what `decide --lane` is for,
+and that Claude Code and Codex can be picked by the router but cannot send
+it their requests.
+
+Version 0.30.0 read your keys from one `.env` beside the configuration
 (`~/.config/delegation-kit/.env`, created once from `.env.example` with mode
 600): every command, runner and the router use it, and a variable already
 set in your environment still wins.
