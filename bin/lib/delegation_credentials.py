@@ -1,9 +1,11 @@
 """Where a profile's credential and endpoint come from.
 
-Profiles never hold a key: `credential_env` names a variable, and the kit's
-own key files under the data home (mode 600, one NAME=value line) cover the
-adapters that have one. A key file readable by group or others is ignored,
-not read."""
+Profiles never hold a key: `credential_env` names a variable. A variable
+comes from the environment, else from the personal `.env` beside the
+configuration file, else — for the adapters that have one — from the kit's
+own key file under the data home. Every file is NAME=value lines, parsed and
+never sourced, and ignored when it is a symlink or readable by group or
+others."""
 
 import json
 import os
@@ -12,7 +14,13 @@ import shutil
 import subprocess
 from concurrent.futures import ThreadPoolExecutor
 
-from delegation_config import ADAPTERS, ROOT, ROUTER_HTTP_ADAPTERS, data_home
+from delegation_config import (
+    ADAPTERS,
+    ROOT,
+    ROUTER_HTTP_ADAPTERS,
+    config_path,
+    data_home,
+)
 
 
 ENDPOINTS = {
@@ -30,23 +38,53 @@ KEY_FILES = {
 # its own setting; the policy discloses an effort only where it is applied.
 
 
-def key_from_file(path, var):
+ENV_LINE = re.compile(r"\s*(?:export\s+)?([A-Za-z_][A-Za-z0-9_]*)=(.*)$")
+
+
+def env_values(path):
+    """The NAME=value pairs of one key file, first spelling of a name wins;
+    {} when the file is absent, a symlink, or readable by group or others.
+    Lines are parsed, never executed; an empty value is no value."""
     try:
         if path.is_symlink() or not path.is_file():
-            return None
-        mode = path.stat().st_mode & 0o777
-        if mode & 0o077:
-            return None
+            return {}
+        if path.stat().st_mode & 0o077:
+            return {}
+        values = {}
         for line in path.read_text().splitlines():
-            m = re.match(r"\s*(?:export\s+)?" + re.escape(var) + r"=(.*)$", line)
-            if m:
-                value = m.group(1).strip()
-                if len(value) >= 2 and value[0] == value[-1] and value[0] in "\"'":
-                    value = value[1:-1]
-                return value or None
+            m = ENV_LINE.match(line)
+            if not m or m.group(1) in values:
+                continue
+            value = m.group(2).strip()
+            if len(value) >= 2 and value[0] == value[-1] and value[0] in "\"'":
+                value = value[1:-1]
+            if value:
+                values[m.group(1)] = value
+        return values
     except OSError:
-        return None
-    return None
+        return {}
+
+
+def key_from_file(path, var):
+    return env_values(path).get(var)
+
+
+def env_file():
+    """The personal `.env`, beside the configuration file. Never one in a
+    project: a key in a worktree is one `git add` away from a commit."""
+    return config_path().parent / ".env"
+
+
+def load_env_file(environ=None):
+    """Fill the environment from the personal `.env`; a variable that is
+    already set wins. Returns the names it set (never their values)."""
+    environ = os.environ if environ is None else environ
+    loaded = []
+    for name, value in env_values(env_file()).items():
+        if not environ.get(name):
+            environ[name] = value
+            loaded.append(name)
+    return loaded
 
 
 def credential_for(profile, env=None):

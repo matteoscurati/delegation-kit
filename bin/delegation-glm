@@ -16,6 +16,7 @@ ROOT="$(cd "$(dirname "$SOURCE")/.." && pwd)"
 RUNNER_NAME="delegation-glm"
 # shellcheck source=bin/lib/delegation-runner-common.sh
 . "$ROOT/bin/lib/delegation-runner-common.sh"
+load_kit_env
 # Derived from $ROOT so the key file lives where the install lives. This reads,
 # never writes; running from a source checkout, point at the real key with
 # DELEGATION_GLM_KEY_FILE.

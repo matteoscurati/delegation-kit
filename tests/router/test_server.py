@@ -291,6 +291,18 @@ class ServerTests(Fixture):
             data["router"]["blocked"],
         )
 
+    def test_a_key_kept_in_the_personal_env_file_is_used(self):
+        # MID_KEY only in the .env beside the configuration: `mid` is reachable
+        # and the forward carries that key.
+        self.env.pop("MID_KEY")
+        env_file = self.base / ".env"
+        env_file.write_text("MID_KEY=sk-canary-mid\n")
+        env_file.chmod(0o600)
+        self.restart()
+        status, data, headers = self.post(self.chat("mid"))
+        self.assertEqual(status, 200, data)
+        self.assertEqual(Provider.requests[-1][2], "Bearer sk-canary-mid")
+
     def test_stream_passthrough_ends_with_router_chunk_then_done(self):
         Provider.stream_lines = [
             b'data: {"id":"x","object":"chat.completion.chunk","model":"frontier-model","choices":[{"delta":{"content":"Hel"}}]}\n\n',
