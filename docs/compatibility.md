@@ -69,6 +69,16 @@ MiniMax-M3, matched by slug at 42.4 (`mid`, $0.15/$0.60); 24 of 25 models
 placed (Haiku 4.5 is still not on the board), every other placement and
 price unchanged since 2026-10-17. The 13 suites and the version gate pass.
 
+0.30.0 was checked on **2026-10-20**: the 13 suites (a key kept only in the
+personal `.env` is read by the DeepSeek and Qwen runners and forwarded by
+the router, the file is ignored when readable by others or a symlink, a
+variable set in the environment wins), ShellCheck, ruff and the version
+gate pass. A reinstall created `~/.config/delegation-kit/.env` from
+`.env.example` with mode 600; with an `openai-compatible` MiniMax profile
+whose key is only in that file, `check` found it reachable, and doctor
+reported `55 OK, 6 WARN, 0 FAIL` (the new line: the keys file's mode and
+how many variables it sets).
+
 **Offline.** All 13 regression suites green in 46 seconds here and about
 80 seconds on the macOS CI runner (where every `HTTPServer` bind had
 stalled on a reverse-DNS lookup until the router and the test fakes stopped
