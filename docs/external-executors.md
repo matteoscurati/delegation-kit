@@ -6,9 +6,12 @@ Six provider runners ship with the kit: `delegation-glm`, `delegation-kimi`,
 `/chat/completions` endpoint. Each runner is the sole enforcement authority for
 its own transport, credentials, sandbox, tools, and refusals. Nothing in the
 personal configuration, the router, or a skill can widen what a runner allows.
-A runner reads its key from the environment, then from the personal `.env`
-beside the configuration, then from its own key file under the data home
-(see [keys and environment](user-configuration.md#keys-and-environment)).
+A runner that takes a key reads it from the environment, then from the
+personal `.env` beside the configuration, then — GLM, Qwen and DeepSeek
+only — from its own key file under the data home;
+`delegation-openai-compatible` reads the variable its profile names in
+`credential_env`, and Kimi, Grok and Gemini use their CLI's own login (see
+[keys and environment](user-configuration.md#keys-and-environment)).
 
 Which model runs is a user choice recorded in the personal configuration (see
 [user configuration](user-configuration.md)). This page records what each

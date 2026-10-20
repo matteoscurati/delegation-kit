@@ -13,6 +13,28 @@ below with the numbers actually observed before tagging.
 
 ## Verified snapshot
 
+**0.30.2, checked on 2026-10-20** on macOS 26.5.1 with Claude Code
+`2.1.304` and Codex CLI `0.163.0`.
+
+- **Offline**: the 13 suites green in 49 seconds (the router suite at 79
+  tests), ShellCheck at `-S warning`, ruff, the eleven Node tests and the
+  version gate.
+- **Install and doctor**: a reinstall from the release commit and static
+  `doctor.sh` report `DOCTOR_RESULT`; the warnings are the configured
+  pool's native profiles (no tools, images or JSON mode through the router).
+  With no personal configuration, doctor reports the keys file beside the
+  path the commands read and stops on nothing.
+- **Catalog**: `catalog refresh --shipped` on 2026-10-20, 24 of 25 models
+  placed (Haiku 4.5 is not on the board), best of the day 57.6; the only
+  change since 2026-10-19 is MiniMax-M3.1-Flash, 42.4 → 42.7, still `mid`.
+- **Live**: none new for this release. The latest live checks, each
+  authorized, are recorded below with their dates: MiniMax-M3.1-Flash with
+  its key in the personal `.env` (2026-10-20), the DeepSeek Flash decider's
+  half points and `decide --lane` (2026-10-19), Claude Opus 5.5 at `max`
+  (2026-10-19), Sage, Jev and the `llm` deciders (2026-10-15).
+
+### Earlier checks, by release
+
 The 0.27.0 release was verified on **2026-10-15** and re-checked before
 tagging on **2026-10-17**, on macOS 26.5.1 with ambient Codex CLI `0.163.0`
 and ambient Claude Code `2.1.302`. 0.27.1 changes only the npm wrapper: on
@@ -86,7 +108,7 @@ its key only in the personal `.env`: `PONG` in 3 s, `provider_reported_model`
 `MiniMax-M3.1-Flash` (`model_identity_source: provider-reported`), 214 input
 and 14 output tokens.
 
-**Offline.** All 13 regression suites green in 46 seconds here and about
+**Offline (0.27.0).** All 13 regression suites green in 46 seconds here and about
 80 seconds on the macOS CI runner (where every `HTTPServer` bind had
 stalled on a reverse-DNS lookup until the router and the test fakes stopped
 asking for one). The `router` suite, `tests/router/`, runs 64 tests: the
@@ -107,8 +129,8 @@ version gate pass; a reinstall from the release commit and `doctor.sh
 --ping` report `55 OK, 0 WARN, 0 FAIL` with the router reported as `not
 configured — optional`.
 
-**Live, each call authorized, keys read from the environment and never
-printed.**
+**Live (0.27.0), each call authorized, keys read from the environment and
+never printed.**
 
 - `delegation-router catalog refresh` against the Artificial Analysis API:
   700 rows; 24 of 25 catalog models matched by slug or alias (Haiku 4.5 is

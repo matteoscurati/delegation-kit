@@ -366,7 +366,8 @@ elif have delegation-config; then
   else
     bad "personal configuration missing or invalid — run delegation-config init, then delegation-config validate"
   fi
-  env_file="$(dirname "$config_file")/.env"
+  # Beside the configuration the commands read, whether or not it validated.
+  env_file="$(dirname "${DELEGATION_CONFIG_FILE:-${XDG_CONFIG_HOME:-$HOME/.config}/delegation-kit/config.json}")/.env"
   if [ -L "$env_file" ]; then
     warn "$env_file is a symlink — ignored; make it a regular file with mode 600"
   elif [ -f "$env_file" ]; then
