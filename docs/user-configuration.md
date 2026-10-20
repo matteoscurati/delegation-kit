@@ -138,8 +138,13 @@ A `router` block names the decider — `decider`, required: one of
 your profiles, Sage, Jev, a Dipylon, a local classifier, or `none` — and the
 profiles it may pick from (`pool`, `default`, HTTP or native). Profiles may declare
 routing metadata — `tier`, `code`, `price`, `context`, `json_mode` — which
-otherwise comes from the shipped `config/catalog.json`. Without the block the
-router is off; nothing else in the kit reads it. See [the router page](router.md) for the fields, the policy
+otherwise comes from the shipped `config/catalog.json`; each profile's
+`score`, the index the policy compares with a request's minimum, comes from
+the catalog (or the bottom of a declared tier's band). A pool profile this
+machine cannot reach is set aside, and `delegation-router check` says which.
+`delegation-router decide --lane ROLE` recommends one pool profile for a task
+you are about to delegate. Without the block the router is off; nothing else
+in the kit reads it. See [the router page](router.md) for the fields, the policy
 and what each response discloses.
 
 ## Keys and environment
@@ -192,13 +197,35 @@ Add a profile to the personal file, then `delegation-config validate` and
 adapter, the exact model identifier the endpoint accepts, the roles and the
 parameters the adapter supports; for a custom OpenAI-compatible endpoint add
 `base_url` and, if it needs a key, `credential_env` with the *name* of the
-variable. The adapter owns capabilities — a `builder` role on a text adapter
+variable, and put the key itself in the environment or in the personal
+`.env`. MiniMax-M3.1-Flash, for example:
+
+```json
+"minimax-m3.1-flash": {
+  "adapter": "openai-compatible",
+  "model": "MiniMax-M3.1-Flash",
+  "family": "minimax",
+  "roles": ["builder", "clerk", "scout", "reviewer", "senior", "judgement", "policy-annotation"],
+  "base_url": "https://api.minimax.io/v1",
+  "credential_env": "MINIMAX_API_KEY",
+  "context": 1000000
+}
+```
+
+with `MINIMAX_API_KEY=…` in `~/.config/delegation-kit/.env`. The `model` is
+the identifier the endpoint accepts; the catalog still recognises it
+(`minimax-m3.1-flash`), so the profile gets the catalog's tier, score and
+price; `context` comes from MiniMax's own documentation. `delegation-router
+check` then lists it as reachable, and one `delegation-run --profile
+minimax-m3.1-flash --lane clerk` confirms the key and the model name: the
+receipt's `provider_reported_model` should read `MiniMax-M3.1-Flash`. The adapter owns capabilities — a `builder` role on a text adapter
 yields a patch, never write access — and unsupported parameters are errors.
 Declare `tier`, `price`, `code`, `context` or `json_mode` when the router
 should rank the profile on your numbers rather than the catalog's. The
 catalog's tiers come from the Artificial Analysis Intelligence Index through
 a published band rule; `delegation-router catalog show` prints the source of
-every tier and `catalog refresh`, with your key in `AA_API_KEY` or in
+every tier and `catalog refresh`, with your key in `AA_API_KEY` (environment
+or personal `.env`) or in
 `$DELEGATION_DATA_HOME/config/artificial-analysis.env` (mode 600), writes a
 current catalog beside the key files. See [the router page](router.md).
 

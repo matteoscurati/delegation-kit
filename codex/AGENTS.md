@@ -46,6 +46,7 @@ choice; the router selects only inside that pool, discloses the chosen model
 in every response, and never retries, falls back, or widens the pool.
 `delegation-router check` and `delegation-router decide` are read-only
 discovery: `decide` recommends a profile (calling the configured decider
-once, with its own key, when it is an LLM), it does not dispatch. Running the
-recommended profile is a separate `delegation-run` that needs its own
-explicit request.
+once, with its own key, when it is an LLM), it does not dispatch; for a task
+the user wants delegated, `decide --lane <role>` recommends only pool
+profiles that take that role. Running the recommended profile is a separate
+`delegation-run` that needs its own explicit request.

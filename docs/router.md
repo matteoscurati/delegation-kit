@@ -193,7 +193,8 @@ Two ways to current tiers, neither automatic:
   to the Artificial Analysis API with your key and writes
   `$DELEGATION_DATA_HOME/config/catalog.local.json`, which takes precedence
   while it is at least as recent as the shipped file. The key goes in
-  `AA_API_KEY` or in `$DELEGATION_DATA_HOME/config/artificial-analysis.env`
+  `AA_API_KEY` (your environment or the personal `.env`) or in
+  `$DELEGATION_DATA_HOME/config/artificial-analysis.env`
   as `AA_API_KEY=<key>` with mode 600; a free account at
   artificialanalysis.ai issues one. The uninstaller keeps the key and the
   local catalog beside the data home and the installer restores them. The
@@ -231,8 +232,9 @@ followed by the router chunk; a native CLI that reports no usage leaves
 Every decider answers the same question and reports the same signals: a 0–4
 difficulty (expectation, distribution, confidence), a "needs a strong model"
 probability, tag probabilities. The excerpt is all any of them sees. Each is
-called with its own credential, never a profile's, and prices its decision
-from `price`; the per-decision cost is disclosed.
+called with its own credential, never a profile's — from the environment or
+the personal `.env` — and prices its decision from `price`; the per-decision
+cost is disclosed.
 
 | kind | service | default `url` | default `credential_env` | asks |
 |---|---|---|---|---|
@@ -305,7 +307,7 @@ Errors are `{"error": {"code", "retryable", "profile"?, …}}` with
 | 400 | `no-usable-candidate` | the named profile is blocked (context, JSON mode, no routable role) |
 | 400 | `invalid-json`, `invalid-request` | not a JSON object with a `messages` list |
 | 411 / 413 | `length-required`, `size-limit` | no `Content-Length`, or above 4 MiB |
-| 401 | `provider-key-missing` | the chosen profile declares a credential nothing holds |
+| 401 | `provider-key-missing` | a profile named as `model`, or the default an undecidable request lands on, declares a credential nothing holds (an `auto` request sets such profiles aside before the decision) |
 | 429 | `busy` | more than 16 requests in flight |
 
 Provider failures keep their meaning and lose their payload: 401/403 → `401
@@ -357,8 +359,11 @@ curl -s 127.0.0.1:4141/v1/models        # the pool, plus "auto"
 curl -s 127.0.0.1:4141/v1/health
 ```
 
-Any OpenAI SDK works with `base_url="http://127.0.0.1:4141/v1"` and any API
-key (the router ignores it; each profile uses its own). Naming a pool profile
+Any client that speaks OpenAI Chat Completions works with
+`base_url="http://127.0.0.1:4141/v1"` and any API key (the router ignores it;
+each profile uses its own). Claude Code speaks Anthropic Messages and Codex
+0.163 accepts custom providers only on the Responses API, so neither can
+send its requests here; both can be pool profiles the router picks. Naming a pool profile
 as `model` forwards to it without a decider and still discloses; the context
 and cost rules apply to it too. `doctor.sh` has a "Model router" section that
 opens with the decider, names the catalog in effect and lists `check`'s

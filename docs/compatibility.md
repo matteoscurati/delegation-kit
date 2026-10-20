@@ -79,6 +79,13 @@ whose key is only in that file, `check` found it reachable, and doctor
 reported `55 OK, 6 WARN, 0 FAIL` (the new line: the keys file's mode and
 how many variables it sets).
 
+0.30.1 changes documentation and the installed guard's wording only; the 13
+suites and the version gate pass on 2026-10-20. The MiniMax-M3.1-Flash
+example in the configuration guide was dispatched once (authorized) with
+its key only in the personal `.env`: `PONG` in 3 s, `provider_reported_model`
+`MiniMax-M3.1-Flash` (`model_identity_source: provider-reported`), 214 input
+and 14 output tokens.
+
 **Offline.** All 13 regression suites green in 46 seconds here and about
 80 seconds on the macOS CI runner (where every `HTTPServer` bind had
 stalled on a reverse-DNS lookup until the router and the test fakes stopped

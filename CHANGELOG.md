@@ -2,6 +2,31 @@
 
 All notable changes to delegation-kit are documented here.
 
+## [0.30.1] — 2026-10-20
+
+Documentation only: the pages catch up with 0.28.0–0.30.0.
+
+### Changed
+
+- **README**: the Quick start says where keys go (the installer's three,
+  then `~/.config/delegation-kit/.env` for any other) and that the real file
+  is never committed; *How the choice is made* checks your models before
+  the decision; `check` reports scores and reachability; `decide --lane`
+  is named; the client paragraph says Claude Code and Codex cannot send
+  requests to the router but can be picked by it; `doctor` reports the
+  `.env`.
+- **Router page**: the same client note; a decider's key and the Artificial
+  Analysis key can live in the personal `.env`; `provider-key-missing` is
+  what a named profile or an undecidable default meets, an `auto` request
+  having set unreachable profiles aside.
+- **Configuration guide**: the router section names the profile score,
+  reachability and `decide --lane`; *Adding a model* puts the key in the
+  `.env` and walks through a complete MiniMax-M3.1-Flash profile, down to
+  the receipt that confirms it.
+- **External executors**: where a runner reads its key.
+- **The installed guard** (Claude Code and Codex): `decide --lane <role>`
+  for a task the user wants delegated, still discovery that grants nothing.
+
 ## [0.30.0] — 2026-10-20
 
 Keys can live in one `.env` beside the configuration.
