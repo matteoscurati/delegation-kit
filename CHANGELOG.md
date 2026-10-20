@@ -2,6 +2,29 @@
 
 All notable changes to delegation-kit are documented here.
 
+## [0.30.0] — 2026-10-20
+
+Keys can live in one `.env` beside the configuration.
+
+### Added
+
+- **The personal `.env`.** `${XDG_CONFIG_HOME:-$HOME/.config}/delegation-kit/.env`
+  (beside `$DELEGATION_CONFIG_FILE` when that is set) holds `NAME=value`
+  lines that fill the variables your environment does not set: a profile's
+  `credential_env`, `DEEPSEEK_API_KEY`, `QWEN_TOKEN_PLAN_API_KEY`,
+  `ZAI_API_KEY`, the deciders' `SAGE_API_KEY` and `TYPESAFE_API_KEY`,
+  `AA_API_KEY`. `delegation-run`, `delegation-router` and every runner read
+  it; lines are parsed, never sourced; a variable already set wins; the file
+  is ignored when it is a symlink or readable by group or others. Until now
+  a key for an `openai-compatible` profile could only come from the
+  environment. The installer copies the new `.env.example` there once, mode
+  600, every value empty, and never overwrites it; `doctor` reports its mode
+  and how many variables it sets, never a value. The kit's key files under
+  the data home keep working, after the environment and the `.env`.
+- **`.env.example`** in the repository lists every variable the kit reads,
+  with no values; `.gitignore` excepts it and still keeps out every other
+  `.env*`.
+
 ## [0.29.1] — 2026-10-19
 
 ### Changed

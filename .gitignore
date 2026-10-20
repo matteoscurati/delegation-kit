@@ -2,6 +2,7 @@
 *.log
 *.bak
 .env*
+!.env.example
 *.token
 
 # Per-checkout agent state is machine-specific and never part of the kit.

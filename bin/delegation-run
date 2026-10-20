@@ -10,6 +10,7 @@ import tempfile
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent / "lib"))
+from delegation_credentials import load_env_file
 from delegation_config import (
     load,
     row,
@@ -31,6 +32,7 @@ p.add_argument("--reviewer-profile")
 p.add_argument("--review-authorized", action="store_true")
 a = p.parse_args()
 os.umask(0o077)
+load_env_file()
 try:
     c = load()
     profile = c["profiles"][a.profile]

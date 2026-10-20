@@ -14,6 +14,7 @@ ROOT="$(cd "$(dirname "$SOURCE")/.." && pwd)"
 RUNNER_NAME="delegation-gemini"
 # shellcheck source=bin/lib/delegation-runner-common.sh
 . "$ROOT/bin/lib/delegation-runner-common.sh"
+load_kit_env
 MODEL="${DELEGATION_REQUESTED_MODEL:-gemini-3.8-flash}"
 ADAPTER="agy"
 ROLES="scout builder frontend-builder reviewer judgement"

@@ -366,6 +366,19 @@ elif have delegation-config; then
   else
     bad "personal configuration missing or invalid — run delegation-config init, then delegation-config validate"
   fi
+  env_file="$(dirname "$config_file")/.env"
+  if [ -L "$env_file" ]; then
+    warn "$env_file is a symlink — ignored; make it a regular file with mode 600"
+  elif [ -f "$env_file" ]; then
+    env_mode="$(stat -f '%Lp' "$env_file" 2>/dev/null || stat -c '%a' "$env_file" 2>/dev/null)"
+    env_names="$(grep -cE '^[[:space:]]*(export[[:space:]]+)?[A-Za-z_][A-Za-z0-9_]*=[^[:space:]]' "$env_file" 2>/dev/null || true)"
+    case "$env_mode" in
+      *00) ok "keys file $env_file: mode $env_mode, ${env_names:-0} variables set (values never shown)" ;;
+      *) warn "keys file $env_file is mode $env_mode — ignored; chmod 600 it" ;;
+    esac
+  else
+    info "no keys file at $env_file — keys come from the environment and the kit's key files"
+  fi
   for command in delegation-run delegation-openai-compatible; do
     have "$command" && ok "$command on PATH" || bad "$command not on PATH — re-run ./install.sh"
   done

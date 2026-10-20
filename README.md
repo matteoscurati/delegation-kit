@@ -126,9 +126,14 @@ the error codes and the evaluation harness.
   and, first in its router section, which decider rates for which pool;
   `--ping` runs a live round-trip.
 
-## Current release: 0.29.1
+## Current release: 0.30.0
 
-Version 0.29.1 replaces MiniMax-M3 with MiniMax-M3.1-Flash in the shipped
+Version 0.30.0 reads your keys from one `.env` beside the configuration
+(`~/.config/delegation-kit/.env`, created once from `.env.example` with mode
+600): every command, runner and the router use it, and a variable already
+set in your environment still wins.
+
+Version 0.29.1 replaced MiniMax-M3 with MiniMax-M3.1-Flash in the shipped
 catalog: 42.4 on the index, `mid`, at $0.15/$0.60 per million tokens.
 
 Version 0.29.0 set aside the models this machine cannot reach: a pool

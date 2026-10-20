@@ -145,8 +145,15 @@ and what each response discloses.
 ## Keys and environment
 
 Nothing in the kit holds a key value: profiles name a variable, services
-name a variable, and the key files live under the data home with mode 600.
-The variables a user sets:
+name a variable. A variable comes from, in this order: your environment;
+the personal `.env` beside the configuration file
+(`${XDG_CONFIG_HOME:-$HOME/.config}/delegation-kit/.env`, or beside
+`$DELEGATION_CONFIG_FILE`); for the adapters that have one, the kit's key
+file under the data home. The installer creates the `.env` once from the
+repository's `.env.example`, with mode 600 and every value empty, and never
+overwrites it; fill in only the keys you use. The commands, the runners and
+`delegation-run` read it; `doctor` reports its mode and how many variables
+it sets, never their values. The variables a user sets:
 
 | variable | meaning |
 |---|---|
@@ -158,8 +165,9 @@ The variables a user sets:
 | the name in `router.decider.credential_env` | the decision service's key (`SAGE_API_KEY`, `TYPESAFE_API_KEY` by default) |
 | `AA_API_KEY` | the Artificial Analysis key for `delegation-router catalog refresh` |
 
-Key files, read when the variable is unset, one `NAME=value` line each,
-mode 600, under `$DELEGATION_DATA_HOME/config/`:
+Key files, read when the variable is unset in the environment and in the
+`.env`, one `NAME=value` line each, mode 600, under
+`$DELEGATION_DATA_HOME/config/`:
 
 | file | variable | used by |
 |---|---|---|
@@ -168,11 +176,14 @@ mode 600, under `$DELEGATION_DATA_HOME/config/`:
 | `deepseek.env` | `DEEPSEEK_API_KEY` | `deepseek-api` profiles |
 | `artificial-analysis.env` | `AA_API_KEY` | `delegation-router catalog refresh` |
 
-A key file that is readable by group or others is ignored, not read. The
-uninstaller keeps every key file beside the data home as
-`<data home>.<name>.env.bak` and the installer restores it. There is no
-`.env` file in a project: the kit never reads one, and a key in a worktree
-would be one `git add` away from a commit.
+Every one of these files — the `.env` and the key files — is parsed, never
+executed, and ignored when it is a symlink or readable by group or others.
+The uninstaller keeps every key file beside the data home as
+`<data home>.<name>.env.bak` and the installer restores it; the `.env`
+lives in the configuration directory, which neither touches. There is no
+`.env` in a project: the kit never reads one, and a key in a worktree would
+be one `git add` away from a commit. The repository's `.env.example` is a
+template with no values, and `.gitignore` keeps every other `.env*` out.
 
 ## Adding a model
 

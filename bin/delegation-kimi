@@ -16,6 +16,7 @@ ROOT="$(cd "$(dirname "$SOURCE")/.." && pwd)"
 RUNNER_NAME="delegation-kimi"
 # shellcheck source=bin/lib/delegation-runner-common.sh
 . "$ROOT/bin/lib/delegation-runner-common.sh"
+load_kit_env
 KIMI_HOME="${KIMI_CODE_HOME:-$HOME/.kimi-code}"
 CREDENTIAL_FILE="$KIMI_HOME/credentials/kimi-code.json"
 DATA_HOME="${DELEGATION_DATA_HOME:-${XDG_DATA_HOME:-$HOME/.local/share}/delegation-kit}"

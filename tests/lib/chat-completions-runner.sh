@@ -314,4 +314,26 @@ PATH="$TMP/bin:$PATH" \
 
 [ -z "$(find "$TMP/runtime" -mindepth 1 -maxdepth 1 -name "delegation-${PROVIDER_SLUG}.*" -print)" ] \
   || fail 'temporary directories not cleaned'
+
+# A key kept only in the personal .env beside the configuration file is read;
+# the same file readable by others, or a symlink to it, is ignored.
+mkdir -p "$TMP/personal"
+printf '# keys\nexport %s="%s"\n' "$API_KEY_ENV" "$API_KEY_VALUE" >"$TMP/personal/real.env"
+cp "$TMP/personal/real.env" "$TMP/personal/.env"
+chmod 600 "$TMP/personal/.env" "$TMP/personal/real.env"
+envfile_check() {
+  # No kit key file either: a checkout may hold a real one beside it.
+  env PATH="$TMP/bin:$PATH" "$API_KEY_ENV=" \
+    DELEGATION_QWEN_KEY_FILE="$TMP/personal/none" \
+    DELEGATION_DEEPSEEK_KEY_FILE="$TMP/personal/none" \
+    DELEGATION_CONFIG_FILE="$TMP/personal/config.json" \
+    "$RUNNER" check --json >"$TMP/check-envfile.json"
+  jq -r --arg b "$BACKEND" '.backends[$b].available' "$TMP/check-envfile.json"
+}
+[ "$(envfile_check)" = true ] || fail 'a key kept only in the personal .env was not read'
+chmod 644 "$TMP/personal/.env"
+[ "$(envfile_check)" = false ] || fail 'a personal .env readable by others was read'
+rm "$TMP/personal/.env"
+ln -s "$TMP/personal/real.env" "$TMP/personal/.env"
+[ "$(envfile_check)" = false ] || fail 'a symlinked personal .env was read'
 printf '%s runner diagnostics tests passed.\n' "$PROVIDER_LABEL"

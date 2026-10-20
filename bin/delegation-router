@@ -15,7 +15,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent / "lib"))
 from delegation_config import ROUTER_DECIDERS, load, validate_listen  # noqa: E402
-from delegation_credentials import reachability  # noqa: E402
+from delegation_credentials import load_env_file, reachability  # noqa: E402
 from delegation_router_pipeline import (  # noqa: E402
     check,
     decider_line,
@@ -26,6 +26,7 @@ from delegation_router_pipeline import (  # noqa: E402
 
 
 def main():
+    load_env_file()
     p = argparse.ArgumentParser(prog="delegation-router")
     sub = p.add_subparsers(dest="command", required=True)
     pc = sub.add_parser("check", help="validate the router block; no network")

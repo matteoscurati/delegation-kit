@@ -72,6 +72,14 @@ PYMANAGED
 # absent; an existing file is never overwritten.
 "$KIT/bin/delegation-config" init
 
+# The personal .env beside it, for the keys the user chooses to keep in a file:
+# copied from the template only when absent, mode 600, never overwritten.
+ENV_FILE="$(dirname "${DELEGATION_CONFIG_FILE:-${XDG_CONFIG_HOME:-$HOME/.config}/delegation-kit/config.json}")/.env"
+if [ ! -e "$ENV_FILE" ] && [ ! -L "$ENV_FILE" ]; then
+  ( umask 077; cp "$KIT/.env.example" "$ENV_FILE" )
+  echo "Keys file -> $ENV_FILE (from .env.example; fill in the keys you use)"
+fi
+
 # Shared optional external-model bridges. Installing a command does not make its
 # model routable: the runtime check and versioned evaluation manifest must pass.
 mkdir -p "$BIN_HOME" "$DATA_HOME/bin" "$DATA_HOME/bin/lib" "$DATA_HOME/config"
