@@ -71,11 +71,12 @@ Artificial Analysis key (`AA_API_KEY` in your environment or in
 `~/.config/delegation-kit/.env`),
 `delegation-router catalog refresh` writes a current catalog on your machine
 that takes precedence over the shipped one; without a key you get the catalog
-the package shipped with, refreshed at every release. The levers are yours — `tier` and `price` per profile, the pool, the default, a
-cost ceiling — and `delegation-router decide --json` prints the reasons for
-any prompt without dispatching it; with `--lane ROLE` it recommends, for a
-task you are about to delegate, only the models that take that role. `delegation-router eval` measures a
-decider against the rules-only baseline on a golden set of yours.
+the package shipped with, refreshed at every release. The levers are yours —
+`tier` and `price` per profile, the pool, the default, a cost ceiling — and
+`delegation-router decide --json` prints the reasons for any prompt without
+dispatching it; with `--lane ROLE` it recommends, for a task you are about to
+delegate, only the models that take that role. `delegation-router eval`
+measures a decider against the rules-only baseline on a golden set of yours.
 
 ## Quick start
 
@@ -143,67 +144,16 @@ the error codes and the evaluation harness.
   which pool models this machine cannot reach; `--ping` runs a live
   round-trip.
 
-## Current release: 0.30.3
+## Current release: 0.30.4
 
-Version 0.30.3 is documentation only. The router, configuration, executors
-and compatibility pages are shorter: repeated explanations are gone, long
-paragraphs became tables, and release history moved to the CHANGELOG. They
-also correct what had drifted from the code, such as which profile answers
-under a cost ceiling, when the decider is skipped and which adapters get a
-ten-second grace after a timeout; `check` no longer says an unpriced profile
-is ranked last "within its tier". The shipped catalog is refreshed to
-2026-10-21.
+Version 0.30.4 is housekeeping. The installer now removes what a release no
+longer ships: library modules left by earlier versions, and skill files
+(skill directories are replaced whole). Agents, skills, `doctor` messages and
+comments no longer name retired profiles (`sol-judge`), removed gates
+("after evaluation") or a fixed review family where the review policy is
+configurable.
 
-Version 0.30.2 fixed what a review of 0.30.1 found: `doctor` no longer stops
-on an unset variable when the configuration is missing, and `check` says that
-an unreachable default refuses the requests that land on it.
-
-Version 0.30.1 was documentation only: every page now says where keys go,
-which models the router sets aside and why, what `decide --lane` is for,
-and that Claude Code and Codex can be picked by the router but cannot send
-it their requests.
-
-Version 0.30.0 read your keys from one `.env` beside the configuration
-(`~/.config/delegation-kit/.env`, created once from `.env.example` with mode
-600): every command, runner and the router use it, and a variable already
-set in your environment still wins.
-
-Version 0.29.1 replaced MiniMax-M3 with MiniMax-M3.1-Flash in the shipped
-catalog: 42.4 on the index, `mid`, at $0.15/$0.60 per million tokens.
-
-Version 0.29.0 set aside the models this machine cannot reach: a pool
-profile without its key, a CLI that is not installed or not logged in is
-left out before the decision and named in the response, instead of being
-chosen and failing. `check` and `doctor` list them.
-
-Version 0.28.0 changed how the router chooses. The rating becomes a minimum
-score on the Artificial Analysis index, and the cheapest of your models that
-reaches it answers, whatever its tier (`floor-v1`); before, the cheapest on
-the rated tier answered, so a pricier small model beat a cheaper, stronger
-mid one. The LLM decider rates in half points, and `decide --lane ROLE`
-recommends only profiles that take the role of a task you are about to
-delegate.
-
-Version 0.27.2 moved the shipped Opus profiles and Claude Code agents to
-Claude Opus 5.5, rewrites the README and router page in the words the
-responses use (tier, decider), corrects what they said leaves your machine
-and the routing example, and has the installer warn when its bin directory
-is not on your PATH. 0.27.1 made `npx delegation-kit@X.Y.Z` install the
-`delegation-kit--vX.Y.Z` tag.
-
-Version 0.27.0 added `delegation-router`: a `router` block names the decider
-and the profiles it may pick from; `check` and `decide` are read-only; `serve`
-routes `"model": "auto"` through a deterministic prefilter, the decider and
-the `tiered-v1` policy, forwards — HTTP profiles with their own key, native
-profiles through the kit's dispatcher — streams through and discloses the
-choice. Five deciders (`llm`, `sage`, `jev`, `dipylon`, `classifier`), a cost
-ceiling, opt-in receipts without prompt content, a model catalog and an
-offline `eval` come with it. One configuration schema (`init` writes
-`schema_version: 2`, a file that says `1` is read identically); the pre-0.24
-migration, the advisory routing page and the adapting guide are gone; the
-compatibility page keeps only the current snapshot. Explicit per-dispatch
-authorization, sandboxes, model identity checks and the patch trust boundary
-are unchanged. See [`CHANGELOG.md`](./CHANGELOG.md) for the full history.
+Every earlier release is in [`CHANGELOG.md`](./CHANGELOG.md).
 
 ## Documentation
 

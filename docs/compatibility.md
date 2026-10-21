@@ -10,21 +10,22 @@ below with the numbers observed after running the
 
 ## Verified snapshot
 
-**0.30.3, checked on 2026-10-21** on macOS 26.5.1 with Claude Code
+**0.30.4, checked on 2026-10-21** on macOS 26.5.1 with Claude Code
 `2.1.306` and Codex CLI `0.163.0`.
 
-- **Offline**: the 13 suites green in 214 seconds (the router suite at 79
-  tests), ShellCheck at `-S warning` on the files CI collects, ruff, the
-  eleven Node tests and the version gate.
-- **Install and doctor**: a reinstall from the release branch and static
-  `doctor.sh` report `55 OK, 6 WARN, 0 FAIL`; the six warnings are the
-  configured pool's native profiles (no tools, images or JSON mode through
-  the router). With no personal configuration, doctor names the missing
-  keys file beside that path and reports the configuration's four FAILs
-  without stopping.
-- **Catalog**: `catalog refresh --shipped` on 2026-10-21, 24 of 25 models
-  placed (Haiku 4.5 is not on the board), best of the day 57.6; no
-  placement or price changed since 2026-10-20.
+- **Offline**: the 13 suites green in 51 seconds (the router suite at 79
+  tests; the installer suite at 18, one new for files a release no longer
+  ships, which fails against the 0.30.3 installer), ShellCheck at
+  `-S warning` on the files CI collects, ruff, the eleven Node tests and the
+  version gate.
+- **Install and doctor**: a reinstall from the release branch removed the
+  two library modules earlier releases had left (`delegation_router.py`,
+  `delegation_router_catalog.py`) and the empty orchestrate reference;
+  `delegation-router check` ran from the pruned install. Static `doctor.sh`
+  reports `55 OK, 6 WARN, 0 FAIL`; the six warnings are the configured
+  pool's native profiles (no tools, images or JSON mode through the router).
+- **Catalog**: `catalog refresh --shipped` again on 2026-10-21, nothing
+  changed since 0.30.3.
 - **Live**: none new for this release. The latest live checks, each
   authorized, are recorded below with their dates: MiniMax-M3.1-Flash with
   its key in the personal `.env` (2026-10-20), the DeepSeek Flash decider's
@@ -36,6 +37,11 @@ below with the numbers observed after running the
 Newest first. "Suites" means the 13 regression suites; every live call was
 authorized and no key was printed.
 
+- **0.30.3** (2026-10-21, Claude Code `2.1.306`): documentation and one
+  `check` warning; suites in 214 s (79 router tests), ShellCheck, ruff, Node
+  tests, version gate; doctor `55 OK, 6 WARN, 0 FAIL`, and without a
+  personal configuration it named the missing keys file and reported four
+  FAILs without stopping. Catalog refreshed, nothing changed.
 - **0.30.2** (2026-10-20, Claude Code `2.1.304`): suites in 49 s (79 router
   tests), ShellCheck, ruff, Node tests, version gate; doctor `55 OK, 6 WARN,
   0 FAIL`, and without a personal configuration it no longer stopped on an

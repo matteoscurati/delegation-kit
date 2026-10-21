@@ -37,6 +37,6 @@ provider-reported, or provider-reported identity as independent certification.
 Retain the runner's isolated home, credential handling, enforced sandbox,
 allowed tools, worktree restrictions and patch checks. A new model does not
 change these permissions. Runtime unavailability is a stop, never permission
-for another backend. Inspect the selected provider command's help for native
-runtime prerequisites and diagnostic/evaluation options. Kimi implements only
-clerk, scout, builder, frontend-builder and policy-annotation tool profiles.
+for another backend. `delegation-glm` `--help` lists its runtime prerequisites and
+diagnostic options; `delegation-glm check --json` reports what this machine can run.
+It takes only the clerk, scout, builder, reviewer and policy-annotation roles.

@@ -6,9 +6,8 @@
 hyphens, `v`, semver. Example: `delegation-kit--v0.10.0`.
 
 > The generic `release` skill defaults to a bare `v<VERSION>` tag. That is wrong
-> for this repository. Override it — every one of the eight existing tags uses
-> the prefixed form, and a bare `v0.x.0` would fork the history into two naming
-> schemes.
+> for this repository. Override it — every existing tag uses the prefixed
+> form, and a bare `v0.x.0` would fork the history into two naming schemes.
 
 Rules, all of which the existing tags already follow:
 

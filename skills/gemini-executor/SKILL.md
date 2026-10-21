@@ -1,6 +1,6 @@
 ---
 name: gemini-executor
-description: Use only when the current user explicitly selects or asks to inspect the staged Gemini lane. Never dispatch Gemini automatically.
+description: Use only when the current user explicitly selects or asks to inspect a Gemini lane. Never dispatch Gemini automatically.
 ---
 
 # gemini-executor

@@ -631,4 +631,4 @@ def build(kind, c, decider_cfg, profile_meta_fn, timeout=None, opener=None, env=
     if kind in SERVICE_DECIDERS:
         cfg = decider_cfg if decider_cfg.get("kind", "llm") == kind else {}
         return SERVICE_CLASSES[kind](cfg, timeout=timeout, opener=opener, env=env)
-    raise ValueError("decider kind not available in this release: " + str(kind))
+    raise ValueError("unknown decider kind: " + str(kind))

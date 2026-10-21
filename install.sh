@@ -80,8 +80,8 @@ if [ ! -e "$ENV_FILE" ] && [ ! -L "$ENV_FILE" ]; then
   echo "Keys file -> $ENV_FILE (from .env.example; fill in the keys you use)"
 fi
 
-# Shared optional external-model bridges. Installing a command does not make its
-# model routable: the runtime check and versioned evaluation manifest must pass.
+# Shared optional external-model bridges. Installing a runner selects no model:
+# a profile in the personal configuration names it, and its check must pass.
 mkdir -p "$BIN_HOME" "$DATA_HOME/bin" "$DATA_HOME/bin/lib" "$DATA_HOME/config"
 # The runners resolve their own symlink back to $DATA_HOME/bin and source the
 # shared helpers from the sibling lib/ directory, so the library is installed
@@ -97,6 +97,13 @@ install_file() { # $1=source $2=target
 for lib in "$KIT"/bin/lib/*.sh "$KIT"/bin/lib/delegation_*.py; do
   install_file "$lib" "$DATA_HOME/bin/lib/$(basename "$lib")"
 done
+# A module a release no longer ships must not linger beside the current ones,
+# nor its bytecode: the library holds exactly this checkout's files.
+for installed in "$DATA_HOME"/bin/lib/delegation_*.py "$DATA_HOME"/bin/lib/delegation-*.sh; do
+  [ -e "$installed" ] || continue
+  [ -e "$KIT/bin/lib/$(basename "$installed")" ] || rm -f "$installed"
+done
+rm -rf "$DATA_HOME/bin/lib/__pycache__"
 for command in delegation-config delegation-run delegation-openai-compatible; do
   install_file "$KIT/bin/$command" "$DATA_HOME/bin/$command"
   chmod 755 "$DATA_HOME/bin/$command"
@@ -269,11 +276,11 @@ if [ "$deepseek_ask" = 1 ]; then
       case "$deepseek_use_env" in [nN]*) echo "  ! not stored — DeepSeek works only where the variable is exported" ;; *) deepseek_store_key "$DEEPSEEK_API_KEY" ;; esac
     fi
   elif [ ! -t 0 ]; then
-    echo "  ! no DeepSeek API key configured — provisional runtime stays unavailable"
+    echo "  ! no DeepSeek API key configured — DeepSeek profiles stay unavailable until one is set"
   else
     printf '  DeepSeek API key (input hidden, Enter to skip): '
     read -rs deepseek_key || deepseek_key=""; printf '\n'
-    case "$deepseek_key" in "") echo "  ! skipped — DeepSeek provisional runtime stays unavailable" ;; *) deepseek_store_key "$deepseek_key" ;; esac
+    case "$deepseek_key" in "") echo "  ! skipped — DeepSeek profiles stay unavailable until a key is set" ;; *) deepseek_store_key "$deepseek_key" ;; esac
     unset deepseek_key
   fi
 fi
@@ -338,6 +345,14 @@ else
   echo "  ! compatible Grok Build CLI not archived — run 'delegation-grok pin --from <path>'"
 fi
 
+# A skill directory is the kit's alone: replace it whole, so a file a release
+# no longer ships does not stay installed beside the current ones.
+EXECUTOR_SKILLS="glm-executor kimi-executor gemini-executor deepseek-executor qwen-executor grok-executor"
+install_skill() { # $1=skill $2=skills directory
+  rm -rf "${2:?}/$1"
+  cp -R "$KIT/skills/$1" "$2/"
+}
+
 if [ "$do_claude" = 1 ]; then
   echo "Claude Code -> $CLAUDE_HOME"
   mkdir -p "$CLAUDE_HOME/agents" "$CLAUDE_HOME/skills"
@@ -348,22 +363,8 @@ if [ "$do_claude" = 1 ]; then
   # is wired. append_guarded replaces any older guarded block (including a
   # previous orchestration policy) during the upgrade.
   append_guarded "$CLAUDE_HOME/CLAUDE.md" "@$KIT/claude/CLAUDE.delegation.md"
-  cp -R "$KIT/skills/model-routing" "$CLAUDE_HOME/skills/"
-  echo "  + model-routing skill -> $CLAUDE_HOME/skills/model-routing/"
-  cp -R "$KIT/skills/orchestrate" "$CLAUDE_HOME/skills/"
-  echo "  + orchestrate skill -> $CLAUDE_HOME/skills/orchestrate/"
-  cp -R "$KIT/skills/glm-executor" "$CLAUDE_HOME/skills/"
-  echo "  + optional GLM executor skill -> $CLAUDE_HOME/skills/glm-executor/"
-  cp -R "$KIT/skills/kimi-executor" "$CLAUDE_HOME/skills/"
-  echo "  + optional Kimi executor skill -> $CLAUDE_HOME/skills/kimi-executor/"
-  cp -R "$KIT/skills/gemini-executor" "$CLAUDE_HOME/skills/"
-  echo "  + optional Gemini executor skill -> $CLAUDE_HOME/skills/gemini-executor/"
-  cp -R "$KIT/skills/deepseek-executor" "$CLAUDE_HOME/skills/"
-  echo "  + DeepSeek executor skill -> $CLAUDE_HOME/skills/deepseek-executor/"
-  cp -R "$KIT/skills/qwen-executor" "$CLAUDE_HOME/skills/"
-  echo "  + Qwen executor skill -> $CLAUDE_HOME/skills/qwen-executor/"
-  cp -R "$KIT/skills/grok-executor" "$CLAUDE_HOME/skills/"
-  echo "  + Grok executor skill -> $CLAUDE_HOME/skills/grok-executor/"
+  for skill in model-routing orchestrate $EXECUTOR_SKILLS; do install_skill "$skill" "$CLAUDE_HOME/skills"; done
+  echo "  + model-routing, orchestrate and the six executor skills -> $CLAUDE_HOME/skills/"
 fi
 
 if [ "$do_codex" = 1 ]; then
@@ -373,18 +374,8 @@ if [ "$do_codex" = 1 ]; then
   echo "  + 5 native subagent profiles -> $CODEX_HOME/agents/"
   for profile in "$KIT"/codex/profiles/*.config.toml; do copy_managed "$profile" "$CODEX_HOME/$(basename "$profile")"; done
   echo "  + 5 ephemeral -p profiles -> $CODEX_HOME/"
-  cp -R "$KIT/skills/glm-executor" "$CODEX_HOME/skills/"
-  echo "  + optional GLM executor skill -> $CODEX_HOME/skills/glm-executor/"
-  cp -R "$KIT/skills/kimi-executor" "$CODEX_HOME/skills/"
-  echo "  + optional Kimi executor skill -> $CODEX_HOME/skills/kimi-executor/"
-  cp -R "$KIT/skills/gemini-executor" "$CODEX_HOME/skills/"
-  echo "  + optional Gemini executor skill -> $CODEX_HOME/skills/gemini-executor/"
-  cp -R "$KIT/skills/deepseek-executor" "$CODEX_HOME/skills/"
-  echo "  + DeepSeek executor skill -> $CODEX_HOME/skills/deepseek-executor/"
-  cp -R "$KIT/skills/qwen-executor" "$CODEX_HOME/skills/"
-  echo "  + Qwen executor skill -> $CODEX_HOME/skills/qwen-executor/"
-  cp -R "$KIT/skills/grok-executor" "$CODEX_HOME/skills/"
-  echo "  + Grok executor skill -> $CODEX_HOME/skills/grok-executor/"
+  for skill in $EXECUTOR_SKILLS; do install_skill "$skill" "$CODEX_HOME/skills"; done
+  echo "  + the six executor skills -> $CODEX_HOME/skills/"
   append_guarded "$CODEX_HOME/AGENTS.md" "$(cat "$KIT/codex/AGENTS.md")"
   echo
   echo "  Codex config is NOT auto-edited. Review and merge into $CODEX_HOME/config.toml:"

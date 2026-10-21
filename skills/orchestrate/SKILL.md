@@ -31,3 +31,11 @@ review never grants permission for a second call. Keep the result pending if
 authorization or a compatible reviewer is absent. The lead owns integration,
 verification, and the final response. Never claim a requested-only model as
 provider-reported, or provider-reported identity as independent certification.
+
+## References
+
+For a consult the user asked for, [`references/advisor-consult.md`](references/advisor-consult.md)
+gives the prompt and how to handle the answer. For an explicitly approved
+`super-judgement` (Fable and Astra), follow
+[`references/dual-judgement.md`](references/dual-judgement.md). Neither grants
+permission to dispatch.
