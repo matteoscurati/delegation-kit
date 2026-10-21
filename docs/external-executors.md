@@ -1,65 +1,78 @@
 # External executors: adapters and their limits
 
-Six provider runners ship with the kit: `delegation-glm`, `delegation-kimi`,
-`delegation-grok`, `delegation-qwen`, `delegation-deepseek`, and
-`delegation-gemini`, plus `delegation-openai-compatible` for any
-`/chat/completions` endpoint. Each runner is the sole enforcement authority for
-its own transport, credentials, sandbox, tools, and refusals. Nothing in the
-personal configuration, the router, or a skill can widen what a runner allows.
-A runner that takes a key reads it from the environment, then from the
-personal `.env` beside the configuration, then — GLM, Qwen and DeepSeek
-only — from its own key file under the data home;
-`delegation-openai-compatible` reads the variable its profile names in
-`credential_env`, and Kimi, Grok and Gemini use their CLI's own login (see
-[keys and environment](user-configuration.md#keys-and-environment)).
-
-Which model runs is a user choice recorded in the personal configuration (see
-[user configuration](user-configuration.md)). This page records what each
-adapter can technically do, and what the lead still has to do afterwards.
+This page says what each adapter can technically do, how to check it on this
+machine, and what you still do with its output. Seven runners ship with the
+kit; `delegation-run` drives `codex` and `claude-code` itself. Each runner is the sole enforcement authority for
+its own transport, credentials, sandbox, tools and refusals; nothing in the
+configuration, the router or a skill can widen what it allows. Which model
+runs is your choice ([user configuration](user-configuration.md)); where keys
+are read from is in [keys and environment](user-configuration.md#keys-and-environment).
 
 ## Adapters
 
-| adapter | runner | transport | permission class | roles | efforts |
-|---|---|---|---|---|---|
-| `claude-zai` | `delegation-glm` | Claude Code CLI against the Z.AI endpoint | `read-only` (clerk, scout, reviewer, policy-annotation) · `worktree-edit` (builder) | clerk, scout, builder, reviewer, policy-annotation | max |
-| `kimi-code-cli` | `delegation-kimi` | Kimi Code CLI in a macOS `sandbox-exec` profile | `read-only` (clerk, scout, policy-annotation) · `worktree-edit` (builder, frontend-builder) | clerk, scout, builder, frontend-builder, policy-annotation | max |
-| `grok-build-cli` | `delegation-grok` | Grok Build CLI in its attested custom sandbox | `read-only` (policy-annotation) · `worktree-edit` (builder, frontend-builder) | builder, frontend-builder, policy-annotation | high |
-| `token-plan-openai` | `delegation-qwen` | one chat-completions request | `text-patch` | builder, clerk, scout, reviewer, senior, judgement, policy-annotation | minimal … max (default xhigh) |
-| `deepseek-api` | `delegation-deepseek` | one chat-completions request | `text-patch` | same as Qwen | minimal … max (default max) |
-| `openai-compatible` | `delegation-openai-compatible` | one chat-completions request, HTTPS or loopback | `text-patch` | same as Qwen | none … max |
-| `agy` | `delegation-gemini` | Antigravity CLI, prompt-only, empty isolated workspace | `read-only` | scout, builder, frontend-builder, reviewer, judgement | medium, high |
+| adapter | runner | transport | key or login |
+|---|---|---|---|
+| `claude-zai` | `delegation-glm` | Claude Code CLI against the Z.AI endpoint | `ZAI_API_KEY` |
+| `kimi-code-cli` | `delegation-kimi` | Kimi Code CLI in a macOS `sandbox-exec` profile | CLI login |
+| `grok-build-cli` | `delegation-grok` | Grok Build CLI in its attested custom sandbox | CLI login |
+| `token-plan-openai` | `delegation-qwen` | one chat-completions request | `QWEN_TOKEN_PLAN_API_KEY`, or `credential_env` |
+| `deepseek-api` | `delegation-deepseek` | one chat-completions request | `DEEPSEEK_API_KEY`, or `credential_env` |
+| `openai-compatible` | `delegation-openai-compatible` | one chat-completions request (HTTPS or loopback) | `credential_env`, or none |
+| `agy` | `delegation-gemini` | Antigravity CLI, prompt-only, empty isolated workspace | CLI login |
+| `codex` | `delegation-run` | `codex exec --sandbox read-only` in an empty temp dir | CLI login |
+| `claude-code` | `delegation-run` | `claude -p`, no tools or MCP, in an empty temp dir | CLI login |
 
-`<runner> check --json` is the authority for this table on a given machine. It
-reports `model`, `adapter`, `roles`, `efforts`, `selected_backend`, and a
-`backends` object whose `available` and `reason` fields say whether the runtime
-can dispatch right now. Native runners add their runtime controls (sandbox,
-process allowlist, OAuth mode, isolation). Run it immediately before a dispatch;
-a runner that reports `selected_backend: "none"` will refuse with exit 69.
+| adapter | roles → permission class | efforts (default) |
+|---|---|---|
+| `claude-zai` | clerk, scout, reviewer, policy-annotation: `read-only` · builder: `worktree-edit` | max |
+| `kimi-code-cli` | clerk, scout, policy-annotation: `read-only` · builder, frontend-builder: `worktree-edit` | max |
+| `grok-build-cli` | policy-annotation: `read-only` · builder, frontend-builder: `worktree-edit` | high |
+| `token-plan-openai` | text roles: `text-patch` | minimal … max (xhigh) |
+| `deepseek-api` | text roles: `text-patch` | minimal … max (max) |
+| `openai-compatible` | text roles: `text-patch` | none sent |
+| `agy` | scout, builder, frontend-builder, reviewer, judgement: `read-only` | medium, high |
+| `codex` | text roles plus routine-review, material-review, security: `read-only` | none … max (high) |
+| `claude-code` | text roles plus routine-review, material-review, security: `read-only` | low … max (high) |
 
-Gemini is excluded from the shipped presets. The adapter remains installed and
-usable by adding a profile to the personal configuration.
+`delegation-route` and `decide --lane` report each adapter's
+`capabilities`, the same for every role: `read-only` and `text-patch` (HTTP
+adapters, `agy`), `sandboxed-worktree` (`kimi-code-cli`, `grok-build-cli`),
+`native-tool-policy` (`claude-zai`), `native-profile` (`codex`,
+`claude-code`).
+
+*Text roles* are builder, clerk, scout, reviewer, senior, judgement and
+policy-annotation. Parameters: every adapter takes `timeout`;
+`deepseek-api` and `token-plan-openai` add `effort` and `max_tokens`,
+`openai-compatible` adds `max_tokens`, the rest add `effort`. The Claude
+Code and Codex host profiles the kit installs keep their own sandbox; only
+the `delegation-run` entry is read-only and prompt-only.
+
+`<runner> check --json` is the authority on this machine. It reports
+`model`, `adapter`, `roles`, `efforts`, `selected_backend` and
+`backends.{available, reason}`; native runners add their sandbox, process
+allowlist, OAuth mode and isolation. Run it just before a dispatch: a runner
+that reports `selected_backend: "none"` refuses with exit 69.
 
 ## Permission classes
 
-Exactly three, mutually exclusive, and fixed per adapter and role:
+Exactly three, mutually exclusive, fixed per adapter and role:
 
-| class | worktree writes | returns a patch | what it means |
-|---|---|---|---|
-| `read-only` | no | no | The runner grants no write capability and the product is analysis text. |
-| `text-patch` | no | yes | The runner has no filesystem; the product is patch text the lead applies and verifies. |
-| `worktree-edit` | yes | no | The runner grants scoped write access to the delegated worktree and the executor edits in place. |
+| class | worktree writes | product |
+|---|---|---|
+| `read-only` | no | analysis text |
+| `text-patch` | no (no filesystem) | patch text; the [lead](user-configuration.md) applies and verifies it |
+| `worktree-edit` | scoped to the delegated worktree | edits in place |
 
-Assigning the builder role to a text adapter does not grant it a filesystem.
-Its builder output is a unified diff, and the trust boundary sits where the lead
-applies that diff, not where the runner stands.
+A builder role on a text adapter grants no filesystem: its output is a
+unified diff, and the trust boundary is where the lead applies it.
 
-## The patch verifier, for text-patch output
+## Checking a text patch
 
-[`config/external-patch-policy.json`](../config/external-patch-policy.json) is
-the versioned policy for that moment and `delegation-patch-verify` enforces it.
-The verifier never applies a patch: it parses it, holds it against the policy,
-fixes the strip level from the header shape, asks `git apply --check` whether
-the patch applies at that one level, and prints a receipt with no patch content.
+`delegation-patch-verify` enforces the versioned policy in
+[`config/external-patch-policy.json`](../config/external-patch-policy.json).
+It never applies a patch: it parses it, checks it against the policy, fixes
+the strip level from the header shape, runs `git apply --check` at that one
+level, and prints a receipt with no patch content.
 
 ```sh
 # 1. verify — read-only; nothing is applied and nothing is written
@@ -75,22 +88,29 @@ git -C "$repo" apply -p"$(jq -r '.strip.chosen' receipt.json)" -- "$patch"
 ( cd "$repo" && ./run-tests.sh )
 ```
 
-The default policy is fail-closed: unified diff text only; no absolute,
-traversing, or non-representable paths; denied paths (`.git`, hooks, CI, `.env*`,
-shell startup files, keys, credential stores, this kit's provider auth
-directories); new files only as `100644`, no symlinks, submodules, or mode
-changes; add and modify only, delete refused unless `--allow-delete`, rename and
-copy refused with no override; bounded file count, bytes, lines, hunks, and added
-lines; a strip level fixed by the header shape and never guessed. The verifier
-attests its own read-only behaviour by digesting the patch, worktree, index, and
-git control directory before and after, and reports `attestation-failed` with
-exit 70 if anything moved. `delegation-patch-verify policy --json` prints the
-installed policy; `tests/external-patch-verify.sh` is its regression suite.
+The default policy is fail-closed:
+
+- **Format:** unified diff text only.
+- **Paths:** no absolute, traversing or non-representable paths.
+- **Denied paths:** `.git`, hooks, CI, `.env*`, shell startup files, keys,
+  credential stores, this kit's provider auth directories.
+- **Modes:** new files only as `100644`; no symlinks, submodules or mode
+  changes.
+- **Operations:** add and modify; delete only with `--allow-delete`; rename
+  and copy refused, with no override.
+- **Limits:** bounded file count, bytes, lines, hunks and added lines.
+
+The strip level is fixed by the header shape, never guessed. The verifier
+digests the patch, worktree, index and git control directory before and
+after its run, and reports `attestation-failed` if anything changed. Its own
+exit codes: 0 accepted, 64 invalid input, 65 rejected by policy, 66 patch or
+worktree unreadable, 69 missing dependency, 70 attestation failed.
+`delegation-patch-verify policy --json` prints the installed policy;
+`tests/external-patch-verify.sh` is its regression suite.
 
 ## Model identity
 
-Every runner records the requested model separately from what the provider
-reported:
+Every run records the requested model apart from what the provider reported:
 
 | field | meaning |
 |---|---|
@@ -98,42 +118,51 @@ reported:
 | `provider_reported_model` | the model the provider named in its response, or `null` |
 | `model_identity_source` | `provider-reported` when a response named the requested model or a configured alias; `requested-only` when the provider named nothing |
 
-A response that names a *different* model is a silent substitution and fails
-every run with exit 70 (`provider_identity_mismatch`), unless the name was
-declared in the profile's `aliases`. A provider report is not independent
-certification of anything, and `requested-only` is not a defect: several
-transports never surface a content model. For Grok, `usage_model`
-(`grok-4.6-build`) is the billing participant, not the content identity.
+A response naming a *different* model fails with exit 70
+(`provider_identity_mismatch`) unless the name is in the profile's
+`aliases`. A provider report certifies nothing. `requested-only` is not a
+defect: some transports never name a model, and Claude Code's JSON result
+never does, so a `claude-code` profile is always `requested-only`. Grok's
+`usage_model` (`grok-4.6-build`) is the billing participant, not the content
+identity.
 
-[`delegation-router serve`](router.md) applies the same comparison to every
-response it relays, but discloses a mismatch instead of failing: the caller
-sees `mismatch: true`, `provider_reported_model` and
-`X-Router-Model-Mismatch: 1` on a response that is otherwise delivered,
-because in a gateway the caller is there to judge it.
+[`delegation-router serve`](router.md) discloses a mismatch on an HTTP pool
+profile (`mismatch: true`, `provider_reported_model`,
+`X-Router-Model-Mismatch: 1`) instead of failing; a native pool profile goes
+through `delegation-run` and fails as `502 provider-identity-mismatch`.
 
 ## Exit codes
 
 | code | retryable | meaning |
 |---|---|---|
 | 64 | no | invalid input: unknown argument, missing or colliding path, refused flag combination |
-| 69 | no | unavailable: runtime, login, entitlement, key, or quota |
-| 70 | no | dispatch, sandbox, identity, extraction, or publication failure |
+| 65 | no | `delegation-run`: invalid configuration or paths, unsupported role, missing CLI, malformed native response |
+| 69 | no | unavailable: runtime, login, entitlement, key or quota; also a `credential_env` variable that is unset (`missing_credentials`) |
+| 70 | no | dispatch, sandbox, identity, extraction or publication failure |
 | 75 | **yes** | temporary: rate limit, overload, 5xx, timeout, credential lock |
 | 78 | no | the adapter does not support the requested role or effort |
 | 130 | no | the caller interrupted (Kimi); the runner stopped the child and released its locks |
 
-Failures write a sanitized `<output>.error.json` (phase, reason, sizes, exit
-codes) and publish no output or metrics. Raw provider responses are preserved
-only under an explicit `--debug-dir`, mode 700.
+A failure writes a sanitized `<output>.error.json` (phase, reason, sizes,
+exit codes) and publishes no output or metrics. Raw provider responses are
+kept only under an explicit `--debug-dir`, mode 700.
 
 ## Timeouts
 
-No runner imposes a time limit of its own. `delegation-run` exports the
-profile's `timeout` (seconds) as `DELEGATION_TIMEOUT`, and only then does a
-runner bound the run: Kimi, Grok, and GLM wrap the CLI in `timeout -k 10`,
-the chat-completions core passes it as curl `--max-time`, Gemini passes it as
-`agy --print-timeout` (24h when unset), and the native `codex`/`claude-code`
-dispatch uses a subprocess deadline. A run that hits the deadline publishes
-nothing, writes a diagnostic with reason `timeout` (`deadline_exceeded` on the
-HTTP adapters, `operational_timeout` on Kimi), and exits 75. `check --json`
-on Grok reports `timeout_seconds` as the configured value or `null`.
+No runner has a time limit of its own. Without the profile's `timeout`, a
+hung run waits until you interrupt it, and Kimi and Grok hold their OAuth
+lock the whole time. With it (whole seconds, 1–86400), `delegation-run`
+exports it as `DELEGATION_TIMEOUT` and the run is bounded:
+
+| adapter | mechanism | on expiry |
+|---|---|---|
+| `kimi-code-cli`, `grok-build-cli`, `claude-zai` | `timeout -k 10` (or `gtimeout`) around the CLI; without either on `PATH` the runner refuses with exit 69 | exit 75, reason `timeout` (`operational_timeout` on Kimi) |
+| `deepseek-api`, `token-plan-openai`, `openai-compatible` | curl `--max-time` | exit 75, reason `deadline_exceeded` |
+| `codex`, `claude-code` | subprocess deadline in `delegation-run` | exit 75, reason `timeout` |
+| `agy` | `agy --print-timeout` (24h when unset) | the CLI's failure: exit 70, reason `process_exit` |
+
+A run that hits the deadline publishes nothing. macOS ships neither
+`timeout` nor `gtimeout`; Homebrew's `coreutils` provides `gtimeout`. Two
+guards are not task limits: a 20 s connect timeout on the HTTP adapters,
+and the short probes `check` runs against a CLI. On Grok, `check --json`
+reports `timeout_seconds` (the configured value or `null`).

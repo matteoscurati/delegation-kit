@@ -274,9 +274,7 @@ def check(c, reach=None):
         if m["tier"] is None:
             warnings.append(m["profile"] + ": no tier declared; usable only as default")
         if m["price"] is None:
-            warnings.append(
-                m["profile"] + ": no per-token price; ranked last within its tier"
-            )
+            warnings.append(m["profile"] + ": no per-token price; ranked last")
         if m["adapter"] not in ROUTER_HTTP_ADAPTERS:
             lane = native_lane(c["profiles"][m["profile"]])
             if lane is None:
