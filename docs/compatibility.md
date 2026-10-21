@@ -37,8 +37,9 @@ below with the numbers observed after running the
 Newest first. "Suites" means the 13 regression suites; every live call was
 authorized and no key was printed.
 
-- **0.30.3** (2026-10-21, Claude Code `2.1.306`): documentation and one `check` warning; suites
-  in 214 s (79 router tests), ShellCheck, ruff, Node tests, version gate;
+- **0.30.3** (2026-10-21, Claude Code `2.1.306`): documentation and one
+  `check` warning; suites in 214 s (79 router tests), ShellCheck, ruff, Node
+  tests, version gate;
   doctor `55 OK, 6 WARN, 0 FAIL`, and without a personal configuration it
   named the missing keys file and reported four FAILs without stopping.
   Catalog refreshed, nothing changed.
