@@ -7,8 +7,8 @@ your own Dipylon, a local classifier — and the models it may pick from: API
 keys, a Claude or Codex subscription, a local endpoint. `delegation-router
 serve` is an OpenAI-compatible endpoint on your own machine. Send it
 `"model": "auto"`: the decider rates how much capability the request needs,
-the request goes to the cheapest of your models on the tier that rating
-allows, with that model's own credential, and the response names the model
+the request goes to the cheapest of your models strong enough for that
+rating, with that model's own credential, and the response names the model
 and the reasons. For each request the decider gets an excerpt (the whole
 request with `input: full`) unless it runs on your machine, and the chosen
 model gets the request.
@@ -143,14 +143,20 @@ the error codes and the evaluation harness.
   which pool models this machine cannot reach; `--ping` runs a live
   round-trip.
 
-## Current release: 0.30.2
+## Current release: 0.30.3
 
-Version 0.30.2 fixes what a review of 0.30.1 found: `doctor` no longer stops
-on an unset variable when the configuration is missing, `check` says that an
-unreachable default refuses the requests that land on it instead of claiming
-it is set aside, and several pages are corrected (which error an unreachable
-default produces, which runners read a key, the MiniMax walkthrough). The
-shipped catalog is refreshed to 2026-10-20.
+Version 0.30.3 is documentation only. The router, configuration, executors
+and compatibility pages are shorter: repeated explanations are gone, long
+paragraphs became tables, and release history moved to the CHANGELOG. They
+also correct what had drifted from the code, such as which profile answers
+under a cost ceiling, when the decider is skipped and which adapters get a
+ten-second grace after a timeout; `check` no longer says an unpriced profile
+is ranked last "within its tier". The shipped catalog is refreshed to
+2026-10-21.
+
+Version 0.30.2 fixed what a review of 0.30.1 found: `doctor` no longer stops
+on an unset variable when the configuration is missing, and `check` says that
+an unreachable default refuses the requests that land on it.
 
 Version 0.30.1 was documentation only: every page now says where keys go,
 which models the router sets aside and why, what `decide --lane` is for,

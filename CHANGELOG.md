@@ -2,6 +2,44 @@
 
 All notable changes to delegation-kit are documented here.
 
+## [0.30.3] — 2026-10-21
+
+Shorter documentation, corrected against the code.
+
+### Changed
+
+- **The router, configuration, executors and compatibility pages** were
+  rewritten to be shorter and easier to scan. Each fact now has one page that
+  owns it and the others link there; long paragraphs became tables (the
+  reasons a profile is set aside, the rating-to-minimum map, timeouts per
+  adapter, the patch policy); history moved out of the pages and into this
+  file. The compatibility page keeps the current snapshot and lists earlier
+  releases briefly. The headings other pages link to (`Keys and
+  environment`, `Adding a model`, `Deciders`) are unchanged.
+- **Shipped catalog refreshed** on 2026-10-21: no placement or price changed.
+
+### Fixed
+
+- **Documentation that had drifted from the code.** The router intro and the
+  README described the pre-0.28 rule (the cheapest model "on the tier"); with
+  `floor-v1` it is the cheapest profile at or above the minimum score. Under
+  `max_cost_usd` the strongest eligible profile answers, not the default.
+  The decider-skip rule now matches the code: nothing eligible, only the
+  default, or, with a priced decider, nothing scoring above the default and
+  a saving under ten times the decision's cost. An
+  unpriced profile ranks last overall, not within its tier. `long` is over
+  20,000 estimated tokens. `claude-zai` runs GLM, not Claude.
+- **Executors and configuration.** The ten-second grace after a timeout
+  applies only to Kimi, Grok and GLM, which also need `timeout` or
+  `gtimeout` on PATH when a timeout is set (macOS has neither by default);
+  `openai-compatible` sends no `effort`; a native pool profile whose
+  provider names another model fails `502 provider-identity-mismatch`
+  instead of being disclosed; the `codex` and `claude-code` adapters have
+  rows; exit 65 and the patch verifier's own exit codes are listed. The
+  router's error table lists every code it returns.
+- **`delegation-router check`** said an unpriced profile is "ranked last
+  within its tier"; it says "ranked last".
+
 ## [0.30.2] — 2026-10-20
 
 What a review of 0.30.1 found.

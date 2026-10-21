@@ -1,26 +1,31 @@
 # User configuration
 
-Models are user choices. No benchmark, gate, or kit qualification authorizes
-or blocks a profile; the adapter's technical limits and the lead's verification
-of the actual result are the only checks. The starting profiles ship in
+This page sets up your profiles, keys and review policy. Models are your
+choice: no benchmark, gate or kit qualification authorizes or blocks a
+profile. The only checks are the adapter's technical limits and the verification of
+the result by the lead (you, or the Claude Code or Codex session that
+delegated the task). The starting profiles ship in
 `config/presets.json`.
 
 ## Configure
 
-`delegation-config init` creates the personal configuration
-(`"schema_version": 2`) at
-`${XDG_CONFIG_HOME:-$HOME/.config}/delegation-kit/config.json`; a file that
-still declares `1` is read identically. Set
-`DELEGATION_CONFIG_FILE` to use a different file. Project-local configuration
-is never discovered automatically. An existing configuration is preserved.
+The personal configuration lives at
+`${XDG_CONFIG_HOME:-$HOME/.config}/delegation-kit/config.json`. Set
+`DELEGATION_CONFIG_FILE` to use another file. Project-local configuration is
+never discovered.
 
-`delegation-config validate` validates locally without accessing providers.
-`show` displays validated configuration with credential variable names only.
-`apply` regenerates `managed/profiles.json` and conservative native Claude and
-Codex snippets next to the user configuration. Edited snippets are preserved
-and listed in the output. These snippets are available for explicit host
-integration; `delegation-run` always reads the configuration directly. Native
-host profiles supplied by the kit retain their existing permissions.
+| command | what it does |
+|---|---|
+| `delegation-config init` | creates the file with `"schema_version": 2`; never overwrites an existing one. `--preset strict` sets cross-family review. |
+| `delegation-config validate` | checks the file locally; never contacts a provider |
+| `delegation-config show` | prints the validated configuration, with credential variable names only |
+| `delegation-config apply` | regenerates `managed/profiles.json` and conservative native Claude and Codex snippets beside the configuration; edited snippets are kept and listed |
+
+`delegation-run` reads the configuration directly. The snippets exist only
+for explicit host integration; the native host profiles the kit installs keep
+their own permissions.
+
+## Profiles
 
 A complete configuration for an existing provider and a local endpoint:
 
@@ -49,49 +54,27 @@ A complete configuration for an existing provider and a local endpoint:
 }
 ```
 
-Use the actual model identifier your endpoint accepts; it need not exist in any
-kit benchmark. `family` is a user declaration for review policy, not model
-attestation. `aliases` is an optional list of explicitly accepted response model
-identifiers. Inline credentials, unknown fields and unsupported parameters are
-rejected. Remote endpoints require HTTPS; loopback HTTP is permitted. The
-custom adapter appends `/chat/completions`, uses one non-streaming text request,
-optional Bearer authentication, and never calls `/models`, tools or a retry.
+| field | meaning |
+|---|---|
+| `adapter` | how the model is reached; what each adapter can do is on [External executors](external-executors.md#adapters) |
+| `model` | any identifier the endpoint accepts |
+| `family` | your declaration, used by review policy; not model attestation |
+| `roles` | the jobs the profile takes (a role is the `--lane` flag). Roles never grant capabilities: `builder` on a text adapter means a textual patch, not permission to edit ([permission classes](external-executors.md#permission-classes)). |
+| `parameters` | `effort`, `max_tokens` (1–1,000,000; 4096 when unset on the chat-completions adapters) and `timeout` (whole seconds, 1–86400), as the adapter supports. No `timeout` means no time limit; see [Timeouts](external-executors.md#timeouts). |
+| `base_url` | the endpoint, for `openai-compatible` |
+| `credential_env` | the *name* of the variable holding the key; `openai-compatible`, `deepseek-api` and `token-plan-openai` only. Other adapters use their native credential storage. When set, only the environment and the `.env` are read, never a key file. |
+| `aliases` | optional list of accepted response model identifiers |
+| `tier`, `code`, `price`, `context`, `json_mode` | optional routing metadata; see [the router page](router.md) |
 
-Gemini is excluded from the shipped presets by the owner's decision. The
-adapter stays installed and usable by adding a profile by hand. Existing
-personal configurations are preserved rather than silently rewritten.
+Rules:
 
-## Adapter limits
-
-| Adapter | Parameters | Execution boundary |
-|---|---|---|
-| `deepseek-api`, `token-plan-openai` | effort, max_tokens, timeout | Prompt only; text patch |
-| `openai-compatible` | max_tokens, timeout | Prompt only; text patch |
-| `agy` | effort: medium/high, timeout | Isolated prompt-only native runtime |
-| `kimi-code-cli` | effort: max, timeout | Existing per-role sandbox; no senior/reviewer/judgement implementation |
-| `claude-zai` | effort: max, timeout | Existing per-role native sandbox |
-| `grok-build-cli` | effort: high, timeout | Existing builder sandbox |
-| `codex`, `claude-code` | effort supported by the adapter, timeout | Native CLI; common entry is read-only/prompt-only |
-
-## Timeouts
-
-A dispatch has no time limit unless the profile sets `timeout` (seconds, at
-most 86400). The kit does not decide how long a delegated task may take: a run
-that hangs waits until you interrupt it, and Kimi and Grok hold their OAuth
-lock for as long as it runs. When `timeout` is set it bounds the whole run on
-every adapter: the process is killed after the deadline plus a ten-second
-grace, no output or metrics are published, the diagnostic names `timeout`,
-and the exit code is 75. The chat-completions adapters pass it to curl as the
-request deadline (`deadline_exceeded`); Gemini passes it to `agy` as
-`--print-timeout`, which otherwise receives 24h. Two guards stay regardless:
-a 20-second connect timeout on HTTP adapters, and the ten-second probes that
-`check` runs against a CLI. Neither judges the task.
-
-Roles never grant capabilities. Custom `builder` means a textual patch, not
-permission to edit. Native credential storage and restrictions remain in place;
-`credential_env` is supported for the three HTTP adapters only. Without an
-override, Qwen/DeepSeek retain their existing credential file lookup. Native
-CLI model inventory and sandbox probes remain technical prerequisites.
+- Inline credentials, unknown fields and unsupported parameters are rejected.
+- Remote endpoints require HTTPS; loopback HTTP is allowed.
+- `openai-compatible` appends `/chat/completions` and sends one non-streaming
+  text request with optional Bearer auth. It never calls `/models`, never
+  uses tools and never retries.
+- Gemini is not in the shipped presets. The `agy` adapter stays installed and
+  works with a profile you add by hand.
 
 ## Selection and execution
 
@@ -103,63 +86,72 @@ delegation-run --profile local-model --lane builder \
   --prompt-file /tmp/task.txt --output /tmp/model-result.txt --workdir /path/to/repo
 ```
 
-The router's schema 3 JSON reports `configuration_valid`,
-`technical_compatibility` and `capabilities` per profile and role.
-`check`, `lane`, `profile`, `resolve` and `table` remain read-only commands.
-A selected row is validation only: `authorization_granted` remains false.
-
-The runner emits output, metrics and a version 2 `.result.json` receipt.
-Requested and reported model identities are distinct. Missing identity is
-`requested-only`; a match or configured alias is `provider-reported`, never
-independent certification. An unconfigured mismatch fails. HTTP authentication,
-rate limiting, malformed output, truncation and timeout have separate diagnostic
-reasons; failure never dispatches a replacement.
+- `delegation-route` prints schema 3 JSON with `configuration_valid`,
+  `technical_compatibility` and `capabilities` per profile and role. Its
+  `check`, `lane`, `profile`, `resolve` and `table` commands are read-only. A
+  selected row is validation only: `authorization_granted` is false.
+- `delegation-run` writes the output, metrics and a version 2 `.result.json`
+  receipt. It keeps the requested and the reported model apart
+  ([model identity](external-executors.md#model-identity)); failures have
+  their own reasons and [exit codes](external-executors.md#exit-codes).
+- A failure never dispatches a replacement.
 
 ## Review
 
-`optional` is the default for new and migrated installs. `required` allows the
-same family; `cross-family` requires both families to be declared and different.
-Neither mandatory policy grants authorization for a reviewer call.
+| `review_policy` | meaning |
+|---|---|
+| `optional` (default) | no review needed |
+| `required` | a review is needed; the reviewer may be the same family |
+| `cross-family` | both families must be declared and different |
 
-`--reviewer-profile ID --review-authorized` records an explicitly authorized
-review plan, but does not call the reviewer. Required results remain
-`pending-review` until the lead obtains and verifies that review. Without
-review authorization the detailed state is `pending-authorization`; without
-a compatible reviewer it stays pending as well. Optional results are
-`ready-for-integration`, which is not a claim that tests or review passed.
+Neither mandatory policy authorizes a reviewer call.
+`--reviewer-profile ID --review-authorized` records an authorized review plan
+but never calls the reviewer. An `optional` result has `status`
+`ready-for-integration` (`review_status` `not-required`), which does not
+claim that tests or review passed. A mandatory result has `status`
+`pending-review` until the lead obtains and verifies the review, and its
+`review_status` says what is missing:
 
-`delegation-config init --preset strict` selects cross-family policy for a new
-configuration. For an existing configuration explicitly change `review_policy`
-and run `apply`; `init` never overrides later user decisions.
+| situation | `review_status` |
+|---|---|
+| no `--review-authorized` | `pending-authorization` |
+| no usable reviewer | `pending-reviewer` |
+| `cross-family`, a family missing or equal | `pending-compatible-reviewer` |
+| authorized, compatible reviewer | `pending-review` |
+
+`delegation-config init --preset strict` sets `cross-family` for a new file.
+For an existing file, edit `review_policy` and run `apply`; `init` never
+overrides your later decisions.
 
 ## Router
 
-A `router` block names the decider — `decider`, required: one of
-your profiles, Sage, Jev, a Dipylon, a local classifier, or `none` — and the
-profiles it may pick from (`pool`, `default`, HTTP or native). Profiles may declare
-routing metadata — `tier`, `code`, `price`, `context`, `json_mode` — which
-otherwise comes from the shipped `config/catalog.json`; each profile's
-`score`, the index the policy compares with a request's minimum, comes from
-the catalog (or the bottom of a declared tier's band). A pool profile this
-machine cannot reach is set aside, and `delegation-router check` says which;
-the default is not, since doubt still lands on it.
-`delegation-router decide --lane ROLE` recommends one pool profile for a task
-you are about to delegate. Without the block the router is off; nothing else
-in the kit reads it. See [the router page](router.md) for the fields, the policy
-and what each response discloses.
+A `router` block names the `decider` (required: one of your profiles, Sage,
+Jev, a Dipylon, a local classifier, or `none`), the `pool` and the `default`.
+Pool and default may be HTTP or native profiles. A pool profile this machine
+cannot reach is set aside (`delegation-router check` says which); the
+default never is. Without the block the router is off and nothing else reads
+it. Fields, policy and `decide --lane`: [the router page](router.md).
 
 ## Keys and environment
 
-Nothing in the kit holds a key value: profiles name a variable, services
-name a variable. A variable comes from, in this order: your environment;
-the personal `.env` beside the configuration file
-(`${XDG_CONFIG_HOME:-$HOME/.config}/delegation-kit/.env`, or beside
-`$DELEGATION_CONFIG_FILE`); for the adapters that have one, the kit's key
-file under the data home. The installer creates the `.env` once from the
-repository's `.env.example`, with mode 600 and every value empty, and never
-overwrites it; fill in only the keys you use. The commands, the runners and
-`delegation-run` read it; `doctor` reports its mode and how many variables
-it sets, never their values. The variables a user sets:
+Nothing in the kit holds a key value: profiles and services name a variable.
+A variable is read from, in this order:
+
+1. your environment;
+2. the personal `.env` beside the configuration file (or beside
+   `$DELEGATION_CONFIG_FILE`);
+3. for a profile that does not declare `credential_env`, the adapter's key
+   file under the data home (table below).
+
+The `.env`:
+
+- The installer creates it once from the repository's `.env.example`: mode
+  600, every value empty, never overwritten. Fill in only the keys you use.
+- The commands, the runners and `delegation-run` read it.
+- `doctor` reports its mode and how many variables it sets, never their
+  values.
+
+The variables a user sets:
 
 | variable | meaning |
 |---|---|
@@ -182,24 +174,35 @@ Key files, read when the variable is unset in the environment and in the
 | `deepseek.env` | `DEEPSEEK_API_KEY` | `deepseek-api` profiles |
 | `artificial-analysis.env` | `AA_API_KEY` | `delegation-router catalog refresh` |
 
-Every one of these files — the `.env` and the key files — is parsed, never
-executed, and ignored when it is a symlink or readable by group or others.
-The uninstaller keeps every key file beside the data home as
-`<data home>.<name>.env.bak` and the installer restores it; the `.env`
-lives in the configuration directory, which neither touches. There is no
-`.env` in a project: the kit never reads one, and a key in a worktree would
-be one `git add` away from a commit. The repository's `.env.example` is a
-template with no values, and `.gitignore` keeps every other `.env*` out.
+- Every `.env` and key file is parsed, never executed, and ignored when it is
+  a symlink or readable by group or others.
+- Run from a source checkout, the GLM, Qwen and DeepSeek runners look for
+  their key file in the checkout's `config/` instead; put the key in the
+  `.env`, or point `DELEGATION_GLM_KEY_FILE`, `DELEGATION_QWEN_KEY_FILE` or
+  `DELEGATION_DEEPSEEK_KEY_FILE` at a key file.
+- The uninstaller keeps each key file as `<data home>.<name>.env.bak` and
+  the installer restores it. The `.env` lives in the configuration
+  directory, which neither touches.
+- There is no project `.env`: the kit never reads one, because a key in a
+  worktree is one `git add` from a commit. `.env.example` has no values, and
+  `.gitignore` excludes every other `.env*`.
 
 ## Adding a model
 
-Add a profile to the personal file, then `delegation-config validate` and
-`delegation-config apply`. Nothing else in the kit has to change: choose the
-adapter, the exact model identifier the endpoint accepts, the roles and the
-parameters the adapter supports; for a custom OpenAI-compatible endpoint add
-`base_url` and, if it needs a key, `credential_env` with the *name* of the
-variable, and put the key itself in the environment or in the personal
-`.env`. MiniMax-M3.1-Flash, for example:
+Nothing else in the kit has to change:
+
+1. Add a profile to the personal file: the adapter, the exact model
+   identifier the endpoint accepts, the roles and the parameters the adapter
+   supports. For a custom OpenAI-compatible endpoint add `base_url` and, if
+   it needs a key, `credential_env` with the variable's *name*.
+2. Put the key in the environment or the personal `.env`.
+3. Run `delegation-config validate` and `delegation-config apply`.
+4. To route to it, add it to `router.pool`; `delegation-router check --json`
+   should list it with `"reachable": true`.
+5. Dispatch once to confirm the key and the model name.
+
+MiniMax-M3.1-Flash, for example, with `MINIMAX_API_KEY=…` in
+`~/.config/delegation-kit/.env`:
 
 ```json
 "minimax-m3.1-flash": {
@@ -213,36 +216,27 @@ variable, and put the key itself in the environment or in the personal
 }
 ```
 
-with `MINIMAX_API_KEY=…` in `~/.config/delegation-kit/.env`. The `model` is
-the identifier the endpoint accepts; the catalog still recognises it
-(`minimax-m3.1-flash`), so the profile gets the catalog's tier, score and
-price; `context` comes from MiniMax's own documentation. Once it is in
-`router.pool`, `delegation-router check --json` lists it with `"reachable":
-true`; one `delegation-run --profile minimax-m3.1-flash --lane clerk
---prompt-file FILE --output FILE --workdir DIR` confirms the key and the
-model name: the receipt's `provider_reported_model` should read
-`MiniMax-M3.1-Flash`. The adapter owns capabilities — a `builder` role on a
-text adapter yields a patch, never write access — and unsupported
-parameters are errors.
-Declare `tier`, `price`, `code`, `context` or `json_mode` when the router
-should rank the profile on your numbers rather than the catalog's. The
-catalog's tiers come from the Artificial Analysis Intelligence Index through
-a published band rule; `delegation-router catalog show` prints the source of
-every tier and `catalog refresh`, with your key in `AA_API_KEY` (environment
-or personal `.env`) or in
-`$DELEGATION_DATA_HOME/config/artificial-analysis.env` (mode 600), writes a
-current catalog beside the key files. See [the router page](router.md).
+The catalog recognises `minimax-m3.1-flash`, so the profile gets the
+catalog's tier, score and price; `context` comes from MiniMax's
+documentation. `delegation-run --profile minimax-m3.1-flash --lane clerk
+--prompt-file FILE --output FILE --workdir DIR` should give a receipt whose
+`provider_reported_model` reads `MiniMax-M3.1-Flash`.
+
+Declare `tier`, `price`, `code`, `context` or `json_mode` to rank a profile
+on your numbers instead of the catalog's. Catalog tiers come from the
+Artificial Analysis Intelligence Index through a published band rule:
+`delegation-router catalog show` prints each tier's source, and `catalog
+refresh` writes a local catalog ([the router page](router.md)).
 
 ## Upgrading
 
-The installer never overwrites the personal file; new keys are optional and
-a file that still says `schema_version: 1` is read like `2`. Installs older than 0.25, which
-kept their profiles in `routing-gates.json`, were migrated by 0.25 and 0.26;
-that migration is gone, so bring such an install through 0.26 first or
-recreate the profiles by hand from the shipped preset.
-
-0.27.2 moves the shipped `opus-builder`, `opus-reviewer` and
-`opus-policy-annotator` profiles to `claude-opus-5-5`. A personal file made
-earlier keeps `claude-opus-5` in those profiles until you change their
-`model`; the Claude Code agents the installer writes move to Opus 5.5 on the
-next install either way.
+- The installer never rewrites your file. New fields are optional, and a
+  file that says `"schema_version": 1` is read like `2`.
+- Installs older than 0.25 (profiles in `routing-gates.json`) must go
+  through 0.26 first, or the profiles must be recreated by hand from the
+  preset; the migration code is gone.
+- 0.27.2 moved the shipped `opus-builder`, `opus-reviewer` and
+  `opus-policy-annotator` profiles to `claude-opus-5-5`. A file made earlier
+  keeps `claude-opus-5` in them until you edit `model`. The Claude Code
+  agents the installer writes move to `claude-opus-5-5` on the next install,
+  unless you edited them.
