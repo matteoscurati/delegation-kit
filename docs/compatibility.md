@@ -39,10 +39,9 @@ authorized and no key was printed.
 
 - **0.30.3** (2026-10-21, Claude Code `2.1.306`): documentation and one
   `check` warning; suites in 214 s (79 router tests), ShellCheck, ruff, Node
-  tests, version gate;
-  doctor `55 OK, 6 WARN, 0 FAIL`, and without a personal configuration it
-  named the missing keys file and reported four FAILs without stopping.
-  Catalog refreshed, nothing changed.
+  tests, version gate; doctor `55 OK, 6 WARN, 0 FAIL`, and without a
+  personal configuration it named the missing keys file and reported four
+  FAILs without stopping. Catalog refreshed, nothing changed.
 - **0.30.2** (2026-10-20, Claude Code `2.1.304`): suites in 49 s (79 router
   tests), ShellCheck, ruff, Node tests, version gate; doctor `55 OK, 6 WARN,
   0 FAIL`, and without a personal configuration it no longer stopped on an
