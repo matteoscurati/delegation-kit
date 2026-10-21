@@ -98,7 +98,7 @@ provider_check_extra_json() {
 
 provider_check_extra_text() {
   case "$(next_snapshot_status)" in
-    available)         printf '  next snapshot: %s AVAILABLE on this endpoint — re-pin is ready (see docs/external-executors.md)\n' "$MODEL_NEXT" ;;
+    available)         printf '  next snapshot: %s AVAILABLE on this endpoint — a profile can name it as its model\n' "$MODEL_NEXT" ;;
     not-yet-available) printf '  next snapshot: %s not yet on this endpoint\n' "$MODEL_NEXT" ;;
     *)                 printf '  next snapshot: %s availability unknown (key not configured)\n' "$MODEL_NEXT" ;;
   esac

@@ -106,8 +106,8 @@ TIERS = ("small", "mid", "frontier")
 
 
 PROFILE_ROUTING_FIELDS = {"tier", "code", "price", "context", "json_mode"}
-# The router pool accepts the HTTP adapters only in this release; native CLI
-# profiles need a non-streaming bridge that arrives later.
+# The adapters the router calls over HTTP itself, and the only ones an llm
+# decider may use; a native pool profile goes through delegation-run instead.
 
 
 ROUTER_HTTP_ADAPTERS = {"openai-compatible", "deepseek-api", "token-plan-openai"}
@@ -287,7 +287,7 @@ def validate_router(c):
         raise ValueError("unknown router.decider field")
     kind = decider["kind"]
     if kind not in ROUTER_DECIDERS:
-        raise ValueError("router.decider.kind not available in this release")
+        raise ValueError("router.decider.kind is not a known decider")
     if kind == "llm":
         profile = decider.get("profile", r["default"])
         if profile not in c["profiles"]:

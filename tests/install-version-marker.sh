@@ -72,6 +72,13 @@ else
 fi
 printf '%s  grok\n' "$archive_sha" >"$DATA/grok-cli/current/grok.sha256"
 
+# Seed what an earlier release shipped and this one does not: a library module,
+# its bytecode and a skill reference. The install must remove them.
+mkdir -p "$DATA/bin/lib/__pycache__" "$TMP/claude/skills/orchestrate/references"
+printf '%s\n' '# retired' >"$DATA/bin/lib/delegation_retired.py"
+printf '%s\n' stale >"$DATA/bin/lib/__pycache__/delegation_retired.cpython-315.pyc"
+printf '%s\n' retired >"$TMP/claude/skills/orchestrate/references/retired.md"
+
 # Seed stale copies of the reviewer profiles: the installer must overwrite both.
 mkdir -p "$TMP/claude/agents" "$TMP/codex/agents"
 printf '%s\n' stale >"$TMP/claude/agents/opus-reviewer.md"
@@ -152,6 +159,11 @@ jq -e '.schema_version == 1 and .verifier == "delegation-patch-verify" and
   || fail 'the installed patch policy is not the fail-closed policy this kit ships'
 [ -f "$TMP/claude/skills/deepseek-executor/SKILL.md" ] && [ -f "$TMP/codex/skills/deepseek-executor/SKILL.md" ] \
   || fail 'install did not include the DeepSeek executor skill on both surfaces'
+[ ! -e "$DATA/bin/lib/delegation_retired.py" ] \
+  && [ ! -e "$DATA/bin/lib/__pycache__/delegation_retired.cpython-315.pyc" ] \
+  && [ ! -e "$TMP/claude/skills/orchestrate/references/retired.md" ] \
+  && [ -f "$TMP/claude/skills/orchestrate/SKILL.md" ] \
+  || fail 'install kept a library module or skill file this release does not ship'
 
 # The resident files must be the user-direction guard, not an orchestration
 # policy that dispatches agents on its own authority.

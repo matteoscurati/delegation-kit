@@ -2,6 +2,40 @@
 
 All notable changes to delegation-kit are documented here.
 
+## [0.30.4] — 2026-10-21
+
+Housekeeping.
+
+### Fixed
+
+- **The installer leaves nothing a release no longer ships.** It copied the
+  library and the skills over the previous install and never removed what
+  was gone, so modules from earlier releases (`delegation_router.py`,
+  `delegation_router_catalog.py`) and their bytecode stayed beside the
+  current ones. Library files the checkout does not ship are now removed,
+  the library bytecode is cleared, and each kit skill directory is replaced
+  whole. A regression test seeds a retired module, its bytecode and a
+  retired skill file and checks the install removes them.
+- **Stale names and concepts.** `fable-judge` paired itself with
+  `sol-judge`, which became `astra-judge`; the dual-judgement reference
+  said Sol, and one of its sentences was garbled. The GLM and Grok executor
+  skills listed Kimi's roles and pointed at evaluation options that no
+  longer exist; each now names its own roles. `doctor` said reviewers must
+  be cross-family where the review policy is configurable, that a missing
+  executor skill blocks selection "even after evaluation", and called the
+  orchestrate skill a fan-out loop. The installer called a keyless DeepSeek
+  "provisional", the Qwen runner pointed at re-pin instructions the docs no
+  longer have, and two errors said a decider kind is "not available in this
+  release" where it is unknown.
+
+### Changed
+
+- **The orchestrate skill links its two references**, and the empty
+  `worker-brief.md` is gone. The Sonnet agents no longer say "Sonnet-5":
+  their `model: sonnet` follows the current Sonnet.
+- **README**: the "Current release" section describes this release only;
+  the history is in this file.
+
 ## [0.30.3] — 2026-10-21
 
 Shorter documentation, corrected against the code.

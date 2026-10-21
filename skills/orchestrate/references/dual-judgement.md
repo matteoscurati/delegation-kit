@@ -1,4 +1,4 @@
-# Dual judgement: Fable + Sol
+# Dual judgement: Fable + Astra
 
 Use `super-judgement` only after an explicit decision and only for a highly
 complex, high-blast-radius, difficult-to-reverse question with at least two
@@ -17,7 +17,7 @@ Send the same evidence, constraints, and output contract to `fable-judge` and
 6. conditions that would change the verdict;
 7. required verification.
 
-Fable emphasizes architecture, trade-offs, and synthesis. Sol emphasizes
+Fable emphasizes architecture, trade-offs, and synthesis. Astra emphasizes
 repository fit, technical feasibility, failure modes, and verifiability.
 
 ## Phase 2 — cross-review

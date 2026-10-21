@@ -196,7 +196,7 @@ if [ -n "$opus_reviewer_profile" ] \
     && grep -Fq 'configured review policy' "$opus_reviewer_profile"; then
   ok "opus-reviewer pinned to claude-opus-5-5/max and configured review policy"
 else
-  bad "opus-reviewer missing, stale, or not cross-family/max — re-run ./install.sh"
+  bad "opus-reviewer missing, stale, or not pinned to claude-opus-5-5/max under the configured review policy — re-run ./install.sh"
 fi
 fable_profile="$(resolve_claude_agent fable-judge.md || true)"
 if [ -n "$fable_profile" ] \
@@ -215,49 +215,48 @@ if [ -n "$sonnet_reviewer_profile" ] \
     && grep -Fq 'configured review policy' "$sonnet_reviewer_profile"; then
   ok "sonnet-reviewer pinned to sonnet/medium, tool-read-only, and configured review policy"
 else
-  bad "sonnet-reviewer missing, stale, or not cross-family/medium/read-only — re-run ./install.sh"
+  bad "sonnet-reviewer missing, stale, or not sonnet/medium, read-only, under the configured review policy — re-run ./install.sh"
 fi
 if [ -f "$CLAUDE_HOME/skills/model-routing/SKILL.md" ]; then
   ok "model-routing skill installed"
 elif found_path "$CLAUDE_HOME/plugins" '*model-routing/SKILL.md'; then
   ok "model-routing skill installed (via plugin cache)"
 else bad "model-routing skill missing — run ./install.sh or /plugin install"; fi
-# orchestrate skill (the fan-out loop runbook; optional add-on to the routing policy)
 if [ -f "$CLAUDE_HOME/skills/orchestrate/SKILL.md" ]; then
   ok "orchestrate skill installed"
 elif found_path "$CLAUDE_HOME/plugins" '*orchestrate/SKILL.md'; then
   ok "orchestrate skill installed (via plugin cache)"
-else warn "orchestrate skill missing — run ./install.sh or /plugin install to get the fan-out loop"; fi
+else warn "orchestrate skill missing — run ./install.sh or /plugin install"; fi
 if [ -f "$CLAUDE_HOME/skills/glm-executor/SKILL.md" ]; then
   ok "optional GLM executor skill installed"
 elif found_path "$CLAUDE_HOME/plugins" '*glm-executor/SKILL.md'; then
   ok "optional GLM executor skill installed (via plugin cache; universal install still required for runner)"
-else warn "optional GLM executor skill missing — GLM cannot be selected even after evaluation"; fi
+else warn "optional GLM executor skill missing — run ./install.sh or /plugin install"; fi
 if [ -f "$CLAUDE_HOME/skills/gemini-executor/SKILL.md" ]; then
   ok "optional Gemini executor skill installed"
 elif found_path "$CLAUDE_HOME/plugins" '*gemini-executor/SKILL.md'; then
   ok "optional Gemini executor skill installed (via plugin cache; universal install still required for runner)"
-else warn "optional Gemini executor skill missing — Gemini cannot be selected even after evaluation"; fi
+else warn "optional Gemini executor skill missing — run ./install.sh or /plugin install"; fi
 if [ -f "$CLAUDE_HOME/skills/kimi-executor/SKILL.md" ]; then
   ok "optional Kimi executor skill installed"
 elif found_path "$CLAUDE_HOME/plugins" '*kimi-executor/SKILL.md'; then
   ok "optional Kimi executor skill installed (via plugin cache; universal install still required for runner)"
-else warn "optional Kimi executor skill missing — Kimi cannot be selected even after evaluation"; fi
+else warn "optional Kimi executor skill missing — run ./install.sh or /plugin install"; fi
 if [ -f "$CLAUDE_HOME/skills/qwen-executor/SKILL.md" ]; then
   ok "Qwen executor skill installed"
 elif found_path "$CLAUDE_HOME/plugins" '*qwen-executor/SKILL.md'; then
   ok "Qwen executor skill installed (via plugin cache; universal install still required for runner)"
-else warn "Qwen builder skill missing — re-run ./install.sh"; fi
+else warn "Qwen executor skill missing — run ./install.sh or /plugin install"; fi
 if [ -f "$CLAUDE_HOME/skills/deepseek-executor/SKILL.md" ]; then
   ok "DeepSeek executor skill installed"
 elif found_path "$CLAUDE_HOME/plugins" '*deepseek-executor/SKILL.md'; then
   ok "DeepSeek executor skill installed (via plugin cache; universal install still required for runner)"
-else warn "DeepSeek builder skill missing — re-run ./install.sh"; fi
+else warn "DeepSeek executor skill missing — run ./install.sh or /plugin install"; fi
 if [ -f "$CLAUDE_HOME/skills/grok-executor/SKILL.md" ]; then
   ok "Grok executor skill installed"
 elif found_path "$CLAUDE_HOME/plugins" '*grok-executor/SKILL.md'; then
   ok "Grok executor skill installed (via plugin cache; universal install still required for runner)"
-else warn "Grok builder skill missing — re-run ./install.sh"; fi
+else warn "Grok executor skill missing — run ./install.sh or /plugin install"; fi
 # always-loaded user-direction guard (the plugin path does NOT install this —
 # install.sh does). Presence alone is not enough: the installed block must be
 # this guard, not an older orchestration policy.
@@ -295,7 +294,7 @@ if [ -f "$CODEX_HOME/agents/terra-reviewer.toml" ] \
     && grep -Fq 'configured review policy' "$CODEX_HOME/agents/terra-reviewer.toml"; then
   ok "terra-reviewer pinned to gpt-5.6-terra/max, read-only, and configured review policy"
 else
-  bad "terra-reviewer missing, stale, or not cross-family/max/read-only — re-run ./install.sh"
+  bad "terra-reviewer missing, stale, or not gpt-5.6-terra/max, read-only, under the configured review policy — re-run ./install.sh"
 fi
 if [ -f "$CODEX_HOME/agents/astra-reviewer.toml" ] \
     && [ -f "$CODEX_HOME/astra-reviewer.config.toml" ] \
@@ -308,7 +307,7 @@ if [ -f "$CODEX_HOME/agents/astra-reviewer.toml" ] \
     && grep -Fq 'configured review policy' "$CODEX_HOME/agents/astra-reviewer.toml"; then
   ok "astra-reviewer pinned to gpt-6-astra/high, read-only, and configured review policy"
 else
-  bad "astra-reviewer missing, stale, or not cross-family/high/read-only — re-run ./install.sh"
+  bad "astra-reviewer missing, stale, or not gpt-6-astra/high, read-only, under the configured review policy — re-run ./install.sh"
 fi
 if [ -f "$CODEX_HOME/agents/astra-judge.toml" ] \
     && [ -f "$CODEX_HOME/astra-judge.config.toml" ] \
@@ -320,7 +319,7 @@ if [ -f "$CODEX_HOME/agents/astra-judge.toml" ] \
     && grep -Fxq 'sandbox_mode = "read-only"' "$CODEX_HOME/astra-judge.config.toml"; then
   ok "astra-judge pinned to gpt-6-astra/high and read-only"
 else
-  bad "astra-judge missing, stale, or not high/read-only — re-run ./install.sh"
+  bad "astra-judge missing, stale, or not gpt-6-astra/high and read-only — re-run ./install.sh"
 fi
 # The registered block must be the current user-direction guard: an older
 # orchestration policy left in AGENTS.md is exactly what this check refuses.
@@ -340,13 +339,13 @@ if [ -f "$CODEX_HOME/skills/kimi-executor/SKILL.md" ]; then
 else warn "optional Kimi executor skill missing for Codex"; fi
 if [ -f "$CODEX_HOME/skills/qwen-executor/SKILL.md" ]; then
   ok "Qwen executor skill installed for Codex"
-else warn "Qwen builder skill missing for Codex"; fi
+else warn "Qwen executor skill missing for Codex"; fi
 if [ -f "$CODEX_HOME/skills/deepseek-executor/SKILL.md" ]; then
   ok "DeepSeek executor skill installed for Codex"
-else warn "DeepSeek builder skill missing for Codex"; fi
+else warn "DeepSeek executor skill missing for Codex"; fi
 if [ -f "$CODEX_HOME/skills/grok-executor/SKILL.md" ]; then
   ok "Grok executor skill installed for Codex"
-else warn "Grok builder skill missing for Codex"; fi
+else warn "Grok executor skill missing for Codex"; fi
 
 hdr "Personal configuration"
 if ! have jq; then
@@ -489,7 +488,7 @@ elif have delegation-glm; then
     bad "delegation-glm check failed or reports an unexpected default model"
   fi
 else
-  warn "delegation-glm not installed — re-run ./install.sh after evaluating GLM"
+  warn "delegation-glm not installed — re-run ./install.sh"
 fi
 
 # ---- optional Gemini 3.8 Flash external executor ----
