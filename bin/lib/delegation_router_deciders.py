@@ -242,9 +242,7 @@ def band_mass(expectation, probabilities):
 
 def unit(value):
     """A probability or a confidence: a finite number in [0, 1]."""
-    return (
-        type(value) in (int, float) and math.isfinite(value) and 0 <= value <= 1
-    )
+    return type(value) in (int, float) and math.isfinite(value) and 0 <= value <= 1
 
 
 def out_of_schema(signals):
@@ -259,9 +257,7 @@ def out_of_schema(signals):
         if s.get("kind") == "scale":
             low, high = s.get("range", [0, 4])
             e = s.get("expectation")
-            if not (
-                type(e) in (int, float) and math.isfinite(e) and low <= e <= high
-            ):
+            if not (type(e) in (int, float) and math.isfinite(e) and low <= e <= high):
                 return key + " expectation"
             for field in ("confidence", "source_confidence"):
                 if field in s and not unit(s[field]):

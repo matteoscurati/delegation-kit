@@ -272,7 +272,10 @@ class ServiceDeciderTests(Fixture):
                 "sage",
                 {
                     "results": [
-                        {"ok": True, "result": {"answers": [sage_answers[0], sage_tags]}}
+                        {
+                            "ok": True,
+                            "result": {"answers": [sage_answers[0], sage_tags]},
+                        }
                     ],
                     "meta": self.SAGE["meta"],
                 },

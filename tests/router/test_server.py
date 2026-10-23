@@ -139,7 +139,9 @@ class ServerTests(Fixture):
 
     @staticmethod
     def decision(difficulty, tags=()):
-        content = json.dumps({"difficulty": difficulty, "tags": list(tags), "reason": "r"})
+        content = json.dumps(
+            {"difficulty": difficulty, "tags": list(tags), "reason": "r"}
+        )
         return {"choices": [{"message": {"content": content}}]}
 
     def test_a_named_conversation_keeps_its_first_route(self):
@@ -159,10 +161,14 @@ class ServerTests(Fixture):
         )
         self.assertEqual(status, 200, data)
         self.assertEqual(headers["X-Router-Profile"], "small")
-        self.assertEqual((headers["X-Router-Mode"], headers["X-Router-Pin"]), ("pinned", "held"))
+        self.assertEqual(
+            (headers["X-Router-Mode"], headers["X-Router-Pin"]), ("pinned", "held")
+        )
         self.assertEqual(data["router"]["decider"]["id"], "none")
         self.assertEqual(data["router"]["pin"]["requests"], 2)
-        self.assertTrue(data["router"]["reasons"][0].startswith("conversation pinned to small"))
+        self.assertTrue(
+            data["router"]["reasons"][0].startswith("conversation pinned to small")
+        )
         self.assertEqual(len(Provider.requests), 1)  # the forward only
         # Another conversation, and a request without the header, are decided.
         for extra in ({"X-Router-Conversation": "other"}, {}):
@@ -173,9 +179,13 @@ class ServerTests(Fixture):
             self.assertEqual(headers.get("X-Router-Pin"), "new" if extra else None)
         # Naming a profile ignores the header and leaves the pin alone.
         status, data, headers = self.post(self.chat("mid"), loop)
-        self.assertEqual((headers["X-Router-Mode"], headers.get("X-Router-Pin")), ("explicit", None))
+        self.assertEqual(
+            (headers["X-Router-Mode"], headers.get("X-Router-Pin")), ("explicit", None)
+        )
         _, _, headers = self.post(self.chat("auto", "x"), loop)
-        self.assertEqual((headers["X-Router-Profile"], headers["X-Router-Pin"]), ("small", "held"))
+        self.assertEqual(
+            (headers["X-Router-Profile"], headers["X-Router-Pin"]), ("small", "held")
+        )
 
     def test_a_pinned_profile_that_cannot_take_a_request_is_refused(self):
         self.config["profiles"]["small"]["context"] = 3000
@@ -205,7 +215,9 @@ class ServerTests(Fixture):
                 status, data, _ = self.post(
                     self.chat("auto"), {"X-Router-Conversation": value}
                 )
-                self.assertEqual((status, data["error"]["code"]), (400, "invalid-conversation"))
+                self.assertEqual(
+                    (status, data["error"]["code"]), (400, "invalid-conversation")
+                )
         self.assertEqual(Provider.requests, [])
 
     def test_explicit_profile_skips_the_decider(self):
