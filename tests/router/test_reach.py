@@ -39,7 +39,7 @@ class ReachTests(unittest.TestCase):
         )
 
     def test_native_runner_check(self):
-        kimi = {"adapter": "kimi-code-cli", "model": "kimi-k3"}
+        kimi = {"adapter": "kimi-code-cli", "model": "kimi-k3.1-pro"}
 
         def answer(report):
             return subprocess.CompletedProcess(

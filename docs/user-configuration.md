@@ -240,3 +240,7 @@ refresh` writes a local catalog ([the router page](router.md)).
   keeps `claude-opus-5` in them until you edit `model`. The Claude Code
   agents the installer writes move to `claude-opus-5-5` on the next install,
   unless you edited them.
+- 0.32.0 replaced the shipped `kimi-k3` profile with `kimi-k3.1-pro` (model
+  `kimi-k3.1-pro`). A file made earlier keeps `kimi-k3`, and `delegation-kimi`
+  still runs it on K3. To move, rename the profile, and the pool entries and
+  routes that name it, and set `model` to `kimi-k3.1-pro`.

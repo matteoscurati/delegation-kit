@@ -93,8 +93,10 @@ try:
     ]:
         env.pop(key, None)
     model = profile["model"]
-    if adapter == "kimi-code-cli" and model == "kimi-k3":
-        model = "kimi-code/k3"
+    if adapter == "kimi-code-cli":
+        model = {"kimi-k3.1-pro": "kimi-code/k3.1-pro", "kimi-k3": "kimi-code/k3"}.get(
+            model, model
+        )
     env["DELEGATION_REQUESTED_MODEL"] = model
     env["DELEGATION_MODEL_ALIASES"] = json.dumps(profile.get("aliases", []))
     for key, var in [

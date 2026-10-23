@@ -8,7 +8,7 @@
 #   --ping   also does a live round-trip (real API calls, costs a few tokens per
 #            side). Off by default; static checks are free.
 #   --ping-glm does a separate paid GLM-5.3-Flash/max ping through its clerk role.
-#   --ping-kimi does a separate Kimi K3 ping through its scout role.
+#   --ping-kimi does a separate Kimi K3.1 Pro ping through its scout role.
 #   --ping-grok does a paid Grok 4.6 ping through its builder role.
 # Env overrides (for testing): CLAUDE_HOME (default ~/.claude), CODEX_HOME (~/.codex)
 set -uo pipefail
@@ -534,14 +534,14 @@ else
   warn "delegation-deepseek not installed — re-run ./install.sh"
 fi
 
-# ---- optional Kimi K3 external executor ----
+# ---- optional Kimi K3.1 Pro external executor ----
 hdr "Kimi executor (kimi-code-cli)"
 if ! have jq; then
   warn "jq not on PATH — delegation-kimi cannot run"
 elif have delegation-kimi; then
   kimi_check="$(delegation-kimi check --json 2>/dev/null || true)"
   if [ -n "$kimi_check" ] && printf '%s' "$kimi_check" | jq -e '
-      .model == "kimi-k3" and
+      .model == "kimi-k3.1-pro" and
       .runtime_cli_compatibility == "capability-probed" and
       (.selected_backend == "native" or .selected_backend == "none") and
       (.backends.native.available == (.selected_backend == "native")) and
@@ -574,7 +574,7 @@ elif have delegation-kimi; then
       .backends.native.builder_write_scope == "workdir" and
       .backends.native.read_only_write_scope == "scratch"
     ' >/dev/null 2>&1; then
-    ok "delegation-kimi installed for kimi-k3/max with agent-file, pinned Grep, and sandboxed runtime controls"
+    ok "delegation-kimi installed for kimi-k3.1-pro/max with agent-file, pinned Grep, and sandboxed runtime controls"
     kimi_selected="$(printf '%s' "$kimi_check" | jq -r '.selected_backend')"
     [ "$kimi_selected" = none ] \
       && info "Kimi runtime unavailable — the adapter will not be selected" \
@@ -707,7 +707,7 @@ if [ "$DO_GLM_PING" = 1 ]; then
 fi
 
 if [ "$DO_KIMI_PING" = 1 ]; then
-  hdr "Kimi K3 live ping (--ping-kimi)"
+  hdr "Kimi K3.1 Pro live ping (--ping-kimi)"
   if ! have delegation-kimi; then
     bad "Kimi ping unavailable — delegation-kimi is not installed"
   else
@@ -723,12 +723,12 @@ if [ "$DO_KIMI_PING" = 1 ]; then
           --prompt-file "$ping_dir/prompt.txt" --output "$ping_dir/out.txt" \
           --workdir "$ping_dir/work" >/dev/null 2>&1; then
         if grep -Fxq PONG "$ping_dir/out.txt"; then
-          ok "Kimi K3 ping returned PONG"
+          ok "Kimi K3.1 Pro ping returned PONG"
         else
-          bad "Kimi K3 ping returned unexpected output"
+          bad "Kimi K3.1 Pro ping returned unexpected output"
         fi
       else
-        bad "Kimi K3 ping failed"
+        bad "Kimi K3.1 Pro ping failed"
       fi
       rm -rf "$ping_dir"
     fi

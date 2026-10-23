@@ -205,9 +205,9 @@
         "effort": "max"
       }
     },
-    "kimi-k3": {
+    "kimi-k3.1-pro": {
       "adapter": "kimi-code-cli",
-      "model": "kimi-k3",
+      "model": "kimi-k3.1-pro",
       "family": "moonshot",
       "roles": [
         "clerk",

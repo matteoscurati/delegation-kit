@@ -2,6 +2,37 @@
 
 All notable changes to delegation-kit are documented here.
 
+## [0.32.0] — 2026-10-23
+
+The Kimi profile runs Kimi K3.1 Pro. The model is new to the `frontier`
+band, so routing decisions change and the release is a minor one.
+
+### Changed
+
+- **The Kimi profile is `kimi-k3.1-pro`.** Owner decision: the `kimi-k3`
+  preset in `config/presets.json` is replaced by `kimi-k3.1-pro` (model
+  `kimi-k3.1-pro`, same adapter, roles and `max` effort), and
+  `delegation-kimi` runs `kimi-code/k3.1-pro` when no model is requested.
+  Kimi Code serves K3.1 Pro to the same OAuth login. Artificial Analysis
+  measures it at 55.1 (K3: 43.6), which places it in the `frontier` band at
+  $2/$10 per million tokens: in a pool it now takes the frontier minimum
+  from Opus 5.5 ($4/$20), and the 2.5 example in the README goes to Kimi as
+  well. `doctor.sh` checks the new default.
+- **`delegation-kimi` names the models it runs.** K3.1 Pro and K3; the
+  provider must attest the requested one (the probe accepted only `k3`),
+  and any other Kimi Code model fails it with `not a supported Kimi Code
+  model`. `check` reports the kit's name for the
+  requested model instead of a fixed `kimi-k3`. A personal configuration
+  with a `kimi-k3` profile keeps running K3; *Upgrading* in the
+  configuration page says what to change.
+- **Catalog**: `kimi-k3.1-pro` added and placed by the refresh (55.1,
+  `frontier`); `kimi-k3` stays for configurations that name it.
+
+### Fixed
+
+- **The router page's pool example** gave GPT-6 Astra 52.7; at the `high`
+  effort its profiles run, the catalog places it at 50.9.
+
 ## [0.31.0] — 2026-10-23
 
 The router keeps an agent loop on one model, ends a native dispatch with the

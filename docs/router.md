@@ -233,13 +233,13 @@ becomes a **minimum score** on the Artificial Analysis index:
 The rule is Levanto Sage's: *the cheapest model that will get it right*. The
 decider judges the task; your configuration judges the models.
 
-In a pool of Opus 5.5, GPT-6 Astra, GLM 5.3 Flash, Kimi K3 and Qwen3.8 Max:
+In a pool of Opus 5.5, GPT-6 Astra, GLM 5.3 Flash, Kimi K3.1 Pro and Qwen3.8 Max:
 
 | minimum | candidates (score, $ in/out per Mtok) | winner |
 |---|---|---|
-| 49.6 | Opus 5.5 (57.6, 4/20), GPT-6 Astra (52.7, 10/50) | Opus; Astra only if Opus is blocked or not in the pool |
-| 37.6 | GLM 5.3 Flash (41.8, 0.15/0.50), Kimi K3 (43.6, 0.50/2), Qwen3.8 Max (45.4, 2/6) | GLM |
-| 43.6 | Kimi K3, Qwen3.8 Max | Kimi; Qwen only for a minimum above 43.6, up to 45.4 (three to four times the price for 1.8 points) |
+| 49.6 | Opus 5.5 (57.6, 4/20), Kimi K3.1 Pro (55.1, 2/10), GPT-6 Astra (50.9, 10/50) | Kimi; Opus only for a minimum above 55.1, or if Kimi is blocked or not in the pool |
+| 37.6 | GLM 5.3 Flash (41.8, 0.15/0.50), Qwen3.8 Max (45.4, 2/6), Kimi K3.1 Pro | GLM |
+| 43.6 | Qwen3.8 Max, Kimi K3.1 Pro | Qwen; Kimi for a minimum above 45.4 |
 
 Your levers: `tier` and `price` per profile, the pool, the default, the
 ceiling. The `reasons` give the minimum, the chosen score and each candidate's
