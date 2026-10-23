@@ -10,31 +10,35 @@ below with the numbers observed after running the
 
 ## Verified snapshot
 
-**0.32.0, checked on 2026-10-23** on macOS 26.5.1 with Claude Code
-`2.1.309`, Codex CLI `0.164.0` and Kimi Code `2.3.1` (upgraded from
-`0.39.1` for this release).
+**0.33.0, checked on 2026-10-23** on macOS 26.5.1 with Claude Code
+`2.1.309`, Codex CLI `0.164.0` and Kimi Code `2.3.1`.
 
-- **Offline**: the 13 suites green in 44 seconds (the Kimi runner suite
-  with two new cases: a request for K3 still runs, another Kimi Code model
-  is refused), ShellCheck at `-S warning` on the 28 files CI collects, ruff,
-  the eleven Node tests and the version gate.
+- **Offline**: the 13 suites green in 43 seconds, ShellCheck at
+  `-S warning` on the 28 files CI collects, ruff, the eleven Node tests and
+  the version gate. A configuration written by `delegation-config init`
+  from the new preset validates, and `delegation-route resolve --lane
+  clerk` lists `minimax-m3.1-flash` among the choices.
 - **Install and doctor**: a reinstall from the release branch. Static
-  `doctor.sh` reports `55 OK, 6 WARN, 0 FAIL`, the Kimi line naming
-  `kimi-k3.1-pro/max`; the six warnings are the configured pool's native
-  profiles. `doctor.sh --ping --ping-kimi`: `58 OK, 6 WARN, 0 FAIL`, the
-  Claude → Codex round-trip and the Kimi K3.1 Pro ping both returned `PONG`.
-  `delegation-kimi check` reports the native backend ready for both
-  `kimi-code/k3.1-pro` and `kimi-code/k3` on Kimi Code 2.3.1.
+  `doctor.sh` reports `55 OK, 6 WARN, 0 FAIL`; the six warnings are the
+  configured pool's native profiles. `doctor.sh --ping`: `57 OK, 6 WARN,
+  0 FAIL`, the Claude → Codex round-trip returned `PONG`.
+  `delegation-router check` reports `minimax-m3.1-flash` reachable (`mid`,
+  42.7). MiniMax was not dispatched for this release; the profile is the
+  one dispatched for 0.30.1.
 - **Catalog**: `catalog refresh --shipped` on 2026-10-23: 25 models placed,
-  Kimi K3.1 Pro new at 55.1 (`frontier`, $2/$10); nothing else changed;
-  Claude Haiku 4.5 still unmatched.
-- **Live**, each call authorized: the two doctor pings above.
+  no tier, score or price changed; Claude Haiku 4.5 still unmatched.
+- **Live**, each call authorized: the doctor ping above.
 
 ### Earlier releases
 
 Newest first. "Suites" means the 13 regression suites; every live call was
 authorized and no key was printed.
 
+- **0.32.0** (2026-10-23, Claude Code `2.1.309`, Codex `0.164.0`, Kimi
+  Code `2.3.1`): suites in 44 s (two new Kimi runner cases); doctor
+  `55 OK, 6 WARN, 0 FAIL`, with `--ping --ping-kimi` `58 OK`, Codex and
+  Kimi K3.1 Pro both `PONG`. Catalog refreshed: Kimi K3.1 Pro new at 55.1
+  (`frontier`).
 - **0.31.0** (2026-10-23, Claude Code `2.1.309`, Codex `0.164.0`): suites
   in 44 s (86 router tests, seven new for conversation pins, out-of-schema
   answers, harness blocks and native dispatch cancellation); doctor

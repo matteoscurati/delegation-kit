@@ -87,8 +87,9 @@ delegation-config show            # the personal configuration the installer cre
 ```
 
 Keys: the installer asks for the DeepSeek, Qwen and Z.AI keys and keeps them
-in files only you can read; any other key — a model you add, a decider, the
-Artificial Analysis key — goes in `~/.config/delegation-kit/.env`, created
+in files only you can read; any other key — MiniMax for the shipped
+`minimax-m3.1-flash` profile, a model you add, a decider, the Artificial
+Analysis key — goes in `~/.config/delegation-kit/.env`, created
 from [`.env.example`](.env.example) with mode 600. A variable already set in
 your environment wins. Never commit the real file.
 
@@ -147,14 +148,14 @@ the error codes and the evaluation harness.
   which pool models this machine cannot reach; `--ping` runs a live
   round-trip.
 
-## Current release: 0.32.0
+## Current release: 0.33.0
 
-Version 0.32.0 moves the Kimi profile to Kimi K3.1 Pro: the shipped
-`kimi-k3` profile becomes `kimi-k3.1-pro`, and `delegation-kimi` runs K3.1
-Pro through Kimi Code by default. On the Artificial Analysis index K3.1 Pro
-scores 55.1 against K3's 43.6, which places it in the `frontier` band at
-half Opus 5.5's price, so a pool that holds it routes differently. A
-personal configuration that still names `kimi-k3` keeps running K3.
+Version 0.33.0 ships MiniMax-M3.1-Flash as a profile: `delegation-config
+init` now writes `minimax-m3.1-flash`, an `openai-compatible` profile on
+MiniMax's endpoint that reads its key from `MINIMAX_API_KEY`. The catalog
+places it in the `mid` band (42.7, $0.15/$0.60 per million tokens). Without
+the key the profile is listed but unreachable, and nothing else changes.
+0.32.0 moved the Kimi profile to Kimi K3.1 Pro.
 
 Every earlier release is in [`CHANGELOG.md`](./CHANGELOG.md).
 
