@@ -154,7 +154,10 @@ case "${1:-}" in
         effort=max
       fi
       jq -n --arg effort "$effort" '
-        {models:{"kimi-code/k3":{
+        {models:{"kimi-code/k3.1-pro":{
+          provider:"managed:kimi-code",model:"k3.1-pro",
+          supportEfforts:["low","high","max"],defaultEffort:$effort},
+        "kimi-code/k3":{
           provider:"managed:kimi-code",model:"k3",
           supportEfforts:["low","high","max"],defaultEffort:$effort}}}
       '
@@ -182,7 +185,7 @@ esac
 [ "${KIMI_CODE_NO_AUTO_UPDATE:-}" = 1 ] || { printf 'updates enabled\n' >&2; exit 93; }
 [ "${KIMI_DISABLE_CRON:-}" = 1 ] || { printf 'cron enabled\n' >&2; exit 93; }
 config="$HOME/.kimi-code/config.toml"
-grep -Fq 'default_model = "kimi-code/k3"' "$config" \
+grep -Fq 'default_model = "kimi-code/k3.1-pro"' "$config" \
   || { printf 'model not pinned\n' >&2; exit 94; }
 grep -Fq 'effort = "max"' "$config" \
   || { printf 'effort not pinned\n' >&2; exit 95; }
@@ -197,7 +200,7 @@ grep -Fq 'auto_install = false' "$HOME/.kimi-code/tui.toml" \
 prompt=""
 agent_file=""
 args=" $* "
-[[ "$args" == *" --model kimi-code/k3 "* ]] \
+[[ "$args" == *" --model kimi-code/k3.1-pro "* ]] \
   || { printf 'model argument missing\n' >&2; exit 97; }
 [[ "$args" == *" --output-format stream-json "* ]] \
   || { printf 'output format missing\n' >&2; exit 98; }
@@ -402,6 +405,7 @@ run_kimi pin-rg --from "$TMP/bin/rg" >"$TMP/pin-rg.out"
 
 run_kimi check --json >"$TMP/check.json"
 jq -e '
+  .model == "kimi-k3.1-pro" and .models.native == "kimi-code/k3.1-pro" and
   .runtime_cli_version == "user-build-a" and
   .runtime_cli_compatibility == "capability-probed" and
   .selected_backend == "native" and
@@ -427,6 +431,17 @@ jq -e '
   .backends.native.builder_write_scope == "workdir" and
   .backends.native.read_only_write_scope == "scratch"
 ' "$TMP/check.json" >/dev/null || fail "check contract mismatch"
+
+# A personal configuration that still names K3 keeps working; any other
+# Kimi Code model is refused before the probe.
+DELEGATION_REQUESTED_MODEL=kimi-code/k3 run_kimi check --json >"$TMP/check-k3.json"
+jq -e '.model == "kimi-k3" and .selected_backend == "native"' "$TMP/check-k3.json" >/dev/null \
+  || fail "K3 is no longer accepted"
+DELEGATION_REQUESTED_MODEL=kimi-code/kimi-for-coding run_kimi check --json >"$TMP/check-unsupported.json"
+jq -e '
+  .selected_backend == "none" and
+  (.backends.native.reason | contains("not a supported Kimi Code model"))
+' "$TMP/check-unsupported.json" >/dev/null || fail "an unsupported Kimi model was accepted"
 
 KIMI_FAKE_NO_AGENT_FILE=1 run_kimi check --json >"$TMP/check-no-agent-file.json"
 jq -e '

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Run Kimi K3 through the native Kimi Code CLI. Model, effort, and backend are
-# always explicit; no backend fallback occurs after dispatch starts.
+# Run Kimi K3.1 Pro (or K3) through the native Kimi Code CLI. Model, effort, and
+# backend are always explicit; no backend fallback occurs after dispatch starts.
 set -euo pipefail
 umask 077
 
@@ -21,11 +21,18 @@ KIMI_HOME="${KIMI_CODE_HOME:-$HOME/.kimi-code}"
 CREDENTIAL_FILE="$KIMI_HOME/credentials/kimi-code.json"
 DATA_HOME="${DELEGATION_DATA_HOME:-${XDG_DATA_HOME:-$HOME/.local/share}/delegation-kit}"
 RG_STORE="${DELEGATION_KIMI_RG_STORE:-$DATA_HOME/kimi-rg}"
-NATIVE_MODEL="${DELEGATION_REQUESTED_MODEL:-kimi-code/k3}"
+NATIVE_MODEL="${DELEGATION_REQUESTED_MODEL:-kimi-code/k3.1-pro}"
 [[ "$NATIVE_MODEL" =~ ^[a-zA-Z0-9][a-zA-Z0-9._:/@+-]*$ ]] || {
   printf '%s\n' 'delegation-kimi: invalid native model identifier' >&2
   exit 64
 }
+# The Kimi Code models this runner supports, with the kit's name for each.
+# Anything else fails the native probe.
+case "$NATIVE_MODEL" in
+  kimi-code/k3.1-pro) KIT_MODEL="kimi-k3.1-pro"; DISPLAY_NAME="K3.1 Pro" ;;
+  kimi-code/k3) KIT_MODEL="kimi-k3"; DISPLAY_NAME="K3" ;;
+  *) KIT_MODEL=""; DISPLAY_NAME="" ;;
+esac
 NATIVE_EFFORT="max"
 EFFORTS='["max"]'
 ROLES="clerk scout builder frontend-builder policy-annotation"
@@ -302,6 +309,7 @@ sandbox_status() {
 
 native_status() {
   NATIVE_REASON=""
+  [ -n "$KIT_MODEL" ] || { NATIVE_REASON="$NATIVE_MODEL is not a supported Kimi Code model"; return 1; }
   have kimi || { NATIVE_REASON="kimi not on PATH"; return 1; }
   sandbox_status || return 1
   verify_pinned_rg || return 1
@@ -349,12 +357,12 @@ native_status() {
   # Kimi Code has no per-invocation effort flag. The provider must both support
   # and default to the exact evaluated effort; the isolated runtime config below
   # pins the same value so an ambient config change cannot weaken the run.
-  jq -e --arg model "$NATIVE_MODEL" --arg effort "$NATIVE_EFFORT" '
-    .models[$model].model == "k3" and
+  jq -e --arg model "$NATIVE_MODEL" --arg native_id "${NATIVE_MODEL#kimi-code/}" --arg effort "$NATIVE_EFFORT" '
+    .models[$model].model == $native_id and
     ((.models[$model].supportEfforts // []) | index($effort) != null) and
     .models[$model].defaultEffort == $effort
   ' <<<"$providers" >/dev/null 2>&1 \
-    || { NATIVE_REASON="$NATIVE_MODEL does not attest K3 default effort $NATIVE_EFFORT"; return 1; }
+    || { NATIVE_REASON="$NATIVE_MODEL does not attest $DISPLAY_NAME default effort $NATIVE_EFFORT"; return 1; }
   grep -Eq 'managed:kimi-code.*source=oauth' <<<"$providers_text" \
     || { NATIVE_REASON="$NATIVE_MODEL is not an OAuth-managed Kimi Code provider"; return 1; }
   # `source=oauth` above describes how the provider is configured; it prints
@@ -924,7 +932,7 @@ provider = "managed:kimi-code"
 model = "${NATIVE_MODEL#kimi-code/}"
 max_context_size = 1048576
 capabilities = [ "thinking", "always_thinking", "image_in", "video_in", "tool_use" ]
-display_name = "K3"
+display_name = "$DISPLAY_NAME"
 support_efforts = [ "low", "high", "max" ]
 default_effort = "max"
 EOF
@@ -986,7 +994,7 @@ print_check() {
   [ "$native_ok" = true ] && selected=native
   if [ "$as_json" = 1 ]; then
     jq -n \
-      --arg model "kimi-k3" --arg native_model "$NATIVE_MODEL" \
+      --arg model "$KIT_MODEL" --arg native_model "$NATIVE_MODEL" \
       --arg cli_version "$NATIVE_VERSION" \
       --arg rg_version "$RG_VERSION" --arg rg_sha256 "$RG_SHA256" \
       --arg rg_dependencies_sha256 "$RG_DEPENDENCIES_SHA256" \
@@ -1015,7 +1023,7 @@ print_check() {
             oauth_modes:["serialized","shared"],
             builder_write_scope:"workdir",read_only_write_scope:"scratch"}}}'
   else
-    printf 'Kimi K3: selected=%s roles=%s efforts=%s\n' "$selected" "$(printf '%s' "$ROLES" | tr ' ' ',')" "$EFFORTS"
+    printf 'Kimi %s: selected=%s roles=%s efforts=%s\n' "${DISPLAY_NAME:-$NATIVE_MODEL}" "$selected" "$(printf '%s' "$ROLES" | tr ' ' ',')" "$EFFORTS"
     printf '  native: %s (%s; model=%s; effort=max; cli=%s)\n' \
       "$native_ok" "$NATIVE_REASON" "$NATIVE_MODEL" "${NATIVE_VERSION:-unknown}"
   fi

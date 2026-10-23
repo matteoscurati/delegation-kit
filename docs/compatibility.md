@@ -10,35 +10,38 @@ below with the numbers observed after running the
 
 ## Verified snapshot
 
-**0.31.0, checked on 2026-10-23** on macOS 26.5.1 with Claude Code
-`2.1.309` and Codex CLI `0.164.0`.
+**0.32.0, checked on 2026-10-23** on macOS 26.5.1 with Claude Code
+`2.1.309`, Codex CLI `0.164.0` and Kimi Code `2.3.1` (upgraded from
+`0.39.1` for this release).
 
-- **Offline**: the 13 suites green in 44 seconds (the router suite at 86
-  tests, seven new: three for conversation pins, out-of-schema answers,
-  harness blocks, and a native dispatch ending when its client hangs up or
-  `serve` stops, the last two failing against the 0.30.4 bridge; the eval
-  test also reads `decisions.jsonl`), the GLM runner's cap cases, ShellCheck
-  at `-S warning` on the 28 files CI collects, ruff, the eleven Node tests
-  and the version gate.
-- **Install and doctor**: a reinstall from the release branch kept the
-  stored DeepSeek, Qwen and Z.AI keys. Static `doctor.sh` reports
-  `55 OK, 6 WARN, 0 FAIL`; the six warnings are the configured pool's native
-  profiles (no tools, images or JSON mode through the router).
-  `doctor.sh --ping`: `57 OK, 6 WARN, 0 FAIL`, the Claude → Codex round-trip
-  returned `PONG`.
-- **Catalog**: `catalog refresh --shipped` on 2026-10-23: 24 models placed,
-  no tier, score or price changed; Claude Haiku 4.5 still unmatched.
-- **Live**, each call authorized: the Jev decider (3 probes); decider
-  `eval` runs — four on the 20-item golden set with harness-wrapped
-  variants, three on it with outcomes, two on 30 harder candidates; and 250
-  pool dispatches building the golden sets (2026-10-22 and 2026-10-23); see
-  [Decider measurements](#decider-measurements).
+- **Offline**: the 13 suites green in 44 seconds (the Kimi runner suite
+  with two new cases: a request for K3 still runs, another Kimi Code model
+  is refused), ShellCheck at `-S warning` on the 28 files CI collects, ruff,
+  the eleven Node tests and the version gate.
+- **Install and doctor**: a reinstall from the release branch. Static
+  `doctor.sh` reports `55 OK, 6 WARN, 0 FAIL`, the Kimi line naming
+  `kimi-k3.1-pro/max`; the six warnings are the configured pool's native
+  profiles. `doctor.sh --ping --ping-kimi`: `58 OK, 6 WARN, 0 FAIL`, the
+  Claude → Codex round-trip and the Kimi K3.1 Pro ping both returned `PONG`.
+  `delegation-kimi check` reports the native backend ready for both
+  `kimi-code/k3.1-pro` and `kimi-code/k3` on Kimi Code 2.3.1.
+- **Catalog**: `catalog refresh --shipped` on 2026-10-23: 25 models placed,
+  Kimi K3.1 Pro new at 55.1 (`frontier`, $2/$10); nothing else changed;
+  Claude Haiku 4.5 still unmatched.
+- **Live**, each call authorized: the two doctor pings above.
 
 ### Earlier releases
 
 Newest first. "Suites" means the 13 regression suites; every live call was
 authorized and no key was printed.
 
+- **0.31.0** (2026-10-23, Claude Code `2.1.309`, Codex `0.164.0`): suites
+  in 44 s (86 router tests, seven new for conversation pins, out-of-schema
+  answers, harness blocks and native dispatch cancellation); doctor
+  `55 OK, 6 WARN, 0 FAIL`, with `--ping` `57 OK`. Catalog refreshed,
+  nothing changed. Live: the Jev decider, decider `eval` runs and 250 pool
+  dispatches for the golden sets; see
+  [Decider measurements](#decider-measurements).
 - **0.30.4** (2026-10-21, Claude Code `2.1.306`, Codex `0.163.0`):
   housekeeping; suites in 51 s (79 router tests; the installer suite at 18,
   one new for files a release no longer ships); a reinstall removed the two

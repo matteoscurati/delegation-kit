@@ -58,7 +58,8 @@ best model on the board):
 
 Add GLM 5.3 Flash (41.8, $0.15/$0.50 per million) and the first three go to
 GLM: it reaches both minimums and costs less than Luna and DeepSeek. Add
-Kimi K3 (43.6) as well and the 2.5 request goes to Kimi instead of Opus.
+Kimi K3.1 Pro (`frontier`: 55.1, $2/$10) as well and the last two go to Kimi
+instead of Opus, at half the price.
 
 Where the tiers come from: a third party, not the kit. The shipped catalog
 places every model it knows from the Artificial Analysis Intelligence Index
@@ -146,17 +147,14 @@ the error codes and the evaluation harness.
   which pool models this machine cannot reach; `--ping` runs a live
   round-trip.
 
-## Current release: 0.31.0
+## Current release: 0.32.0
 
-Version 0.31.0 keeps an agent loop on one model: a client that sends
-`X-Router-Conversation` stays on the profile its first request was routed
-to, instead of changing model halfway through a task. A native dispatch now
-ends when its client hangs up or `serve` stops. The router reads its
-deciders more strictly — an answer outside the schema is undecidable, and
-the blocks coding harnesses add to a user turn stay out of the decider's
-excerpt — and `eval` writes every decision it measured. GLM through Claude
-Code is priced at GLM's rate, and runs without the spending cap Claude Code
-counted at Opus prices.
+Version 0.32.0 moves the Kimi profile to Kimi K3.1 Pro: the shipped
+`kimi-k3` profile becomes `kimi-k3.1-pro`, and `delegation-kimi` runs K3.1
+Pro through Kimi Code by default. On the Artificial Analysis index K3.1 Pro
+scores 55.1 against K3's 43.6, which places it in the `frontier` band at
+half Opus 5.5's price, so a pool that holds it routes differently. A
+personal configuration that still names `kimi-k3` keeps running K3.
 
 Every earlier release is in [`CHANGELOG.md`](./CHANGELOG.md).
 
