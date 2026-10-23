@@ -2,6 +2,29 @@
 
 All notable changes to delegation-kit are documented here.
 
+## [0.33.0] — 2026-10-23
+
+MiniMax-M3.1-Flash becomes a shipped profile. A new profile in the preset
+gives fresh configurations a new choice in every text lane, so the release
+is a minor one.
+
+### Added
+
+- **The `minimax-m3.1-flash` profile.** Owner decision: `config/presets.json`
+  gains the profile the configuration page already used as its example —
+  adapter `openai-compatible`, model `MiniMax-M3.1-Flash`, family `minimax`,
+  the seven text roles, `base_url` `https://api.minimax.io/v1`,
+  `credential_env` `MINIMAX_API_KEY`, `context` 1,000,000. The catalog
+  already places it (`mid`, 42.7, $0.15/$0.60). Without the key,
+  `delegation-router check` reports it unreachable (`no MINIMAX_API_KEY`)
+  and a dispatch is refused; nothing else is affected. `.env.example` lists
+  the variable beside the other provider keys.
+
+### Upgrading
+
+- A configuration made earlier does not get the profile: copy it from
+  `config/presets.json` (*Upgrading* in the configuration page).
+
 ## [0.32.0] — 2026-10-23
 
 The Kimi profile runs Kimi K3.1 Pro. The model is new to the `frontier`

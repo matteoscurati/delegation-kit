@@ -1,6 +1,6 @@
 {
   "name": "delegation-kit",
-  "version": "0.32.0",
+  "version": "0.33.0",
   "description": "You choose the decision model; it governs the models you already pay for. A local OpenAI-compatible router over your own keys and subscriptions.",
   "keywords": [
     "model-router",
