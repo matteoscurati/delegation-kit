@@ -65,7 +65,9 @@ def main():
     pe.add_argument("--items", required=True, help="JSONL golden set")
     pe.add_argument("--decider", choices=sorted(ROUTER_DECIDERS))
     pe.add_argument("--input", choices=["excerpt", "full"])
-    pe.add_argument("--output", help="directory for report.json and gate.json")
+    pe.add_argument(
+        "--output", help="directory for report.json, gate.json and decisions.jsonl"
+    )
     pe.add_argument("--json", action="store_true")
     a = p.parse_args()
     try:
@@ -123,6 +125,7 @@ def main():
 
             kind = a.decider or c["router"].get("decider", {}).get("kind", "llm")
             report = evaluate(c, read_items(a.items), kind, a.input)
+            decisions = report.pop("decisions")
             if a.output:
                 out_dir = Path(a.output)
                 out_dir.mkdir(parents=True, exist_ok=True)
@@ -131,6 +134,9 @@ def main():
                 )
                 (out_dir / "gate.json").write_text(
                     json.dumps(report["gate"], indent=2) + "\n"
+                )
+                (out_dir / "decisions.jsonl").write_text(
+                    "".join(json.dumps(d) + "\n" for d in decisions)
                 )
             if a.json:
                 print(json.dumps(report, indent=2))

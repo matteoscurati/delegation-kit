@@ -20,6 +20,7 @@ if [ "${1:-}" = "--help" ]; then
   printf '%s\n' 'usage: claude --effort <level>'
   exit 0
 fi
+[ -z "${FAKE_CLAUDE_ARGS:-}" ] || printf '%s\n' "$@" >"$FAKE_CLAUDE_ARGS"
 
 case "${FAKE_CLAUDE_CASE:-success}" in
   success)
@@ -207,8 +208,22 @@ run_case success 0
 assert_json "$TEST_TMP/results/success.out.metrics.json" \
   '.schema_version == 3 and .model == "glm-5.3-flash" and .requested_model == "glm-5.3-flash" and
    .model_identity_source == "requested-only" and .tokens.input == 3 and .tokens.output == 1 and
-   .provider_cost_usd == 0.01'
+   .provider_cost_usd == null'
 [ ! -e "$TEST_TMP/results/success.out.error.json" ] || fail "success wrote an error diagnostic"
+
+# No spending cap unless one is given: Claude Code counts it at its Opus
+# list, so a default amount would stop GLM far below what it names.
+export FAKE_CLAUDE_ARGS="$TEST_TMP/results/claude.args"
+run_case success 0
+[ -s "$FAKE_CLAUDE_ARGS" ] || fail "the fake did not record its arguments"
+! grep -qx -- '--max-budget-usd' "$FAKE_CLAUDE_ARGS" || fail "a cap was passed without --max-cost-usd"
+run_case success 0 --max-cost-usd 3.5
+grep -A1 -x -- '--max-budget-usd' "$FAKE_CLAUDE_ARGS" | grep -qx '3.5' \
+  || fail "--max-cost-usd was not passed to Claude Code"
+for bad in 0 0.00 -1 abc 1e3; do
+  run_case "bad-cap-$bad" 64 --max-cost-usd "$bad"
+done
+unset FAKE_CLAUDE_ARGS
 
 # --evaluation, its companions, and --allow-provisional are gone: unknown
 # arguments fail closed (64).

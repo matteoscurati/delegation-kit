@@ -94,6 +94,23 @@ class EvalTests(Fixture):
         self.assertEqual(
             json.loads((out_dir / "gate.json").read_text())["accepted"], False
         )
+        # one record per prompt and paraphrase, with what the decider answered
+        # and never the prompt itself; the report does not carry them
+        lines = (out_dir / "decisions.jsonl").read_text().splitlines()
+        decisions = [json.loads(line) for line in lines]
+        self.assertEqual(len(decisions), 4)
+        self.assertEqual(
+            {k for k in decisions[0] if k in ("item", "paraphrase", "chosen", "raw")},
+            {"item", "paraphrase", "chosen", "raw"},
+        )
+        self.assertIn("choices", decisions[0]["raw"])
+        prompts = [
+            text
+            for line in items.read_text().splitlines()
+            for text in [json.loads(line)["prompt"], *json.loads(line)["paraphrases"]]
+        ]
+        self.assertFalse(any(text in "\n".join(lines) for text in prompts))
+        self.assertNotIn("decisions", report)
         # the rules-only baseline never calls anything and is never accepted
         Provider.requests = []
         report = json.loads(

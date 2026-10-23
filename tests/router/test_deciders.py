@@ -237,6 +237,81 @@ class ServiceDeciderTests(Fixture):
         self.assertTrue(out["undecidable"])
         self.assertEqual(out["signals"]["confidence"], 0.2)
 
+    def test_an_answer_outside_the_schema_is_undecidable(self):
+        self.env.update(TYPESAFE_API_KEY="k", SAGE_API_KEY="k")
+        jev = self.JEV["answers"]
+        sage_answers = self.SAGE["results"][0]["result"]["answers"]
+        sage_tags = dict(
+            sage_answers[1],
+            result=dict(
+                sage_answers[1]["result"],
+                result={"tags": [{"id": "code", "probability": float("nan")}]},
+            ),
+        )
+        cases = [
+            (
+                "jev",
+                dict(self.JEV, answers=dict(jev, strong={"type": "noul", "noul": 1.4})),
+                "strong probability",
+            ),
+            (
+                "jev",
+                dict(
+                    self.JEV,
+                    answers=dict(
+                        jev,
+                        difficulty=dict(
+                            jev["difficulty"],
+                            probabilities={"0": 0.3, "1": 0.3, "2": 0.1},
+                        ),
+                    ),
+                ),
+                "difficulty distribution",
+            ),
+            (
+                "sage",
+                {
+                    "results": [
+                        {
+                            "ok": True,
+                            "result": {"answers": [sage_answers[0], sage_tags]},
+                        }
+                    ],
+                    "meta": self.SAGE["meta"],
+                },
+                "tag code",
+            ),
+            (
+                "dipylon",
+                dict(
+                    self.DIPYLON,
+                    response={
+                        "type": "yesno",
+                        "key": "strong",
+                        "probability": -0.2,
+                        "answer": "no",
+                    },
+                ),
+                "strong probability",
+            ),
+            (
+                "classifier",
+                {"prompt_complexity_score": 0.1, "confidence": 1.5},
+                "difficulty confidence",
+            ),
+            ("classifier", {"prompt_complexity_score": 1.3}, "difficulty expectation"),
+        ]
+        for kind, reply, what in cases:
+            with self.subTest(kind=kind, what=what):
+                Service.reply = reply
+                out = self.decide({"kind": kind, "url": self.service_url})
+                self.assertTrue(out["undecidable"], out)
+                self.assertEqual(out["chosen"]["profile"], "mid")
+                self.assertIn(
+                    "decider failed: decider answer outside the schema: " + what,
+                    out["warnings"],
+                )
+
     def test_decider_price_override_prices_the_decision(self):
         self.env["SAGE_API_KEY"] = "k"
         Service.reply = self.SAGE

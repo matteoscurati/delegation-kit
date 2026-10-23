@@ -9,7 +9,9 @@ reaches it answers, and the response says which model answered and why.
 - It runs on your machine and listens on loopback only.
 - You name the decider, the pool and the default; it chooses only inside the
   pool and discloses the chosen model in every response.
-- It never retries, falls back, widens the pool or caches a decision.
+- It never retries, falls back or widens the pool. It keeps a decision only
+  for a conversation the client names, in memory
+  ([Conversations](#conversations)).
 - No public instance, access tokens or multi-tenant limits.
 - `serve` prints one line at start, naming any profile set aside as
   unreachable, then nothing: no request or error log, no header, no key.
@@ -37,7 +39,9 @@ Codex 0.163 (custom providers only on the Responses API) cannot send requests
 here, but both can be pool profiles.
 
 Naming a pool profile as `model` skips the decider and still discloses; the
-context and cost rules still apply. `doctor.sh`'s "Model router" section shows
+context and cost rules still apply. An agent loop that sends
+`X-Router-Conversation` keeps its first route
+([Conversations](#conversations)). `doctor.sh`'s "Model router" section shows
 the decider, the catalog in effect and `check`'s warnings.
 
 ## Commands
@@ -93,7 +97,7 @@ it the router is off and `check` says so.
 | `default` | the pool profile used when the decision is undecidable |
 | `listen` | loopback `host:port` (`127.0.0.1`, `localhost`, `[::1]`); default `127.0.0.1:4141` |
 | `max_cost_usd` | ceiling on a request's estimated cost, in (0, 1000]; the `X-Router-Max-Cost-USD` header sets it per request. Profiles over it are set aside; a request that still lands on one is refused `400 cost-ceiling` |
-| `receipts` | `false` by default. When `true`, one JSONL line per request in `$DELEGATION_DATA_HOME/router/receipts.jsonl` (mode 600): decision, profile, usage, cost, latency, never prompt content. Survives uninstall and reinstall |
+| `receipts` | `false` by default. When `true`, one JSONL line per request in `$DELEGATION_DATA_HOME/router/receipts.jsonl` (mode 600): decision, profile, pin state, usage, cost, latency, never prompt content or a conversation id. Survives uninstall and reinstall |
 | `allow_origins` | exact browser origins, HTTPS or HTTP on loopback; empty by default. A listed origin gets the CORS preflight and the `X-Router-*` headers; any other `Origin` gets `403 browser-denied` |
 | `mode` | `route` (default) or `shadow`: decide and disclose but dispatch the default, to observe a decider before trusting it |
 
@@ -175,15 +179,25 @@ cost (450 input tokens at the decider's price).
 
 **The excerpt** (at most 4,000 characters): turn count, whether there is a
 system prompt, tool names, the first 1,000 characters of the system prompt,
-and the last user turn trimmed to 2,048; never images. `input: full` sends
-every message's text, up to 32,000 characters.
+and the last user turn trimmed to 2,048; never images. Before the trim, the
+blocks coding harnesses add to a user turn are dropped: `<system-reminder>`
+(OpenCode; Claude Code through translators such as claude-code-router),
+`<environment_context>` (Codex) and `<environment_details>` (Roo Code). They
+describe the session, not the task, and their dates and versions do not
+count as arithmetic. A user turn that is only such blocks is passed over for
+the one before it, and kept when no turn says more. `input: full` sends
+every message's text as it is, up to 32,000 characters.
 
 **The question**: how much capability this needs (0 trivial … 4 frontier, in
 half points), and does it involve code, math or rare knowledge. `long` (over
 20,000 estimated tokens) and `tools` are set deterministically. An
 out-of-schema answer, HTTP error, timeout or missing key is *undecidable*:
-the default answers, with a warning. Text in the request cannot steer the
-route: the decider never treats it as instructions and cannot name a model.
+the default answers, with a warning. Out of schema includes any probability
+or confidence that is not a finite number in [0, 1], a difficulty outside
+its scale (a classifier's outside 0..1) and a distribution that does not
+sum to 1 (within 0.005 a level); one such value voids the whole answer, and
+no value is clamped into range. Text in the request cannot steer the route:
+the decider never treats it as instructions and cannot name a model.
 
 ### Policy floor-v1
 
@@ -249,9 +263,42 @@ answer returns as one chat completion.
   `router.delegation_run`.
 - **Streaming**: one event with the whole answer, then the router chunk.
 - **Cost**: null when the CLI reports no usage.
+- **Nothing outlives the request**: the dispatch runs in its own process
+  group. When the client hangs up or `serve` stops, the whole group —
+  dispatcher, runner and the CLI it started — gets SIGTERM, and SIGKILL
+  10 s later.
 
 Claude models join through `claude-code` (`claude-zai` runs GLM through the
 Claude Code CLI).
+
+## Conversations
+
+Without help, the router decides every request on its own. An agent loop
+sends one request per step, so each step pays a decision and can land on
+another model: a step with tools needs the mid band, and once the
+conversation passes 20,000 estimated tokens `long` asks for the frontier.
+The model changes halfway through the task, and the provider's prompt cache
+is lost with it.
+
+A client that sends `X-Router-Conversation: <id>` (1–128 letters, digits,
+`.`, `_`, `:`, `-`) on its `auto` requests keeps the first route:
+
+- **The first request** is decided as usual and pins the conversation to the
+  profile it dispatched (in `shadow` mode, the default) at that request's
+  effort. `X-Router-Pin: new`.
+- **Every later request** goes to that profile without asking the decider,
+  as if the client had named it: mode `pinned`, `X-Router-Pin: held`, and
+  `router.pin` with the profile, `since` and the request count. The context,
+  cost and JSON-mode rules still apply; a request the pinned profile cannot
+  take is refused `400 no-usable-candidate` (or `cost-ceiling`) with
+  `pinned` naming it, never sent elsewhere. Start a new id to decide again.
+- **Memory only**: 1,024 conversations, the least recently used forgotten
+  first, and a pin lapses after 12 hours without a request. A restart
+  forgets them all. The id is never written to receipts or echoed back.
+
+The pin is set when the first request is routed, whatever the provider
+answers, so a client's retry reaches the same profile. Naming a pool profile
+as `model` ignores the header. Without the header nothing changes.
 
 ## Deciders
 
@@ -266,7 +313,7 @@ priced from `price` and disclosed.
 |---|---|---|---|
 | `llm` | your HTTP `profile` (default: the pool default) | its key and price; 3 s | one completion at temperature 0 with [`config/router-prompt.v1.md`](../config/router-prompt.v1.md), the excerpt in a `DATA` block; one JSON object (`difficulty`, `tags`, `reason`) in ≤ 120 tokens, confidence 0.8. DeepSeek without thinking, Qwen at `minimal`. Pick a cheap, fast profile |
 | `sage` | Levanto Sage, `POST /decide/batch` | `https://sage.levanto.ai`, `SAGE_API_KEY`, $0.05/$10 per Mtok, 3 s | `scale` 0–4 and `tags` in one batch. Confidence: the distribution's mass in the tier's band (Sage's own disclosed beside it). `null` is undecidable. Fanout bills output tokens on long excerpts even with reasoning off |
-| `jev` | TypeSafe Jev, System One API | `https://api.typesafe.ai/v1/systemone`, `TYPESAFE_API_KEY`, `jev-latest`, $0.042 in, 3 s | a 5-level `score`; `noul`s for needs-frontier, code and rare. Arithmetic-looking numbers are never routed below mid |
+| `jev` | TypeSafe Jev, System One API | `https://api.typesafe.ai/v1/systemone`, `TYPESAFE_API_KEY`, `jev-latest`, $0.042 in, 3 s | a 5-level `score`; `noul`s for needs-frontier, code and rare. Confidence: Jev's own figure, how concentrated the distribution is around its likeliest level (a near level counts less than a far one). Arithmetic-looking numbers are never routed below mid |
 | `dipylon` | your Dipylon, `POST /decide` | `url` required, no key, 2 s | one `yesno`; `probability` = P(yes). A selective-use verdict other than `retain` halves confidence; 503 is undecidable |
 | `classifier` | local, `POST {"text"}` | `url` required, no key, 2 s | `difficulty` (0..1) or NVIDIA's `prompt_complexity_score`, `p_needs_strong`, `tags`, `confidence`, `task_type_1` naming code |
 | `none` | — | — | always the default; `eval`'s baseline |
@@ -277,12 +324,21 @@ HTTP), `credential_env`, `model` (Jev), `price` (`{in, out}` USD per Mtok);
 at your own proxy; Jev through OpenRouter is not wired. Measured answers,
 latencies and costs: [Decider measurements](compatibility.md#decider-measurements).
 
+Pin the decider you measured. `jev-latest` follows TypeSafe's newest Jev, so
+an [`eval`](#measuring-a-decider) gate passed last month may describe a model
+that no longer answers. Set `model` to a fixed Jev version from TypeSafe's
+list and run `eval` again before you change it. Every decision names the
+version that answered (`X-Router-Decider`, `router.decider.version`), and so
+does the eval report.
+
 ## What a response carries
 
 Headers: `X-Router-Profile`, `X-Router-Model`, `X-Router-Tier`,
 `X-Router-Effort`, `X-Router-Decider` (`id/version`), `X-Router-Policy`,
 `X-Router-Difficulty`, `X-Router-Confidence`, `X-Router-Undecidable`,
-`X-Router-Latency-Ms` (the decision's), `X-Router-Mode`, and
+`X-Router-Latency-Ms` (the decision's), `X-Router-Mode` (`route`, `shadow`,
+`explicit`, `pinned`), `X-Router-Pin` (`new` or `held`, with
+[`X-Router-Conversation`](#conversations)), and
 `X-Router-Model-Mismatch: 1` when the provider names a model other than the
 profile's or an alias.
 
@@ -311,6 +367,9 @@ rating of 1 reads 0.25):
 }
 ```
 
+A request with [`X-Router-Conversation`](#conversations) also carries
+`"pin": {"state": "new"|"held", "profile", "since", "requests"}`.
+
 Streaming: headers first, provider events unchanged, then a chunk with
 `"choices": []` carrying `router` before `data: [DONE]`. If the stream was
 cut, closed early, idle over 30 s or sent an event over 64 KiB, that chunk
@@ -337,8 +396,9 @@ never reach a provider; "native" means a `delegation-run` exit code.
 | 411, 413 | `length-required`, `size-limit` | no | no `Content-Length`; body over 4 MiB |
 | 400 | `invalid-json`, `invalid-request` | no | not an object with a `messages` list |
 | 400 | `invalid-cost-ceiling` | no | header not a number in (0, 1000] |
+| 400 | `invalid-conversation` | no | `X-Router-Conversation` not 1–128 of `A-Za-z0-9._:-` on an `auto` request |
 | 400 | `cost-ceiling` | no | landed profile over the ceiling; `estimated_usd`, `ceiling_usd` |
-| 400 | `no-usable-candidate` | no | named profile blocked (context, JSON mode, no routable role); `auto` lands on a blocked or unreachable default; native 78 |
+| 400 | `no-usable-candidate` | no | named profile blocked (context, JSON mode, no routable role); `auto` lands on a blocked or unreachable default; a conversation's pinned profile blocked (`pinned` names it); native 78 |
 | 401 | `provider-key-missing` | no | named profile's credential unset; native `missing_credentials` |
 | 429 | `busy` | yes | over 16 in flight |
 | 401 | `provider-key-rejected` | no | provider 401/403 |
@@ -350,6 +410,7 @@ never reach a provider; "native" means a `delegation-run` exit code.
 | 502 | `upstream-interrupted` | yes | connection lost while reading a non-stream response |
 | 502 | `provider-identity-mismatch`, `provider-failed` | no | native 70: another model answered, or any other failure |
 | 502 | `provider-interrupted` | yes | native 130 |
+| 499, 503 | `client-gone`, `router-stopping` | no, yes | a native dispatch ended because the client hung up or `serve` stopped |
 | 502 | `bridge-failed` | no | `delegation-run` did not start, left no answer, or exited otherwise |
 | 502 | `router-unavailable` | no | internal error |
 
@@ -376,8 +437,10 @@ For the decider and the rules-only baseline it reports accuracy, cost
 across paraphrases), undecidable rate, decision latency p50/p95, and a
 deferral curve sweeping the frontier cut 0.1–0.9 without new decider calls.
 
-`--output` writes `report.json` and `gate.json`. The gate is advisory; `serve`
-never reads it.
+`--output` writes `report.json`, `gate.json` and `decisions.jsonl`: one line
+per prompt and paraphrase with the profile chosen, the signals, the reasons
+and the decider's own answer (as `decide --raw` shows it; never the prompt).
+The gate is advisory; `serve` never reads it.
 
 | measure | bar |
 |---|---|

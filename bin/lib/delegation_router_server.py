@@ -3,12 +3,18 @@
 The user started it and declared pool, default and decider; the server
 chooses only inside that pool, discloses the choice in every response, and
 never retries, falls back or widens the pool. It logs nothing: not requests,
-not errors, never a credential."""
+not errors, never a credential.
 
+A conversation the client names with `X-Router-Conversation` keeps the
+profile its first `auto` request was routed to, in memory only, so an agent
+loop does not change model halfway through."""
+
+import collections
 import http.client
 import json
 import os
 import re
+import select
 import signal
 import socket
 import socketserver
@@ -33,7 +39,7 @@ from delegation_router_policy import (
     native_lane,
     pool_meta,
 )
-from delegation_router_bridge import BridgeFailure, dispatch
+from delegation_router_bridge import BridgeFailure, dispatch, end_all
 from delegation_router_pipeline import explicit, route, router_block
 
 MAX_BODY = 4 * 1024 * 1024
@@ -43,13 +49,26 @@ READ_SIZE = 64 * 1024
 CONNECT_TIMEOUT = 20
 IDLE_TIMEOUT = 30  # between stream events; a non-stream answer is never cut
 MAX_IN_FLIGHT = 16
+CONVERSATION_ID = re.compile(r"[A-Za-z0-9._:-]{1,128}")
+MAX_CONVERSATIONS = 1024  # the least recently used is forgotten first
+CONVERSATION_IDLE = 12 * 3600  # seconds without a request before a pin lapses
 EXPOSED_HEADERS = (
     "X-Router-Profile, X-Router-Model, X-Router-Tier, X-Router-Effort, "
     "X-Router-Decider, X-Router-Policy, X-Router-Difficulty, X-Router-Confidence, "
-    "X-Router-Undecidable, X-Router-Latency-Ms, X-Router-Mode, "
+    "X-Router-Undecidable, X-Router-Latency-Ms, X-Router-Mode, X-Router-Pin, "
     "X-Router-Model-Mismatch, X-Router-Error, Retry-After"
 )
 KEY_SHAPED = re.compile(r"\b(?:sk-[A-Za-z0-9_-]{8,}|[A-Za-z0-9_-]{32,})\b")
+
+
+def hung_up(sock):
+    """Whether the client closed its side: the socket reads as ended. Data
+    waiting to be read (a pipelined request) is not a hang-up."""
+    try:
+        readable, _, _ = select.select([sock], [], [], 0)
+        return bool(readable) and sock.recv(1, socket.MSG_PEEK) == b""
+    except (OSError, ValueError):
+        return True
 
 
 def redact(text):
@@ -152,6 +171,7 @@ def disclosure_headers(out):
         ("X-Router-Undecidable", "1" if out["undecidable"] else "0"),
         ("X-Router-Latency-Ms", out.get("decision_latency_ms")),
         ("X-Router-Mode", out.get("mode")),
+        ("X-Router-Pin", (out.get("pin") or {}).get("state")),
     ]
     return [(k, header_value(v)) for k, v in pairs if v is not None]
 
@@ -174,6 +194,47 @@ class RouterServer(ThreadingHTTPServer):
         # Checked once, at start: a pool profile this machine cannot dispatch
         # is set aside for every `auto` request, and disclosed as blocked.
         self.reach = reachability(config, config["router"]["pool"], self.env)
+        self.pins = collections.OrderedDict()
+        self.pins_lock = threading.Lock()
+        self.stopping = threading.Event()
+
+    def _touch(self, conversation, now):
+        """The live pin of a conversation, counted as one more request."""
+        pin = self.pins.get(conversation)
+        if pin is None:
+            return None
+        if now - pin["seen"] > CONVERSATION_IDLE:
+            del self.pins[conversation]
+            return None
+        pin["seen"] = now
+        pin["requests"] += 1
+        self.pins.move_to_end(conversation)
+        return dict(pin)
+
+    def held_pin(self, conversation):
+        with self.pins_lock:
+            return self._touch(conversation, time.monotonic())
+
+    def pin(self, conversation, choice):
+        """Pins a conversation to the profile just chosen, unless a concurrent
+        request of the same conversation pinned it first. Returns the pin in
+        effect and whether this request set it."""
+        now = time.monotonic()
+        with self.pins_lock:
+            held = self._touch(conversation, now)
+            if held:
+                return held, False
+            pin = {
+                "profile": choice["profile"],
+                "reasoning_effort": choice.get("reasoning_effort"),
+                "since": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+                "seen": now,
+                "requests": 1,
+            }
+            self.pins[conversation] = pin
+            while len(self.pins) > MAX_CONVERSATIONS:
+                self.pins.popitem(last=False)
+            return dict(pin), True
 
     def server_bind(self):
         # http.server resolves the bound address back to a name on every bind
@@ -299,7 +360,8 @@ class Handler(BaseHTTPRequestHandler):
                 ("Access-Control-Allow-Methods", "GET, POST, OPTIONS"),
                 (
                     "Access-Control-Allow-Headers",
-                    "Content-Type, Authorization, X-Router-Max-Cost-USD",
+                    "Content-Type, Authorization, X-Router-Max-Cost-USD, "
+                    "X-Router-Conversation",
                 ),
                 ("Access-Control-Max-Age", "600"),
                 ("Content-Length", "0"),
@@ -374,6 +436,70 @@ class Handler(BaseHTTPRequestHandler):
         except OSError:
             pass
 
+    def stop_reason(self):
+        """Why a native dispatch should end before it answers, or None."""
+        if self.server.stopping.is_set():
+            return "router-stopping"
+        if hung_up(self.connection):
+            return "client-gone"
+        return None
+
+    def conversation(self):
+        """The conversation the client names, or None without the header."""
+        value = self.headers.get("X-Router-Conversation")
+        if value is None:
+            return None
+        if not CONVERSATION_ID.fullmatch(value.strip()):
+            raise RouterFailure(400, "invalid-conversation")
+        return value.strip()
+
+    def pinned(self, c, pin, body, ceiling):
+        """A request of a pinned conversation: the pinned profile, as if the
+        client had named it, at the effort it was first routed with."""
+        out, choice, feats, blocked = explicit(c, pin["profile"], body, ceiling=ceiling)
+        reason = "conversation pinned to %s since %s → no decider" % (
+            pin["profile"],
+            pin["since"],
+        )
+        choice.update(reasoning_effort=pin["reasoning_effort"], reasons=[reason])
+        out["chosen"]["reasoning_effort"] = pin["reasoning_effort"]
+        out["decider"] = {"id": "none", "version": "pinned"}
+        out["mode"] = "pinned"
+        out["reasons"] = [reason]
+        out["pin"] = {
+            "state": "held",
+            "profile": pin["profile"],
+            "since": pin["since"],
+            "requests": pin["requests"],
+        }
+        return out, choice, feats, blocked
+
+    def refuse_blocked(self, choice, blocked, feats, ceiling, pinned=False):
+        """A choice the pre-filter set aside is refused, never replaced."""
+        for item in blocked:
+            if item["profile"] != choice["profile"]:
+                continue
+            extra = {"pinned": choice["profile"] if pinned else None}
+            if item["reason"] == "estimated cost above ceiling":
+                meta = self.server.pool[choice["profile"]]
+                estimated = estimate_cost(
+                    meta,
+                    feats["est_tokens"],
+                    feats["max_tokens"] or DEFAULT_OUTPUT_TOKENS,
+                )
+                raise RouterFailure(
+                    400,
+                    "cost-ceiling",
+                    estimated_usd=round(estimated, 6)
+                    if estimated is not None
+                    else None,
+                    ceiling_usd=ceiling,
+                    **extra,
+                )
+            raise RouterFailure(
+                400, "no-usable-candidate", reason=item["reason"], **extra
+            )
+
     def handle_chat(self, body):
         c = self.server.config
         r = router_block(c)
@@ -386,8 +512,14 @@ class Handler(BaseHTTPRequestHandler):
             if not 0 < ceiling <= 1000:
                 raise RouterFailure(400, "invalid-cost-ceiling")
         model = body.get("model")
+        # Only `auto` is routed, so only `auto` is pinned: naming a profile
+        # ignores the header.
+        conversation = self.conversation() if model == "auto" else None
         started = time.monotonic()
-        if model == "auto":
+        held = self.server.held_pin(conversation) if conversation else None
+        if held:
+            out, choice, feats, blocked = self.pinned(c, held, body, ceiling)
+        elif model == "auto":
             out, choice, feats, blocked = route(
                 c, body, ceiling=ceiling, env=self.server.env, reach=self.server.reach
             )
@@ -395,24 +527,20 @@ class Handler(BaseHTTPRequestHandler):
             out, choice, feats, blocked = explicit(c, model, body, ceiling=ceiling)
         else:
             raise RouterFailure(404, "unknown-model")
-        for item in blocked:
-            if item["profile"] == choice["profile"]:
-                if item["reason"] == "estimated cost above ceiling":
-                    meta = self.server.pool[choice["profile"]]
-                    estimated = estimate_cost(
-                        meta,
-                        feats["est_tokens"],
-                        feats["max_tokens"] or DEFAULT_OUTPUT_TOKENS,
-                    )
-                    raise RouterFailure(
-                        400,
-                        "cost-ceiling",
-                        estimated_usd=round(estimated, 6)
-                        if estimated is not None
-                        else None,
-                        ceiling_usd=ceiling,
-                    )
-                raise RouterFailure(400, "no-usable-candidate", reason=item["reason"])
+        self.refuse_blocked(choice, blocked, feats, ceiling, pinned=bool(held))
+        if conversation and not held:
+            pin, created = self.server.pin(conversation, choice)
+            if created:
+                out["pin"] = {
+                    "state": "new",
+                    "profile": pin["profile"],
+                    "since": pin["since"],
+                    "requests": 1,
+                }
+            else:
+                # A concurrent request of this conversation pinned first.
+                out, choice, feats, blocked = self.pinned(c, pin, body, ceiling)
+                self.refuse_blocked(choice, blocked, feats, ceiling, pinned=True)
         profile = c["profiles"][choice["profile"]]
         stream = bool(body.get("stream"))
         meta = self.server.pool[choice["profile"]]
@@ -501,7 +629,7 @@ class Handler(BaseHTTPRequestHandler):
                 ],
             )
         try:
-            answer = dispatch(key, body, lane, self.server.env)
+            answer = dispatch(key, body, lane, self.server.env, stop=self.stop_reason)
         except BridgeFailure as failure:
             out["delegation_run"].update(
                 {k: v for k, v in failure.extra.items() if v is not None}
@@ -774,6 +902,7 @@ class Handler(BaseHTTPRequestHandler):
         line = {
             "ts": int(time.time()),
             "mode": out.get("mode"),
+            "pin": (out.get("pin") or {}).get("state"),
             "profile": out["chosen"]["profile"],
             "model": out["chosen"]["model"],
             "tier": out["chosen"].get("tier"),
@@ -810,6 +939,7 @@ def serve(config, listen=None, env=None):
     server = RouterServer((host, int(port)), config, env)
 
     def stop(*_):
+        server.stopping.set()
         threading.Thread(target=server.shutdown, daemon=True).start()
 
     signal.signal(signal.SIGINT, stop)
@@ -833,5 +963,9 @@ def serve(config, listen=None, env=None):
     try:
         server.serve_forever()
     finally:
+        # The request threads die with the process; a native dispatch they
+        # started would not.
+        server.stopping.set()
+        end_all()
         server.server_close()
     return 0

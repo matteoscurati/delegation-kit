@@ -101,6 +101,7 @@ def evaluate(c, items, decider_kind, input_mode=None, opener=None, env=None):
                 mode="route",
                 opener=opener,
                 env=env,
+                raw=True,
             )
             decider = out["decider"]
             decisions.append(
@@ -114,6 +115,11 @@ def evaluate(c, items, decider_kind, input_mode=None, opener=None, env=None):
                     "decision_cost_usd": out["decision_cost_usd"] or 0.0,
                     "signals": out["signals"],
                     "feats": feats,
+                    "reasons": out["reasons"],
+                    "warnings": out["warnings"],
+                    # What the signals were read from, as `decide --raw` shows
+                    # it: the service's answer, never the request.
+                    "raw": decider.pop("raw", None),
                 }
             )
     report = {
@@ -141,6 +147,8 @@ def evaluate(c, items, decider_kind, input_mode=None, opener=None, env=None):
     }
     report["curve"] = curve(items, decisions, pool, default_meta)
     report["gate"] = gate(report, decider_kind)
+    # Not part of the report: the command writes them to decisions.jsonl.
+    report["decisions"] = decisions
     return report
 
 

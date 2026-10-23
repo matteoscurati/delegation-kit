@@ -32,6 +32,20 @@ NUMERIC = re.compile(
 )
 
 
+# What coding harnesses put in a user turn besides the request describes the
+# session, not the task: `<system-reminder>` (OpenCode's notes on open files
+# and selections; Claude Code's, through translators such as
+# claude-code-router), `<environment_context>` (Codex's own user block),
+# `<environment_details>` (Roo Code, merged into the last text block). The
+# excerpt drops these before trimming, so the 2,048 characters the decider
+# reads are the request, and a date or a version number in them is not taken
+# for arithmetic. Checked against each harness's source on 2026-10-22.
+HARNESS_BLOCK = re.compile(
+    r"<(system-reminder|environment_context|environment_details)\b[^>]*>.*?</\1\s*>",
+    re.S | re.I,
+)
+
+
 LONG_TOKENS = 20000
 
 
@@ -88,6 +102,22 @@ def text_of(content):
     return ""
 
 
+def last_task(messages):
+    """The request: the last user turn without the harness's blocks. A user
+    turn that is nothing but blocks (Codex sends its context as a turn of its
+    own) is passed over for the one before it; when every turn is, the last
+    one as it is."""
+    task = raw = None
+    for m in messages:
+        if not (isinstance(m, dict) and m.get("role") == "user"):
+            continue
+        raw = text_of(m.get("content"))
+        stripped = HARNESS_BLOCK.sub("", raw).strip()
+        if stripped:
+            task = stripped
+    return task if task is not None else raw or ""
+
+
 def has_image(content):
     return isinstance(content, list) and any(
         isinstance(part, dict) and str(part.get("type", "")).startswith("image")
@@ -99,15 +129,11 @@ def features(body):
     messages = body.get("messages") if isinstance(body.get("messages"), list) else []
     chars = 0
     images = False
-    last_user = ""
     for m in messages:
         if not isinstance(m, dict):
             continue
-        text = text_of(m.get("content"))
-        chars += len(text)
+        chars += len(text_of(m.get("content")))
         images = images or has_image(m.get("content"))
-        if m.get("role") == "user":
-            last_user = text
     tools = body.get("tools") or body.get("functions") or []
     tool_chars = len(json.dumps(tools)) if tools else 0
     max_tokens = body.get("max_tokens") or body.get("max_completion_tokens")
@@ -121,15 +147,16 @@ def features(body):
         "has_images": images,
         "wants_json": isinstance(response_format, dict)
         and response_format.get("type") in {"json_object", "json_schema"},
-        "has_numbers": bool(NUMERIC.search(last_user)),
+        "has_numbers": bool(NUMERIC.search(last_task(messages))),
         "max_tokens": max_tokens,
     }
 
 
 def excerpt(body, mode="excerpt"):
     """What a decider is allowed to see. `excerpt` is the default: the head of
-    the system prompt, the last user turn, counts and tool names; never images.
-    `full` is an explicit opt-in."""
+    the system prompt, the last user turn without harness blocks, counts and
+    tool names; never images. `full` is an explicit opt-in and sends every
+    message's text as it is."""
     messages = body.get("messages") if isinstance(body.get("messages"), list) else []
     if mode == "full":
         parts = []
@@ -138,14 +165,10 @@ def excerpt(body, mode="excerpt"):
                 parts.append(str(m.get("role", "")) + ": " + text_of(m.get("content")))
         return "\n\n".join(parts)[:FULL_LIMIT]
     system = ""
-    last_user = ""
     for m in messages:
-        if not isinstance(m, dict):
-            continue
-        if m.get("role") == "system" and not system:
+        if isinstance(m, dict) and m.get("role") == "system" and not system:
             system = text_of(m.get("content"))[:SYSTEM_HEAD_LIMIT]
-        if m.get("role") == "user":
-            last_user = text_of(m.get("content"))
+    last_user = last_task(messages)
     if len(last_user) > LAST_USER_LIMIT:
         last_user = (
             last_user[: LAST_USER_LIMIT * 3 // 4]
