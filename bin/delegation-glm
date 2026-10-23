@@ -54,6 +54,10 @@ adapter. A 75 with reason `rate_limited` is worth a backed-off retry; reason
 `quota_exhausted` is not until the epoch in the diagnostic's `next_flush_time`
 has passed.
 
+--max-cost-usd stops the run when Claude Code's count reaches <amount>.
+Claude Code prices GLM at its Opus list, many times GLM's own price, so the
+amount is not GLM dollars. There is no cap unless one is given.
+
 Failures write a sanitized diagnostic to <output>.error.json. --debug-dir
 additionally preserves the raw event stream and stderr in a private
 subdirectory. Normally dispatched through `delegation-run --profile`, which
@@ -249,6 +253,11 @@ extract_claude() {
     EXTRACT_REASON="empty_result"
     return 1
   fi
+  # No provider cost: Claude Code runs GLM under the `opus` alias and prices
+  # every call, `costUSD` and `total_cost_usd` alike, at its Opus list — a
+  # one-line question came to $0.022, $0.0006 at GLM's price (2026-10-22).
+  # The token counts are GLM's own; whoever needs a cost prices them at the
+  # profile's rate, as the router does.
   jq -s --arg model "$MODEL" --arg backend "$backend" --arg effort "$effort" \
     --arg lane "$lane" --argjson started "$started" '
     ([.[] | select(.type == "system" and .subtype == "init") | .model] | unique) as $init_models |
@@ -270,8 +279,7 @@ extract_claude() {
       output_tokens:(.value.outputTokens // .value.output_tokens // 0),
       reasoning_tokens:(.value.reasoningTokens // .value.reasoning_tokens // 0),
       cache_read_tokens:(.value.cacheReadInputTokens // .value.cache_read_input_tokens // 0),
-      cache_write_tokens:(.value.cacheCreationInputTokens // .value.cache_creation_input_tokens // 0),
-      cost_usd:(.value.costUSD // .value.cost_usd // 0)
+      cache_write_tokens:(.value.cacheCreationInputTokens // .value.cache_creation_input_tokens // 0)
     })) as $participants |
     {schema_version:3,model:$model,requested_model:$model,
      provider_reported_model:$effective,
@@ -289,7 +297,7 @@ extract_claude() {
         reasoning:($u.reasoning_tokens // 0),cache_read:($u.cache_read_input_tokens // 0),
         cache_write:($u.cache_creation_input_tokens // 0)} end),
      usage_participants:$participants,
-     provider_cost_usd:(if ($participants | length) > 0 then ($participants | map(.cost_usd) | add // 0) else ($r.total_cost_usd // 0) end)}' \
+     provider_cost_usd:null}' \
     "$events" >"$metrics" || {
     EXTRACT_REASON="invalid_stream"
     return 1
@@ -366,7 +374,7 @@ write_failure_diagnostic() {
 
 run_command() {
   local lane="" effort="auto" backend="auto" prompt_file="" output="" workdir="" metrics="" diagnostic=""
-  local debug_dir="" max_cost="2.00"
+  local debug_dir="" max_cost=""
   while [ "$#" -gt 0 ]; do
     case "$1" in
       --lane) lane="${2:-}"; shift 2 ;;
@@ -388,6 +396,10 @@ run_command() {
   [ -f "$prompt_file" ] || die 64 "prompt file missing: $prompt_file"
   [ -d "$workdir" ] || die 64 "workdir missing: $workdir"
   [ -n "$output" ] || die 64 "--output is required"
+  if [ -n "$max_cost" ]; then
+    [[ "$max_cost" =~ ^[0-9]+(\.[0-9]+)?$ ]] && [[ ! "$max_cost" =~ ^0+(\.0+)?$ ]] \
+      || die 64 "--max-cost-usd must be a positive amount"
+  fi
   if [ -n "$debug_dir" ]; then
     [ -d "$debug_dir" ] || die 64 "debug directory missing: $debug_dir"
     [ ! -L "$debug_dir" ] || die 64 "debug directory must not be a symlink: $debug_dir"
@@ -441,7 +453,11 @@ run_command() {
   [ "$lane" != builder ] || permission="acceptEdits"
   mkdir -p "$tmp/claude-config" "$tmp/home"
   # Wall-clock limit only when the profile sets one (DELEGATION_TIMEOUT).
-  local -a timer=()
+  local -a timer=() budget=()
+  # A spending cap only when the caller sets one. Claude Code counts it at
+  # its Opus list, since GLM runs under the `opus` alias: many times GLM's
+  # price, so no default amount would mean what it says.
+  [ -z "$max_cost" ] || budget=(--max-budget-usd "$max_cost")
   if [ -n "${DELEGATION_TIMEOUT:-}" ]; then
     [[ "$DELEGATION_TIMEOUT" =~ ^[1-9][0-9]*$ ]] || die 64 "DELEGATION_TIMEOUT must be a positive integer"
     if have gtimeout; then timer=("$(command -v gtimeout)" -k 10 "$DELEGATION_TIMEOUT")
@@ -466,7 +482,7 @@ run_command() {
       "$CLAUDE_BIN" -p "$(<"$prompt_file")" --model opus --effort "$effort" \
       --permission-mode "$permission" --setting-sources '' --strict-mcp-config \
       --output-format stream-json --verbose --no-session-persistence \
-      --max-budget-usd "$max_cost"
+      ${budget[@]+"${budget[@]}"}
   ) >"$events" 2>"$stderr_file" || rc=$?
   if [ "$rc" -eq 0 ]; then
     if ! extract_claude "$events" "$RUN_OUTPUT_TMP" "$RUN_METRICS_TMP" \

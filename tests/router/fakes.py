@@ -227,7 +227,7 @@ class Fixture(unittest.TestCase):
 import json, os, pathlib, sys, time
 args = sys.argv[1:]
 prompt = sys.stdin.read()
-pathlib.Path(os.environ["DK_CAPTURE"]).write_text(json.dumps({"args": args, "prompt": prompt}))
+pathlib.Path(os.environ["DK_CAPTURE"]).write_text(json.dumps({"args": args, "prompt": prompt, "pid": os.getpid()}))
 time.sleep(float(os.environ.get("DK_SLEEP", "0")))
 if os.environ.get("DK_EXIT"):
     sys.exit(int(os.environ["DK_EXIT"]))

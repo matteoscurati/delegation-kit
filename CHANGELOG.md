@@ -2,6 +2,83 @@
 
 All notable changes to delegation-kit are documented here.
 
+## [0.31.0] — 2026-10-23
+
+The router keeps an agent loop on one model, ends a native dispatch with the
+request that started it, and reads its deciders more strictly. Routing
+decisions change (the excerpt, out-of-schema answers), so the release is a
+minor one.
+
+### Added
+
+- **`X-Router-Conversation` keeps a conversation on its first route.** An
+  agent loop sends one request per step, and every step was decided on its
+  own: a step with tools needs the mid band, and past 20,000 estimated
+  tokens `long` asks for the frontier, so the model changed halfway through
+  the task and the provider's prompt cache went with it. With the header,
+  the first `auto` request is decided and pins the conversation to the
+  profile it dispatched; every later one goes there without a decider call,
+  as if the client had named it (mode `pinned`, `X-Router-Pin: held`,
+  `router.pin`). A request the pinned profile cannot take is refused with
+  `pinned` naming it, never sent elsewhere. Pins live in memory only (1,024
+  conversations, 12 hours idle); the id is never echoed or written to
+  receipts. Without the header nothing changes. A malformed id is
+  `400 invalid-conversation`.
+- **`eval --output` writes `decisions.jsonl`**: one line per prompt and
+  paraphrase with the profile chosen, the signals, the reasons and the
+  decider's own answer, never the prompt. The report gave only aggregates,
+  so a decision that fell to the default could not be traced to the signal
+  that sent it there.
+
+### Changed
+
+- **The excerpt drops the blocks coding harnesses add to a user turn**
+  before trimming it to 2,048 characters, and the arithmetic check ignores
+  them: a date in a session block no longer kept a Jev decision at the mid
+  band. The list was checked against each harness's source:
+  `<system-reminder>` (OpenCode; Claude Code through translators such as
+  claude-code-router), `<environment_context>` (Codex), `<environment_details>`
+  (Roo Code). A user turn that is only such blocks is passed over for the
+  one before it. `input: full` still sends everything as it is.
+
+- **The GLM runner sets no spending cap unless asked.** It passed Claude
+  Code `--max-budget-usd 2.00` on every run, but Claude Code counts that
+  amount at its Opus list (GLM runs under the `opus` alias), many times
+  GLM's price, so a GLM run stopped far below $2 of GLM. `--max-cost-usd`
+  still sets one, validated as a positive amount, and its help says the
+  amount is Claude Code's count, not GLM dollars.
+
+### Fixed
+
+- **An out-of-schema answer from a decision service is undecidable**, as
+  the router page said. A probability or confidence that is not a finite
+  number in [0, 1], a difficulty outside its scale, or a distribution that
+  does not sum to 1 was read as it came (`NaN` included, which Python's JSON
+  parser accepts); it now voids the answer, with a warning naming the value.
+  A classifier's difficulty or `p_needs_strong` outside 0..1 is no longer
+  clamped into range: it is undecidable too.
+
+- **A native dispatch outlived the request.** A client that gave up, or a
+  `serve` that stopped, left the dispatcher running: a GLM run went on for
+  more than 30 minutes after both were gone, and the runner ignored SIGTERM
+  while its Claude Code child worked. The dispatcher now runs in its own
+  process group; when the client hangs up or `serve` stops, the group gets
+  SIGTERM and, 10 s later, SIGKILL.
+- **GLM through Claude Code (`claude-zai`) was priced at Opus rates.** The
+  runner reported Claude Code's own cost as the provider's, but Claude Code
+  runs GLM under the `opus` alias and prices it at its Opus list: a one-line
+  question was disclosed at $0.022 where GLM's price comes to $0.0006. The
+  runner reports no provider cost now, and the router prices GLM's token
+  counts at the profile's rate.
+
+### Documentation
+
+- The router page recommends pinning the Jev version an `eval` measured
+  instead of `jev-latest` (Jev answered as 1.13.0 on 2026-10-15 and as
+  1.14.0 a week later), and says what Jev's confidence measures. Sage's band
+  mass was tried in its place and kept out: replayed on 20 recorded answers
+  it changed no answer and sent two more requests to the default.
+
 ## [0.30.4] — 2026-10-21
 
 Housekeeping.

@@ -1,4 +1,5 @@
 import json
+import os
 import socket
 import subprocess
 import threading
@@ -135,6 +136,77 @@ class ServerTests(Fixture):
         self.assertNotIn("router", forward[1])
         self.assertFalse(forward[1]["stream"])
         self.assertNotIn("sk-canary", json.dumps([data, headers]))
+
+    @staticmethod
+    def decision(difficulty, tags=()):
+        content = json.dumps({"difficulty": difficulty, "tags": list(tags), "reason": "r"})
+        return {"choices": [{"message": {"content": content}}]}
+
+    def test_a_named_conversation_keeps_its_first_route(self):
+        Provider.reply = self.decision(1, ["code"])
+        loop = {"X-Router-Conversation": "agent-run.42"}
+        status, data, headers = self.post(self.chat("auto", "Rename foo."), loop)
+        self.assertEqual(status, 200, data)
+        self.assertEqual(headers["X-Router-Pin"], "new")
+        self.assertEqual(headers["X-Router-Mode"], "route")
+        self.assertEqual(data["router"]["pin"]["profile"], "small")
+        self.assertEqual(len(Provider.requests), 2)  # decision + forward
+        # A later request that would route to the frontier stays where the
+        # conversation started, without asking the decider.
+        Provider.requests, Provider.reply = [], self.decision(4)
+        status, data, headers = self.post(
+            self.chat("auto", "Prove the scheduler is deadlock-free. " * 30), loop
+        )
+        self.assertEqual(status, 200, data)
+        self.assertEqual(headers["X-Router-Profile"], "small")
+        self.assertEqual((headers["X-Router-Mode"], headers["X-Router-Pin"]), ("pinned", "held"))
+        self.assertEqual(data["router"]["decider"]["id"], "none")
+        self.assertEqual(data["router"]["pin"]["requests"], 2)
+        self.assertTrue(data["router"]["reasons"][0].startswith("conversation pinned to small"))
+        self.assertEqual(len(Provider.requests), 1)  # the forward only
+        # Another conversation, and a request without the header, are decided.
+        for extra in ({"X-Router-Conversation": "other"}, {}):
+            Provider.requests = []
+            status, data, headers = self.post(self.chat("auto", "Prove it."), extra)
+            self.assertEqual(headers["X-Router-Profile"], "frontier")
+            self.assertEqual(len(Provider.requests), 2)
+            self.assertEqual(headers.get("X-Router-Pin"), "new" if extra else None)
+        # Naming a profile ignores the header and leaves the pin alone.
+        status, data, headers = self.post(self.chat("mid"), loop)
+        self.assertEqual((headers["X-Router-Mode"], headers.get("X-Router-Pin")), ("explicit", None))
+        _, _, headers = self.post(self.chat("auto", "x"), loop)
+        self.assertEqual((headers["X-Router-Profile"], headers["X-Router-Pin"]), ("small", "held"))
+
+    def test_a_pinned_profile_that_cannot_take_a_request_is_refused(self):
+        self.config["profiles"]["small"]["context"] = 3000
+        self.save()
+        self.restart()
+        Provider.reply = self.decision(1)
+        loop = {"X-Router-Conversation": "loop"}
+        status, _, headers = self.post(self.chat("auto", "Rename foo."), loop)
+        self.assertEqual((status, headers["X-Router-Profile"]), (200, "small"))
+        Provider.requests = []
+        status, data, _ = self.post(self.chat("auto", "long context " * 1000), loop)
+        self.assertEqual(status, 400, data)
+        self.assertEqual(
+            data["error"],
+            {
+                "code": "no-usable-candidate",
+                "retryable": False,
+                "reason": "context too small",
+                "pinned": "small",
+            },
+        )
+        self.assertEqual(Provider.requests, [])
+
+    def test_a_malformed_conversation_id_is_refused(self):
+        for value in ("has space", "x" * 129, "ünïcode"):
+            with self.subTest(value):
+                status, data, _ = self.post(
+                    self.chat("auto"), {"X-Router-Conversation": value}
+                )
+                self.assertEqual((status, data["error"]["code"]), (400, "invalid-conversation"))
+        self.assertEqual(Provider.requests, [])
 
     def test_explicit_profile_skips_the_decider(self):
         status, data, headers = self.post(self.chat("frontier"))
@@ -656,6 +728,62 @@ class ServerTests(Fixture):
                 )
                 self.assertEqual(data["error"]["profile"], "native")
                 self.assertEqual(headers["X-Router-Profile"], "native")
+
+    def wait_for_capture(self, within=10):
+        deadline = time.monotonic() + within
+        while time.monotonic() < deadline:
+            try:
+                return json.loads((self.base / "capture").read_text())
+            except (OSError, ValueError):
+                time.sleep(0.05)
+        self.fail("the native CLI never started")
+
+    @staticmethod
+    def gone(pid, within):
+        deadline = time.monotonic() + within
+        while time.monotonic() < deadline:
+            try:
+                os.kill(pid, 0)
+            except ProcessLookupError:
+                return True
+            time.sleep(0.1)
+        return False
+
+    def send_native_request(self):
+        """A request to the native profile on a raw socket, left open."""
+        body = json.dumps(self.chat("native")).encode()
+        sock = socket.create_connection((self.host, self.port))
+        sock.sendall(
+            b"POST /v1/chat/completions HTTP/1.1\r\nHost: x\r\n"
+            b"Content-Type: application/json\r\nContent-Length: %d\r\n\r\n"
+            % len(body)
+            + body
+        )
+        return sock
+
+    def test_a_native_dispatch_ends_when_the_client_hangs_up(self):
+        self.install_fake_native_cli()
+        self.env["DK_SLEEP"] = "60"
+        self.restart()
+        sock = self.send_native_request()
+        pid = self.wait_for_capture()["pid"]
+        self.assertFalse(self.gone(pid, within=1), "the CLI ended on its own")
+        sock.close()
+        self.assertTrue(self.gone(pid, within=5), "the CLI outlived the client")
+        # the server is still there for the next request
+        health, _ = self.get("/v1/health")
+        self.assertEqual(health["status"], "ok")
+
+    def test_a_native_dispatch_ends_when_serve_stops(self):
+        self.install_fake_native_cli()
+        self.env["DK_SLEEP"] = "60"
+        self.restart()
+        sock = self.send_native_request()
+        self.addCleanup(sock.close)
+        pid = self.wait_for_capture()["pid"]
+        self.stop()
+        self.assertTrue(self.gone(pid, within=5), "the CLI outlived serve")
+        self.assertEqual(self.stderr, "")
 
     def test_native_stream_is_one_event_then_the_router_chunk(self):
         self.install_fake_native_cli()

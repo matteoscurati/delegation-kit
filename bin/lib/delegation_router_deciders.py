@@ -9,6 +9,7 @@ caller's declared default and says so."""
 import functools
 import hashlib
 import json
+import math
 import os
 import re
 import time
@@ -20,6 +21,7 @@ from delegation_credentials import credential_for, credential_required, endpoint
 from delegation_router_policy import (
     DECISION_TOKENS,
     TAG_THRESHOLD,
+    TAGS,
     count,
     estimate_cost,
     excerpt,
@@ -238,6 +240,55 @@ def band_mass(expectation, probabilities):
     return sum(p for level, p in levels if level == 2)
 
 
+def unit(value):
+    """A probability or a confidence: a finite number in [0, 1]."""
+    return (
+        type(value) in (int, float) and math.isfinite(value) and 0 <= value <= 1
+    )
+
+
+def out_of_schema(signals):
+    """What in a service's signals cannot be read, or None. Probabilities and
+    confidences are finite numbers in [0, 1], an expectation sits inside its
+    range, a distribution covers levels of that range and sums to 1 within
+    its rounding (0.005 a level). One bad value makes the whole answer
+    undecidable: a service that misreports one number is not trusted with
+    the others, and no value is clamped into range."""
+    for s in signals:
+        key = s.get("key", s.get("kind"))
+        if s.get("kind") == "scale":
+            low, high = s.get("range", [0, 4])
+            e = s.get("expectation")
+            if not (
+                type(e) in (int, float) and math.isfinite(e) and low <= e <= high
+            ):
+                return key + " expectation"
+            for field in ("confidence", "source_confidence"):
+                if field in s and not unit(s[field]):
+                    return key + " " + field
+            distribution = s.get("distribution") or []
+            for d in distribution:
+                level = d.get("level")
+                if not unit(d.get("p")) or not (
+                    type(level) in (int, float) and low <= level <= high
+                ):
+                    return key + " distribution"
+            if distribution and abs(sum(d["p"] for d in distribution) - 1) > (
+                0.005 * len(distribution) + 1e-9
+            ):
+                return key + " distribution"
+        elif s.get("kind") == "yesno":
+            if not unit(s.get("p")):
+                return key + " probability"
+            if "confidence" in s and not unit(s["confidence"]):
+                return key + " confidence"
+        elif s.get("kind") == "tags":
+            for tag in TAGS:
+                if tag in s.get("tags", {}) and not unit(s["tags"][tag]):
+                    return "tag " + tag
+    return None
+
+
 def walk(value):
     """Every dict inside a JSON value, outermost first."""
     if isinstance(value, dict):
@@ -322,6 +373,9 @@ class ServiceDecider:
             result["decider"]["version"] = str(version)
         if not signals:
             return fail("decider gave no usable answer")
+        bad = out_of_schema(signals)
+        if bad:
+            return fail("decider answer outside the schema: " + bad)
         result["signals"] = signals
         in_tokens, out_tokens = usage
         if in_tokens is not None:
@@ -439,7 +493,13 @@ class SageDecider(ServiceDecider):
 class JevDecider(ServiceDecider):
     """TypeSafe Jev (System One API): a 5-level score for difficulty, a noul
     for "needs a frontier model", nouls for code and rare. Jev is weak on
-    numbers, so a request that carries any is never routed below mid."""
+    numbers, so a request that carries any is never routed below mid.
+
+    The confidence is Jev's own: how concentrated the distribution is around
+    its likeliest level, a near level counting less than a far one. Sage's
+    band mass was measured in its place (2026-10-22, 20 items replayed from
+    recorded answers): it changed no answer and sent two more requests to the
+    default, a rating between two levels splitting the mass of its band."""
 
     id = "jev"
 
@@ -575,12 +635,11 @@ class ClassifierDecider(ServiceDecider):
         confidence = float(data.get("confidence", 0.7))
         difficulty = data.get("difficulty", data.get("prompt_complexity_score"))
         if difficulty is not None:
-            d = min(max(float(difficulty), 0.0), 1.0)
             signals.append(
                 {
                     "kind": "scale",
                     "key": "difficulty",
-                    "expectation": d * 4,
+                    "expectation": float(difficulty) * 4,
                     "confidence": confidence,
                     "range": [0, 4],
                 }
@@ -590,7 +649,7 @@ class ClassifierDecider(ServiceDecider):
                 {
                     "kind": "yesno",
                     "key": "strong",
-                    "p": min(max(float(data["p_needs_strong"]), 0.0), 1.0),
+                    "p": float(data["p_needs_strong"]),
                     "confidence": confidence,
                 }
             )

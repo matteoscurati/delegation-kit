@@ -114,7 +114,9 @@ Any client that speaks OpenAI Chat Completions works with
 you set the base URL. Claude Code (Anthropic Messages) and Codex (OpenAI
 Responses) speak other formats and cannot send their requests here; the
 router can pick them to answer. Naming a pool profile as `model` skips the
-decider and still discloses. The
+decider and still discloses. An agent loop that sends
+`X-Router-Conversation: <id>` stays on the model its first request was
+routed to, instead of changing model halfway through. The
 [router page](docs/router.md) has every field, the policy, the deciders,
 the error codes and the evaluation harness.
 
@@ -144,14 +146,17 @@ the error codes and the evaluation harness.
   which pool models this machine cannot reach; `--ping` runs a live
   round-trip.
 
-## Current release: 0.30.4
+## Current release: 0.31.0
 
-Version 0.30.4 is housekeeping. The installer now removes what a release no
-longer ships: library modules left by earlier versions, and skill files
-(skill directories are replaced whole). Agents, skills, `doctor` messages and
-comments no longer name retired profiles (`sol-judge`), removed gates
-("after evaluation") or a fixed review family where the review policy is
-configurable.
+Version 0.31.0 keeps an agent loop on one model: a client that sends
+`X-Router-Conversation` stays on the profile its first request was routed
+to, instead of changing model halfway through a task. A native dispatch now
+ends when its client hangs up or `serve` stops. The router reads its
+deciders more strictly — an answer outside the schema is undecidable, and
+the blocks coding harnesses add to a user turn stay out of the decider's
+excerpt — and `eval` writes every decision it measured. GLM through Claude
+Code is priced at GLM's rate, and runs without the spending cap Claude Code
+counted at Opus prices.
 
 Every earlier release is in [`CHANGELOG.md`](./CHANGELOG.md).
 

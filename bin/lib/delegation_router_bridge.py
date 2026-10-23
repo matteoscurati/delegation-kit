@@ -6,13 +6,20 @@ conversation as a prompt file, runs the kit's own dispatcher on a read-only
 role in an empty temporary workdir, and turns the answer file back into one
 chat completion. Every limit the dispatcher enforces — the profile's
 `timeout`, identity checks, OAuth locks, sandboxes — stays where it is: the
-bridge reads the receipt, it does not reimplement the runner."""
+bridge reads the receipt, it does not reimplement the runner.
+
+A dispatch outlives nothing that asked for it. The dispatcher runs in a
+process group of its own; when the client hangs up or `serve` stops, the
+whole group — dispatcher, runner, the CLI it started — is asked to stop and,
+after STOP_GRACE seconds, killed."""
 
 import json
 import os
 import shutil
+import signal
 import subprocess
 import tempfile
+import threading
 import time
 from pathlib import Path
 
@@ -35,6 +42,14 @@ LANE_PREFERENCE = (
     "builder",
     "frontend-builder",
 )
+
+
+STOP_GRACE = 10  # seconds a stopped dispatch gets to clean up (locks, temp homes)
+POLL = 0.5  # seconds between checks that the request still wants an answer
+# Dispatches in flight, so a stopping server can end the ones its request
+# threads have not ended yet.
+RUNNING = set()
+RUNNING_LOCK = threading.Lock()
 
 
 class BridgeFailure(Exception):
@@ -91,9 +106,80 @@ def failure_for(rc, error):
     )
 
 
-def dispatch(profile_key, body, lane, env):
+def _group_alive(pgid):
+    try:
+        os.killpg(pgid, 0)
+        return True
+    except (ProcessLookupError, PermissionError):
+        return False
+
+
+def end(procs, grace=STOP_GRACE):
+    """SIGTERM to each dispatcher's process group, SIGKILL to whatever is
+    left of them after `grace` seconds. The leaders are reaped as they go, so
+    a group that is gone is not kept alive by its own zombie."""
+    for proc in procs:
+        try:
+            os.killpg(proc.pid, signal.SIGTERM)
+        except (ProcessLookupError, PermissionError):
+            pass
+    deadline = time.monotonic() + grace
+    while time.monotonic() < deadline:
+        for proc in procs:
+            proc.poll()
+        if not any(_group_alive(proc.pid) for proc in procs):
+            return
+        time.sleep(0.1)
+    for proc in procs:
+        try:
+            os.killpg(proc.pid, signal.SIGKILL)
+        except (ProcessLookupError, PermissionError):
+            pass
+        proc.wait()
+
+
+def end_all(grace=STOP_GRACE):
+    """End every dispatch still in flight: `serve` is stopping."""
+    with RUNNING_LOCK:
+        procs = list(RUNNING)
+    if procs:
+        end(procs, grace)
+
+
+def _run(command, env, cwd, stop):
+    """The dispatcher's exit code, or the reason `stop` gave for ending it
+    (a client that hung up, a server that is stopping)."""
+    proc = subprocess.Popen(
+        command,
+        env=env,
+        cwd=cwd,
+        stdin=subprocess.DEVNULL,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+        start_new_session=True,
+    )
+    with RUNNING_LOCK:
+        RUNNING.add(proc)
+    try:
+        while True:
+            try:
+                return proc.wait(timeout=POLL), None
+            except subprocess.TimeoutExpired:
+                pass
+            reason = stop() if stop else None
+            if reason:
+                end([proc])
+                return proc.returncode, reason
+    finally:
+        with RUNNING_LOCK:
+            RUNNING.discard(proc)
+
+
+def dispatch(profile_key, body, lane, env, stop=None):
     """Run the profile once through `delegation-run`; return the answer and
-    what the receipt says about it. Raises BridgeFailure."""
+    what the receipt says about it. Raises BridgeFailure. `stop` is asked
+    every POLL seconds whether the answer is still wanted: it returns why
+    not (`client-gone`, `router-stopping`) or None."""
     started = time.monotonic()
     tmp = Path(tempfile.mkdtemp(prefix="delegation-router-"))
     try:
@@ -120,17 +206,22 @@ def dispatch(profile_key, body, lane, env):
         try:
             # No deadline here: the dispatcher applies the profile's own and
             # reports it as exit 75 with reason `timeout`.
-            proc = subprocess.run(
-                command, env=env, capture_output=True, text=True, cwd=str(tmp)
-            )
+            returncode, stopped = _run(command, env, str(tmp), stop)
         except OSError:
             raise BridgeFailure(
                 502, "bridge-failed", False, reason="dispatcher not runnable"
             )
         duration_ms = int((time.monotonic() - started) * 1000)
-        if proc.returncode != 0:
+        if stopped:
+            raise BridgeFailure(
+                503 if stopped == "router-stopping" else 499,
+                stopped,
+                stopped == "router-stopping",
+                duration_ms=duration_ms,
+            )
+        if returncode != 0:
             error = _read_json(Path(str(output) + ".error.json"))
-            failure = failure_for(proc.returncode, error)
+            failure = failure_for(returncode, error)
             failure.extra["duration_ms"] = duration_ms
             raise failure
         try:

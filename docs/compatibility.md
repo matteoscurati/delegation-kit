@@ -10,33 +10,40 @@ below with the numbers observed after running the
 
 ## Verified snapshot
 
-**0.30.4, checked on 2026-10-21** on macOS 26.5.1 with Claude Code
-`2.1.306` and Codex CLI `0.163.0`.
+**0.31.0, checked on 2026-10-23** on macOS 26.5.1 with Claude Code
+`2.1.309` and Codex CLI `0.164.0`.
 
-- **Offline**: the 13 suites green in 51 seconds (the router suite at 79
-  tests; the installer suite at 18, one new for files a release no longer
-  ships, which fails against the 0.30.3 installer), ShellCheck at
-  `-S warning` on the files CI collects, ruff, the eleven Node tests and the
-  version gate.
-- **Install and doctor**: a reinstall from the release branch removed the
-  two library modules earlier releases had left (`delegation_router.py`,
-  `delegation_router_catalog.py`) and the empty orchestrate reference;
-  `delegation-router check` ran from the pruned install. Static `doctor.sh`
-  reports `55 OK, 6 WARN, 0 FAIL`; the six warnings are the configured
-  pool's native profiles (no tools, images or JSON mode through the router).
-- **Catalog**: `catalog refresh --shipped` again on 2026-10-21, nothing
-  changed since 0.30.3.
-- **Live**: none new for this release. The latest live checks, each
-  authorized, are recorded below with their dates: MiniMax-M3.1-Flash with
-  its key in the personal `.env` (2026-10-20), the DeepSeek Flash decider's
-  half points and `decide --lane` (2026-10-19), Claude Opus 5.5 at `max`
-  (2026-10-19), Sage, Jev and the `llm` deciders (2026-10-15).
+- **Offline**: the 13 suites green in 44 seconds (the router suite at 86
+  tests, seven new: three for conversation pins, out-of-schema answers,
+  harness blocks, and a native dispatch ending when its client hangs up or
+  `serve` stops, the last two failing against the 0.30.4 bridge; the eval
+  test also reads `decisions.jsonl`), the GLM runner's cap cases, ShellCheck
+  at `-S warning` on the 28 files CI collects, ruff, the eleven Node tests
+  and the version gate.
+- **Install and doctor**: a reinstall from the release branch kept the
+  stored DeepSeek, Qwen and Z.AI keys. Static `doctor.sh` reports
+  `55 OK, 6 WARN, 0 FAIL`; the six warnings are the configured pool's native
+  profiles (no tools, images or JSON mode through the router).
+  `doctor.sh --ping`: `57 OK, 6 WARN, 0 FAIL`, the Claude → Codex round-trip
+  returned `PONG`.
+- **Catalog**: `catalog refresh --shipped` on 2026-10-23: 24 models placed,
+  no tier, score or price changed; Claude Haiku 4.5 still unmatched.
+- **Live**, each call authorized: the Jev decider (3 probes); decider
+  `eval` runs — four on the 20-item golden set with harness-wrapped
+  variants, three on it with outcomes, two on 30 harder candidates; and 250
+  pool dispatches building the golden sets (2026-10-22 and 2026-10-23); see
+  [Decider measurements](#decider-measurements).
 
 ### Earlier releases
 
 Newest first. "Suites" means the 13 regression suites; every live call was
 authorized and no key was printed.
 
+- **0.30.4** (2026-10-21, Claude Code `2.1.306`, Codex `0.163.0`):
+  housekeeping; suites in 51 s (79 router tests; the installer suite at 18,
+  one new for files a release no longer ships); a reinstall removed the two
+  library modules earlier releases had left; doctor `55 OK, 6 WARN, 0 FAIL`.
+  Catalog refreshed, nothing changed.
 - **0.30.3** (2026-10-21, Claude Code `2.1.306`): documentation and one
   `check` warning; suites in 214 s (79 router tests), ShellCheck, ruff, Node
   tests, version gate; doctor `55 OK, 6 WARN, 0 FAIL`, and without a
@@ -115,6 +122,31 @@ question 1.6–1.7 (Sage, Jev; Sage adds `rare` 0.98) and 2.0 (DeepSeek, Qwen:
 `math`. "Needs a frontier model" was ≈ 0.01–0.09 everywhere. The deciders
 agree with each other and rate the race condition lower than a human would,
 which is why `eval` on a golden set exists.
+
+Live, 2026-10-22 and 2026-10-23 (0.31.0), each call authorized:
+
+- **Jev** answered as `jev-1.14.0` (it was `jev-1.13.0` a week earlier) in
+  235–376 ms for ~$0.00002, its score always carrying `probabilities` keyed
+  `"0"`–`"4"`. Its own confidence was kept: Sage's band mass in its place,
+  replayed on 20 recorded answers, changed no answer and sent two more
+  requests to the default.
+- **Harness blocks**: 20 items, each also wrapped in OpenCode's, Roo Code's
+  and Claude Code's blocks, decided with 0.30.4 and with 0.31.0 by the
+  DeepSeek Flash `llm` decider and by Jev. The tier never changed across
+  variants (robustness 1.0 in all four runs); with the blocks dropped the
+  decisions cost 25 % (DeepSeek) and 23 % (Jev) less. DeepSeek p50 1.1 s,
+  p95 1.3 s; Jev p50 0.23 s, p95 0.33 s.
+- **Golden sets**: the 20 items were answered correctly by all eight pool
+  models, so they measure over-spending only. Of 30 harder candidates
+  (program tracing, counting, search), GPT-5.6 Luna solved 29 and
+  MiniMax-M3.1-Flash 25; on the five either missed, DeepSeek Flash, Opus 5.5
+  and GPT-5.6 Terra solved all five, GLM 5.3 Flash four, Kimi K3 and
+  Qwen3.8 Max three (GLM and Qwen ran out of 30 minutes on one). Both
+  deciders rated all 30 between 1 and 2.7, never at the frontier; the `llm`
+  decider sent one of them to Kimi, which got it wrong, and Jev's
+  needs-frontier answer sent it to the default, which got it right. Kimi
+  scores above DeepSeek on the index and did worse here: five items are a
+  hint about the index, not a measurement of it.
 
 ## Host-specific boundaries
 

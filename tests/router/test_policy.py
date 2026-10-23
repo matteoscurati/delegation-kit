@@ -251,6 +251,39 @@ class PolicyTests(unittest.TestCase):
                 feats = features({"messages": [{"role": "user", "content": text}]})
                 self.assertEqual(feats["has_numbers"], expected)
 
+    def test_harness_blocks_leave_the_excerpt_and_the_arithmetic_check(self):
+        task = "Rename foo to bar in utils.py"
+        turn = (
+            "<system-reminder>Today is 2026-10-21; 3.2% of context used."
+            + " filler" * 400
+            + "</system-reminder>\n"
+            + task
+            + '\n<environment_details cwd="/repo">open tabs: v1.2.3'
+            + " file.py" * 400
+            + "</environment_details>"
+        )
+        body = {"messages": [{"role": "user", "content": turn}]}
+        text = excerpt(body)
+        self.assertTrue(text.endswith("latest user request:\n" + task), text)
+        self.assertFalse(features(body)["has_numbers"])
+        # the turn's tokens still count, and `full` sends it as it is
+        self.assertGreater(features(body)["est_tokens"], 1000)
+        self.assertIn("<system-reminder>", excerpt(body, "full"))
+        # a turn that is nothing but a block (Codex sends its context as a
+        # turn of its own) is passed over for the request before it ...
+        context = "<environment_context>cwd: /repo, 2026-10-22</environment_context>"
+        body = {
+            "messages": [
+                {"role": "user", "content": task},
+                {"role": "user", "content": context},
+            ]
+        }
+        self.assertTrue(excerpt(body).endswith("latest user request:\n" + task))
+        self.assertFalse(features(body)["has_numbers"])
+        # ... and kept as it is when no turn says more
+        only = {"messages": [{"role": "user", "content": context}]}
+        self.assertIn(context, excerpt(only))
+
     def test_costs_tolerate_unknown_counts(self):
         self.assertIsNone(estimate_cost(SMALL, None, 10))
         self.assertIsNone(estimate_cost(SMALL, "300", 10))
