@@ -2,6 +2,22 @@
 
 All notable changes to delegation-kit are documented here.
 
+## [0.34.1] — 2026-10-24
+
+The repository moved from `matteoscurati/delegation-kit` to
+`reasance/delegation-kit`. No routing decision changes, so the release is a
+patch.
+
+### Changed
+
+- **The npm wrapper clones `https://github.com/reasance/delegation-kit`**,
+  at the tag of its own version, as before. Earlier versions clone the old
+  URL, which GitHub redirects.
+- **`package.json`, `.claude-plugin/plugin.json` and
+  `.claude-plugin/marketplace.json`** link the new repository as homepage,
+  repository and issue tracker. The author fields still name the author.
+- **Catalog** refreshed on 2026-10-24: no model, score or tier changed.
+
 ## [0.34.0] — 2026-10-24
 
 Meta's Muse models join the preset, on the Muse Code subscription through a

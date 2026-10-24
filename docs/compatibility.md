@@ -10,42 +10,38 @@ below with the numbers observed after running the
 
 ## Verified snapshot
 
-**0.34.0, checked on 2026-10-24** on macOS 26.5.1 with Claude Code
-`2.1.309`, Codex CLI `0.164.0`, Kimi Code `2.3.1` and Muse Code `1.4.12`
-(`1.4.12-R6909.1`).
+**0.34.1, checked on 2026-10-24** on macOS 26.5.1 with Claude Code
+`2.1.310`, Codex CLI `0.164.0`, Kimi Code `2.3.1` and Muse Code `1.4.12`
+(`1.4.12-R6909.1`), after the repository moved to `reasance`.
 
-- **Offline**: the 14 suites green in 43 seconds (new: the Muse runner
-  suite against a fake CLI, sandbox-exec and shlock, which fails when
-  `META_API_KEY` reaches the CLI or a read-only role can write; the effort
-  tests for `openai-compatible` in the runner and the router; the
-  `contributor_mode` validation), ShellCheck at `-S warning` on the 30 files
-  CI collects, ruff, the eleven Node tests and the version gate.
+- **Offline**: the 14 suites green in 48 seconds, ShellCheck at
+  `-S warning` on the 30 files CI collects, ruff, the eleven Node tests
+  and the version gate.
 - **Install and doctor**: a reinstall from the release branch. Static
-  `doctor.sh` reports `57 OK, 6 WARN, 0 FAIL`, the Muse Code executor
-  contract included; `doctor.sh --ping --ping-muse`: `60 OK, 6 WARN,
-  0 FAIL`, the Claude → Codex round-trip and Muse Spark 1.3 on the
-  subscription both returned `PONG`.
+  `doctor.sh` reports `57 OK, 6 WARN, 0 FAIL`; `doctor.sh --ping`:
+  `59 OK, 6 WARN, 0 FAIL`, the Claude → Codex round-trip returned `PONG`.
+  No Muse or other external model was called for this release.
 - **Catalog**: `catalog refresh --shipped` on 2026-10-24: 28 models placed,
-  Muse Spark 1.3 (48.1, `mid`), Muse Wonder (52.4) and Muse Wonder Full
-  (55.8, `frontier`, hand-priced at Wonder's $4/$20) new;
-  nothing else changed; Claude Haiku 4.5 still unmatched.
-- **Live**, each call authorized, on the Muse Code subscription with
-  Contributor mode off: five runs while building the runner (Muse Spark 1.3
-  `PONG` from an isolated home with only the keychain linked;
-  `muse-wonder-full-1.0` refused as "does not exist or you lack access"
-  before the plan included it, no usage; a sandboxed read of a file; a sandboxed builder that
-  edited exactly one file; `delegation-run --profile muse-code-wonder`:
-  `PONG` in 6 s, `provider_reported_model` `muse-wonder-1.0`,
-  `billing: subscription` with the plan's allowance), then the doctor ping,
-  then, after the plan upgrade, Muse Wonder Full through the runner: `PONG`,
-  `provider_reported_model` `muse-wonder-full-1.0`.
-  The API-key Muse profiles were not dispatched: no `META_API_KEY` here.
+  no score, price or tier changed; Claude Haiku 4.5 still unmatched.
+- **Redirect**: `git ls-remote` on the old
+  `github.com/matteoscurati/delegation-kit` URL still lists the
+  `delegation-kit--v0.34.0` tag, so wrappers published before this release
+  keep installing.
 
 ### Earlier releases
 
 Newest first. "Suites" means the regression suites; every live call was
 authorized and no key was printed.
 
+- **0.34.0** (2026-10-24, Claude Code `2.1.309`, Codex `0.164.0`, Kimi
+  Code `2.3.1`, Muse Code `1.4.12-R6909.1`): suites in 43 s (new: the Muse
+  runner suite, `openai-compatible` effort, `contributor_mode`); doctor
+  `57 OK, 6 WARN, 0 FAIL`, with `--ping --ping-muse` `60 OK`. Catalog: Muse
+  Spark 1.3 (48.1, `mid`), Muse Wonder (52.4) and Muse Wonder Full (55.8,
+  hand-priced at $4/$20) new. Live on the subscription, Contributor mode
+  off: Spark `PONG` from an isolated home, a sandboxed read and a
+  one-file builder edit, `muse-code-wonder` and `muse-code-wonder-full`
+  `PONG` through `delegation-run`. API-key Muse profiles not dispatched.
 - **0.33.0** (2026-10-23, Claude Code `2.1.309`, Codex `0.164.0`): suites
   in 43 s; a fresh `init` validated and listed `minimax-m3.1-flash`; doctor
   `55 OK, 6 WARN, 0 FAIL`, with `--ping` `57 OK`. MiniMax not dispatched.
