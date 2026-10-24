@@ -11,13 +11,13 @@
     "delegation",
     "developer-tools"
   ],
-  "homepage": "https://github.com/matteoscurati/delegation-kit",
+  "homepage": "https://github.com/reasance/delegation-kit",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/matteoscurati/delegation-kit.git"
+    "url": "git+https://github.com/reasance/delegation-kit.git"
   },
   "bugs": {
-    "url": "https://github.com/matteoscurati/delegation-kit/issues"
+    "url": "https://github.com/reasance/delegation-kit/issues"
   },
   "author": {
     "name": "Matteo Scurati",
