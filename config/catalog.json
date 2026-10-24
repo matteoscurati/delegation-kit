@@ -808,6 +808,7 @@
         "in": 4.0,
         "out": 20.0
       },
+      "tier": "frontier",
       "evidence": {
         "source": "artificialanalysis",
         "name": "Muse Wonder Full",
@@ -822,8 +823,7 @@
         "math_index": null,
         "date": "2026-10-24",
         "via": "api"
-      },
-      "tier": "frontier"
+      }
     }
   }
 }
