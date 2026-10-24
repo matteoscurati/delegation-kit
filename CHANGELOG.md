@@ -4,33 +4,62 @@ All notable changes to delegation-kit are documented here.
 
 ## [0.34.0] — 2026-10-24
 
-Meta's Muse models join the preset, and `openai-compatible` learns
-`effort`. New profiles and a new adapter parameter, so the release is a
-minor one.
+Meta's Muse models join the preset, on the Muse Code subscription through a
+new runner or on the Meta Model API, and `openai-compatible` learns
+`effort`. A new runner, adapter and profiles, so the release is a minor one.
 
 ### Added
 
-- **`muse-spark-1.3` and `muse-wonder-1.0`.** Owner decision: two
-  `openai-compatible` profiles on the Meta Model API
-  (`https://api.meta.ai/v1`, family `meta`, the seven text roles, `context`
-  1,048,576, `effort` `max`), with the key in `META_API_KEY`. The catalog
-  places Muse Spark 1.3 at 48.1 (`mid`, $1.25/$4.25; 45.1 at `xhigh`) and
-  Muse Wonder at 52.4 (`frontier`, $4/$20, matched by name). Spark scores
-  above Qwen3.8 Max (45.4) for less ($2/$6); Wonder costs what Opus 5.5
-  costs for a lower score, so a pool that holds Opus or Kimi K3.1 Pro does
-  not pick it. Meta's Contributor-mode variants, which let Meta train on
-  what you send, are not in the preset. Without the key both profiles are
-  unreachable and nothing else is affected.
+- **`delegation-muse` and the `muse-code-cli` adapter**: Muse Code on the
+  subscription you signed in to with `muse login`. Owner decision: the
+  preset gains `muse-code-wonder` (`muse-wonder-1.0`) and `muse-code-spark`
+  (`muse-spark-1.3`), roles clerk, scout, reviewer, policy-annotation
+  (read-only) and builder, frontend-builder (worktree edits), at `max`
+  effort with `contributor_mode` `off`. The runner calls the release binary
+  the `muse` launcher selected, never the self-updating launcher, from an
+  isolated home with minimal settings, a copy of `auth.json` and a link to
+  the login keychain that holds the token; no user or project rules,
+  skills, hooks, MCP servers or memory load. The shell is off in every
+  role, as are web tools, reminders, questions and approvals, and writes in
+  the read-only roles. `sandbox-exec` lets only the Muse binary execute,
+  keeps the ambient home unreadable but for the keychain, and limits writes
+  to scratch, the keychain and, for builders, the worktree. `META_API_KEY`
+  never reaches the CLI, which would otherwise bill the run per token, and a
+  sign-in made with an API key is refused. A kit lock serializes Muse runs;
+  a refreshed `auth.json` is synced back unless the ambient one changed.
+  The receipt carries the provider-reported model, `billing: subscription`,
+  whether the plan's `allowance` came back, the contributor mode and the
+  token counts. `doctor.sh` checks the contract and `--ping-muse` pings
+  Muse Spark 1.3. A new `muse-executor` skill gates it like the others.
+- **`contributor_mode`** (`muse-code-cli` only, `on` or `off`): whether Meta
+  may train on what the run sends, passed on every run so the setting saved
+  in Muse Code never applies.
+- **`muse-wonder-1.0` and `muse-spark-1.3` on the Meta Model API**:
+  `openai-compatible` profiles on `https://api.meta.ai/v1` with the key in
+  `META_API_KEY`, at `max` effort, for when you would rather pay per token.
+  Meta's Contributor-mode API variants are not in the preset.
+- **Catalog**: Muse Spark 1.3 at 48.1 (`mid`, $1.25/$4.25; 45.1 at `xhigh`)
+  and Muse Wonder at 52.4 (`frontier`, $4/$20, matched by name). Spark
+  scores above Qwen3.8 Max (45.4) for less; Wonder costs what Opus 5.5 costs
+  for a lower score, so a pool that holds Opus or Kimi K3.1 Pro does not
+  pick it. Subscription runs are ranked at those API prices too.
 - **`effort` on `openai-compatible`**: `minimal` … `max`, sent as
   `reasoning_effort` by the runner and by the router only when the profile
   declares it. A profile without it sends exactly what it sent before, and
   through the router the caller's own `reasoning_effort` still passes. The
   router's policy adjusts no effort on this adapter.
 
+### Known limits
+
+- Muse Wonder Full (Power and Maximum plans) has no profile yet: its Muse
+  Code model id is not documented.
+- Muse Code's telemetry follows its own defaults, and its bundled skills
+  load.
+
 ### Upgrading
 
-- A configuration made earlier gets neither Muse profile: copy them from
-  `config/presets.json` and set `META_API_KEY` (*Upgrading* in the
+- A configuration made earlier gets none of the Muse profiles: copy the
+  ones you want from `config/presets.json` (*Upgrading* in the
   configuration page).
 
 ## [0.33.0] — 2026-10-23

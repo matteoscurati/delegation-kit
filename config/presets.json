@@ -323,6 +323,40 @@
       "parameters": {
         "effort": "max"
       }
+    },
+    "muse-code-wonder": {
+      "adapter": "muse-code-cli",
+      "model": "muse-wonder-1.0",
+      "family": "meta",
+      "roles": [
+        "clerk",
+        "scout",
+        "reviewer",
+        "builder",
+        "frontend-builder",
+        "policy-annotation"
+      ],
+      "parameters": {
+        "effort": "max",
+        "contributor_mode": "off"
+      }
+    },
+    "muse-code-spark": {
+      "adapter": "muse-code-cli",
+      "model": "muse-spark-1.3",
+      "family": "meta",
+      "roles": [
+        "clerk",
+        "scout",
+        "reviewer",
+        "builder",
+        "frontend-builder",
+        "policy-annotation"
+      ],
+      "parameters": {
+        "effort": "max",
+        "contributor_mode": "off"
+      }
     }
   }
 }

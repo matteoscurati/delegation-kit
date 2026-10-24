@@ -4,11 +4,12 @@
 # while the always-loaded policy blocks are missing, so neither model ever learns
 # it may reach the other. Nothing errors — the bridge just never fires.
 #
-# Usage: ./doctor.sh [--ping] [--ping-glm] [--ping-kimi] [--ping-grok]
+# Usage: ./doctor.sh [--ping] [--ping-glm] [--ping-kimi] [--ping-muse] [--ping-grok]
 #   --ping   also does a live round-trip (real API calls, costs a few tokens per
 #            side). Off by default; static checks are free.
 #   --ping-glm does a separate paid GLM-5.3-Flash/max ping through its clerk role.
 #   --ping-kimi does a separate Kimi K3.1 Pro ping through its scout role.
+#   --ping-muse does a Muse Spark 1.3 ping on the Muse Code subscription (scout).
 #   --ping-grok does a paid Grok 4.6 ping through its builder role.
 # Env overrides (for testing): CLAUDE_HOME (default ~/.claude), CODEX_HOME (~/.codex)
 set -uo pipefail
@@ -26,12 +27,14 @@ BEGIN="<!-- >>> delegation-kit >>> -->"
 DO_PING=0
 DO_GLM_PING=0
 DO_KIMI_PING=0
+DO_MUSE_PING=0
 DO_GROK_PING=0
 while [ "$#" -gt 0 ]; do
   case "$1" in
     --ping) DO_PING=1 ;;
     --ping-glm) DO_GLM_PING=1 ;;
     --ping-kimi) DO_KIMI_PING=1 ;;
+    --ping-muse) DO_MUSE_PING=1 ;;
     --ping-grok) DO_GROK_PING=1 ;;
     # print only the leading header comment block (skip the shebang, stop at first non-comment)
     -h|--help) awk 'NR==1{next} /^#/{sub(/^# ?/,""); print; next} {exit}' "$0"; exit 0 ;;
@@ -587,6 +590,42 @@ else
   warn "delegation-kimi not installed — re-run ./install.sh"
 fi
 
+# ---- optional Muse Code executor (subscription) ----
+hdr "Muse Code executor (muse-code-cli)"
+if ! have jq; then
+  warn "jq not on PATH — delegation-muse cannot run"
+elif have delegation-muse; then
+  muse_check="$(delegation-muse check --json 2>/dev/null || true)"
+  if [ -n "$muse_check" ] && printf '%s' "$muse_check" | jq -e '
+      .adapter == "muse-code-cli" and .billing == "subscription" and
+      .contributor_mode == "off" and
+      .runtime_cli_compatibility == "capability-probed" and
+      (.selected_backend == "native" or .selected_backend == "none") and
+      (.backends.native.available == (.selected_backend == "native")) and
+      .backends.native.sandbox == "macos-sandbox-exec" and
+      .backends.native.isolated_home == true and
+      .backends.native.environment_mode == "allowlist" and
+      .backends.native.ambient_home_read == false and
+      .backends.native.api_key_passed == false and
+      .backends.native.auto_update == false and
+      .terminal == false and .web_tools == false and .subagents == false and
+      .backends.native.hooks == false and .backends.native.mcp_servers == false and
+      .backends.native.builder_write_scope == "workdir" and
+      .backends.native.read_only_write_scope == "scratch"
+    ' >/dev/null 2>&1; then
+    ok "delegation-muse installed with an isolated home, no shell, no API key, and sandboxed runtime controls"
+    if [ "$(printf '%s' "$muse_check" | jq -r '.selected_backend')" = native ]; then
+      ok "Muse Code backend available ($(printf '%s' "$muse_check" | jq -r '.runtime_cli_version'))"
+    else
+      info "Muse Code unavailable — $(printf '%s' "$muse_check" | jq -r '.backends.native.reason')"
+    fi
+  else
+    bad "delegation-muse check failed or does not enforce the current Muse Code sandbox contract"
+  fi
+else
+  warn "delegation-muse not installed — re-run ./install.sh"
+fi
+
 # ---- optional Grok 4.6 builder executor ----
 hdr "Grok executor (grok-build-cli)"
 if ! have jq; then
@@ -732,6 +771,31 @@ if [ "$DO_KIMI_PING" = 1 ]; then
       fi
       rm -rf "$ping_dir"
     fi
+  fi
+fi
+
+if [ "$DO_MUSE_PING" = 1 ]; then
+  hdr "Muse Spark 1.3 live ping (--ping-muse)"
+  if ! have delegation-muse; then
+    bad "Muse ping unavailable — delegation-muse is not installed"
+  else
+    ping_dir="$(mktemp -d "${TMPDIR:-/tmp}/delegation-muse-ping.XXXXXX")"
+    mkdir -p "$ping_dir/work"
+    printf 'Reply with exactly PONG and do not edit files.\n' >"$ping_dir/prompt.txt"
+    if DELEGATION_REQUESTED_MODEL=muse-spark-1.3 DELEGATION_PROFILE_EFFORT=low \
+        delegation-muse run --lane scout --prompt-file "$ping_dir/prompt.txt" \
+        --output "$ping_dir/out.txt" --workdir "$ping_dir/work" >/dev/null 2>&1; then
+      if grep -Fxq PONG "$ping_dir/out.txt" &&
+          jq -e '.provider_reported_model == "muse-spark-1.3" and .billing == "subscription"' \
+            "$ping_dir/out.txt.metrics.json" >/dev/null 2>&1; then
+        ok "Muse Spark 1.3 ping returned PONG on the subscription"
+      else
+        bad "Muse ping returned unexpected output or identity"
+      fi
+    else
+      bad "Muse ping failed: $(cat "$ping_dir/out.txt.stderr" 2>/dev/null || true)"
+    fi
+    rm -rf "$ping_dir"
   fi
 fi
 

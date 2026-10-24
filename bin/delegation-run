@@ -87,6 +87,7 @@ try:
         "DELEGATION_MODEL_ALIASES",
         "DELEGATION_MAX_TOKENS",
         "DELEGATION_TIMEOUT",
+        "DELEGATION_CONTRIBUTOR_MODE",
         "DELEGATION_API_URL",
         "DELEGATION_CREDENTIAL_ENV",
         "DELEGATION_AUTH_OPTIONAL",
@@ -103,6 +104,7 @@ try:
         ("effort", "DELEGATION_PROFILE_EFFORT"),
         ("max_tokens", "DELEGATION_MAX_TOKENS"),
         ("timeout", "DELEGATION_TIMEOUT"),
+        ("contributor_mode", "DELEGATION_CONTRIBUTOR_MODE"),
     ]:
         if key in params:
             env[var] = str(params[key])

@@ -31,7 +31,8 @@ done
 rm -rf "$CLAUDE_HOME/skills/model-routing" "$CLAUDE_HOME/skills/orchestrate" \
   "$CLAUDE_HOME/skills/glm-executor" "$CLAUDE_HOME/skills/kimi-executor"
 rm -rf "$CLAUDE_HOME/skills/qwen-executor" "$CLAUDE_HOME/skills/gemini-executor" \
-  "$CLAUDE_HOME/skills/grok-executor" "$CLAUDE_HOME/skills/deepseek-executor"
+  "$CLAUDE_HOME/skills/grok-executor" "$CLAUDE_HOME/skills/deepseek-executor" \
+  "$CLAUDE_HOME/skills/muse-executor"
 echo "  - removed the 6 subagent profiles and the model-routing, orchestrate and executor skills"
 strip_guarded "$CLAUDE_HOME/CLAUDE.md"
 
@@ -41,11 +42,12 @@ for a in luna-clerk terra-builder terra-reviewer astra-reviewer astra-judge; do
 done
 rm -rf "$CODEX_HOME/skills/glm-executor" "$CODEX_HOME/skills/gemini-executor" \
   "$CODEX_HOME/skills/kimi-executor" "$CODEX_HOME/skills/qwen-executor" \
-  "$CODEX_HOME/skills/grok-executor" "$CODEX_HOME/skills/deepseek-executor"
+  "$CODEX_HOME/skills/grok-executor" "$CODEX_HOME/skills/deepseek-executor" \
+  "$CODEX_HOME/skills/muse-executor"
 echo "  - removed the 5 native and 5 ephemeral profiles and the executor skills"
 strip_guarded "$CODEX_HOME/AGENTS.md"
 rm -f "$BIN_HOME/delegation-config" "$BIN_HOME/delegation-run" "$BIN_HOME/delegation-openai-compatible" \
-  "$BIN_HOME/delegation-glm" "$BIN_HOME/delegation-gemini" "$BIN_HOME/delegation-kimi" "$BIN_HOME/delegation-qwen" "$BIN_HOME/delegation-deepseek" "$BIN_HOME/delegation-grok" \
+  "$BIN_HOME/delegation-glm" "$BIN_HOME/delegation-gemini" "$BIN_HOME/delegation-kimi" "$BIN_HOME/delegation-muse" "$BIN_HOME/delegation-qwen" "$BIN_HOME/delegation-deepseek" "$BIN_HOME/delegation-grok" \
   "$BIN_HOME/delegation-route" "$BIN_HOME/delegation-router" "$BIN_HOME/delegation-patch-verify"
 # Everything else under $DATA_HOME is a byte-for-byte copy of a repo file that
 # re-running install.sh restores; the keys, the router's receipts and the
