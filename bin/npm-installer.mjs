@@ -19,7 +19,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import process from "node:process";
 
-const DEFAULT_REPO = "https://github.com/matteoscurati/delegation-kit";
+const DEFAULT_REPO = "https://github.com/reasance/delegation-kit";
 // The tag this package was published from: `npx delegation-kit@X.Y.Z`
 // installs X.Y.Z, never whatever main holds today.
 const { version: VERSION } = JSON.parse(
