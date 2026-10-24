@@ -42,7 +42,7 @@ ADAPTERS = {
     "openai-compatible": (
         "openai-compatible",
         TEXT_ROLES,
-        {"max_tokens", "timeout"},
+        {"effort", "max_tokens", "timeout"},
         {"read-only", "text-patch"},
     ),
     "kimi-code-cli": (
@@ -91,6 +91,8 @@ EFFORTS = {
     "agy": {"medium", "high"},
     "deepseek-api": {"minimal", "low", "medium", "high", "xhigh", "max"},
     "token-plan-openai": {"minimal", "low", "medium", "high", "xhigh", "max"},
+    # Sent as `reasoning_effort` only when the profile declares it.
+    "openai-compatible": {"minimal", "low", "medium", "high", "xhigh", "max"},
     "codex": {"none", "minimal", "low", "medium", "high", "xhigh", "max"},
     "claude-code": {"low", "medium", "high", "xhigh", "max"},
 }

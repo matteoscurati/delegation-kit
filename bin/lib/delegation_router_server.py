@@ -139,6 +139,10 @@ def upstream_body(body, profile, choice, stream):
             out["reasoning_effort"] = effort
     elif profile["adapter"] == "token-plan-openai" and effort:
         out["reasoning_effort"] = effort
+    elif profile["adapter"] == "openai-compatible" and params.get("effort"):
+        # Only the declared setting: the policy adjusts no effort here, and a
+        # profile without one passes the caller's request through unchanged.
+        out["reasoning_effort"] = params["effort"]
     return out
 
 

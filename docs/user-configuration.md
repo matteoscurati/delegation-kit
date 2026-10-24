@@ -72,7 +72,8 @@ Rules:
 - Remote endpoints require HTTPS; loopback HTTP is allowed.
 - `openai-compatible` appends `/chat/completions` and sends one non-streaming
   text request with optional Bearer auth. It never calls `/models`, never
-  uses tools and never retries.
+  uses tools and never retries. A declared `effort` goes out as
+  `reasoning_effort`; without one the field is not sent.
 - Gemini is not in the shipped presets. The `agy` adapter stays installed and
   works with a profile you add by hand.
 
@@ -201,8 +202,10 @@ Nothing else in the kit has to change:
    should list it with `"reachable": true`.
 5. Dispatch once to confirm the key and the model name.
 
-The shipped `minimax-m3.1-flash` profile is one such profile, with
-`MINIMAX_API_KEY=…` in `~/.config/delegation-kit/.env`:
+The shipped `minimax-m3.1-flash` profile is one such profile (the two
+shipped Meta Muse profiles are others, with `META_API_KEY` and
+`"parameters": {"effort": "max"}`), with `MINIMAX_API_KEY=…` in
+`~/.config/delegation-kit/.env`:
 
 ```json
 "minimax-m3.1-flash": {
@@ -247,3 +250,7 @@ refresh` writes a local catalog ([the router page](router.md)).
 - 0.33.0 added the `minimax-m3.1-flash` profile to the preset. A file made
   earlier does not get it; copy it from the example under *Adding a model*,
   or from `config/presets.json`, and set `MINIMAX_API_KEY`.
+- 0.34.0 added `muse-spark-1.3` and `muse-wonder-1.0` (Meta Model API) to the
+  preset, and `effort` to `openai-compatible`. A file made earlier gets
+  neither profile; copy them from `config/presets.json` and set
+  `META_API_KEY`. Existing `openai-compatible` profiles send nothing new.

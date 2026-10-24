@@ -87,9 +87,9 @@ delegation-config show            # the personal configuration the installer cre
 ```
 
 Keys: the installer asks for the DeepSeek, Qwen and Z.AI keys and keeps them
-in files only you can read; any other key — MiniMax for the shipped
-`minimax-m3.1-flash` profile, a model you add, a decider, the Artificial
-Analysis key — goes in `~/.config/delegation-kit/.env`, created
+in files only you can read; any other key — MiniMax and Meta for the shipped
+`minimax-m3.1-flash` and Muse profiles, a model you add, a decider, the
+Artificial Analysis key — goes in `~/.config/delegation-kit/.env`, created
 from [`.env.example`](.env.example) with mode 600. A variable already set in
 your environment wins. Never commit the real file.
 
@@ -148,14 +148,16 @@ the error codes and the evaluation harness.
   which pool models this machine cannot reach; `--ping` runs a live
   round-trip.
 
-## Current release: 0.33.0
+## Current release: 0.34.0
 
-Version 0.33.0 ships MiniMax-M3.1-Flash as a profile: `delegation-config
-init` now writes `minimax-m3.1-flash`, an `openai-compatible` profile on
-MiniMax's endpoint that reads its key from `MINIMAX_API_KEY`. The catalog
-places it in the `mid` band (42.7, $0.15/$0.60 per million tokens). Without
-the key the profile is listed but unreachable, and nothing else changes.
-0.32.0 moved the Kimi profile to Kimi K3.1 Pro.
+Version 0.34.0 adds Meta's Muse models through the Meta Model API: the
+preset gains `muse-spark-1.3` (`mid`, 48.1, $1.25/$4.25 per million tokens)
+and `muse-wonder-1.0` (`frontier`, 52.4, $4/$20, in preview), both
+`openai-compatible` profiles at `max` effort that read their key from
+`META_API_KEY`. To run them at that effort, `openai-compatible` now takes
+`effort` and sends it as `reasoning_effort` only when a profile declares
+it; existing profiles send nothing new. 0.33.0 shipped MiniMax-M3.1-Flash
+as a profile.
 
 Every earlier release is in [`CHANGELOG.md`](./CHANGELOG.md).
 

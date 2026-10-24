@@ -26,9 +26,12 @@ load_kit_env
 # shellcheck source=bin/lib/delegation-chat-completions.sh
 . "$ROOT/bin/lib/delegation-chat-completions.sh"
 usage() { printf '%s\n' 'Use delegation-run --profile PROFILE --lane LANE --prompt-file FILE --output FILE --workdir DIR'; }
+# `reasoning_effort` goes out only when the profile declares an effort: an
+# endpoint that does not know the field never sees it.
 provider_request_body() {
-  jq -n --arg model "$MODEL" --rawfile prompt "$1" --argjson max_tokens "$3" \
-    '{model:$model,messages:[{role:"user",content:$prompt}],max_tokens:$max_tokens,stream:false}'
+  jq -n --arg model "$MODEL" --rawfile prompt "$1" --arg effort "$2" --argjson max_tokens "$3" \
+    '{model:$model,messages:[{role:"user",content:$prompt}],max_tokens:$max_tokens,stream:false}
+     + (if $effort == "none" then {} else {reasoning_effort:$effort} end)'
 }
 # Validate endpoint even if called directly, before any credential can be sent.
 python3 - "$API_URL" <<'PY'

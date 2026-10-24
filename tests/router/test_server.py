@@ -5,8 +5,10 @@ import subprocess
 import threading
 import time
 import urllib.error
+import unittest
 import urllib.request
 
+from delegation_router_server import upstream_body
 from router import ROOT
 from router.fakes import (
     Fixture,
@@ -845,3 +847,26 @@ class ServerTests(Fixture):
         self.assertEqual(len(self.stdout.splitlines()), 1)
         self.assertEqual(self.stderr, "")
         self.assertNotIn("sk-canary", self.stdout)
+
+
+class UpstreamBodyTests(unittest.TestCase):
+    def test_openai_compatible_sends_only_a_declared_effort(self):
+        body = {"model": "auto", "messages": [], "reasoning_effort": "low"}
+        choice = {"reasoning_effort": None}
+        declared = {
+            "adapter": "openai-compatible",
+            "model": "muse-spark-1.3",
+            "parameters": {"effort": "max"},
+        }
+        out = upstream_body(body, declared, choice, False)
+        self.assertEqual(out["reasoning_effort"], "max")
+        self.assertEqual(out["model"], "muse-spark-1.3")
+        # without a declared effort the caller's request passes unchanged
+        plain = {"adapter": "openai-compatible", "model": "local", "parameters": {}}
+        self.assertEqual(
+            upstream_body(body, plain, choice, False)["reasoning_effort"], "low"
+        )
+        self.assertNotIn(
+            "reasoning_effort",
+            upstream_body({"model": "auto", "messages": []}, plain, choice, False),
+        )

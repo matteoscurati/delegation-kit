@@ -2,6 +2,37 @@
 
 All notable changes to delegation-kit are documented here.
 
+## [0.34.0] — 2026-10-24
+
+Meta's Muse models join the preset, and `openai-compatible` learns
+`effort`. New profiles and a new adapter parameter, so the release is a
+minor one.
+
+### Added
+
+- **`muse-spark-1.3` and `muse-wonder-1.0`.** Owner decision: two
+  `openai-compatible` profiles on the Meta Model API
+  (`https://api.meta.ai/v1`, family `meta`, the seven text roles, `context`
+  1,048,576, `effort` `max`), with the key in `META_API_KEY`. The catalog
+  places Muse Spark 1.3 at 48.1 (`mid`, $1.25/$4.25; 45.1 at `xhigh`) and
+  Muse Wonder at 52.4 (`frontier`, $4/$20, matched by name). Spark scores
+  above Qwen3.8 Max (45.4) for less ($2/$6); Wonder costs what Opus 5.5
+  costs for a lower score, so a pool that holds Opus or Kimi K3.1 Pro does
+  not pick it. Meta's Contributor-mode variants, which let Meta train on
+  what you send, are not in the preset. Without the key both profiles are
+  unreachable and nothing else is affected.
+- **`effort` on `openai-compatible`**: `minimal` … `max`, sent as
+  `reasoning_effort` by the runner and by the router only when the profile
+  declares it. A profile without it sends exactly what it sent before, and
+  through the router the caller's own `reasoning_effort` still passes. The
+  router's policy adjusts no effort on this adapter.
+
+### Upgrading
+
+- A configuration made earlier gets neither Muse profile: copy them from
+  `config/presets.json` and set `META_API_KEY` (*Upgrading* in the
+  configuration page).
+
 ## [0.33.0] — 2026-10-23
 
 MiniMax-M3.1-Flash becomes a shipped profile. A new profile in the preset

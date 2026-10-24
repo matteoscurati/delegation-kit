@@ -29,7 +29,7 @@ are read from is in [keys and environment](user-configuration.md#keys-and-enviro
 | `grok-build-cli` | policy-annotation: `read-only` · builder, frontend-builder: `worktree-edit` | high |
 | `token-plan-openai` | text roles: `text-patch` | minimal … max (xhigh) |
 | `deepseek-api` | text roles: `text-patch` | minimal … max (max) |
-| `openai-compatible` | text roles: `text-patch` | none sent |
+| `openai-compatible` | text roles: `text-patch` | minimal … max, sent only when declared (none) |
 | `agy` | scout, builder, frontend-builder, reviewer, judgement: `read-only` | medium, high |
 | `codex` | text roles plus routine-review, material-review, security: `read-only` | none … max (high) |
 | `claude-code` | text roles plus routine-review, material-review, security: `read-only` | low … max (high) |
@@ -42,8 +42,10 @@ adapters, `agy`), `sandboxed-worktree` (`kimi-code-cli`, `grok-build-cli`),
 
 *Text roles* are builder, clerk, scout, reviewer, senior, judgement and
 policy-annotation. Parameters: every adapter takes `timeout`;
-`deepseek-api` and `token-plan-openai` add `effort` and `max_tokens`,
-`openai-compatible` adds `max_tokens`, the rest add `effort`. The Claude
+`deepseek-api`, `token-plan-openai` and `openai-compatible` add `effort`
+and `max_tokens`, the rest add `effort`. `openai-compatible` sends the
+effort as `reasoning_effort` only when the profile declares one, so an
+endpoint that does not know the field never sees it. The Claude
 Code and Codex host profiles the kit installs keep their own sandbox; only
 the `delegation-run` entry is read-only and prompt-only.
 
