@@ -153,14 +153,16 @@ the error codes and the evaluation harness.
 ## Current release: 0.34.0
 
 Version 0.34.0 adds Meta's Muse models, on your Muse Code subscription or
-on an API key. `muse-code-wonder` and `muse-code-spark` run Muse Wonder and
-Muse Spark 1.3 through a new runner, `delegation-muse`, on the Muse Code CLI
+on an API key. `muse-code-wonder-full`, `muse-code-wonder` and
+`muse-code-spark` run Muse Wonder Full, Muse Wonder and Muse Spark 1.3
+through a new runner, `delegation-muse`, on the Muse Code CLI
 you signed in to with `muse login`: isolated home, no shell, no API key in
 its environment, and Meta's Contributor mode off unless a profile turns it
 on. `muse-wonder-1.0` and `muse-spark-1.3` reach the same models on the Meta
 Model API with `META_API_KEY`, and `openai-compatible` now takes `effort`
-for them. The catalog places Muse Spark 1.3 at 48.1 (`mid`) and Muse Wonder
-at 52.4 (`frontier`). 0.33.0 shipped MiniMax-M3.1-Flash as a profile.
+for them. The catalog places Muse Spark 1.3 at 48.1 (`mid`), Muse Wonder at
+52.4 and Muse Wonder Full at 55.8 (`frontier`). 0.33.0 shipped
+MiniMax-M3.1-Flash as a profile.
 
 Every earlier release is in [`CHANGELOG.md`](./CHANGELOG.md).
 

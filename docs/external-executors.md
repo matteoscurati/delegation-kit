@@ -78,7 +78,7 @@ Meta's Muse models ship two ways, and you choose by profile:
 
 | profiles | adapter | billed | needs |
 |---|---|---|---|
-| `muse-code-wonder`, `muse-code-spark` | `muse-code-cli` | your Muse Code subscription | `muse login` (browser) and an active plan |
+| `muse-code-wonder-full`, `muse-code-wonder`, `muse-code-spark` | `muse-code-cli` | your Muse Code subscription | `muse login` (browser) and an active plan; Wonder Full needs the Power or Maximum plan |
 | `muse-wonder-1.0`, `muse-spark-1.3` | `openai-compatible` | per token, on the Meta Model API | `META_API_KEY` |
 
 - **The CLI lane never sees `META_API_KEY`.** Muse Code prefers an API key
@@ -105,10 +105,10 @@ Meta's Muse models ship two ways, and you choose by profile:
   refreshes the same sign-in; a refreshed `auth.json` goes back to the
   ambient file unless that file changed meanwhile (exit 75,
   `oauth_conflict`).
+- **Muse Wonder Full** exists only on the subscription, so it has no API
+  price: the catalog ranks it at Muse Wonder's ($4/$20), never as free.
 - **Known limits.** Muse Code's own telemetry follows its defaults: the
   kit sets no option it does not document. Its bundled skills still load.
-  Muse Wonder Full, on the Power and Maximum plans only, has no profile
-  yet.
 
 ## Checking a text patch
 

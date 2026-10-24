@@ -12,8 +12,9 @@ new runner or on the Meta Model API, and `openai-compatible` learns
 
 - **`delegation-muse` and the `muse-code-cli` adapter**: Muse Code on the
   subscription you signed in to with `muse login`. Owner decision: the
-  preset gains `muse-code-wonder` (`muse-wonder-1.0`) and `muse-code-spark`
-  (`muse-spark-1.3`), roles clerk, scout, reviewer, policy-annotation
+  preset gains `muse-code-wonder-full` (`muse-wonder-full-1.0`, Power and
+  Maximum plans only), `muse-code-wonder` (`muse-wonder-1.0`) and
+  `muse-code-spark` (`muse-spark-1.3`), roles clerk, scout, reviewer, policy-annotation
   (read-only) and builder, frontend-builder (worktree edits), at `max`
   effort with `contributor_mode` `off`. The runner calls the release binary
   the `muse` launcher selected, never the self-updating launcher, from an
@@ -42,7 +43,11 @@ new runner or on the Meta Model API, and `openai-compatible` learns
   and Muse Wonder at 52.4 (`frontier`, $4/$20, matched by name). Spark
   scores above Qwen3.8 Max (45.4) for less; Wonder costs what Opus 5.5 costs
   for a lower score, so a pool that holds Opus or Kimi K3.1 Pro does not
-  pick it. Subscription runs are ranked at those API prices too.
+  pick it. Muse Wonder Full scores 55.8 (`frontier`, matched by name); the
+  board prices it at $0 because it has no API, so the catalog gives it
+  Muse Wonder's $4/$20 by hand, kept across refreshes, rather than letting
+  the router treat it as free. Subscription runs are ranked at those API
+  prices too.
 - **`effort` on `openai-compatible`**: `minimal` … `max`, sent as
   `reasoning_effort` by the runner and by the router only when the profile
   declares it. A profile without it sends exactly what it sent before, and
@@ -51,8 +56,6 @@ new runner or on the Meta Model API, and `openai-compatible` learns
 
 ### Known limits
 
-- Muse Wonder Full (Power and Maximum plans) has no profile yet: its Muse
-  Code model id is not documented.
 - Muse Code's telemetry follows its own defaults, and its bundled skills
   load.
 

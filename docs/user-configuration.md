@@ -250,8 +250,9 @@ refresh` writes a local catalog ([the router page](router.md)).
 - 0.33.0 added the `minimax-m3.1-flash` profile to the preset. A file made
   earlier does not get it; copy it from the example under *Adding a model*,
   or from `config/presets.json`, and set `MINIMAX_API_KEY`.
-- 0.34.0 added four Meta Muse profiles to the preset: `muse-code-wonder`
-  and `muse-code-spark` on the Muse Code subscription (`muse login`), and
+- 0.34.0 added five Meta Muse profiles to the preset: `muse-code-wonder-full`,
+  `muse-code-wonder` and `muse-code-spark` on the Muse Code subscription
+  (`muse login`), and
   `muse-wonder-1.0` and `muse-spark-1.3` on the Meta Model API
   (`META_API_KEY`); see
   [Muse Code](external-executors.md#muse-code-subscription-or-api-key). It

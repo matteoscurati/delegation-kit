@@ -25,17 +25,20 @@ below with the numbers observed after running the
   contract included; `doctor.sh --ping --ping-muse`: `60 OK, 6 WARN,
   0 FAIL`, the Claude → Codex round-trip and Muse Spark 1.3 on the
   subscription both returned `PONG`.
-- **Catalog**: `catalog refresh --shipped` on 2026-10-24: 27 models placed,
-  Muse Spark 1.3 (48.1, `mid`) and Muse Wonder (52.4, `frontier`) new;
+- **Catalog**: `catalog refresh --shipped` on 2026-10-24: 28 models placed,
+  Muse Spark 1.3 (48.1, `mid`), Muse Wonder (52.4) and Muse Wonder Full
+  (55.8, `frontier`, hand-priced at Wonder's $4/$20) new;
   nothing else changed; Claude Haiku 4.5 still unmatched.
 - **Live**, each call authorized, on the Muse Code subscription with
   Contributor mode off: five runs while building the runner (Muse Spark 1.3
-  `PONG` from an isolated home with only the keychain linked; a
-  `muse-wonder-full-1.0` guess refused as "does not exist or you lack
-  access", no usage; a sandboxed read of a file; a sandboxed builder that
+  `PONG` from an isolated home with only the keychain linked;
+  `muse-wonder-full-1.0` refused as "does not exist or you lack access"
+  before the plan included it, no usage; a sandboxed read of a file; a sandboxed builder that
   edited exactly one file; `delegation-run --profile muse-code-wonder`:
   `PONG` in 6 s, `provider_reported_model` `muse-wonder-1.0`,
-  `billing: subscription` with the plan's allowance), then the doctor ping.
+  `billing: subscription` with the plan's allowance), then the doctor ping,
+  then, after the plan upgrade, Muse Wonder Full through the runner: `PONG`,
+  `provider_reported_model` `muse-wonder-full-1.0`.
   The API-key Muse profiles were not dispatched: no `META_API_KEY` here.
 
 ### Earlier releases
