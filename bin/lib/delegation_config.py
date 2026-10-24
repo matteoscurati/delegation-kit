@@ -42,13 +42,26 @@ ADAPTERS = {
     "openai-compatible": (
         "openai-compatible",
         TEXT_ROLES,
-        {"max_tokens", "timeout"},
+        {"effort", "max_tokens", "timeout"},
         {"read-only", "text-patch"},
     ),
     "kimi-code-cli": (
         "kimi",
         {"clerk", "scout", "builder", "frontend-builder", "policy-annotation"},
         {"effort", "timeout"},
+        {"sandboxed-worktree"},
+    ),
+    "muse-code-cli": (
+        "muse",
+        {
+            "clerk",
+            "scout",
+            "reviewer",
+            "builder",
+            "frontend-builder",
+            "policy-annotation",
+        },
+        {"effort", "timeout", "contributor_mode"},
         {"sandboxed-worktree"},
     ),
     "claude-zai": (
@@ -86,11 +99,14 @@ ADAPTERS = {
 
 EFFORTS = {
     "kimi-code-cli": {"max"},
+    "muse-code-cli": {"minimal", "low", "medium", "high", "xhigh", "max"},
     "claude-zai": {"max"},
     "grok-build-cli": {"high"},
     "agy": {"medium", "high"},
     "deepseek-api": {"minimal", "low", "medium", "high", "xhigh", "max"},
     "token-plan-openai": {"minimal", "low", "medium", "high", "xhigh", "max"},
+    # Sent as `reasoning_effort` only when the profile declares it.
+    "openai-compatible": {"minimal", "low", "medium", "high", "xhigh", "max"},
     "codex": {"none", "minimal", "low", "medium", "high", "xhigh", "max"},
     "claude-code": {"low", "medium", "high", "xhigh", "max"},
 }
@@ -406,6 +422,12 @@ def validate(c):
             p["adapter"], set()
         ):
             raise ValueError("unsupported effort")
+        # Whether Meta may train on what a Muse Code run sends; off unless set.
+        if "contributor_mode" in params and params["contributor_mode"] not in {
+            "on",
+            "off",
+        }:
+            raise ValueError("invalid contributor_mode")
         for param, maximum in [("timeout", 86400), ("max_tokens", 1000000)]:
             if param in params and (
                 type(params[param]) is not int or not 1 <= params[param] <= maximum

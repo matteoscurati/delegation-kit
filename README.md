@@ -88,8 +88,9 @@ delegation-config show            # the personal configuration the installer cre
 
 Keys: the installer asks for the DeepSeek, Qwen and Z.AI keys and keeps them
 in files only you can read; any other key — MiniMax for the shipped
-`minimax-m3.1-flash` profile, a model you add, a decider, the Artificial
-Analysis key — goes in `~/.config/delegation-kit/.env`, created
+`minimax-m3.1-flash` profile, Meta for the API-key Muse profiles, a model
+you add, a decider, the Artificial Analysis key — goes in
+`~/.config/delegation-kit/.env`, created
 from [`.env.example`](.env.example) with mode 600. A variable already set in
 your environment wins. Never commit the real file.
 
@@ -127,7 +128,8 @@ the error codes and the evaluation harness.
 - **One description per model.** The personal configuration holds a
   profile for each model you can call: HTTP adapters (`openai-compatible`,
   `deepseek-api`, `token-plan-openai`) and native CLIs (`codex`,
-  `claude-code`, `claude-zai`, `kimi-code-cli`, `grok-build-cli`, `agy`).
+  `claude-code`, `claude-zai`, `kimi-code-cli`, `muse-code-cli`,
+  `grok-build-cli`, `agy`).
   Each native CLI has a runner that enforces its sandbox, identity check and
   limits; the router reaches those profiles through the kit's own
   dispatcher, which is how Claude models join a pool although Anthropic
@@ -148,14 +150,19 @@ the error codes and the evaluation harness.
   which pool models this machine cannot reach; `--ping` runs a live
   round-trip.
 
-## Current release: 0.33.0
+## Current release: 0.34.0
 
-Version 0.33.0 ships MiniMax-M3.1-Flash as a profile: `delegation-config
-init` now writes `minimax-m3.1-flash`, an `openai-compatible` profile on
-MiniMax's endpoint that reads its key from `MINIMAX_API_KEY`. The catalog
-places it in the `mid` band (42.7, $0.15/$0.60 per million tokens). Without
-the key the profile is listed but unreachable, and nothing else changes.
-0.32.0 moved the Kimi profile to Kimi K3.1 Pro.
+Version 0.34.0 adds Meta's Muse models, on your Muse Code subscription or
+on an API key. `muse-code-wonder-full`, `muse-code-wonder` and
+`muse-code-spark` run Muse Wonder Full, Muse Wonder and Muse Spark 1.3
+through a new runner, `delegation-muse`, on the Muse Code CLI
+you signed in to with `muse login`: isolated home, no shell, no API key in
+its environment, and Meta's Contributor mode off unless a profile turns it
+on. `muse-wonder-1.0` and `muse-spark-1.3` reach the same models on the Meta
+Model API with `META_API_KEY`, and `openai-compatible` now takes `effort`
+for them. The catalog places Muse Spark 1.3 at 48.1 (`mid`), Muse Wonder at
+52.4 and Muse Wonder Full at 55.8 (`frontier`). 0.33.0 shipped
+MiniMax-M3.1-Flash as a profile.
 
 Every earlier release is in [`CHANGELOG.md`](./CHANGELOG.md).
 

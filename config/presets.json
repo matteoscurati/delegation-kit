@@ -283,6 +283,97 @@
       "base_url": "https://api.minimax.io/v1",
       "credential_env": "MINIMAX_API_KEY",
       "context": 1000000
+    },
+    "muse-spark-1.3": {
+      "adapter": "openai-compatible",
+      "model": "muse-spark-1.3",
+      "family": "meta",
+      "roles": [
+        "builder",
+        "clerk",
+        "scout",
+        "reviewer",
+        "senior",
+        "judgement",
+        "policy-annotation"
+      ],
+      "base_url": "https://api.meta.ai/v1",
+      "credential_env": "META_API_KEY",
+      "context": 1048576,
+      "parameters": {
+        "effort": "max"
+      }
+    },
+    "muse-wonder-1.0": {
+      "adapter": "openai-compatible",
+      "model": "muse-wonder-1.0",
+      "family": "meta",
+      "roles": [
+        "builder",
+        "clerk",
+        "scout",
+        "reviewer",
+        "senior",
+        "judgement",
+        "policy-annotation"
+      ],
+      "base_url": "https://api.meta.ai/v1",
+      "credential_env": "META_API_KEY",
+      "context": 1048576,
+      "parameters": {
+        "effort": "max"
+      }
+    },
+    "muse-code-wonder": {
+      "adapter": "muse-code-cli",
+      "model": "muse-wonder-1.0",
+      "family": "meta",
+      "roles": [
+        "clerk",
+        "scout",
+        "reviewer",
+        "builder",
+        "frontend-builder",
+        "policy-annotation"
+      ],
+      "parameters": {
+        "effort": "max",
+        "contributor_mode": "off"
+      }
+    },
+    "muse-code-wonder-full": {
+      "adapter": "muse-code-cli",
+      "model": "muse-wonder-full-1.0",
+      "family": "meta",
+      "roles": [
+        "clerk",
+        "scout",
+        "reviewer",
+        "builder",
+        "frontend-builder",
+        "policy-annotation"
+      ],
+      "parameters": {
+        "effort": "max",
+        "contributor_mode": "off"
+      }
+    },
+    "muse-code-spark": {
+      "adapter": "muse-code-cli",
+      "model": "muse-spark-1.3",
+      "family": "meta",
+      "roles": [
+        "clerk",
+        "scout",
+        "reviewer",
+        "builder",
+        "frontend-builder",
+        "policy-annotation"
+      ],
+      "parameters": {
+        "effort": "max",
+        "contributor_mode": "off"
+      }
     }
   }
 }

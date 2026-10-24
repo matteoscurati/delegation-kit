@@ -1,7 +1,7 @@
 """Native profiles in the router pool: one `delegation-run` per request.
 
 A profile on a native adapter (codex, claude-code, claude-zai, kimi-code-cli,
-grok-build-cli, agy) has no chat-completions endpoint. The router renders the
+muse-code-cli, grok-build-cli, agy) has no chat-completions endpoint. The router renders the
 conversation as a prompt file, runs the kit's own dispatcher on a read-only
 role in an empty temporary workdir, and turns the answer file back into one
 chat completion. Every limit the dispatcher enforces — the profile's

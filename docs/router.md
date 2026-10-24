@@ -93,7 +93,7 @@ it the router is off and `check` says so.
 | field | meaning |
 |---|---|
 | `decider` | **required**; see [Deciders](#deciders) |
-| `pool` | profile ids on any adapter. HTTP ones (`openai-compatible`, `deepseek-api`, `token-plan-openai`) are called directly, native ones (`codex`, `claude-code`, `claude-zai`, `kimi-code-cli`, `grok-build-cli`, `agy`) [through `delegation-run`](#native-profiles-in-the-pool) |
+| `pool` | profile ids on any adapter. HTTP ones (`openai-compatible`, `deepseek-api`, `token-plan-openai`) are called directly, native ones (`codex`, `claude-code`, `claude-zai`, `kimi-code-cli`, `muse-code-cli`, `grok-build-cli`, `agy`) [through `delegation-run`](#native-profiles-in-the-pool) |
 | `default` | the pool profile used when the decision is undecidable |
 | `listen` | loopback `host:port` (`127.0.0.1`, `localhost`, `[::1]`); default `127.0.0.1:4141` |
 | `max_cost_usd` | ceiling on a request's estimated cost, in (0, 1000]; the `X-Router-Max-Cost-USD` header sets it per request. Profiles over it are set aside; a request that still lands on one is refused `400 cost-ceiling` |
@@ -257,8 +257,8 @@ answer returns as one chat completion.
   supports; a build role only if nothing else. `check` and
   `router.delegation_run.lane` name it.
 - **Limits stay**: the profile's `timeout`, the identity check
-  (`502 provider-identity-mismatch`), OAuth locks (a second concurrent Kimi or
-  Grok request gets `429 provider-rate-limited`), sandboxes.
+  (`502 provider-identity-mismatch`), OAuth locks (a second concurrent Kimi, Muse
+  Code or Grok request gets `429 provider-rate-limited`), sandboxes.
 - **Receipt**: `review_policy`, `review_status`, `status` under
   `router.delegation_run`.
 - **Streaming**: one event with the whole answer, then the router chunk.

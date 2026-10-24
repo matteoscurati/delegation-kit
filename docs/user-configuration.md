@@ -60,7 +60,7 @@ A complete configuration for an existing provider and a local endpoint:
 | `model` | any identifier the endpoint accepts |
 | `family` | your declaration, used by review policy; not model attestation |
 | `roles` | the jobs the profile takes (a role is the `--lane` flag). Roles never grant capabilities: `builder` on a text adapter means a textual patch, not permission to edit ([permission classes](external-executors.md#permission-classes)). |
-| `parameters` | `effort`, `max_tokens` (1–1,000,000; 4096 when unset on the chat-completions adapters) and `timeout` (whole seconds, 1–86400), as the adapter supports. No `timeout` means no time limit; see [Timeouts](external-executors.md#timeouts). |
+| `parameters` | `effort`, `contributor_mode` (`muse-code-cli`: `on` or `off`, default `off`; whether Meta may train on what the run sends), `max_tokens` (1–1,000,000; 4096 when unset on the chat-completions adapters) and `timeout` (whole seconds, 1–86400), as the adapter supports. No `timeout` means no time limit; see [Timeouts](external-executors.md#timeouts). |
 | `base_url` | the endpoint, for `openai-compatible` |
 | `credential_env` | the *name* of the variable holding the key; `openai-compatible`, `deepseek-api` and `token-plan-openai` only. Other adapters use their native credential storage. When set, only the environment and the `.env` are read, never a key file. |
 | `aliases` | optional list of accepted response model identifiers |
@@ -72,7 +72,8 @@ Rules:
 - Remote endpoints require HTTPS; loopback HTTP is allowed.
 - `openai-compatible` appends `/chat/completions` and sends one non-streaming
   text request with optional Bearer auth. It never calls `/models`, never
-  uses tools and never retries.
+  uses tools and never retries. A declared `effort` goes out as
+  `reasoning_effort`; without one the field is not sent.
 - Gemini is not in the shipped presets. The `agy` adapter stays installed and
   works with a profile you add by hand.
 
@@ -201,8 +202,10 @@ Nothing else in the kit has to change:
    should list it with `"reachable": true`.
 5. Dispatch once to confirm the key and the model name.
 
-The shipped `minimax-m3.1-flash` profile is one such profile, with
-`MINIMAX_API_KEY=…` in `~/.config/delegation-kit/.env`:
+The shipped `minimax-m3.1-flash` profile is one such profile (the two
+shipped Meta Muse profiles are others, with `META_API_KEY` and
+`"parameters": {"effort": "max"}`), with `MINIMAX_API_KEY=…` in
+`~/.config/delegation-kit/.env`:
 
 ```json
 "minimax-m3.1-flash": {
@@ -247,3 +250,12 @@ refresh` writes a local catalog ([the router page](router.md)).
 - 0.33.0 added the `minimax-m3.1-flash` profile to the preset. A file made
   earlier does not get it; copy it from the example under *Adding a model*,
   or from `config/presets.json`, and set `MINIMAX_API_KEY`.
+- 0.34.0 added five Meta Muse profiles to the preset: `muse-code-wonder-full`,
+  `muse-code-wonder` and `muse-code-spark` on the Muse Code subscription
+  (`muse login`), and
+  `muse-wonder-1.0` and `muse-spark-1.3` on the Meta Model API
+  (`META_API_KEY`); see
+  [Muse Code](external-executors.md#muse-code-subscription-or-api-key). It
+  also added `effort` to `openai-compatible`. A file made earlier gets none
+  of the profiles; copy the ones you want from `config/presets.json`.
+  Existing `openai-compatible` profiles send nothing new.

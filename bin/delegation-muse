@@ -1,0 +1,612 @@
+#!/usr/bin/env bash
+# Run Meta's Muse models through the native Muse Code CLI on the user's
+# subscription. Model, effort, contributor mode and backend are always
+# explicit; no backend fallback occurs after dispatch starts. The API-key path
+# is the openai-compatible Muse profiles, never this runner.
+set -euo pipefail
+umask 077
+
+SOURCE="${BASH_SOURCE[0]}"
+while [ -L "$SOURCE" ]; do
+  SOURCE_DIR="$(cd "$(dirname "$SOURCE")" && pwd)"
+  SOURCE="$(readlink "$SOURCE")"
+  [[ "$SOURCE" = /* ]] || SOURCE="$SOURCE_DIR/$SOURCE"
+done
+ROOT="$(cd "$(dirname "$SOURCE")/.." && pwd)"
+# RUNNER_NAME is consumed by the sourced shared library.
+# shellcheck disable=SC2034
+RUNNER_NAME="delegation-muse"
+# shellcheck source=bin/lib/delegation-runner-common.sh
+. "$ROOT/bin/lib/delegation-runner-common.sh"
+load_kit_env
+MUSE_CONFIG_DIR="${DELEGATION_MUSE_CONFIG_DIR:-${XDG_CONFIG_HOME:-$HOME/.config}/muse}"
+AUTH_FILE="$MUSE_CONFIG_DIR/auth.json"
+KEYCHAINS_DIR="${DELEGATION_MUSE_KEYCHAINS_DIR:-$HOME/Library/Keychains}"
+NATIVE_MODEL="${DELEGATION_REQUESTED_MODEL:-muse-spark-1.3}"
+[[ "$NATIVE_MODEL" =~ ^[a-z0-9][a-z0-9.-]*$ ]] || {
+  printf '%s\n' 'delegation-muse: invalid model identifier' >&2
+  exit 64
+}
+# The Muse Code models this runner supports. Anything else fails the probe.
+case "$NATIVE_MODEL" in
+  muse-wonder-1.0) DISPLAY_NAME="Muse Wonder" ;;
+  muse-wonder-full-1.0) DISPLAY_NAME="Muse Wonder Full" ;;
+  muse-spark-1.3) DISPLAY_NAME="Muse Spark 1.3" ;;
+  *) DISPLAY_NAME="" ;;
+esac
+EFFORTS='["minimal","low","medium","high","xhigh","max"]'
+ROLES="clerk scout reviewer builder frontend-builder policy-annotation"
+CONTRIBUTOR_MODE="${DELEGATION_CONTRIBUTOR_MODE:-off}"
+# Wall-clock limit for a dispatch, only when the profile sets one.
+OPERATIONAL_TIMEOUT_SECONDS="${DELEGATION_TIMEOUT:-}"
+HEARTBEAT_SECONDS="${DELEGATION_MUSE_HEARTBEAT_SECONDS:-30}"
+case "$HEARTBEAT_SECONDS" in ""|*[!0-9]*|0) HEARTBEAT_SECONDS=30 ;; esac
+CANCEL_GRACE_SECONDS="${DELEGATION_MUSE_CANCEL_GRACE_SECONDS:-10}"
+case "$CANCEL_GRACE_SECONDS" in ""|*[!0-9]*|0) CANCEL_GRACE_SECONDS=10 ;; esac
+# Zero is legal: it means "fail immediately when the kit OAuth lock is busy".
+OAUTH_WAIT_SECONDS="${DELEGATION_MUSE_OAUTH_WAIT_SECONDS:-5}"
+case "$OAUTH_WAIT_SECONDS" in ""|*[!0-9]*) OAUTH_WAIT_SECONDS=5 ;; esac
+NATIVE_BIN=""
+NATIVE_VERSION=""
+NATIVE_REASON=""
+MUSE_PLATFORM=""
+MUSE_SANDBOX_BIN=""
+MUSE_SHLOCK_BIN=""
+MUSE_TIMEOUT_BIN=""
+RUN_TMP=""
+OAUTH_LOCK_PATH=""
+OAUTH_LOCK_HELD=0
+OAUTH_SYNC_STATUS="not_attempted"
+CHILD_PID=""
+HEARTBEAT_PID=""
+CANCEL_REQUESTED=0
+
+usage() {
+  cat <<'EOF'
+Usage:
+  delegation-muse check [--json]
+  delegation-muse run --lane <clerk|scout|reviewer|builder|frontend-builder|policy-annotation> \
+    [--effort <auto|minimal|low|medium|high|xhigh|max>] [--backend <auto|native>] \
+    (--prompt-file <path> | --prompt <text>) --output <path> --workdir <path> \
+    [--metrics <path>] [--debug-dir <private-existing-directory>]
+
+Normally dispatched through `delegation-run --profile`, which supplies the
+requested model, effort, contributor mode (DELEGATION_CONTRIBUTOR_MODE, on or
+off, default off) and aliases from the personal configuration.
+
+The runner uses the Muse Code browser sign-in (`muse login`) and its
+subscription only. META_API_KEY never reaches the CLI, and a stored API key
+is refused: for the API, use an openai-compatible Muse profile. Dispatches
+are serialized by a kit lock, because every run refreshes the same OAuth
+session from its own isolated home.
+
+Exit codes: 64 invalid input; 69 runtime, login, entitlement, or quota unavailable;
+70 sandbox, output, or unclassified dispatch failure; 75 rate limit, 5xx,
+timeout, or a busy OAuth lock; 78 role or effort unsupported by this adapter;
+130 caller cancellation.
+EOF
+}
+
+release_oauth_lock() {
+  local owner_pid=""
+  [ "$OAUTH_LOCK_HELD" -eq 1 ] || return 0
+  if [ -f "$OAUTH_LOCK_PATH" ] && [ ! -L "$OAUTH_LOCK_PATH" ]; then
+    owner_pid="$(<"$OAUTH_LOCK_PATH")"
+    [ "$owner_pid" != "$$" ] || rm -f -- "$OAUTH_LOCK_PATH"
+  fi
+  OAUTH_LOCK_HELD=0
+}
+
+cleanup_run() {
+  [ -z "$HEARTBEAT_PID" ] || kill "$HEARTBEAT_PID" >/dev/null 2>&1 || true
+  [ -z "$CHILD_PID" ] || kill "$CHILD_PID" >/dev/null 2>&1 || true
+  release_oauth_lock
+  [ -z "$RUN_TMP" ] || rm -rf -- "$RUN_TMP"
+}
+
+handle_cancel() {
+  CANCEL_REQUESTED=1
+  [ -z "$CHILD_PID" ] || kill -TERM "$CHILD_PID" >/dev/null 2>&1 || true
+}
+
+acquire_oauth_lock() {
+  OAUTH_LOCK_PATH="$MUSE_CONFIG_DIR/.delegation-kit-oauth.lock"
+  [ ! -L "$OAUTH_LOCK_PATH" ] || return 1
+  "$MUSE_SHLOCK_BIN" -p "$$" -f "$OAUTH_LOCK_PATH" >/dev/null 2>&1 || return 2
+  OAUTH_LOCK_HELD=1
+}
+
+# The vendor launcher (`muse` on PATH) updates itself and downloads releases;
+# the runner calls the release binary it selected, so nothing updates during a
+# dispatch. DELEGATION_MUSE_BIN names a binary directly.
+resolve_native_bin() {
+  local launcher dir version
+  if [ -n "${DELEGATION_MUSE_BIN:-}" ]; then
+    NATIVE_BIN="$DELEGATION_MUSE_BIN"
+  else
+    launcher="$(command -v muse 2>/dev/null)" || { NATIVE_REASON="muse not on PATH"; return 1; }
+    dir="$(cd "$(dirname "$launcher")" && pwd -P)"
+    [ -r "$dir/.muse-version" ] || { NATIVE_REASON="no Muse Code release selected beside $launcher"; return 1; }
+    version="$(<"$dir/.muse-version")"
+    [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+-R[0-9]+(\.[0-9]+)?$ ]] \
+      || { NATIVE_REASON="unrecognized Muse Code release marker"; return 1; }
+    NATIVE_BIN="$dir/muse-bin-$version"
+  fi
+  [ -f "$NATIVE_BIN" ] && [ ! -L "$NATIVE_BIN" ] && [ -x "$NATIVE_BIN" ] \
+    || { NATIVE_REASON="Muse Code binary missing or not a regular executable: $NATIVE_BIN"; return 1; }
+  NATIVE_BIN="$(cd "$(dirname "$NATIVE_BIN")" && pwd -P)/$(basename "$NATIVE_BIN")"
+}
+
+sandbox_status() {
+  MUSE_PLATFORM="${DELEGATION_MUSE_PLATFORM:-$(uname)}"
+  MUSE_SANDBOX_BIN="${DELEGATION_MUSE_SANDBOX_BIN:-/usr/bin/sandbox-exec}"
+  MUSE_SHLOCK_BIN="${DELEGATION_MUSE_SHLOCK_BIN:-/usr/bin/shlock}"
+  [ "$MUSE_PLATFORM" = Darwin ] \
+    || { NATIVE_REASON="native Muse lanes require macOS sandbox-exec"; return 1; }
+  [ -x "$MUSE_SANDBOX_BIN" ] \
+    || { NATIVE_REASON="native Muse lanes require executable sandbox-exec at $MUSE_SANDBOX_BIN"; return 1; }
+  [ -x "$MUSE_SHLOCK_BIN" ] \
+    || { NATIVE_REASON="native Muse lanes require executable shlock at $MUSE_SHLOCK_BIN"; return 1; }
+  if have gtimeout; then MUSE_TIMEOUT_BIN="$(command -v gtimeout)"
+  elif have timeout; then MUSE_TIMEOUT_BIN="$(command -v timeout)"
+  else MUSE_TIMEOUT_BIN=""
+  fi
+  if [ -n "$OPERATIONAL_TIMEOUT_SECONDS" ]; then
+    [[ "$OPERATIONAL_TIMEOUT_SECONDS" =~ ^[1-9][0-9]*$ ]] \
+      || { NATIVE_REASON="DELEGATION_TIMEOUT must be a positive integer"; return 1; }
+    [ -n "$MUSE_TIMEOUT_BIN" ] \
+      || { NATIVE_REASON="a dispatch timeout requires gtimeout or timeout"; return 1; }
+  fi
+}
+
+# The sign-in, read from auth.json's non-secret fields only: the token itself
+# lives in the login keychain and is never read by the kit.
+login_status() {
+  [ -f "$AUTH_FILE" ] && [ ! -L "$AUTH_FILE" ] \
+    || { NATIVE_REASON="not signed in to Muse Code (run 'muse login')"; return 1; }
+  jq -e '.providers.meta.mechanism == "oauth"' "$AUTH_FILE" >/dev/null 2>&1 \
+    || { NATIVE_REASON="Muse Code is not signed in through the browser; the CLI lane runs on the subscription only (for an API key, use an openai-compatible Muse profile)"; return 1; }
+  jq -e '.providers.meta.subs_active == true' "$AUTH_FILE" >/dev/null 2>&1 \
+    || { NATIVE_REASON="no active Muse Code subscription on this sign-in"; return 1; }
+  [ -d "$KEYCHAINS_DIR" ] && [ ! -L "$KEYCHAINS_DIR" ] \
+    || { NATIVE_REASON="login keychain directory missing: $KEYCHAINS_DIR"; return 1; }
+}
+
+native_status() {
+  NATIVE_REASON=""
+  [ -n "$DISPLAY_NAME" ] || { NATIVE_REASON="$NATIVE_MODEL is not a supported Muse Code model"; return 1; }
+  case "$CONTRIBUTOR_MODE" in on|off) ;; *) NATIVE_REASON="contributor mode must be on or off"; return 1 ;; esac
+  resolve_native_bin || return 1
+  sandbox_status || return 1
+  login_status || return 1
+  local help flag
+  NATIVE_VERSION="$("$NATIVE_BIN" --version 2>/dev/null | head -1 || true)"
+  NATIVE_VERSION="${NATIVE_VERSION:-unknown}"
+  help="$("$NATIVE_BIN" exec --help 2>&1 || true)"
+  for flag in --json --prompt-file --model --reasoning-effort --contributor-mode \
+      --no-session-log --no-foreign-personal-context --disable-web-tools \
+      --disable-reminders --disable-request-user-input --disable-shell \
+      --disable-write --approval-mode --approval-judge --max-model-steps --workspace; do
+    grep -q -- "$flag" <<<"$help" || { NATIVE_REASON="muse exec lacks $flag"; return 1; }
+  done
+}
+
+is_allowed() {
+  local role="$1" backend="$2" r
+  [ "$backend" = native ] || return 1
+  for r in $ROLES; do [ "$r" = "$role" ] && return 0; done
+  return 1
+}
+
+default_effort() {
+  printf '%s\n' "${DELEGATION_PROFILE_EFFORT:-high}"
+}
+
+# The isolated home: the minimal settings (contributor mode is passed per run
+# as well), a copy of auth.json, and a link to the login keychain where the
+# token lives. Nothing else of the ambient Muse configuration is imported:
+# no hooks, MCP servers, rules, memory, skills or permission profiles.
+prepare_native_home() {
+  local scratch="$1"
+  mkdir -p "$scratch/home/.config/muse" "$scratch/home/Library" "$scratch/home-tmp"
+  printf '%s\n' '{"schema_version":1,"contributor_mode_disclosure_acknowledged":true}' \
+    >"$scratch/home/.config/muse/settings.json" || return 1
+  cp "$AUTH_FILE" "$scratch/home/.config/muse/auth.json" || return 1
+  chmod 600 "$scratch/home/.config/muse/auth.json"
+  ln -s "$KEYCHAINS_DIR" "$scratch/home/Library/Keychains" || return 1
+}
+
+# A sign-in the CLI updated during the run goes back to the ambient file, but
+# only if nobody else changed that file meanwhile (rc 2: conflict, kept as is).
+sync_auth_back() {
+  local scratch="$1" baseline="$2" isolated="$1/home/.config/muse/auth.json" current tmp
+  [ -f "$isolated" ] && [ ! -L "$isolated" ] || return 1
+  [ "$(sha256_file "$isolated")" != "$baseline" ] || return 0
+  current="$(sha256_file "$AUTH_FILE")" || return 1
+  [ "$current" = "$baseline" ] || return 2
+  tmp="$MUSE_CONFIG_DIR/.auth.json.delegation-kit.$$"
+  cp "$isolated" "$tmp" && chmod 600 "$tmp" && mv -f "$tmp" "$AUTH_FILE" || { rm -f -- "$tmp"; return 1; }
+}
+
+lane_flags() {
+  case "$1" in
+    clerk) printf '%s\n' --disable-write --max-model-steps 30 ;;
+    scout|reviewer) printf '%s\n' --disable-write --max-model-steps 40 ;;
+    policy-annotation) printf '%s\n' --disable-write --max-model-steps 30 ;;
+    builder|frontend-builder) printf '%s\n' --max-model-steps 60 ;;
+    *) return 1 ;;
+  esac
+}
+
+failure_contains() {
+  local events="$1" stderr="$2" pattern="$3"
+  grep -Eqi "$pattern" "$stderr" 2>/dev/null ||
+    jq -se --arg pattern "$pattern" '
+      any(.[]; .payload? | objects |
+        ((.reason // .event.reason // "") | tostring) | test($pattern; "i"))
+    ' "$events" >/dev/null 2>&1
+}
+
+classify_dispatch_failure() {
+  local events="$1" stderr="$2" vendor_rc="$3"
+  if [ "$CANCEL_REQUESTED" -eq 1 ]; then
+    printf '%s\n' '130|caller_cancelled|dispatch'
+  elif [ "$vendor_rc" -eq 124 ] || [ "$vendor_rc" -eq 137 ]; then
+    printf '%s\n' '75|operational_timeout|dispatch'
+  elif failure_contains "$events" "$stderr" "does not exist or you lack access|not available on your plan|upgrade your plan"; then
+    printf '%s\n' '69|entitlement_unavailable|dispatch'
+  elif failure_contains "$events" "$stderr" "usage limit|allowance (is )?(exhausted|used up)|quota"; then
+    printf '%s\n' '69|quota_unavailable|dispatch'
+  elif failure_contains "$events" "$stderr" "missing meta credentials|muse login|unauthorized|invalid (api key|token)|\\b401\\b"; then
+    printf '%s\n' '69|authentication_unavailable|dispatch'
+  elif failure_contains "$events" "$stderr" "sandbox|operation not permitted|deny\\(|process-exec"; then
+    printf '%s\n' '70|sandbox_failure|dispatch'
+  elif failure_contains "$events" "$stderr" "rate limit|too many requests|\\b429\\b"; then
+    printf '%s\n' '75|rate_limited|dispatch'
+  elif failure_contains "$events" "$stderr" "overloaded|\\b50[0-9]\\b|service unavailable|gateway|timed? ?out"; then
+    printf '%s\n' '75|provider_temporary_failure|dispatch'
+  else
+    printf '%s\n' '70|dispatch_unclassified|dispatch'
+  fi
+}
+
+event_summary_json() {
+  jq -s '
+    [ .[] | select(type == "object") ] as $events |
+    {total_events:($events | length),
+     tool_results:([$events[] | select(.payload_type == "tool.result")] | length),
+     failed_tasks:([$events[] | select(.payload_type == "task.lifecycle.failed")] | length),
+     terminal:([$events[] | .payload? | objects | select(.kind == "run_terminal") | .terminal] | last // null)}
+  ' "$1" 2>/dev/null || printf '%s\n' '{"total_events":0,"tool_results":0,"failed_tasks":0,"terminal":null}'
+}
+
+start_heartbeat() {
+  local child_pid="$1" events="$2" started="$3"
+  (
+    while kill -0 "$child_pid" >/dev/null 2>&1; do
+      sleep "$HEARTBEAT_SECONDS"
+      kill -0 "$child_pid" >/dev/null 2>&1 || exit 0
+      printf 'delegation-muse: heartbeat duration=%ss events=%s\n' \
+        "$(($(date +%s) - started))" "$(wc -l <"$events" 2>/dev/null | tr -d ' ' || printf 0)" >&2
+    done
+  ) &
+  HEARTBEAT_PID=$!
+}
+
+validate_debug_dir() {
+  local directory="$1" mode
+  [ -d "$directory" ] && [ ! -L "$directory" ] && [ -w "$directory" ] && [ -x "$directory" ] || return 1
+  mode="$(stat -f '%Lp' "$directory" 2>/dev/null || stat -c '%a' "$directory" 2>/dev/null)" || return 1
+  case "$mode" in *[!0-7]*|"") return 1 ;; esac
+  (( (8#$mode & 8#077) == 0 ))
+}
+
+preserve_debug_artifacts() {
+  local debug_run_path="$1" events="$2" vendor_stderr="$3"
+  [ -n "$debug_run_path" ] || return 0
+  cp "$events" "$debug_run_path/events.jsonl" 2>/dev/null || true
+  cp "$vendor_stderr" "$debug_run_path/stderr" 2>/dev/null || true
+  chmod 600 "$debug_run_path"/* 2>/dev/null || true
+  return 0
+}
+
+publish_failure_diagnostic() {
+  local output="$1" phase="$2" reason="$3" runner_rc="$4" vendor_rc="$5"
+  local started="$6" events="$7" lane="$8" write_scope="$9" debug_run_path="${10}" tmp
+  tmp="$RUN_TMP/error.json"
+  jq -n --arg phase "$phase" --arg reason "$reason" \
+    --argjson exit_code "$runner_rc" --argjson vendor_exit_code "$vendor_rc" \
+    --argjson duration_seconds "$(($(date +%s) - started))" \
+    --argjson event_summary "$(event_summary_json "$events")" \
+    --arg lane "$lane" --arg write_scope "$write_scope" --arg model "$NATIVE_MODEL" \
+    --arg contributor_mode "$CONTRIBUTOR_MODE" --arg oauth_sync "$OAUTH_SYNC_STATUS" \
+    --arg debug_path "$debug_run_path" '
+      {schema:"delegation_muse_error_v1",phase:$phase,reason:$reason,exit_code:$exit_code,
+       vendor_exit_code:$vendor_exit_code,duration_seconds:$duration_seconds,
+       requested_model:$model,lane:$lane,contributor_mode:$contributor_mode,
+       oauth_sync:$oauth_sync,event_summary:$event_summary,
+       tool_policy:{terminal:false,web_tools:false,subagents:false,write_scope:$write_scope},
+       debug_path:(if $debug_path == "" then null else $debug_path end)}
+  ' >"$tmp" || return 1
+  mv -f "$tmp" "$output.error.json" || return 1
+  printf 'delegation-muse: %s\n' "$reason" >"$RUN_TMP/stderr.receipt" || return 1
+  mv -f "$RUN_TMP/stderr.receipt" "$output.stderr"
+}
+
+print_check() {
+  local as_json="${1:-0}" native_ok=false selected="none" roles
+  have jq || die 69 "jq is required"
+  native_status && native_ok=true || true
+  roles="$(printf '%s\n' $ROLES | jq -R . | jq -sc .)"
+  [ "$native_ok" = true ] && selected=native
+  if [ "$as_json" = 1 ]; then
+    jq -n --arg model "$NATIVE_MODEL" --arg cli_version "$NATIVE_VERSION" \
+      --arg selected "$selected" --argjson efforts "$EFFORTS" --argjson roles "$roles" \
+      --argjson native "$native_ok" --arg native_reason "$NATIVE_REASON" \
+      --arg contributor_mode "$CONTRIBUTOR_MODE" '
+      {model:$model,models:{native:$model},adapter:"muse-code-cli",roles:$roles,efforts:$efforts,
+        runtime_cli_compatibility:"capability-probed",
+        runtime_cli_version:(if $cli_version == "" then null else $cli_version end),
+        billing:"subscription",contributor_mode:$contributor_mode,
+        terminal:false,web_tools:false,subagents:false,
+        selected_backend:$selected,backends:{
+          native:{available:$native,reason:$native_reason,efforts:$efforts,
+            sandbox:"macos-sandbox-exec",isolated_home:true,environment_mode:"allowlist",
+            ambient_home_read:false,keychain:"login-keychain-linked",
+            api_key_passed:false,auto_update:false,
+            terminal:false,web_tools:false,subagents:false,
+            hooks:false,mcp_servers:false,
+            oauth_refresh_persistence:"serialized-atomic-sync",
+            builder_write_scope:"workdir",read_only_write_scope:"scratch"}}}'
+  else
+    printf '%s via Muse Code: selected=%s roles=%s efforts=%s contributor_mode=%s\n' \
+      "${DISPLAY_NAME:-$NATIVE_MODEL}" "$selected" "$(printf '%s' "$ROLES" | tr ' ' ',')" "$EFFORTS" "$CONTRIBUTOR_MODE"
+    printf '  native: %s (%s; model=%s; cli=%s)\n' \
+      "$native_ok" "${NATIVE_REASON:-ready}" "$NATIVE_MODEL" "${NATIVE_VERSION:-unknown}"
+  fi
+}
+
+# The answer is the completed run's text; the provider names the model in the
+# usage record, and every model it names must be the requested one or an alias.
+extract_native() {
+  local events="$1" output="$2" metrics="$3" started="$4" effort="$5" lane="$6" write_scope="$7"
+  local usage reported
+  usage="$(jq -cs '[.[] | .payload? | objects | select(.kind == "run_usage")] | last // {}' "$events")" || return 1
+  jq -e --arg model "$NATIVE_MODEL" --argjson aliases "${DELEGATION_MODEL_ALIASES:-[]}" '
+    all((.models // [])[]; .model as $m |
+      $m == null or $m == "" or $m == $model or ($aliases | index($m) != null))
+  ' <<<"$usage" >/dev/null || return 1
+  reported="$(jq -r '[(.models // [])[] | .model | select(type == "string" and length > 0)] | last // empty' <<<"$usage")"
+  jq -ers '[.[] | .payload? | objects | select(.kind == "run_terminal" and .terminal == "completed") | .text] | last // empty' \
+    "$events" >"$output" || return 1
+  [ -s "$output" ] || return 1
+  jq -n --arg model "$NATIVE_MODEL" --arg reported_model "$reported" --arg effort "$effort" --arg lane "$lane" \
+    --arg cli_version "$NATIVE_VERSION" --arg write_scope "$write_scope" \
+    --arg contributor_mode "$CONTRIBUTOR_MODE" --argjson usage "$usage" \
+    --argjson started "$started" '
+    ($usage.models // []) as $m |
+    {schema_version:2,requested_model:$model,
+     provider_reported_model:(if $reported_model == "" then null else $reported_model end),
+     model_identity_source:(if $reported_model == "" then "requested-only" else "provider-reported" end),
+     model:$model,backend:"native",effort:$effort,lane:$lane,runtime_cli_version:$cli_version,
+     runtime_cli_compatibility:"capability-probed",
+     billing:"subscription",subscription_allowance_reported:($usage.allowance != null),
+     contributor_mode:$contributor_mode,
+     sandbox:"macos-sandbox-exec",isolated_home:true,environment_mode:"allowlist",
+     ambient_home_read:false,api_key_passed:false,
+     terminal:false,web_tools:false,subagents:false,hooks:false,mcp_servers:false,
+     write_scope:$write_scope,
+     started_at_epoch:$started,finished_at_epoch:now,usage_reported:($m | length > 0),
+     tokens:{input:([$m[].input_tokens // 0] | add // 0),output:([$m[].output_tokens // 0] | add // 0),
+       reasoning:([$m[].reasoning_tokens // 0] | add // 0),cache_read:([$m[].cached_tokens // 0] | add // 0),
+       cache_write:0},
+     provider_cost_usd:null}
+  ' >"$metrics"
+}
+
+run_command() {
+  local lane="" effort="auto" backend="auto" prompt_file="" prompt="" output="" workdir="" metrics=""
+  local debug_dir="" debug_run_path="" prompt_source=""
+  while [ "$#" -gt 0 ]; do
+    case "$1" in
+      --lane) lane="${2:-}"; shift 2 ;;
+      --effort) effort="${2:-}"; shift 2 ;;
+      --backend) backend="${2:-}"; shift 2 ;;
+      --prompt-file) prompt_file="${2:-}"; shift 2 ;;
+      --prompt) prompt="${2:-}"; prompt_source="literal"; shift 2 ;;
+      --output) output="${2:-}"; shift 2 ;;
+      --workdir) workdir="${2:-}"; shift 2 ;;
+      --metrics) metrics="${2:-}"; shift 2 ;;
+      --debug-dir) debug_dir="${2:-}"; shift 2 ;;
+      -h|--help) usage; exit 0 ;;
+      *) die 64 "unknown run argument: $1" ;;
+    esac
+  done
+  case "$lane" in clerk|scout|reviewer|builder|frontend-builder|senior|judgement|policy-annotation) ;; *) die 64 "invalid lane: $lane" ;; esac
+  case "$effort" in auto|minimal|low|medium|high|xhigh|max) ;; *) die 64 "invalid effort: $effort" ;; esac
+  case "$backend" in auto|native) ;; *) die 64 "invalid backend: $backend" ;; esac
+  [ -z "$prompt_file" ] || [ -z "$prompt_source" ] || die 64 "use only one of --prompt-file or --prompt"
+  if [ -n "$prompt_file" ]; then
+    [ -f "$prompt_file" ] || die 64 "prompt file missing: $prompt_file"
+    prompt="$(<"$prompt_file")"
+    prompt_source="file"
+  fi
+  [ -n "$prompt_source" ] || die 64 "--prompt-file or --prompt is required"
+  [ -n "$prompt" ] || die 64 "prompt must not be empty"
+  [ -d "$workdir" ] || die 64 "workdir missing: $workdir"
+  workdir="$(cd "$workdir" && pwd -P)"
+  [ "$workdir" != / ] || die 64 "workdir must not be the filesystem root"
+  local ambient_home
+  ambient_home="$(cd "${HOME:?HOME is required}" && pwd -P)"
+  [ "$workdir" != "$ambient_home" ] || die 64 "workdir must not be the user home"
+  [ -n "$output" ] || die 64 "--output is required"
+  if [ -n "$debug_dir" ]; then
+    validate_debug_dir "$debug_dir" \
+      || die 64 "--debug-dir must be an existing, writable directory with no group or other permissions"
+    debug_dir="$(cd "$debug_dir" && pwd -P)"
+  fi
+  have jq || die 69 "jq is required"
+  backend=native
+  is_allowed "$lane" "$backend" || die 78 "lane '$lane' backend '$backend' has no implemented tool profile"
+  [ "$effort" != auto ] || effort="$(default_effort)"
+  case "$effort" in minimal|low|medium|high|xhigh|max) ;; *) die 78 "effort '$effort' is unsupported" ;; esac
+  local tmp
+  tmp="$(mktemp -d "${TMPDIR:-/tmp}/delegation-muse.XXXXXX")"
+  tmp="$(cd "$tmp" && pwd -P)"
+  RUN_TMP="$tmp"
+  trap cleanup_run EXIT
+  native_status || die 69 "$NATIVE_REASON"
+
+  metrics="${metrics:-$output.metrics.json}"
+  local output_parent metrics_parent output_name metrics_name error_json stderr_receipt
+  output_parent="$(dirname "$output")"; output_name="$(basename "$output")"
+  metrics_parent="$(dirname "$metrics")"; metrics_name="$(basename "$metrics")"
+  case "$output_name" in .|..) die 64 "invalid output filename" ;; esac
+  case "$metrics_name" in .|..) die 64 "invalid metrics filename" ;; esac
+  [ -d "$output_parent" ] || die 64 "output parent directory must already exist: $output_parent"
+  [ -d "$metrics_parent" ] || die 64 "metrics parent directory must already exist: $metrics_parent"
+  output="$(cd "$output_parent" && pwd -P)/$output_name"
+  metrics="$(cd "$metrics_parent" && pwd -P)/$metrics_name"
+  error_json="$output.error.json"
+  stderr_receipt="$output.stderr"
+  [ "$output" != "$metrics" ] || die 64 "output and metrics paths resolve to the same file"
+  [ "$metrics" != "$error_json" ] && [ "$metrics" != "$stderr_receipt" ] \
+    || die 64 "metrics path collides with a diagnostic artifact"
+  local path
+  for path in "$output" "$metrics" "$error_json" "$stderr_receipt"; do
+    [ ! -L "$path" ] || die 64 "$path must not be a symlink"
+    [ ! -e "$path" ] || die 64 "$path must not already exist"
+  done
+  local write_scope=scratch
+  if [ "$lane" = builder ] || [ "$lane" = frontend-builder ]; then
+    write_scope=workdir
+  else
+    case "$output" in "$workdir"/*) die 64 "read-only lane output must be outside workdir" ;; esac
+    case "$metrics" in "$workdir"/*) die 64 "read-only lane metrics must be outside workdir" ;; esac
+  fi
+  case "$debug_dir" in "$workdir"|"$workdir"/*) die 64 "debug directory must be outside workdir" ;; esac
+
+  local events="$tmp/events.jsonl" result_tmp="$tmp/result.txt" metrics_tmp="$tmp/metrics.json"
+  local rc=0 started final_rc=0 failure_reason="" failure_phase="" vendor_rc=0 cancel_killer_pid=""
+  local lock_rc=0 sync_rc=0 baseline
+  started="$(date +%s)"
+  local -a timer=() flags=()
+  [ -z "$OPERATIONAL_TIMEOUT_SECONDS" ] || timer=("$MUSE_TIMEOUT_BIN" -k 10 "$OPERATIONAL_TIMEOUT_SECONDS")
+  while IFS= read -r path; do flags+=("$path"); done < <(lane_flags "$lane")
+
+  acquire_oauth_lock_wait || lock_rc=$?
+  if [ "$lock_rc" -eq 2 ]; then
+    die 75 "another Muse dispatch is using the OAuth session; retry after it finishes"
+  elif [ "$lock_rc" -ne 0 ]; then
+    die 69 "could not secure the Muse Code sign-in for isolated dispatch"
+  fi
+  prepare_native_home "$tmp" || die 69 "could not prepare isolated Muse home"
+  baseline="$(sha256_file "$tmp/home/.config/muse/auth.json")" \
+    || die 69 "could not fingerprint the isolated Muse sign-in"
+  printf '%s' "$prompt" >"$tmp/prompt.txt"
+  if [ -n "$debug_dir" ]; then
+    debug_run_path="$debug_dir/delegation-muse-$(date -u +%Y%m%dT%H%M%SZ)-$$"
+    mkdir -m 700 "$debug_run_path" || die 70 "could not create private debug run directory"
+  fi
+
+  # One process, no children: the CLI runs with its shell disabled, so the
+  # only executable is the Muse binary. The ambient home is unreadable except
+  # the login keychain the token lives in; builders write only inside the
+  # canonical worktree, read-only lanes only inside runner scratch. Network
+  # stays available to the CLI itself.
+  local sandbox_profile='(version 1)
+    (allow default)
+    (deny process-exec (require-not (literal (param "MUSE_BIN"))))
+    (deny file-read-data
+      (require-all
+        (subpath (param "REAL_HOME"))
+        (require-not (subpath (param "WORKDIR")))
+        (require-not (subpath (param "SCRATCH")))
+        (require-not (subpath (param "KEYCHAINS")))
+        (require-not (literal (param "MUSE_BIN")))))'
+  if [ "$write_scope" = workdir ]; then
+    sandbox_profile+=$'\n    (deny file-write* (require-all (require-not (subpath (param "SCRATCH"))) (require-not (subpath (param "WORKDIR"))) (require-not (subpath (param "KEYCHAINS")))))'
+  else
+    sandbox_profile+=$'\n    (deny file-write* (require-all (require-not (subpath (param "SCRATCH"))) (require-not (subpath (param "KEYCHAINS")))))'
+  fi
+  sandbox_profile+=$'\n'
+  : >"$events"
+  : >"$tmp/stderr"
+  CANCEL_REQUESTED=0
+  trap handle_cancel INT TERM
+  (
+    cd "$workdir"
+    exec env -i \
+      PATH="/usr/bin:/bin" HOME="$tmp/home" XDG_CONFIG_HOME="$tmp/home/.config" \
+      TMPDIR="$tmp/home-tmp" SHELL="/usr/bin/false" \
+      USER="${USER:-}" LOGNAME="${LOGNAME:-${USER:-}}" \
+      LANG="${LANG:-C}" NO_COLOR=1 CI=1 \
+      ${timer[@]+"${timer[@]}"} \
+      "$MUSE_SANDBOX_BIN" -D "SCRATCH=$tmp" -D "WORKDIR=$workdir" -D "REAL_HOME=$ambient_home" \
+        -D "KEYCHAINS=$(cd "$KEYCHAINS_DIR" && pwd -P)" -D "MUSE_BIN=$NATIVE_BIN" \
+        -p "$sandbox_profile" "$NATIVE_BIN" exec --json \
+        --prompt-file "$tmp/prompt.txt" --model "$NATIVE_MODEL" \
+        --reasoning-effort "$effort" --contributor-mode "$CONTRIBUTOR_MODE" \
+        --workspace "$workdir" --no-session-log --no-foreign-personal-context \
+        --disable-web-tools --disable-reminders --disable-request-user-input \
+        --disable-shell --approval-mode never --approval-judge off "${flags[@]}" </dev/null
+  ) >"$events" 2>"$tmp/stderr" &
+  CHILD_PID=$!
+  start_heartbeat "$CHILD_PID" "$events" "$started"
+  wait "$CHILD_PID" || rc=$?
+  if [ "$CANCEL_REQUESTED" -eq 1 ] && kill -0 "$CHILD_PID" >/dev/null 2>&1; then
+    ( sleep "$CANCEL_GRACE_SECONDS"; kill -KILL "$CHILD_PID" >/dev/null 2>&1 || true ) &
+    cancel_killer_pid=$!
+    wait "$CHILD_PID" || rc=$?
+    kill "$cancel_killer_pid" >/dev/null 2>&1 || true
+    wait "$cancel_killer_pid" 2>/dev/null || true
+  fi
+  vendor_rc="$rc"
+  CHILD_PID=""
+  if [ -n "$HEARTBEAT_PID" ]; then
+    kill "$HEARTBEAT_PID" >/dev/null 2>&1 || true
+    wait "$HEARTBEAT_PID" 2>/dev/null || true
+    HEARTBEAT_PID=""
+  fi
+  sync_auth_back "$tmp" "$baseline" || sync_rc=$?
+  case "$sync_rc" in 0) OAUTH_SYNC_STATUS="ok" ;; 2) OAUTH_SYNC_STATUS="conflict" ;; *) OAUTH_SYNC_STATUS="failed" ;; esac
+  release_oauth_lock
+  trap - INT TERM
+  # A failed run can still exit 0: the terminal record decides.
+  if [ "$rc" -eq 0 ] && ! jq -es 'any(.[]; .payload? | objects | select(.kind == "run_terminal") | .terminal == "completed")' \
+      "$events" >/dev/null 2>&1; then
+    rc=1
+  fi
+  if [ "$CANCEL_REQUESTED" -eq 1 ]; then
+    final_rc=130; failure_reason="caller_cancelled"; failure_phase="dispatch"
+  elif [ "$rc" -ne 0 ]; then
+    IFS='|' read -r final_rc failure_reason failure_phase \
+      <<<"$(classify_dispatch_failure "$events" "$tmp/stderr" "$rc")"
+  elif [ "$sync_rc" -eq 2 ]; then
+    final_rc=75; failure_reason="oauth_conflict"; failure_phase="oauth-sync"
+  elif [ "$sync_rc" -ne 0 ]; then
+    final_rc=70; failure_reason="oauth_sync_failed"; failure_phase="oauth-sync"
+  fi
+  if [ "$final_rc" -eq 0 ] &&
+      ! extract_native "$events" "$result_tmp" "$metrics_tmp" "$started" "$effort" "$lane" "$write_scope"; then
+    final_rc=70; failure_reason="output_invalid"; failure_phase="output"
+  fi
+  preserve_debug_artifacts "$debug_run_path" "$events" "$tmp/stderr"
+  if [ "$final_rc" -ne 0 ]; then
+    publish_failure_diagnostic "$output" "$failure_phase" "$failure_reason" \
+      "$final_rc" "$vendor_rc" "$started" "$events" "$lane" "$write_scope" "$debug_run_path" || true
+    exit "$final_rc"
+  fi
+  mv -f "$result_tmp" "$output" || { rm -f -- "$output"; exit 70; }
+  mv -f "$metrics_tmp" "$metrics" || { rm -f -- "$output" "$metrics"; exit 70; }
+}
+
+case "${1:-}" in
+  check)
+    shift
+    case "${1:-}" in "") print_check 0 ;; --json) shift; [ "$#" -eq 0 ] || die 64 "unknown check argument: $1"; print_check 1 ;; *) die 64 "unknown check argument: $1" ;; esac
+    ;;
+  run) shift; run_command "$@" ;;
+  -h|--help|"") usage ;;
+  *) die 64 "unknown command: $1" ;;
+esac

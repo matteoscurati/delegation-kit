@@ -14,6 +14,7 @@ are read from is in [keys and environment](user-configuration.md#keys-and-enviro
 |---|---|---|---|
 | `claude-zai` | `delegation-glm` | Claude Code CLI against the Z.AI endpoint | `ZAI_API_KEY` |
 | `kimi-code-cli` | `delegation-kimi` | Kimi Code CLI in a macOS `sandbox-exec` profile | CLI login |
+| `muse-code-cli` | `delegation-muse` | Muse Code CLI in a macOS `sandbox-exec` profile, on the subscription | CLI login (`muse login`) |
 | `grok-build-cli` | `delegation-grok` | Grok Build CLI in its attested custom sandbox | CLI login |
 | `token-plan-openai` | `delegation-qwen` | one chat-completions request | `QWEN_TOKEN_PLAN_API_KEY`, or `credential_env` |
 | `deepseek-api` | `delegation-deepseek` | one chat-completions request | `DEEPSEEK_API_KEY`, or `credential_env` |
@@ -26,24 +27,29 @@ are read from is in [keys and environment](user-configuration.md#keys-and-enviro
 |---|---|---|
 | `claude-zai` | clerk, scout, reviewer, policy-annotation: `read-only` · builder: `worktree-edit` | max |
 | `kimi-code-cli` | clerk, scout, policy-annotation: `read-only` · builder, frontend-builder: `worktree-edit` | max |
+| `muse-code-cli` | clerk, scout, reviewer, policy-annotation: `read-only` · builder, frontend-builder: `worktree-edit` | minimal … max (high) |
 | `grok-build-cli` | policy-annotation: `read-only` · builder, frontend-builder: `worktree-edit` | high |
 | `token-plan-openai` | text roles: `text-patch` | minimal … max (xhigh) |
 | `deepseek-api` | text roles: `text-patch` | minimal … max (max) |
-| `openai-compatible` | text roles: `text-patch` | none sent |
+| `openai-compatible` | text roles: `text-patch` | minimal … max, sent only when declared (none) |
 | `agy` | scout, builder, frontend-builder, reviewer, judgement: `read-only` | medium, high |
 | `codex` | text roles plus routine-review, material-review, security: `read-only` | none … max (high) |
 | `claude-code` | text roles plus routine-review, material-review, security: `read-only` | low … max (high) |
 
 `delegation-route` and `decide --lane` report each adapter's
 `capabilities`, the same for every role: `read-only` and `text-patch` (HTTP
-adapters, `agy`), `sandboxed-worktree` (`kimi-code-cli`, `grok-build-cli`),
+adapters, `agy`), `sandboxed-worktree` (`kimi-code-cli`, `muse-code-cli`,
+`grok-build-cli`),
 `native-tool-policy` (`claude-zai`), `native-profile` (`codex`,
 `claude-code`).
 
 *Text roles* are builder, clerk, scout, reviewer, senior, judgement and
 policy-annotation. Parameters: every adapter takes `timeout`;
-`deepseek-api` and `token-plan-openai` add `effort` and `max_tokens`,
-`openai-compatible` adds `max_tokens`, the rest add `effort`. The Claude
+`deepseek-api`, `token-plan-openai` and `openai-compatible` add `effort`
+and `max_tokens`, `muse-code-cli` adds `effort` and `contributor_mode`,
+the rest add `effort`. `openai-compatible` sends the
+effort as `reasoning_effort` only when the profile declares one, so an
+endpoint that does not know the field never sees it. The Claude
 Code and Codex host profiles the kit installs keep their own sandbox; only
 the `delegation-run` entry is read-only and prompt-only.
 
@@ -65,6 +71,44 @@ Exactly three, mutually exclusive, fixed per adapter and role:
 
 A builder role on a text adapter grants no filesystem: its output is a
 unified diff, and the trust boundary is where the lead applies it.
+
+## Muse Code: subscription or API key
+
+Meta's Muse models ship two ways, and you choose by profile:
+
+| profiles | adapter | billed | needs |
+|---|---|---|---|
+| `muse-code-wonder-full`, `muse-code-wonder`, `muse-code-spark` | `muse-code-cli` | your Muse Code subscription | `muse login` (browser) and an active plan; Wonder Full needs the Power or Maximum plan |
+| `muse-wonder-1.0`, `muse-spark-1.3` | `openai-compatible` | per token, on the Meta Model API | `META_API_KEY` |
+
+- **The CLI lane never sees `META_API_KEY`.** Muse Code prefers an API key
+  over the browser sign-in, so a key in its environment would move the run
+  to per-token billing without saying so. A sign-in made with an API key
+  (`muse auth set`) is refused (`check` says why); use the HTTP profiles
+  for that. The receipt records `billing: subscription` and whether the
+  response carried the plan's `allowance`.
+- **Contributor mode** decides whether Meta may train on what a run sends:
+  the profile's `contributor_mode`, `on` or `off`, `off` when unset. Every
+  run passes it explicitly, so the setting saved in Muse Code does not
+  apply, and the receipt records it.
+- **Isolation.** The runner calls the release binary the `muse` launcher
+  selected (no launcher, no self-update during a run) from an isolated home
+  that holds minimal settings, a copy of `auth.json` and a link to the login
+  keychain, where the token lives; the kit never reads the token. No user
+  or project rules, skills, hooks, MCP servers or memory load. The shell is
+  off in every role, as are web tools, reminders, questions to the user and
+  approvals; read-only roles also have writes off. Under `sandbox-exec`
+  only the Muse binary may execute, the ambient home is unreadable except
+  the keychain, and writes go only to runner scratch, the keychain, and the
+  worktree for builders.
+- **One dispatch at a time.** A kit lock serializes Muse runs, because each
+  refreshes the same sign-in; a refreshed `auth.json` goes back to the
+  ambient file unless that file changed meanwhile (exit 75,
+  `oauth_conflict`).
+- **Muse Wonder Full** exists only on the subscription, so it has no API
+  price: the catalog ranks it at Muse Wonder's ($4/$20), never as free.
+- **Known limits.** Muse Code's own telemetry follows its defaults: the
+  kit sets no option it does not document. Its bundled skills still load.
 
 ## Checking a text patch
 
@@ -141,7 +185,7 @@ through `delegation-run` and fails as `502 provider-identity-mismatch`.
 | 70 | no | dispatch, sandbox, identity, extraction or publication failure |
 | 75 | **yes** | temporary: rate limit, overload, 5xx, timeout, credential lock |
 | 78 | no | the adapter does not support the requested role or effort |
-| 130 | no | the caller interrupted (Kimi); the runner stopped the child and released its locks |
+| 130 | no | the caller interrupted (Kimi, Muse Code); the runner stopped the child and released its locks |
 
 A failure writes a sanitized `<output>.error.json` (phase, reason, sizes,
 exit codes) and publishes no output or metrics. Raw provider responses are
@@ -150,13 +194,13 @@ kept only under an explicit `--debug-dir`, mode 700.
 ## Timeouts
 
 No runner has a time limit of its own. Without the profile's `timeout`, a
-hung run waits until you interrupt it, and Kimi and Grok hold their OAuth
+hung run waits until you interrupt it, and Kimi, Muse Code and Grok hold their OAuth
 lock the whole time. With it (whole seconds, 1–86400), `delegation-run`
 exports it as `DELEGATION_TIMEOUT` and the run is bounded:
 
 | adapter | mechanism | on expiry |
 |---|---|---|
-| `kimi-code-cli`, `grok-build-cli`, `claude-zai` | `timeout -k 10` (or `gtimeout`) around the CLI; without either on `PATH` the runner refuses with exit 69 | exit 75, reason `timeout` (`operational_timeout` on Kimi) |
+| `kimi-code-cli`, `muse-code-cli`, `grok-build-cli`, `claude-zai` | `timeout -k 10` (or `gtimeout`) around the CLI; without either on `PATH` the runner refuses with exit 69 | exit 75, reason `timeout` (`operational_timeout` on Kimi and Muse Code) |
 | `deepseek-api`, `token-plan-openai`, `openai-compatible` | curl `--max-time` | exit 75, reason `deadline_exceeded` |
 | `codex`, `claude-code` | subprocess deadline in `delegation-run` | exit 75, reason `timeout` |
 | `agy` | `agy --print-timeout` (24h when unset) | the CLI's failure: exit 70, reason `process_exit` |

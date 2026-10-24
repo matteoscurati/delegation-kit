@@ -201,6 +201,10 @@ install_file "$KIT/bin/delegation-kimi" "$DATA_HOME/bin/delegation-kimi"
 chmod 755 "$DATA_HOME/bin/delegation-kimi"
 ln -sfn "$DATA_HOME/bin/delegation-kimi" "$BIN_HOME/delegation-kimi"
 echo "Kimi bridge -> $BIN_HOME/delegation-kimi"
+install_file "$KIT/bin/delegation-muse" "$DATA_HOME/bin/delegation-muse"
+chmod 755 "$DATA_HOME/bin/delegation-muse"
+ln -sfn "$DATA_HOME/bin/delegation-muse" "$BIN_HOME/delegation-muse"
+echo "Muse Code bridge -> $BIN_HOME/delegation-muse"
 # Kimi Code itself remains vendor-managed and is never updated here. Archive the
 # currently selected ripgrep bytes for the Grep-only process allowlist. A
 # different existing archive is retained unless the owner explicitly uses
@@ -347,7 +351,7 @@ fi
 
 # A skill directory is the kit's alone: replace it whole, so a file a release
 # no longer ships does not stay installed beside the current ones.
-EXECUTOR_SKILLS="glm-executor kimi-executor gemini-executor deepseek-executor qwen-executor grok-executor"
+EXECUTOR_SKILLS="glm-executor kimi-executor muse-executor gemini-executor deepseek-executor qwen-executor grok-executor"
 install_skill() { # $1=skill $2=skills directory
   rm -rf "${2:?}/$1"
   cp -R "$KIT/skills/$1" "$2/"
@@ -364,7 +368,7 @@ if [ "$do_claude" = 1 ]; then
   # previous orchestration policy) during the upgrade.
   append_guarded "$CLAUDE_HOME/CLAUDE.md" "@$KIT/claude/CLAUDE.delegation.md"
   for skill in model-routing orchestrate $EXECUTOR_SKILLS; do install_skill "$skill" "$CLAUDE_HOME/skills"; done
-  echo "  + model-routing, orchestrate and the six executor skills -> $CLAUDE_HOME/skills/"
+  echo "  + model-routing, orchestrate and the seven executor skills -> $CLAUDE_HOME/skills/"
 fi
 
 if [ "$do_codex" = 1 ]; then
@@ -375,7 +379,7 @@ if [ "$do_codex" = 1 ]; then
   for profile in "$KIT"/codex/profiles/*.config.toml; do copy_managed "$profile" "$CODEX_HOME/$(basename "$profile")"; done
   echo "  + 5 ephemeral -p profiles -> $CODEX_HOME/"
   for skill in $EXECUTOR_SKILLS; do install_skill "$skill" "$CODEX_HOME/skills"; done
-  echo "  + the six executor skills -> $CODEX_HOME/skills/"
+  echo "  + the seven executor skills -> $CODEX_HOME/skills/"
   append_guarded "$CODEX_HOME/AGENTS.md" "$(cat "$KIT/codex/AGENTS.md")"
   echo
   echo "  Codex config is NOT auto-edited. Review and merge into $CODEX_HOME/config.toml:"

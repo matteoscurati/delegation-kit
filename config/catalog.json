@@ -1,12 +1,12 @@
 {
-  "catalog_version": "2026-10-23",
+  "catalog_version": "2026-10-24",
   "tiering": {
     "rule": "index-bands-v1",
     "frontier_within": 8,
     "mid_within": 20,
     "top_index": 57.6,
     "source": "artificialanalysis",
-    "date": "2026-10-23",
+    "date": "2026-10-24",
     "attribution": "https://artificialanalysis.ai/"
   },
   "models": {
@@ -32,7 +32,7 @@
         },
         "coding_index": 76.5,
         "math_index": null,
-        "date": "2026-10-23",
+        "date": "2026-10-24",
         "via": "api"
       }
     },
@@ -62,7 +62,7 @@
         },
         "coding_index": 81.6,
         "math_index": null,
-        "date": "2026-10-23",
+        "date": "2026-10-24",
         "via": "api"
       }
     },
@@ -100,14 +100,14 @@
         },
         "coding_index": null,
         "math_index": null,
-        "date": "2026-10-23",
+        "date": "2026-10-24",
         "via": "api"
       },
       "price": {
         "in": 0.1,
         "out": 0.5
       },
-      "price_source": "artificialanalysis 2026-10-23"
+      "price_source": "artificialanalysis 2026-10-24"
     },
     "claude-opus-5": {
       "provider": "anthropic",
@@ -135,7 +135,7 @@
         },
         "coding_index": 78.0,
         "math_index": null,
-        "date": "2026-10-23",
+        "date": "2026-10-24",
         "via": "api"
       }
     },
@@ -165,7 +165,7 @@
         },
         "coding_index": null,
         "math_index": null,
-        "date": "2026-10-23",
+        "date": "2026-10-24",
         "via": "api"
       }
     },
@@ -196,7 +196,7 @@
         },
         "coding_index": 71.5,
         "math_index": null,
-        "date": "2026-10-23",
+        "date": "2026-10-24",
         "via": "api"
       }
     },
@@ -222,14 +222,14 @@
         },
         "coding_index": null,
         "math_index": null,
-        "date": "2026-10-23",
+        "date": "2026-10-24",
         "via": "api"
       },
       "price": {
         "in": 2.0,
         "out": 10.0
       },
-      "price_source": "artificialanalysis 2026-10-23"
+      "price_source": "artificialanalysis 2026-10-24"
     },
     "deepseek-flash": {
       "provider": "deepseek",
@@ -255,7 +255,7 @@
         },
         "coding_index": null,
         "math_index": null,
-        "date": "2026-10-23",
+        "date": "2026-10-24",
         "via": "api"
       }
     },
@@ -281,7 +281,7 @@
         },
         "coding_index": 68.8,
         "math_index": null,
-        "date": "2026-10-23",
+        "date": "2026-10-24",
         "via": "api"
       }
     },
@@ -309,7 +309,7 @@
         },
         "coding_index": 76.3,
         "math_index": null,
-        "date": "2026-10-23",
+        "date": "2026-10-24",
         "via": "api"
       }
     },
@@ -336,7 +336,7 @@
         },
         "coding_index": 68.8,
         "math_index": null,
-        "date": "2026-10-23",
+        "date": "2026-10-24",
         "via": "api"
       }
     },
@@ -358,14 +358,14 @@
         },
         "coding_index": 71.5,
         "math_index": null,
-        "date": "2026-10-23",
+        "date": "2026-10-24",
         "via": "api"
       },
       "price": {
         "in": 0.15,
         "out": 0.5
       },
-      "price_source": "artificialanalysis 2026-10-23"
+      "price_source": "artificialanalysis 2026-10-24"
     },
     "gpt-5.5": {
       "provider": "openai",
@@ -393,7 +393,7 @@
         },
         "coding_index": 74.9,
         "math_index": null,
-        "date": "2026-10-23",
+        "date": "2026-10-24",
         "via": "api"
       }
     },
@@ -424,7 +424,7 @@
         },
         "coding_index": 71.4,
         "math_index": null,
-        "date": "2026-10-23",
+        "date": "2026-10-24",
         "via": "api"
       }
     },
@@ -455,7 +455,7 @@
         },
         "coding_index": 77.4,
         "math_index": null,
-        "date": "2026-10-23",
+        "date": "2026-10-24",
         "via": "api"
       }
     },
@@ -486,7 +486,7 @@
         },
         "coding_index": 76.7,
         "math_index": null,
-        "date": "2026-10-23",
+        "date": "2026-10-24",
         "via": "api"
       }
     },
@@ -516,7 +516,7 @@
         },
         "coding_index": 76.9,
         "math_index": null,
-        "date": "2026-10-23",
+        "date": "2026-10-24",
         "via": "api"
       }
     },
@@ -546,7 +546,7 @@
         },
         "coding_index": null,
         "math_index": null,
-        "date": "2026-10-23",
+        "date": "2026-10-24",
         "via": "api"
       }
     },
@@ -575,7 +575,7 @@
         },
         "coding_index": 75.9,
         "math_index": null,
-        "date": "2026-10-23",
+        "date": "2026-10-24",
         "via": "api"
       }
     },
@@ -603,7 +603,7 @@
         },
         "coding_index": null,
         "math_index": null,
-        "date": "2026-10-23",
+        "date": "2026-10-24",
         "via": "api"
       }
     },
@@ -625,14 +625,14 @@
         },
         "coding_index": null,
         "math_index": null,
-        "date": "2026-10-23",
+        "date": "2026-10-24",
         "via": "api"
       },
       "price": {
         "in": 2.0,
         "out": 10.0
       },
-      "price_source": "artificialanalysis 2026-10-23"
+      "price_source": "artificialanalysis 2026-10-24"
     },
     "kimi-k3": {
       "provider": "moonshot",
@@ -657,7 +657,7 @@
         },
         "coding_index": 76.2,
         "math_index": null,
-        "date": "2026-10-23",
+        "date": "2026-10-24",
         "via": "api"
       }
     },
@@ -679,14 +679,14 @@
         },
         "coding_index": null,
         "math_index": null,
-        "date": "2026-10-23",
+        "date": "2026-10-24",
         "via": "api"
       },
       "price": {
         "in": 0.15,
         "out": 0.6
       },
-      "price_source": "artificialanalysis 2026-10-23"
+      "price_source": "artificialanalysis 2026-10-24"
     },
     "mistral-large-3": {
       "provider": "mistral",
@@ -710,7 +710,7 @@
         },
         "coding_index": 20.1,
         "math_index": 38.0,
-        "date": "2026-10-23",
+        "date": "2026-10-24",
         "via": "api"
       }
     },
@@ -733,14 +733,97 @@
         },
         "coding_index": 76.2,
         "math_index": null,
-        "date": "2026-10-23",
+        "date": "2026-10-24",
         "via": "api"
       },
       "price": {
         "in": 2.0,
         "out": 6.0
       },
-      "price_source": "artificialanalysis 2026-10-23"
+      "price_source": "artificialanalysis 2026-10-24"
+    },
+    "muse-spark-1.3": {
+      "provider": "meta",
+      "code": true,
+      "context": 1048576,
+      "json_mode": true,
+      "tier": "mid",
+      "evidence": {
+        "source": "artificialanalysis",
+        "name": "Muse Spark 1.3",
+        "aa_id": "9999672c-b687-4026-9c15-5cef02ff53bb",
+        "match": "slug",
+        "index": 48.1,
+        "variant": "max",
+        "variants": {
+          "max": 48.1,
+          "xhigh": 45.1
+        },
+        "coding_index": 75.8,
+        "math_index": null,
+        "date": "2026-10-24",
+        "via": "api"
+      },
+      "price": {
+        "in": 1.25,
+        "out": 4.25
+      },
+      "price_source": "artificialanalysis 2026-10-24"
+    },
+    "muse-wonder-1.0": {
+      "provider": "meta",
+      "aa_name": "Muse Wonder",
+      "code": true,
+      "context": 1048576,
+      "json_mode": true,
+      "tier": "frontier",
+      "evidence": {
+        "source": "artificialanalysis",
+        "name": "Muse Wonder",
+        "aa_id": "ff2f3f3d-783f-4e27-8a39-47237501a313",
+        "match": "name",
+        "index": 52.4,
+        "variant": "max",
+        "variants": {
+          "max": 52.4
+        },
+        "coding_index": null,
+        "math_index": null,
+        "date": "2026-10-24",
+        "via": "api"
+      },
+      "price": {
+        "in": 4.0,
+        "out": 20.0
+      },
+      "price_source": "artificialanalysis 2026-10-24"
+    },
+    "muse-wonder-full-1.0": {
+      "provider": "meta",
+      "aa_name": "Muse Wonder Full",
+      "code": true,
+      "context": 1048576,
+      "json_mode": true,
+      "price": {
+        "in": 4.0,
+        "out": 20.0
+      },
+      "evidence": {
+        "source": "artificialanalysis",
+        "name": "Muse Wonder Full",
+        "aa_id": "e994a6e0-d36b-4dab-8ae1-c1b469e4d9e2",
+        "match": "name",
+        "index": 55.8,
+        "variant": "max",
+        "variants": {
+          "max": 55.8
+        },
+        "coding_index": null,
+        "math_index": null,
+        "date": "2026-10-24",
+        "via": "api"
+      },
+      "tier": "frontier"
     }
   }
 }

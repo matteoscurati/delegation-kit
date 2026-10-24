@@ -179,7 +179,7 @@ grep -Fq 'No standing permission to delegate' "$TMP/codex/AGENTS.md" \
 # Every executor/routing skill must be explicitly user-triggered, and the
 # orchestrate skill must no longer hide mandatory agent calls behind prose.
 for skill in model-routing orchestrate glm-executor gemini-executor kimi-executor \
-             grok-executor qwen-executor deepseek-executor; do
+             muse-executor grok-executor qwen-executor deepseek-executor; do
   grep -Fq 'User direction and selection' "$ROOT/skills/$skill/SKILL.md" \
     || fail "$skill does not require user direction"
 done

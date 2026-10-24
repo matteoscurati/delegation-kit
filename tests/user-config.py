@@ -368,6 +368,46 @@ else:
                 del self.config["profiles"]["new-model"]["parameters"]["timeout"]
         self.assertEqual(Handler.requests, [])
 
+    def test_openai_compatible_effort_only_when_declared(self):
+        self.run_profile()
+        self.assertNotIn("reasoning_effort", Handler.requests[-1][2])
+        for f in self.base.glob("answer*"):
+            f.unlink()
+        self.config["profiles"]["new-model"]["parameters"]["effort"] = "max"
+        self.save()
+        self.command("delegation-config", "validate")
+        self.run_profile()
+        self.assertEqual(Handler.requests[-1][2]["reasoning_effort"], "max")
+        self.assertEqual(
+            json.loads((self.base / "answer.metrics.json").read_text())["effort"],
+            "max",
+        )
+        self.config["profiles"]["new-model"]["parameters"]["effort"] = "none"
+        self.save()
+        self.command("delegation-config", "validate", rc=65)
+
+    def test_contributor_mode_only_on_muse_code_and_only_on_or_off(self):
+        self.config["profiles"]["muse"] = {
+            "adapter": "muse-code-cli",
+            "model": "muse-spark-1.3",
+            "roles": ["scout", "builder"],
+            "parameters": {"effort": "max", "contributor_mode": "off"},
+        }
+        self.save()
+        self.command("delegation-config", "validate")
+        for adapter, value in [("muse-code-cli", "yes"), ("openai-compatible", "off")]:
+            profile = (
+                self.config["profiles"]["muse"]
+                if adapter == "muse-code-cli"
+                else self.config["profiles"]["new-model"]
+            )
+            original = json.loads(json.dumps(self.config))
+            profile["parameters"]["contributor_mode"] = value
+            self.save()
+            self.command("delegation-config", "validate", rc=65)
+            self.config = original
+        self.assertEqual(Handler.requests, [])
+
     def test_existing_http_adapter_receives_new_model(self):
         tools = self.base / "tools"
         tools.mkdir()
